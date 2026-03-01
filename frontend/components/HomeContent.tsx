@@ -371,8 +371,11 @@ export function HomeContent() {
     addToQueue({
       title: song.songName,
       artist: song.artist,
+      artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+      artworkUrl: song.albumArtUrl || "https://picsum.photos/seed/recognized/80",
       query: `${song.songName} ${song.artist} official audio`,
       videoId: song.youtubeVideoId ?? song.platformLinks.youtube,
+      license: "COPYRIGHTED",
     });
   }
 
@@ -533,8 +536,11 @@ export function HomeContent() {
                     addToQueue({
                       title: currentTrack.title,
                       artist: currentTrack.artistName,
+                      artistId: currentTrack.artistId,
+                      artworkUrl: currentTrack.artworkUrl,
                       query: `${currentTrack.title} ${currentTrack.artistName} official audio`,
                       videoId: currentTrack.youtubeVideoId,
+                      license: currentTrack.license,
                     })
                   }
                 />

@@ -6,7 +6,7 @@ export type QueueTrack = {
   artworkUrl: string;
   videoId?: string;
   query: string;
-  license: "COPYRIGHTED" | "CREATIVE_COMMONS" | "UNKNOWN";
+  license: "COPYRIGHTED" | "CREATIVE_COMMONS" | "UNKNOWN" | "FREE";
 };
 
 export function upsertTrack(
