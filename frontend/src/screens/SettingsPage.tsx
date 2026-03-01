@@ -7,7 +7,7 @@ import { Input } from "../components/ui/Input";
 import { useUser } from "../context/UserContext";
 import { useTheme } from "../../lib/ThemeContext";
 import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON } from "../lib/libraryExport";
-import type { Playlist } from "../features/library/types";
+import type { Playlist } from "../../features/library/types";
 
 function getLibraryData() {
   if (typeof window === "undefined") {
@@ -106,7 +106,7 @@ export default function SettingsPage() {
       exportLibraryAsJSON(
         favorites,
         history,
-        playlists,
+        libraryData.playlists,
         user?.username || "library"
       );
       alert("✅ Library exported successfully as JSON!");

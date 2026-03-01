@@ -371,7 +371,6 @@ export function HomeContent() {
                     title: latestResult?.songName || "Unknown title",
                     artist: latestResult?.artist || "Unknown artist",
                     album: latestResult?.album || "Unknown album",
-                    status: "pending",
                   })}
                 >
                   Submit pending review
@@ -434,7 +433,7 @@ export function HomeContent() {
                       <div key={trackId} className="group relative flex items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 transition-all hover:border-[var(--accent)]/50 hover:shadow-lg">
                         <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-[var(--border)]">
                           <img src={coverUrl} alt={songTitle} className="h-full w-full object-cover" />
-                          <button onClick={() => playSong({ songName: songTitle, artist: "Favorite", album: "Collection", albumArtUrl: coverUrl, youtubeVideoId: "" })} className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition group-hover:opacity-100"><span className="h-8 w-8 grid place-items-center rounded-full bg-[var(--accent)] text-white text-sm">▶</span></button>
+                          <button onClick={() => playSong({ songName: songTitle, artist: "Favorite", album: "Collection", albumArtUrl: coverUrl, youtubeVideoId: "", genre: "Unknown", releaseYear: null, platformLinks: {}, confidence: 0.5, durationSec: 0 })} className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition group-hover:opacity-100"><span className="h-8 w-8 grid place-items-center rounded-full bg-[var(--accent)] text-white text-sm">▶</span></button>
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-text-primary truncate text-sm">{songTitle}</p>

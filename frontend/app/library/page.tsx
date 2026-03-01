@@ -6,6 +6,7 @@ import { t } from "../../lib/translations";
 import { usePlayer } from "../../components/PlayerProvider";
 import { useUser } from "../../src/context/UserContext";
 import { LibraryStatistics } from "../../src/components/LibraryStatistics";
+import PlaylistDetail from "../../components/PlaylistDetail";
 import type { Playlist } from "../../features/library/types";
 import { getPlaylists, createPlaylist, deletePlaylist, updatePlaylistName, addSongToPlaylist, removeSongFromPlaylist } from "../../features/library/api";
 import { Button } from "../../src/components/ui/Button";
@@ -42,6 +43,8 @@ export default function LibraryPage() {
   const [showNewPlaylistInput, setShowNewPlaylistInput] = useState(false);
   const [expandedPlaylistId, setExpandedPlaylistId] = useState<string | null>(null);
   const [songMenuOpen, setSongMenuOpen] = useState<{ playlistId: string; songIndex: number } | null>(null);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
+  const [showPlaylistDetail, setShowPlaylistDetail] = useState(false);
 
   // Load playlists from backend when authenticated
   useEffect(() => {
@@ -150,6 +153,46 @@ export default function LibraryPage() {
           : p
       )
     );
+    if (selectedPlaylist?.id === playlistId) {
+      setSelectedPlaylist((prev) =>
+        prev
+          ? {
+              ...prev,
+              songs: prev.songs.filter((s) => !(s.title === title && s.artist === artist)),
+            }
+          : null
+      );
+    }
+  }
+
+  function handlePlaylistDetailClose() {
+    setShowPlaylistDetail(false);
+    setSelectedPlaylist(null);
+  }
+
+  function handlePlaylistCardClick(playlist: Playlist) {
+    setSelectedPlaylist(playlist);
+    setShowPlaylistDetail(true);
+  }
+
+  async function handlePlaylistDetailDelete(playlistId: string) {
+    const success = await deletePlaylist(playlistId);
+    if (success) {
+      setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
+      handlePlaylistDetailClose();
+    }
+  }
+
+  async function handlePlaylistRename(playlistId: string, newName: string) {
+    const success = await updatePlaylistName(playlistId, newName);
+    if (success) {
+      setPlaylists((prev) =>
+        prev.map((p) => (p.id === playlistId ? { ...p, name: newName } : p))
+      );
+      if (selectedPlaylist?.id === playlistId) {
+        setSelectedPlaylist((prev) => (prev ? { ...prev, name: newName } : null));
+      }
+    }
   }
 
   return (
@@ -365,7 +408,11 @@ export default function LibraryPage() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 {filteredPlaylists.map((playlist) => (
-                  <div key={playlist.id} className="card p-5 hover:border-[var(--accent)]/50 transition">
+                  <div
+                    key={playlist.id}
+                    onClick={() => handlePlaylistCardClick(playlist)}
+                    className="card p-5 hover:border-[var(--accent)]/50 transition cursor-pointer hover:bg-[var(--surface-2)]"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
                         <h3 className="font-semibold text-[var(--text)]">{playlist.name}</h3>
@@ -386,7 +433,10 @@ export default function LibraryPage() {
                         )}
                       </div>
                       <button
-                        onClick={() => handleDeletePlaylist(playlist.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeletePlaylist(playlist.id);
+                        }}
                         className="rounded-lg border border-red-400/40 px-2 py-1.5 text-red-300 hover:bg-red-500/10 text-xs"
                       >
                         Delete
@@ -399,6 +449,18 @@ export default function LibraryPage() {
           </div>
         )}
       </div>
+
+      {/* Playlist Detail Modal */}
+      {showPlaylistDetail && selectedPlaylist && (
+        <PlaylistDetail
+          playlist={selectedPlaylist}
+          onClose={handlePlaylistDetailClose}
+          onPlaySong={handlePlayPlaylistSong}
+          onRemoveSong={handleRemoveSongFromPlaylist}
+          onDeletePlaylist={handlePlaylistDetailDelete}
+          onRenamePlaylist={handlePlaylistRename}
+        />
+      )}
     </section>
   );
 }
