@@ -9,7 +9,9 @@ import { attachUserIfPresent, requireAuth } from "../../middlewares/auth.middlew
 
 const historyRouter = Router();
 
-historyRouter.get("/", requireAuth, getHistoryController);
+// GET: guests receive flat history.json entries; authenticated users receive their personal history.
+// Changed from requireAuth → attachUserIfPresent so the frontend can always fetch history.
+historyRouter.get("/", attachUserIfPresent, getHistoryController);
 historyRouter.post("/", attachUserIfPresent, createHistoryEntryController);
 historyRouter.delete("/:id", requireAuth, deleteHistoryItemController);
 historyRouter.delete("/", requireAuth, clearHistoryController);

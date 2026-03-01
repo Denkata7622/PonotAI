@@ -47,6 +47,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
+    // TODO(integration): sidebar reads history from localStorage cache only.
+    // A future pass should fetch from GET /api/history on auth change and update this cache.
     function syncSidebarData() {
       try {
         const historyRaw = window.localStorage.getItem(scopedKey("ponotai-history", profile.id));

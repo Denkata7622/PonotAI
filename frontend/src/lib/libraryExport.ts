@@ -1,5 +1,5 @@
 import type { HistoryItem, FavoriteItem } from "../context/UserContext";
-import type { Playlist } from "../features/library/types";
+import type { Playlist } from "../../features/library/types";
 
 export type LibraryExport = {
   version: "1.0";

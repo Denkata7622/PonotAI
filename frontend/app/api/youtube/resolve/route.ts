@@ -1,65 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const VIDEO_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
-
-function extractVideoId(source: string): string | null {
-  const trimmed = source.trim();
-  if (VIDEO_ID_PATTERN.test(trimmed)) return trimmed;
-
-  try {
-    const url = new URL(trimmed);
-
-    if (url.hostname.includes("youtu.be")) {
-      const id = url.pathname.replace(/^\//, "").split("/")[0];
-      return VIDEO_ID_PATTERN.test(id) ? id : null;
-    }
-
-    if (url.hostname.includes("youtube.com")) {
-      const fromWatch = url.searchParams.get("v");
-      if (fromWatch && VIDEO_ID_PATTERN.test(fromWatch)) return fromWatch;
-
-      const parts = url.pathname.split("/").filter(Boolean);
-      const embedLike = parts[0] === "embed" || parts[0] === "shorts";
-      if (embedLike && parts[1] && VIDEO_ID_PATTERN.test(parts[1])) return parts[1];
-    }
-  } catch {
-    // not a URL, continue with regex extraction from blob text below
-  }
-
-  return null;
-}
+// This route is called by PlayerProvider when a track has no pre-resolved videoId.
+// Requires YOUTUBE_API_KEY to be set in frontend/.env.local (server-side, no NEXT_PUBLIC_ prefix).
+// The same key is used by the backend — copy it from backend/.env into frontend/.env.local.
 
 export async function GET(request: NextRequest) {
-  const query = request.nextUrl.searchParams.get("query")?.trim();
-  if (!query) {
-    return NextResponse.json({ error: "Missing query" }, { status: 400 });
+  const query = request.nextUrl.searchParams.get("query");
+
+  if (!query?.trim()) {
+    return NextResponse.json({ videoId: null });
   }
 
-  const direct = extractVideoId(query);
-  if (direct) return NextResponse.json({ videoId: direct });
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  if (!apiKey) {
+    // Key not configured — return null gracefully; player will display its error state
+    // TODO(integration): document YOUTUBE_API_KEY requirement in frontend/.env.local
+    return NextResponse.json({ videoId: null });
+  }
 
   try {
-    const encoded = encodeURIComponent(query);
-    const response = await fetch(`https://www.youtube.com/results?search_query=${encoded}`, {
-      cache: "no-store",
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; PonotAI/1.0)",
-      },
-      signal: AbortSignal.timeout(8000),
-    });
+    const url = new URL("https://www.googleapis.com/youtube/v3/search");
+    url.searchParams.set("part", "snippet");
+    url.searchParams.set("type", "video");
+    url.searchParams.set("maxResults", "1");
+    url.searchParams.set("q", query.trim());
+    url.searchParams.set("key", apiKey);
 
-    if (!response.ok) {
-      return NextResponse.json({ error: "YouTube lookup failed" }, { status: 502 });
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+      return NextResponse.json({ videoId: null });
     }
 
-    const html = await response.text();
-    const match = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-    if (!match?.[1]) {
-      return NextResponse.json({ error: "No matching YouTube video" }, { status: 404 });
-    }
-
-    return NextResponse.json({ videoId: match[1] });
+    const data = (await res.json()) as {
+      items?: Array<{ id?: { videoId?: string } }>;
+    };
+    const videoId = data.items?.[0]?.id?.videoId ?? null;
+    return NextResponse.json({ videoId });
   } catch {
-    return NextResponse.json({ error: "YouTube lookup unavailable" }, { status: 502 });
+    return NextResponse.json({ videoId: null });
   }
 }

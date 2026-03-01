@@ -10,10 +10,15 @@ import {
 } from "./history.service";
 
 export async function getHistoryController(req: Request, res: Response): Promise<void> {
+  // If no authenticated user, serve the legacy flat history.json (guest recognitions)
+  if (!req.userId) {
+    return getLegacyHistoryController(req, res);
+  }
+
   const limit = Number(req.query.limit || 20);
   const offset = Number(req.query.offset || 0);
   const filter = ((req.query.filter as HistoryFilter) || "all") as HistoryFilter;
-  const result = await listUserHistory(req.userId!, Math.max(1, Math.min(100, limit)), Math.max(0, offset), filter);
+  const result = await listUserHistory(req.userId, Math.max(1, Math.min(100, limit)), Math.max(0, offset), filter);
   res.status(200).json(result);
 }
 

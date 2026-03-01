@@ -21,7 +21,8 @@ app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-app.use("/api/recognition", recognitionRouter);
+// recognitionRateLimit: 30 requests/minute per IP — see middlewares/rateLimit.middleware.ts
+app.use("/api/recognition", recognitionRateLimit, recognitionRouter);
 app.use("/api/history", historyRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/favorites", favoritesRouter);

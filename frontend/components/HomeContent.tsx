@@ -25,12 +25,25 @@ import { useTheme } from "../lib/ThemeContext";
 import { t } from "../lib/translations";
 import { scopedKey, useProfile } from "../lib/ProfileContext";
 import { useUser } from "../src/context/UserContext";
+import { apiFetch } from "../src/lib/apiFetch";
 import { Button } from "../src/components/ui/Button";
 import { Input } from "../src/components/ui/Input";
 import { Card } from "../src/components/ui/Card";
 
 type Toast = { id: string; kind: "success" | "error" | "info"; message: string };
 type HistoryEntry = { id: string; source: "audio" | "ocr"; createdAt: string; song: SongMatch };
+type BackendHistoryItem = {
+  id: string;
+  method?: string;
+  title?: string;
+  songName?: string;
+  artist?: string;
+  album?: string;
+  coverUrl?: string;
+  youtubeVideoId?: string;
+  recognized?: boolean;
+  createdAt: string;
+};
 
 const IMAGE_MAX_MB = 10;
 const IMAGE_MIME_WHITELIST = ["image/png", "image/jpeg", "image/webp"];
@@ -126,16 +139,58 @@ export function HomeContent() {
   }, [history.length, favoritesSet.size, playlists.length]);
 
   useEffect(() => {
-    const savedHistory = localStorage.getItem(profileHistoryKey);
-    if (savedHistory) {
+    // Source-of-truth rule: fetch from backend first, write to localStorage as cache.
+    // Fall back to localStorage silently if backend is unreachable.
+    async function loadHistory() {
       try {
-        setHistory(JSON.parse(savedHistory) as HistoryEntry[]);
+        const res = await apiFetch("/api/history?limit=18");
+        if (res.ok) {
+          const data = (await res.json()) as
+            | { items?: BackendHistoryItem[]; total?: number }
+            | BackendHistoryItem[];
+          const rawItems: BackendHistoryItem[] = Array.isArray(data)
+            ? data
+            : (data.items ?? []);
+
+          const mapped: HistoryEntry[] = rawItems
+            .filter((item) => item.title || item.songName)
+            .map((item) => ({
+              id: item.id,
+              source: (item.method === "album-image" ? "ocr" : "audio") as "audio" | "ocr",
+              createdAt: item.createdAt,
+              song: {
+                songName: item.title ?? item.songName ?? "Unknown Song",
+                artist: item.artist ?? "Unknown Artist",
+                album: item.album ?? "Unknown Album",
+                genre: "Unknown Genre",
+                releaseYear: null,
+                platformLinks: {},
+                youtubeVideoId: item.youtubeVideoId,
+                albumArtUrl: item.coverUrl ?? "https://picsum.photos/seed/recognized/120",
+                confidence: 0.8,
+                durationSec: 0,
+              },
+            }));
+
+          setHistory(mapped);
+          // Write backend result into localStorage as offline cache
+          localStorage.setItem(profileHistoryKey, JSON.stringify(mapped));
+          return;
+        }
+      } catch {
+        // Backend unreachable — fall through to localStorage cache
+      }
+
+      // Offline fallback: read from localStorage cache
+      try {
+        const saved = localStorage.getItem(profileHistoryKey);
+        setHistory(saved ? (JSON.parse(saved) as HistoryEntry[]) : []);
       } catch {
         setHistory([]);
       }
-      return;
     }
-    setHistory([]);
+
+    void loadHistory();
   }, [profileHistoryKey]);
 
   useEffect(() => {
@@ -196,6 +251,8 @@ export function HomeContent() {
       const recognized = await recognizeFromAudio(audioBlob);
       setAudioResult(recognized);
       setImageResult(null);
+      // Update local history grid immediately (source-of-truth: backend is written to first via addToHistory)
+      addToHistoryLocal("audio", [recognized.primaryMatch]);
       await addToHistory({
         id: crypto.randomUUID(),
         method: "audio-record",
@@ -273,6 +330,8 @@ export function HomeContent() {
     const updatedResult = { ...pendingImageResult, songs: selectedSongs, count: selectedSongs.length };
     setImageResult(updatedResult);
     setAudioResult(null);
+    // Update local history grid immediately
+    addToHistoryLocal("ocr", selectedSongs);
     for (const song of selectedSongs) {
       await addToHistory({
         id: crypto.randomUUID(),

@@ -2,8 +2,11 @@ export type QueueTrack = {
   id: string;
   title: string;
   artist: string;
+  artistId: string;
+  artworkUrl: string;
   videoId?: string;
   query: string;
+  license: "COPYRIGHTED" | "CREATIVE_COMMONS" | "UNKNOWN";
 };
 
 export function upsertTrack(

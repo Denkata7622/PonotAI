@@ -14,7 +14,9 @@ export function useLibrary(profileId: string) {
 
   // Check if user is authenticated
   useEffect(() => {
-    const token = localStorage.getItem("authToken");
+    // Must match the token key used by UserContext — "ponotii_token"
+    // "authToken" was the dead tokenStorage.ts key; that file has been removed.
+    const token = localStorage.getItem("ponotii_token");
     setIsAuthenticated(!!token);
   }, []);
 

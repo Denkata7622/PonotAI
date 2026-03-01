@@ -3,7 +3,8 @@ import { getApiBaseUrl } from "@/lib/apiConfig";
 
 function getAuthToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem("authToken");
+  // Must match the key used by UserContext (ponotii_token), not the dead tokenStorage.ts key
+  return window.localStorage.getItem("ponotii_token");
 }
 
 export async function syncLibraryState(state: LibraryState): Promise<boolean> {

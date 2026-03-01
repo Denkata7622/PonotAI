@@ -1,3 +1,8 @@
+// TODO(integration): Prisma schema is defined but the client is never generated or used.
+// All persistence currently goes through backend/src/db/authStore.ts (appdb.json)
+// and backend/src/db/client.ts (history.json).
+// To activate Prisma: run `npx prisma generate` and replace authStore/client with prisma client calls.
+
 generator client {
   provider = "prisma-client-js"
 }

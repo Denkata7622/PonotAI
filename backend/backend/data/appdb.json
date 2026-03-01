@@ -7,9 +7,60 @@
       "email": "denislav.n.tzenov@outlook.com",
       "passwordHash": "0a0e50fb0b446a7e8d05e44ac7af22f3:01750fb90377bd979a76dbc498a00bd1a92128572dc98aea93e105be9e224341d4941cd9841b6f52a14ee10ebb0eb22b4246cd021e0c6360ad96f69e38957481",
       "bio": "JEJEJE"
+    },
+    {
+      "id": "c39a40b5-d439-41d0-a3d7-55f77625716f",
+      "createdAt": "2026-03-01T15:37:42.631Z",
+      "username": "dkal",
+      "email": "gg@gmail.com",
+      "passwordHash": "ca01dfacccfc97f77cebcd7ad4dc3a3e:50a10b623074dd0ee076842aef251d01fc62d2d3a0abdb15f5a2933648bc63d9b54ec4612219ec05066d2374ce756e5d04471562f3fb8790e2cb4806332cdd4f"
     }
   ],
   "searchHistory": [
+    {
+      "id": "44ef4cc2-05c9-4820-8f53-6acd4a7bb8d7",
+      "createdAt": "2026-03-01T15:40:15.134Z",
+      "userId": "c39a40b5-d439-41d0-a3d7-55f77625716f",
+      "method": "album-image",
+      "title": "Rockstar",
+      "artist": "Post Malone",
+      "album": "Unknown Album",
+      "coverUrl": "https://picsum.photos/seed/post-malone-rockstar-3/300/300",
+      "recognized": true
+    },
+    {
+      "id": "7efd5b7c-768d-4155-ba4a-631220ae9719",
+      "createdAt": "2026-03-01T15:40:15.109Z",
+      "userId": "c39a40b5-d439-41d0-a3d7-55f77625716f",
+      "method": "album-image",
+      "title": "Levitating",
+      "artist": "Dua Lipa",
+      "album": "Unknown Album",
+      "coverUrl": "https://picsum.photos/seed/dua-lipa-levitating-1/300/300",
+      "recognized": true
+    },
+    {
+      "id": "71666746-abeb-4ca6-91c3-77002c23f599",
+      "createdAt": "2026-03-01T15:40:15.087Z",
+      "userId": "c39a40b5-d439-41d0-a3d7-55f77625716f",
+      "method": "album-image",
+      "title": "Blinding Lights",
+      "artist": "The Weeknd",
+      "album": "Unknown Album",
+      "coverUrl": "https://picsum.photos/seed/the-weeknd-blinding-lights-3/300/300",
+      "recognized": true
+    },
+    {
+      "id": "a16ce8f2-7214-44f8-be87-6476122f0cf4",
+      "createdAt": "2026-03-01T15:38:01.327Z",
+      "userId": "c39a40b5-d439-41d0-a3d7-55f77625716f",
+      "method": "album-image",
+      "title": "I'm Legendary",
+      "artist": "Mason Jar Moonshine",
+      "album": "Unknown Album",
+      "coverUrl": "https://picsum.photos/seed/recognized/120",
+      "recognized": true
+    },
     {
       "id": "80ae44f0-bb36-40a3-89dc-af5e9a6d720f",
       "createdAt": "2026-02-28T19:14:59.966Z",
@@ -34,6 +85,16 @@
     }
   ],
   "sharedSongs": [
+    {
+      "id": "951bf27d-3be8-4d19-b45e-954536c2735d",
+      "shareCode": "08782025f56d4176904afea0dff468df",
+      "createdAt": "2026-03-01T15:38:09.796Z",
+      "userId": "c39a40b5-d439-41d0-a3d7-55f77625716f",
+      "title": "I'm Legendary",
+      "artist": "Mason Jar Moonshine",
+      "album": "Unknown Album",
+      "coverUrl": "https://picsum.photos/seed/recognized/120"
+    },
     {
       "id": "209c99fc-7951-425c-9c8f-4bdea1c60ab6",
       "shareCode": "7e023c3a8fdd43bd86c3435dc542ba16",
