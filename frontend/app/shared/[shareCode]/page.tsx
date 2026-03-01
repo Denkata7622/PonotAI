@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { use } from "react";
 import { usePlayer } from "../../../components/PlayerProvider";
+import { getApiBaseUrl } from "@/lib/apiConfig";
 
 type SharedPayload = {
   title: string;
@@ -20,8 +21,7 @@ export default function SharedSongPage({ params }: { params: Promise<{ shareCode
   const { addToQueue } = usePlayer();
 
   useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
-    fetch(`${base}/api/share/${shareCode}`)
+    fetch(`${getApiBaseUrl()}/api/share/${shareCode}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("NOT_FOUND");
         setData((await res.json()) as SharedPayload);

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getApiBaseUrl } from "@/lib/apiConfig";
 
 type RecognizeResponse = {
   trackId: string;
@@ -10,11 +11,6 @@ type RecognizeResponse = {
   license: "FREE" | "COPYRIGHTED";
   artworkUrl?: string;
 };
-
-const API_BASE_URL =
-  process.env.TRACKLY_API_BASE_URL?.replace(/\/$/, "") ||
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
-  "http://localhost:4000";
 
 const LOCAL_FALLBACKS: RecognizeResponse[] = [
   {
@@ -36,7 +32,9 @@ const LOCAL_FALLBACKS: RecognizeResponse[] = [
 
 export async function POST() {
   try {
-    const upstream = await fetch(`${API_BASE_URL}/recognize`, {
+    // TODO(integration): This endpoint calls /recognize which doesn't exist in backend.
+    // Should call /api/recognition/audio or /api/recognition/image based on request type.
+    const upstream = await fetch(`${getApiBaseUrl()}/recognize`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

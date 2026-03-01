@@ -1,5 +1,4 @@
-const API_BASE =
-  (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000").replace(/\/$/, "");
+import { getApiBaseUrl } from "@/lib/apiConfig";
 
 const TOKEN_KEY = "ponotii_token";
 
@@ -10,7 +9,7 @@ export function getToken(): string | null {
 
 export async function apiFetch(path: string, options?: RequestInit): Promise<Response> {
   const token = getToken(); // always read fresh — never stale
-  return fetch(`${API_BASE}${path}`, {
+  return fetch(`${getApiBaseUrl()}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",

@@ -17,6 +17,8 @@ export type SongMatch = {
   durationSec: number;
 };
 
+import { getApiBaseUrl } from "@/lib/apiConfig";
+
 export type SongRecognitionResult = SongMatch & {
   source?: "provider" | "ocr_fallback" | "audio" | "image";
   verificationStatus?: "verified" | "not_found";
@@ -43,8 +45,6 @@ export class RecognitionError extends Error {
   }
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:4000";
-
 async function postMultipart<T>(
   endpoint: string,
   fieldName: string,
@@ -61,7 +61,7 @@ async function postMultipart<T>(
     }
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(`${getApiBaseUrl()}${endpoint}`, {
     method: "POST",
     body: formData,
   });

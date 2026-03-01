@@ -1,7 +1,5 @@
 import type { LibraryState, Playlist } from "./types";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:4000";
+import { getApiBaseUrl } from "@/lib/apiConfig";
 
 function getAuthToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -13,7 +11,7 @@ export async function syncLibraryState(state: LibraryState): Promise<boolean> {
   if (!token) return false;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/library/sync`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/library/sync`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -33,7 +31,7 @@ export async function getPlaylists(): Promise<Playlist[]> {
   if (!token) return [];
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/playlists`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/playlists`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -51,7 +49,7 @@ export async function createPlaylist(name: string): Promise<Playlist | null> {
   if (!token) return null;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/playlists`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/playlists`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -74,7 +72,7 @@ export async function updatePlaylistName(
   if (!token) return null;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/playlists/${playlistId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -102,7 +100,7 @@ export async function addSongToPlaylist(
   if (!token) return null;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/songs`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/playlists/${playlistId}/songs`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -126,7 +124,7 @@ export async function removeSongFromPlaylist(
   if (!token) return null;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}/songs`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/playlists/${playlistId}/songs`, {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
@@ -146,7 +144,7 @@ export async function deletePlaylist(playlistId: string): Promise<boolean> {
   if (!token) return false;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/playlists/${playlistId}`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/playlists/${playlistId}`, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,
