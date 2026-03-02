@@ -38,9 +38,10 @@ export default function SharedSongPage({ params }: { params: Promise<{ shareCode
       artistId: `artist-${data.artist}`.toLowerCase().replace(/\s+/g, "-"),
       artworkUrl: data.coverUrl || "https://picsum.photos/seed/shared/200",
       license: "COPYRIGHTED",
+      query: `${data.title} ${data.artist} official audio`,
     });
   }
-
+  
   if (error) return <section className="card p-6">{error}</section>;
   if (!data) return <section className="card p-6">Loading…</section>;
 
