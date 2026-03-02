@@ -286,7 +286,6 @@ export async function findPlaylistById(playlistId: string): Promise<PlaylistReco
 
 export async function clearUserPlaylists(userId: string): Promise<void> {
   const db = await readDb();
-  db.playlists = db.playlists.filter((p) => p.userId !== userId);
+  db.playlists = (db.playlists ?? []).filter((p) => p.userId !== userId);
   await writeDb(db);
 }
-

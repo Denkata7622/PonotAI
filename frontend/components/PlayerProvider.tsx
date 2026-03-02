@@ -263,6 +263,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       id: track.id ?? `${track.title}-${track.artist}`.toLowerCase().replace(/\s+/g, "-"),
       title: track.title,
       artist: track.artist,
+      artistId: track.artistId,
+      artworkUrl: track.artworkUrl,
+      license: track.license,
       query: track.query,
       videoId: normalizeVideoId(track.videoId),
     };
