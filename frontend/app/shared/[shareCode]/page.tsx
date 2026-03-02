@@ -34,7 +34,7 @@ export default function SharedSongPage({ params }: { params: Promise<{ shareCode
     addToQueue({
       id: `shared-${data.title}-${data.artist}`.toLowerCase().replace(/\s+/g, "-"),
       title: data.title,
-      artistName: data.artist,
+      artist: data.artist,
       artistId: `artist-${data.artist}`.toLowerCase().replace(/\s+/g, "-"),
       artworkUrl: data.coverUrl || "https://picsum.photos/seed/shared/200",
       license: "COPYRIGHTED",
