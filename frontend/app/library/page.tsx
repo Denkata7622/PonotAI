@@ -18,20 +18,6 @@ removeSongFromPlaylist,
 } from "../../features/library/api";
 import { Button } from "../../src/components/ui/Button";
 
-const testFavorite = {
-  id: "1",
-  title: "Test Song",
-  artist: "Test Artist",
-  album: "Test Album",
-  coverUrl: "https://picsum.photos/seed/test/80",
-  createdAt: new Date().toISOString()
-};
-
-localStorage.setItem(
-  "ponotai.library.favorites.profile-c2f6c8ce-9314-4e60-ac00-beea389045ba",
-  JSON.stringify([testFavorite])
-);
-
 type Song = {
 id: string;
 title?: string;
