@@ -3,6 +3,7 @@ export type PlaylistSong = {
   artist: string;
   album?: string;
   coverUrl?: string;
+  videoId?: string;
 };
 
 export type Playlist = {

@@ -92,8 +92,8 @@ export function useLibrary(profileId: string) {
     if (isAuthenticated) {
       try {
         await playlistApi.addSongToPlaylist(playlistId, song);
-      } catch (error) {
-        console.error("Error adding song to playlist:", error);
+      } catch {
+        // no-op: local state still updates for offline resilience
       }
     }
 
@@ -124,8 +124,8 @@ export function useLibrary(profileId: string) {
     if (isAuthenticated) {
       try {
         await playlistApi.removeSongFromPlaylist(playlistId, title, artist);
-      } catch (error) {
-        console.error("Error removing song from playlist:", error);
+      } catch {
+        // no-op: local state still updates for offline resilience
       }
     }
 

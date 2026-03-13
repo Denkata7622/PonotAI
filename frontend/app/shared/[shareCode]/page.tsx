@@ -18,6 +18,7 @@ export default function SharedSongPage({ params }: { params: Promise<{ shareCode
   const { shareCode } = use(params);
   const [data, setData] = useState<SharedPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [prefetchedVideoId, setPrefetchedVideoId] = useState<string | null>(null);
   const { addToQueue } = usePlayer();
 
   useEffect(() => {
@@ -29,6 +30,18 @@ export default function SharedSongPage({ params }: { params: Promise<{ shareCode
       .catch(() => setError("Shared song not found"));
   }, [shareCode]);
 
+  useEffect(() => {
+    if (!data) return;
+    const query = encodeURIComponent(`${data.title} ${data.artist} official audio`);
+    fetch(`/api/youtube/resolve?query=${query}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        const videoId = typeof payload?.videoId === "string" ? payload.videoId : null;
+        setPrefetchedVideoId(videoId);
+      })
+      .catch(() => setPrefetchedVideoId(null));
+  }, [data]);
+
   function handlePlay() {
     if (!data) return;
     addToQueue({
@@ -39,6 +52,7 @@ export default function SharedSongPage({ params }: { params: Promise<{ shareCode
       artworkUrl: data.coverUrl || "https://picsum.photos/seed/shared/200",
       license: "COPYRIGHTED",
       query: `${data.title} ${data.artist} official audio`,
+      videoId: prefetchedVideoId ?? undefined,
     });
   }
   

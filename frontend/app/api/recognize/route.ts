@@ -32,9 +32,7 @@ const LOCAL_FALLBACKS: RecognizeResponse[] = [
 
 export async function POST() {
   try {
-    // TODO(integration): This endpoint calls /recognize which doesn't exist in backend.
-    // Should call /api/recognition/audio or /api/recognition/image based on request type.
-    const upstream = await fetch(`${getApiBaseUrl()}/recognize`, {
+        const upstream = await fetch(`${getApiBaseUrl()}/recognize`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

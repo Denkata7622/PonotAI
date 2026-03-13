@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import HeroSection from "./HeroSection";
 import ResultCard from "./ResultCard";
-import HistoryGrid from "./HistoryGrid";
+
 import UploadModal from "./UploadModal";
-import LibrarySidebar from "./LibrarySidebar";
+const LibrarySidebar = lazy(() => import("./LibrarySidebar"));
 import TrackCard from "./TrackCard";
 import SongReviewModal from "./SongReviewModal";
 import { usePlayer } from "./PlayerProvider";
@@ -26,6 +27,9 @@ import { t } from "../lib/translations";
 import { scopedKey, useProfile } from "../lib/ProfileContext";
 import { useUser } from "../src/context/UserContext";
 import { apiFetch } from "../src/lib/apiFetch";
+import HomeHistorySection from "./home/HomeHistorySection";
+import HomeFavoritesSection from "./home/HomeFavoritesSection";
+import HomePlaylistsSection from "./home/HomePlaylistsSection";
 import { Button } from "../src/components/ui/Button";
 import { Input } from "../src/components/ui/Input";
 import { Card } from "../src/components/ui/Card";
@@ -67,15 +71,17 @@ function toRecognizedTrack(result: SongRecognitionResult): Track {
 }
 
 export function HomeContent() {
-  const { addToHistory, addFavorite, addManualSubmission } = useUser();
+  const { addToHistory, addFavorite, addManualSubmission, isAuthenticated } = useUser();
   const [audioResult, setAudioResult] = useState<AudioRecognitionResult | null>(null);
   const [imageResult, setImageResult] = useState<ImageRecognitionResult | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [pendingImageResult, setPendingImageResult] = useState<ImageRecognitionResult | null>(null);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [canRetryRecognition, setCanRetryRecognition] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -85,6 +91,7 @@ export function HomeContent() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [favoritesMenuOpen, setFavoritesMenuOpen] = useState<string | null>(null);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(true);
 
   const imageCache = useRef<Map<string, ImageRecognitionResult>>(new Map());
 
@@ -95,6 +102,7 @@ export function HomeContent() {
   const profileHistoryKey = scopedKey(HISTORY_KEY, profile.id);
   const profileMaxSongsKey = scopedKey(MAX_SONGS_KEY, profile.id);
   const profileOcrLanguageKey = scopedKey(OCR_LANGUAGE_KEY, profile.id);
+  const onboardingDismissedKey = scopedKey("ponotai.onboarding.dismissed", profile.id);
   const { playlists, favoritesSet, toggleFavorite, createPlaylist, deletePlaylist, addSongToPlaylist, removeSongFromPlaylist } = useLibrary(profile.id);
 
   // Adapter functions to convert track data for playlist operations
@@ -107,6 +115,7 @@ export function HomeContent() {
       title: track.title,
       artist: track.artistName,
       coverUrl: track.artworkUrl,
+      videoId: track.youtubeVideoId,
     });
   };
 
@@ -212,6 +221,11 @@ export function HomeContent() {
     localStorage.setItem(profileOcrLanguageKey, ocrLanguage);
   }, [ocrLanguage, profileOcrLanguageKey]);
 
+  useEffect(() => {
+    const dismissed = window.localStorage.getItem(onboardingDismissedKey) === "1";
+    setOnboardingDismissed(dismissed);
+  }, [onboardingDismissedKey]);
+
   function pushToast(kind: Toast["kind"], message: string) {
     const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { id, kind, message }]);
@@ -222,6 +236,15 @@ export function HomeContent() {
     const createdAt = new Date().toISOString();
     const entries = songs.map((song) => ({ id: crypto.randomUUID(), source, createdAt, song }));
     setHistory((prev) => [...entries, ...prev].slice(0, 18));
+  }
+
+  async function runRecognitionCountdown() {
+    for (let value = 3; value >= 1; value -= 1) {
+      setCountdown(value);
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => window.setTimeout(resolve, 1000));
+    }
+    setCountdown(null);
   }
 
   async function recordAudioClip(durationMs: number): Promise<Blob> {
@@ -246,6 +269,7 @@ export function HomeContent() {
     setIsLoadingAudio(true);
     setIsRecording(true);
     try {
+      await runRecognitionCountdown();
       const audioBlob = await recordAudioClip(8_000);
       setIsRecording(false);
       const recognized = await recognizeFromAudio(audioBlob);
@@ -264,8 +288,19 @@ export function HomeContent() {
         createdAt: new Date().toISOString(),
       });
       pushToast("success", t("toast_recognized", language, { song: recognized.primaryMatch.songName }));
+      setCanRetryRecognition(false);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(onboardingDismissedKey, "1");
+        setOnboardingDismissed(true);
+      }
     } catch (error) {
-      setErrorMessage((error as Error).message || t("toast_audio_failed", language));
+      const err = error as Error & { name?: string };
+      if (err.name === "NotAllowedError") {
+        setErrorMessage(language === "bg" ? "Няма достъп до микрофона. Разреши микрофона от настройките на браузъра." : "Microphone access is blocked. Please enable microphone permission in your browser settings.");
+      } else {
+        setErrorMessage(err.message || t("toast_audio_failed", language));
+      }
+      setCanRetryRecognition(true);
       await addToHistory({
         id: crypto.randomUUID(),
         method: "audio-record",
@@ -279,19 +314,61 @@ export function HomeContent() {
     }
   }
 
+
+  async function isImageReadable(file: File): Promise<boolean> {
+    const imageUrl = URL.createObjectURL(file);
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const element = new Image();
+        element.onload = () => resolve(element);
+        element.onerror = () => reject(new Error("Could not decode image."));
+        element.src = imageUrl;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.min(200, image.width);
+      canvas.height = Math.min(200, image.height);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return true;
+
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let sum = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const r = pixels[i] ?? 0;
+        const g = pixels[i + 1] ?? 0;
+        const b = pixels[i + 2] ?? 0;
+        sum += (r + g + b) / 3;
+      }
+
+      const avgBrightness = sum / (pixels.length / 4);
+      return avgBrightness > 18;
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+    }
+  }
+
   function validateImage(file: File): string | null {
     if (!IMAGE_MIME_WHITELIST.includes(file.type)) return t("toast_unsupported_type", language);
     if (file.size > IMAGE_MAX_MB * 1024 * 1024) return t("toast_file_too_large", language, { max: IMAGE_MAX_MB });
     return null;
   }
 
-  function handleSelectUploadFile(file: File) {
+  async function handleSelectUploadFile(file: File) {
     const validationError = validateImage(file);
     if (validationError) {
       setErrorMessage(validationError);
       pushToast("error", validationError);
       return;
     }
+    const readable = await isImageReadable(file);
+    if (!readable) {
+      const warning = language === "bg" ? "Изображението е твърде тъмно за надеждно OCR разчитане." : "Image is too dark/blank for reliable OCR.";
+      setErrorMessage(warning);
+      pushToast("error", warning);
+      return;
+    }
+
     setUploadFile(file);
     setUploadPreview(URL.createObjectURL(file));
     setErrorMessage(null);
@@ -396,6 +473,32 @@ export function HomeContent() {
               theme={theme}
             />
 
+            {!isAuthenticated && history.length === 0 && !onboardingDismissed && (
+              <Card className="rounded-3xl p-5">
+                <h3 className="text-lg font-semibold">{language === "bg" ? "Добре дошъл в ПонотИИ" : "Welcome to PonotAI"}</h3>
+                <p className="mt-2 text-sm text-text-muted">{language === "bg" ? "1) Натисни Listen → 2) Вземи резултат → 3) Запази в библиотеката." : "1) Tap Listen → 2) Get result → 3) Save to your library."}</p>
+                <Button className="mt-3" onClick={async () => {
+                  const response = await fetch("/api/recognize", { method: "POST" });
+                  if (!response.ok) return;
+                  const demo = await response.json() as { title: string; artist: { name: string }; artworkUrl?: string };
+                  const demoSong: SongMatch = {
+                    songName: demo.title,
+                    artist: demo.artist.name,
+                    album: "Demo",
+                    genre: "Unknown",
+                    releaseYear: null,
+                    platformLinks: {},
+                    albumArtUrl: demo.artworkUrl ?? "https://picsum.photos/seed/demo/120",
+                    confidence: 0.8,
+                    durationSec: 0,
+                  };
+                  setAudioResult({ primaryMatch: demoSong, alternatives: [] });
+                  addToHistoryLocal("audio", [demoSong]);
+                  pushToast("info", language === "bg" ? "Демо резултатът е зареден." : "Demo recognition loaded.");
+                }}>{language === "bg" ? "Пусни демо разпознаване" : "Try a demo recognition"}</Button>
+              </Card>
+            )}
+
             <Card className="rounded-3xl p-5">
               <h3 className="mb-4 text-lg font-semibold">{t("settings_title", language)}</h3>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -417,7 +520,10 @@ export function HomeContent() {
               </div>
             </Card>
 
+            {countdown && <Card className="rounded-2xl p-4 text-center text-2xl font-bold">{countdown}</Card>}
+
             {errorMessage && <p className="rounded-2xl border border-danger bg-surface-raised px-4 py-3 text-sm text-danger">{errorMessage}</p>}
+            {canRetryRecognition && <Button variant="secondary" onClick={() => void handleRecognizeAudio()}>{language === "bg" ? "Опитай отново" : "Try again"}</Button>}
 
             {errorMessage && (
               <Card className="rounded-2xl p-4">
@@ -442,82 +548,38 @@ export function HomeContent() {
 
             <ResultCard language={language} song={latestResult} onSave={saveSong} onPlay={playSong} onFavorite={favoriteSong} />
 
-            <HistoryGrid language={language} items={history} onDelete={(id) => setHistory((prev) => prev.filter((entry) => entry.id !== id))} onPlay={playSong} />
+            <HomeHistorySection language={language} items={history} onDelete={(id) => setHistory((prev) => prev.filter((entry) => entry.id !== id))} onPlay={playSong} />
 
             {(stats.totalFavorites > 0 || stats.totalPlaylists > 0) && (
               <Card className="rounded-3xl bg-gradient-to-br from-brand-500/10 to-brand-600/5 border border-brand-300/20 p-6">
                 <div className="grid grid-cols-3 gap-4 text-center">
-                  <div>
+                  <Link href="/library?tab=favorites" className="rounded-xl p-2 transition hover:opacity-80">
                     <p className="text-2xl font-bold text-text-primary">{stats.totalFavorites}</p>
-                    <p className="text-xs text-text-muted mt-1">Favorites</p>
-                  </div>
-                  <div>
+                    <p className="mt-1 text-xs text-text-muted">Favorites</p>
+                  </Link>
+                  <Link href="/library?tab=playlists" className="rounded-xl p-2 transition hover:opacity-80">
                     <p className="text-2xl font-bold text-text-primary">{stats.totalPlaylists}</p>
-                    <p className="text-xs text-text-muted mt-1">Playlists</p>
-                  </div>
-                  <div>
+                    <p className="mt-1 text-xs text-text-muted">Playlists</p>
+                  </Link>
+                  <Link href="/library?tab=history" className="rounded-xl p-2 transition hover:opacity-80">
                     <p className="text-2xl font-bold text-text-primary">{stats.totalHistory}</p>
-                    <p className="text-xs text-text-muted mt-1">History</p>
-                  </div>
+                    <p className="mt-1 text-xs text-text-muted">History</p>
+                  </Link>
                 </div>
               </Card>
             )}
 
-            {playlists.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">Recent Playlists</h2>
-                  <Button variant="ghost" size="sm" onClick={() => setIsLibraryOpen(!isLibraryOpen)}>View all</Button>
-                </div>
-                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
-                  {playlists.slice(0, 4).map((playlist) => (
-                    <Card key={playlist.id} className="p-4 hover:border-brand-500/50 transition cursor-pointer" onClick={() => setIsLibraryOpen(true)}>
-                      <p className="font-medium text-text-primary truncate">{playlist.name}</p>
-                      <p className="text-xs text-text-muted mt-1">{playlist.songs.length} songs</p>
-                    </Card>
-                  ))}
-                </div>
-              </section>
-            )}
+            <HomePlaylistsSection playlists={playlists} />
 
-            {favoritesSet.size > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">Your Favorites</h2>
-                  <span className="text-xs text-text-muted bg-surface rounded-full px-2 py-1">{favoritesSet.size} songs</span>
-                </div>
-                <div className="space-y-2">
-                  {Array.from(favoritesSet).slice(0, 6).map((trackId) => {
-                    const songTitle = trackId.split("-").slice(0, -1).join(" ");
-                    const coverUrl = `https://picsum.photos/seed/${trackId}/200`;
-                    const isMenuOpen = favoritesMenuOpen === trackId;
-                    return (
-                      <div key={trackId} className="group relative flex items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 transition-all hover:border-[var(--accent)]/50 hover:shadow-lg">
-                        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-[var(--border)]">
-                          <img src={coverUrl} alt={songTitle} className="h-full w-full object-cover" />
-                          <button onClick={() => playSong({ songName: songTitle, artist: "Favorite", album: "Collection", albumArtUrl: coverUrl, youtubeVideoId: "", genre: "Unknown", releaseYear: null, platformLinks: {}, confidence: 0.5, durationSec: 0 })} className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition group-hover:opacity-100"><span className="h-8 w-8 grid place-items-center rounded-full bg-[var(--accent)] text-white text-sm">▶</span></button>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-text-primary truncate text-sm">{songTitle}</p>
-                          <p className="text-xs text-text-muted">Favorite</p>
-                        </div>
-                        <div className="relative">
-                          <button onClick={() => setFavoritesMenuOpen(isMenuOpen ? null : trackId)} className="rounded-lg p-2 opacity-0 transition group-hover:opacity-100 hover:bg-surface-raised">⋯</button>
-                          {isMenuOpen && (
-                            <div className="absolute right-0 top-full mt-2 w-48 rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-lg z-50">
-                              <button onClick={() => { toggleFavorite(trackId); setFavoritesMenuOpen(null); }} className="block w-full px-4 py-2 text-left text-sm hover:bg-surface-raised text-text-primary rounded-t-lg">Remove from Favorites</button>
-                              {playlists.length > 0 && (<><hr className="border-[var(--border)]" />{playlists.slice(0, 3).map((playlist) => (<button key={playlist.id} onClick={() => { handleAddSongToPlaylist(trackId, playlist.id); setFavoritesMenuOpen(null); }} className="block w-full px-4 py-2 text-left text-sm hover:bg-surface-raised text-text-primary">Add to {playlist.name}</button>))}</>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                {favoritesSet.size > 6 && <p className="text-xs text-center text-text-muted py-2">+{favoritesSet.size - 6} more in Library</p>}
-              </section>
-            )}
+            <HomeFavoritesSection
+              favoritesSet={favoritesSet}
+              favoritesMenuOpen={favoritesMenuOpen}
+              setFavoritesMenuOpen={setFavoritesMenuOpen}
+              playSong={playSong}
+              toggleFavorite={toggleFavorite}
+              playlists={playlists}
+              addToPlaylist={handleAddSongToPlaylist}
+            />
 
             <section className="space-y-3">
               <h2 className="text-xl font-semibold">{t("songs_heading", language)}</h2>
@@ -548,7 +610,11 @@ export function HomeContent() {
             </section>
           </div>
 
-          {isLibraryOpen && <LibrarySidebar playlists={playlists} tracks={tracks} favoritesSet={favoritesSet} />}
+          {isLibraryOpen && (
+            <Suspense fallback={<Card className="p-4 text-sm text-text-muted">Loading library…</Card>}>
+              <LibrarySidebar playlists={playlists} tracks={tracks} favoritesSet={favoritesSet} />
+            </Suspense>
+          )}
         </div>
       </div>
 
@@ -573,9 +639,9 @@ export function HomeContent() {
         />
       )}
 
-      <div className="fixed bottom-4 right-4 z-50 flex w-[320px] flex-col gap-3">
+      <div className="fixed bottom-28 right-4 z-50 flex w-[320px] flex-col gap-3 md:bottom-32">
         {toasts.map((toast) => (
-          <div key={toast.id} className={`rounded-xl border px-4 py-3 shadow-xl ${toast.kind === "success" ? "border-emerald-300/40 bg-emerald-500/15" : toast.kind === "error" ? "border-red-300/40 bg-red-500/15" : "border-sky-300/40 bg-sky-500/15"}`}>
+          <div role="status" key={toast.id} className={`rounded-xl border px-4 py-3 shadow-xl ${toast.kind === "success" ? "border-emerald-300/40 bg-emerald-500/15" : toast.kind === "error" ? "border-red-300/40 bg-red-500/15" : "border-sky-300/40 bg-sky-500/15"}`}>
             <p className="text-sm">{toast.message}</p>
           </div>
         ))}
