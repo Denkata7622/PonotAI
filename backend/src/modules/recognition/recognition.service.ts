@@ -46,6 +46,28 @@ const OCR_CHAR_WHITELIST =
 
 const MIN_PROVIDER_CONFIDENCE = 0.7;
 
+function hasConfiguredAudioProvider(): boolean {
+  const hasAudd = Boolean(process.env.AUDD_API_TOKEN || process.env.AUDD_API_KEY);
+  const hasAcr = Boolean(process.env.ACRCLOUD_ACCESS_KEY && process.env.ACRCLOUD_ACCESS_SECRET && process.env.ACRCLOUD_HOST) || Boolean(process.env.ACRCLOUD_API_KEY);
+  const hasShazam = Boolean(process.env.SHAZAM_MOCK_RESPONSE);
+  return hasAudd || hasAcr || hasShazam;
+}
+
+function buildMockAudioRecognition(): SongMetadata {
+  return {
+    songName: "Demo Recognition",
+    artist: "PonotAI Sample",
+    album: "Competition Demo",
+    genre: "Unknown Genre",
+    releaseYear: null,
+    confidenceScore: 0.51,
+    youtubeVideoId: undefined,
+    platformLinks: {},
+    source: "ocr_fallback",
+    verificationStatus: "not_found",
+  };
+}
+
 async function ensureYoutubeLink(metadata: ProviderSongMetadata): Promise<ProviderSongMetadata> {
   if (metadata.youtubeVideoId) {
     return metadata;
@@ -336,6 +358,9 @@ async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise
 }
 
 export async function recognizeSongFromAudio(buffer: Buffer, originalName: string): Promise<SongMetadata> {
+  if (!hasConfiguredAudioProvider()) {
+    return buildMockAudioRecognition();
+  }
   const providers: Array<{
     name: string;
     run: () => Promise<ProviderSongMetadata | null>;

@@ -1,0 +1,11 @@
+"use client";
+
+export default function ProfileError({ error, reset }: { error: Error; reset: () => void }) {
+  return (
+    <section className="card p-6 space-y-3">
+      <h2 className="text-lg font-semibold">Profile error</h2>
+      <p className="text-sm text-red-300">{error.message}</p>
+      <button onClick={reset} className="rounded-lg border border-border px-3 py-2">Try again</button>
+    </section>
+  );
+}
