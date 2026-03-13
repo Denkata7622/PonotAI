@@ -33,6 +33,7 @@ import HomePlaylistsSection from "./home/HomePlaylistsSection";
 import { Button } from "../src/components/ui/Button";
 import { Input } from "../src/components/ui/Input";
 import { Card } from "../src/components/ui/Card";
+import { Library, Mic, Music, Play } from "lucide-react";
 
 type Toast = { id: string; kind: "success" | "error" | "info"; message: string };
 type HistoryEntry = { id: string; source: "audio" | "ocr"; createdAt: string; song: SongMatch };
@@ -54,6 +55,12 @@ const IMAGE_MIME_WHITELIST = ["image/png", "image/jpeg", "image/webp"];
 const HISTORY_KEY = "ponotai-history";
 const MAX_SONGS_KEY = "ponotai.settings.maxSongs";
 const OCR_LANGUAGE_KEY = "ponotai.settings.ocrLanguage";
+const DEMO_SEEN_KEY = "ponotai.demo.seen";
+
+const DEMO_FALLBACKS = [
+  { title: "Blinding Lights", artist: "The Weeknd", artworkUrl: "https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=600&q=80" },
+  { title: "Morning Sun", artist: "Luna Waves", artworkUrl: "https://picsum.photos/seed/ponotai-api-fallback/600" },
+];
 
 function songMatchToRecognitionResult(match: SongMatch, source: "audio" | "image"): SongRecognitionResult {
   return { ...match, source };
@@ -79,6 +86,7 @@ export function HomeContent() {
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [microphoneStream, setMicrophoneStream] = useState<MediaStream | null>(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [canRetryRecognition, setCanRetryRecognition] = useState(false);
@@ -91,7 +99,7 @@ export function HomeContent() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [favoritesMenuOpen, setFavoritesMenuOpen] = useState<string | null>(null);
-  const [onboardingDismissed, setOnboardingDismissed] = useState(true);
+  const [demoSeen, setDemoSeen] = useState(true);
 
   const imageCache = useRef<Map<string, ImageRecognitionResult>>(new Map());
 
@@ -102,7 +110,6 @@ export function HomeContent() {
   const profileHistoryKey = scopedKey(HISTORY_KEY, profile.id);
   const profileMaxSongsKey = scopedKey(MAX_SONGS_KEY, profile.id);
   const profileOcrLanguageKey = scopedKey(OCR_LANGUAGE_KEY, profile.id);
-  const onboardingDismissedKey = scopedKey("ponotai.onboarding.dismissed", profile.id);
   const { playlists, favoritesSet, toggleFavorite, createPlaylist, deletePlaylist, addSongToPlaylist, removeSongFromPlaylist } = useLibrary(profile.id);
 
   // Adapter functions to convert track data for playlist operations
@@ -222,9 +229,30 @@ export function HomeContent() {
   }, [ocrLanguage, profileOcrLanguageKey]);
 
   useEffect(() => {
-    const dismissed = window.localStorage.getItem(onboardingDismissedKey) === "1";
-    setOnboardingDismissed(dismissed);
-  }, [onboardingDismissedKey]);
+    const seen = window.localStorage.getItem(scopedKey(DEMO_SEEN_KEY, profile.id)) === "true";
+    setDemoSeen(seen);
+  }, [profile.id]);
+
+  function handleDemoRecognition() {
+    const fallback = DEMO_FALLBACKS[Math.floor(Math.random() * DEMO_FALLBACKS.length)] ?? DEMO_FALLBACKS[0];
+    if (!fallback) return;
+    const demoSong: SongMatch = {
+      songName: fallback.title,
+      artist: fallback.artist,
+      album: "Demo",
+      genre: "Pop",
+      releaseYear: null,
+      platformLinks: {},
+      albumArtUrl: fallback.artworkUrl,
+      confidence: 0.8,
+      durationSec: 0,
+    };
+    setAudioResult({ primaryMatch: demoSong, alternatives: [] });
+    setImageResult(null);
+    addToHistoryLocal("audio", [demoSong]);
+    window.localStorage.setItem(scopedKey(DEMO_SEEN_KEY, profile.id), "true");
+    setDemoSeen(true);
+  }
 
   function pushToast(kind: Toast["kind"], message: string) {
     const id = crypto.randomUUID();
@@ -241,7 +269,6 @@ export function HomeContent() {
   async function runRecognitionCountdown() {
     for (let value = 3; value >= 1; value -= 1) {
       setCountdown(value);
-      // eslint-disable-next-line no-await-in-loop
       await new Promise((resolve) => window.setTimeout(resolve, 1000));
     }
     setCountdown(null);
@@ -249,6 +276,7 @@ export function HomeContent() {
 
   async function recordAudioClip(durationMs: number): Promise<Blob> {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    setMicrophoneStream(stream);
     return new Promise((resolve, reject) => {
       const chunks: Blob[] = [];
       const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
@@ -256,6 +284,7 @@ export function HomeContent() {
       mediaRecorder.onerror = () => reject(new Error(t("error_audio_capture_failed", language)));
       mediaRecorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
+        setMicrophoneStream(null);
         resolve(new Blob(chunks, { type: "audio/webm" }));
       };
       mediaRecorder.start();
@@ -267,9 +296,9 @@ export function HomeContent() {
     if (isLoadingAudio || isLoadingImage) return;
     setErrorMessage(null);
     setIsLoadingAudio(true);
-    setIsRecording(true);
     try {
       await runRecognitionCountdown();
+      setIsRecording(true);
       const audioBlob = await recordAudioClip(8_000);
       setIsRecording(false);
       const recognized = await recognizeFromAudio(audioBlob);
@@ -290,13 +319,15 @@ export function HomeContent() {
       pushToast("success", t("toast_recognized", language, { song: recognized.primaryMatch.songName }));
       setCanRetryRecognition(false);
       if (typeof window !== "undefined") {
-        window.localStorage.setItem(onboardingDismissedKey, "1");
-        setOnboardingDismissed(true);
+        window.localStorage.setItem(scopedKey(DEMO_SEEN_KEY, profile.id), "true");
+        setDemoSeen(true);
       }
     } catch (error) {
       const err = error as Error & { name?: string };
       if (err.name === "NotAllowedError") {
-        setErrorMessage(language === "bg" ? "Няма достъп до микрофона. Разреши микрофона от настройките на браузъра." : "Microphone access is blocked. Please enable microphone permission in your browser settings.");
+        setErrorMessage(t("error_microphone_denied", language));
+      } else if (err.name === "NotFoundError") {
+        setErrorMessage(t("error_microphone_not_found", language));
       } else {
         setErrorMessage(err.message || t("toast_audio_failed", language));
       }
@@ -310,6 +341,7 @@ export function HomeContent() {
       pushToast("error", t("toast_audio_failed", language));
     } finally {
       setIsRecording(false);
+      setMicrophoneStream(null);
       setIsLoadingAudio(false);
     }
   }
@@ -461,43 +493,33 @@ export function HomeContent() {
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-8">
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-6">
+            {!isAuthenticated && history.length === 0 && !demoSeen && (
+              <Card className="resultEnter rounded-3xl border border-border bg-surface p-6">
+                <p className="text-sm uppercase tracking-[0.22em] text-text-muted">Trackly</p>
+                <h3 className="mt-2 text-2xl font-bold">{language === "bg" ? "Добре дошъл в Trackly" : "Welcome to Trackly"}</h3>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-border bg-[var(--surface-raised)] p-3 text-sm"><Mic className="w-5 h-5 text-[var(--accent)]" /><p className="mt-2">{language === "bg" ? "1. Слушай" : "1. Listen"}</p></div>
+                  <div className="rounded-xl border border-border bg-[var(--surface-raised)] p-3 text-sm"><Music className="w-5 h-5 text-[var(--accent)]" /><p className="mt-2">{language === "bg" ? "2. Разпознай" : "2. Identify"}</p></div>
+                  <div className="rounded-xl border border-border bg-[var(--surface-raised)] p-3 text-sm"><Library className="w-5 h-5 text-[var(--accent)]" /><p className="mt-2">{language === "bg" ? "3. Запази" : "3. Save"}</p></div>
+                </div>
+                <Button className="mt-5 inline-flex items-center gap-2" onClick={handleDemoRecognition}><Play className="w-4 h-4 text-white" />{language === "bg" ? "Пробвай демо" : "Try a demo"}</Button>
+              </Card>
+            )}
+
             <HeroSection
               language={language}
-              isListening={isRecording || isLoadingAudio}
+              isListening={isRecording}
+              preparingCountdown={countdown}
+              microphoneStream={microphoneStream}
               onRecognize={handleRecognizeAudio}
               onOpenUpload={() => setIsUploadOpen(true)}
               onToggleLanguage={() => setLanguage(language === "en" ? "bg" : "en")}
               onToggleTheme={toggleTheme}
               onToggleLibrary={() => setIsLibraryOpen((prev) => !prev)}
+              onStreamReady={(stream) => setMicrophoneStream(stream)}
               isLibraryOpen={isLibraryOpen}
               theme={theme}
             />
-
-            {!isAuthenticated && history.length === 0 && !onboardingDismissed && (
-              <Card className="rounded-3xl p-5">
-                <h3 className="text-lg font-semibold">{language === "bg" ? "Добре дошъл в ПонотИИ" : "Welcome to PonotAI"}</h3>
-                <p className="mt-2 text-sm text-text-muted">{language === "bg" ? "1) Натисни Listen → 2) Вземи резултат → 3) Запази в библиотеката." : "1) Tap Listen → 2) Get result → 3) Save to your library."}</p>
-                <Button className="mt-3" onClick={async () => {
-                  const response = await fetch("/api/recognize", { method: "POST" });
-                  if (!response.ok) return;
-                  const demo = await response.json() as { title: string; artist: { name: string }; artworkUrl?: string };
-                  const demoSong: SongMatch = {
-                    songName: demo.title,
-                    artist: demo.artist.name,
-                    album: "Demo",
-                    genre: "Unknown",
-                    releaseYear: null,
-                    platformLinks: {},
-                    albumArtUrl: demo.artworkUrl ?? "https://picsum.photos/seed/demo/120",
-                    confidence: 0.8,
-                    durationSec: 0,
-                  };
-                  setAudioResult({ primaryMatch: demoSong, alternatives: [] });
-                  addToHistoryLocal("audio", [demoSong]);
-                  pushToast("info", language === "bg" ? "Демо резултатът е зареден." : "Demo recognition loaded.");
-                }}>{language === "bg" ? "Пусни демо разпознаване" : "Try a demo recognition"}</Button>
-              </Card>
-            )}
 
             <Card className="rounded-3xl p-5">
               <h3 className="mb-4 text-lg font-semibold">{t("settings_title", language)}</h3>
@@ -569,9 +591,10 @@ export function HomeContent() {
               </Card>
             )}
 
-            <HomePlaylistsSection playlists={playlists} />
+            <HomePlaylistsSection playlists={playlists} language={language} />
 
             <HomeFavoritesSection
+              language={language}
               favoritesSet={favoritesSet}
               favoritesMenuOpen={favoritesMenuOpen}
               setFavoritesMenuOpen={setFavoritesMenuOpen}
@@ -611,7 +634,7 @@ export function HomeContent() {
           </div>
 
           {isLibraryOpen && (
-            <Suspense fallback={<Card className="p-4 text-sm text-text-muted">Loading library…</Card>}>
+            <Suspense fallback={<Card className="p-4"><div className="h-20 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></Card>}>
               <LibrarySidebar playlists={playlists} tracks={tracks} favoritesSet={favoritesSet} />
             </Suspense>
           )}

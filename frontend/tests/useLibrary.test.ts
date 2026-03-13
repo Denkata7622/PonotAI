@@ -15,14 +15,14 @@ export {};
 
 // Test utilities (standalone implementation)
 namespace TestUtils {
-  export const testDescribe = (name: string, fn: () => void) => { console.log(`\n${name}`); fn(); };
+  export const testDescribe = (name: string, fn: () => void) => { process.stdout.write(`\n${name}\n`); fn(); };
   export const testIt = (name: string, fn: () => void) => {
     try {
       fn();
-      console.log(`  ✓ ${name}`);
+      process.stdout.write(`  ✓ ${name}\n`);
     } catch (e) {
-      console.log(`  ✗ ${name}`);
-      console.error(`    Error: ${e}`);
+      process.stdout.write(`  ✗ ${name}\n`);
+      process.stderr.write(`    Error: ${String(e)}\n`);
     }
   };
   export const testExpect = (val: any) => ({

@@ -12,7 +12,7 @@ type RecognizeResponse = {
   artworkUrl?: string;
 };
 
-const LOCAL_FALLBACKS: RecognizeResponse[] = [
+export const LOCAL_FALLBACKS: RecognizeResponse[] = [
   {
     trackId: "local_blinding_lights",
     title: "Blinding Lights",

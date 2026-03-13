@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Heart, Trash2, User } from "lucide-react";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -79,10 +81,47 @@ export default function ProfilePage() {
     return { total, successRate, mostArtist, mostActiveDay };
   }, [history]);
 
+  const last7Days = useMemo(() => {
+    const days: { label: string; count: number; iso: string }[] = [];
+    for (let offset = 6; offset >= 0; offset -= 1) {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - offset);
+      const iso = date.toISOString().slice(0, 10);
+      days.push({
+        label: date.toLocaleDateString("en-US", { weekday: "short" }),
+        count: 0,
+        iso,
+      });
+    }
+
+    history.forEach((item) => {
+      const day = item.createdAt?.slice(0, 10);
+      if (!day) return;
+      const target = days.find((entry) => entry.iso === day);
+      if (target) target.count += 1;
+    });
+
+    return days;
+  }, [history]);
+
+  const topArtists = useMemo(() => {
+    const counts = new Map<string, number>();
+    history.forEach((item) => {
+      if (!item.artist) return;
+      counts.set(item.artist, (counts.get(item.artist) ?? 0) + 1);
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([artist]) => artist);
+  }, [history]);
+
   function onPickAvatar(file: File) {
     const reader = new FileReader();
     reader.onload = () => {
-      updateProfile({ avatarBase64: String(reader.result ?? "") }).catch(console.error);
+      updateProfile({ avatarBase64: String(reader.result ?? "") }).catch((error) => {
+        if (process.env.NODE_ENV !== "production") {
+          console.error(error);
+        }
+      });
     };
     reader.readAsDataURL(file);
   }
@@ -111,9 +150,9 @@ export default function ProfilePage() {
 
   if (isLoading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="h-32 rounded-xl bg-surface-raised animate-pulse" />
-      </div>
+        <div className="max-w-4xl mx-auto px-4 py-8">
+        <div className="h-32 rounded-xl bg-[var(--surface-raised)] animate-pulse" />
+        </div>
     );
   }
 
@@ -200,6 +239,29 @@ export default function ProfilePage() {
         <Card><p className="text-3xl font-bold text-text-primary">{stats.mostActiveDay}</p><p className="text-xs text-text-muted">Most Active Day</p></Card>
       </div>
 
+      <Card className="p-6 space-y-4">
+        <h2 className="text-xl font-semibold text-text-primary">Last 7 days</h2>
+        <div className="h-40">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={last7Days}>
+              <XAxis dataKey="label" tick={{ fill: "var(--muted)" }} />
+              <YAxis tick={{ fill: "var(--muted)" }} allowDecimals={false} />
+              <Tooltip />
+              <Bar dataKey="count" fill="var(--accent)" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {topArtists.length === 0 && <span className="text-sm text-text-muted">No top artists yet.</span>}
+          {topArtists.map((artist) => (
+            <span key={artist} className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-raised px-3 py-1 text-xs">
+              <User className="w-3 h-3 text-[var(--muted)]" />
+              {artist}
+            </span>
+          ))}
+        </div>
+      </Card>
+
       {/* History */}
       <Card className="p-6 space-y-4" onMouseLeave={() => setConfirmClear(false)}>
         <div className="flex items-center justify-between gap-4">
@@ -241,7 +303,7 @@ export default function ProfilePage() {
                 className="text-text-muted hover:text-danger transition-all duration-200 cursor-pointer select-none"
                 onClick={() => void deleteHistoryItem(item.id)}
               >
-                🗑
+                <Trash2 className="w-4 h-4 text-[var(--muted)]" />
               </button>
             </div>
           ))}
@@ -252,7 +314,7 @@ export default function ProfilePage() {
       <Card className="p-6 space-y-4">
         <h2 className="text-xl font-semibold text-text-primary">Favorites</h2>
         {favorites.length === 0
-          ? <p className="text-sm text-text-muted text-center py-8">💿 No saved songs yet</p>
+          ? <div className="flex flex-col items-center justify-center gap-2 py-8 text-sm text-text-muted"><Heart className="w-5 h-5 text-[var(--muted)]" />No saved songs yet</div>
           : (
             <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
               {favorites.map((song) => (
@@ -271,7 +333,7 @@ export default function ProfilePage() {
                       className="cursor-pointer select-none transition-all duration-200 hover:scale-110"
                       onClick={() => void removeFavorite(song.id)}
                     >
-                      ❤️
+                      <Heart className="w-4 h-4 text-[var(--accent)]" />
                     </button>
                   </div>
                 </article>

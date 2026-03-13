@@ -1,11 +1,23 @@
 "use client";
 
 import Link from "next/link";
+import { ListMusic } from "../icons";
 import type { Playlist } from "../../features/library/types";
+import { t, type Language } from "../../lib/translations";
 import { Card } from "../../src/components/ui/Card";
 
-export default function HomePlaylistsSection({ playlists }: { playlists: Playlist[] }) {
-  if (playlists.length === 0) return null;
+export default function HomePlaylistsSection({ playlists, language }: { playlists: Playlist[]; language: Language }) {
+  if (playlists.length === 0) {
+    return (
+      <section className="rounded-3xl border border-border bg-surface p-8">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <ListMusic className="w-10 h-10 text-[var(--muted)]" />
+          <p className="text-lg font-semibold">{t("empty_playlists_heading", language)}</p>
+          <p className="text-sm text-text-muted">{t("empty_playlists_hint", language)}</p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-3">

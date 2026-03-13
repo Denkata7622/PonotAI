@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { BarChart2, Headphones, HelpCircle, Info, Library, LogOut, Search, Settings, User } from "lucide-react";
 import BottomPlayBar from "./BottomPlayBar";
 import { PlayerProvider } from "./PlayerProvider";
 import type { Playlist } from "../features/library/types";
@@ -23,21 +24,21 @@ type LibrarySnapshot = {
 };
 
 const PRIMARY_NAV = [
-  { href: "/", key: "nav_listen", icon: "🎧" },
-  { href: "/library", key: "nav_library", icon: "📚" },
-  { href: "/search", key: "nav_search", icon: "🔍" },
-  { href: "/profile", key: "nav_profile", icon: "👤" },
-  { href: "/settings", key: "nav_settings", icon: "⚙️" },
+  { href: "/", key: "nav_listen", icon: Headphones },
+  { href: "/library", key: "nav_library", icon: Library },
+  { href: "/search", key: "nav_search", icon: Search },
+  { href: "/profile", key: "nav_profile", icon: User },
+  { href: "/settings", key: "nav_settings", icon: Settings },
 ] as const;
 
 const SECONDARY_NAV = [
-  { href: "/about", key: "nav_about", icon: "ℹ️" },
-  { href: "/how-to-use", key: "nav_how_to_use", icon: "❓" },
-  { href: "/concept", key: "nav_concept", icon: "🧠" },
-  { href: "/idea", key: "nav_idea", icon: "💡" },
-  { href: "/founders", key: "nav_founders", icon: "🧑‍💻" },
-  { href: "/the-future", key: "nav_the_future", icon: "🚀" },
-  { href: "/stats", key: "nav_stats", icon: "📊" },
+  { href: "/about", key: "nav_about", icon: Info },
+  { href: "/how-to-use", key: "nav_how_to_use", icon: HelpCircle },
+  { href: "/concept", key: "nav_concept", icon: Info },
+  { href: "/idea", key: "nav_idea", icon: Info },
+  { href: "/founders", key: "nav_founders", icon: User },
+  { href: "/the-future", key: "nav_the_future", icon: Info },
+  { href: "/stats", key: "nav_stats", icon: BarChart2 },
 ] as const;
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -146,20 +147,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
                         className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"
                         onClick={() => setShowUserMenu(false)}
                       >
-                        👤 {language === "bg" ? "Профил" : "Profile"}
+                        <span className="inline-flex items-center gap-2"><User className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Профил" : "Profile"}</span>
                       </Link>
                       <Link
                         href="/settings"
                         className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"
                         onClick={() => setShowUserMenu(false)}
                       >
-                        ⚙️ {language === "bg" ? "Настройки" : "Settings"}
+                        <span className="inline-flex items-center gap-2"><Settings className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Настройки" : "Settings"}</span>
                       </Link>
                       <button
                         className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-400 hover:bg-[var(--hover-bg)]"
                         onClick={handleLogout}
                       >
-                        🚪 {language === "bg" ? "Изход" : "Sign out"}
+                        <span className="inline-flex items-center gap-2"><LogOut className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Изход" : "Sign out"}</span>
                       </button>
                     </div>
                   )}
@@ -200,7 +201,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               ) : (
                 <Link href="/auth">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-base">
-                    👤
+                    <User className="w-4 h-4 text-[var(--muted)]" />
                   </div>
                 </Link>
               )}
@@ -215,7 +216,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 className={pathname === item.href ? "navItemActive" : "navItem"}
                 href={item.href}
               >
-                <span>{item.icon}</span>
+                <item.icon className="w-4 h-4 text-[var(--muted)]" />
                 {!isCollapsed && <span>{t(item.key, language)}</span>}
               </Link>
             ))}
@@ -262,7 +263,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   className={pathname === item.href ? "navItemActive" : "navItem"}
                   href={item.href}
                 >
-                  <span>{item.icon}</span>
+                  <item.icon className="w-4 h-4 text-[var(--muted)]" />
                   {!isCollapsed && <span>{t(item.key, language)}</span>}
                 </Link>
               ))}
@@ -280,7 +281,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             className={`flex flex-col items-center justify-center rounded-xl px-2 py-1 text-xs ${pathname === item.href ? "bg-[var(--active-bg)] text-[var(--text)]" : "text-[var(--muted)]"}`}
             aria-label={t(item.key, language)}
           >
-            <span>{item.icon}</span>
+            <item.icon className="w-4 h-4 text-[var(--muted)]" />
           </Link>
         ))}
       </nav>

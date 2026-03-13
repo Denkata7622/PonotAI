@@ -20,9 +20,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="bg" data-theme="dark" suppressHydrationWarning>
       <head>
+        <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#7c5cff" />
       </head>
       <body className="text-[var(--text)]">
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var theme=localStorage.getItem("ponotai-theme");document.documentElement.setAttribute("data-theme",theme||"dark");}catch(_){document.documentElement.setAttribute("data-theme","dark");}})();`,
+          }}
+        />
         <UserProvider>
           <ThemeProvider>
             <LanguageProvider>
