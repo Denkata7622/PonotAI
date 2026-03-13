@@ -14,8 +14,7 @@ export async function GET(request: NextRequest) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) {
     // Key not configured — return null gracefully; player will display its error state
-    // TODO(integration): document YOUTUBE_API_KEY requirement in frontend/.env.local
-    return NextResponse.json({ videoId: null });
+        return NextResponse.json({ videoId: null });
   }
 
   try {

@@ -95,6 +95,7 @@ export async function addSongToPlaylist(
     artist: string;
     album?: string;
     coverUrl?: string;
+    videoId?: string;
   }
 ): Promise<Playlist | null> {
   const token = getAuthToken();
