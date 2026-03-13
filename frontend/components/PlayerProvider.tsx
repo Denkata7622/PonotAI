@@ -208,51 +208,52 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => {
       ytWindow.onYouTubeIframeAPIReady = previousHandler;
     };
-  }, [queue.length, volume]);
+  }, [queue.length, volume, currentTrack, currentVideoId]);
 
   useEffect(() => {
-    if (!playerRef.current || !currentTrack) return;
+    if (!currentTrack) return;
 
     const resolvedVideoId = normalizeVideoId(currentTrack.videoId);
     setCurrentVideoId(resolvedVideoId ?? null);
 
-    if (resolvedVideoId) {
-      playerRef.current.loadVideoById(resolvedVideoId);
-      const startPlayback = window.setTimeout(() => playerRef.current?.playVideo(), 250);
-      return () => window.clearTimeout(startPlayback);
+    if (!resolvedVideoId) {
+      let cancelled = false;
+
+      (async () => {
+        try {
+          const response = await fetch(`/api/youtube/resolve?query=${encodeURIComponent(currentTrack.query)}`);
+          if (!response.ok) {
+            setPlayerError("Could not resolve a playable YouTube video.");
+            return;
+          }
+
+          const payload = (await response.json()) as { videoId?: string };
+          const fetchedVideoId = normalizeVideoId(payload.videoId);
+          if (!fetchedVideoId || cancelled) {
+            setPlayerError("Could not resolve a playable YouTube video.");
+            return;
+          }
+
+          setCurrentVideoId(fetchedVideoId);
+          setQueue((previous) =>
+            previous.map((item, index) => (index === activeIndex ? { ...item, videoId: fetchedVideoId } : item)),
+          );
+          setPlayerError(null);
+        } catch {
+          if (!cancelled) setPlayerError("Could not resolve a playable YouTube video.");
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
     }
 
-    let cancelled = false;
+    if (!playerRef.current) return;
 
-    (async () => {
-      try {
-        const response = await fetch(`/api/youtube/resolve?query=${encodeURIComponent(currentTrack.query)}`);
-        if (!response.ok) {
-          setPlayerError("Could not resolve a playable YouTube video.");
-          return;
-        }
-
-        const payload = (await response.json()) as { videoId?: string };
-        const fetchedVideoId = normalizeVideoId(payload.videoId);
-        if (!fetchedVideoId || cancelled) {
-          setPlayerError("Could not resolve a playable YouTube video.");
-          return;
-        }
-
-        setCurrentVideoId(fetchedVideoId);
-
-        setQueue((previous) =>
-          previous.map((item, index) => (index === activeIndex ? { ...item, videoId: fetchedVideoId } : item)),
-        );
-        setPlayerError(null);
-      } catch {
-        if (!cancelled) setPlayerError("Could not resolve a playable YouTube video.");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    playerRef.current.loadVideoById(resolvedVideoId);
+    const startPlayback = window.setTimeout(() => playerRef.current?.playVideo(), 250);
+    return () => window.clearTimeout(startPlayback);
   }, [activeIndex, currentTrack]);
 
   useEffect(() => {

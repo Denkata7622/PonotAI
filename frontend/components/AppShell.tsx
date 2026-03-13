@@ -140,7 +140,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   </button>
 
                   {showUserMenu && (
-                    <div className="absolute left-0 right-0 top-10 z-20 rounded-xl border border-[var(--border)] bg-[var(--surface-2,var(--surface))] p-2 shadow-xl">
+                    <div className="absolute left-0 right-0 top-10 z-20 rounded-xl border border-gray-200 bg-white p-2 text-gray-900 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
                       <Link
                         href="/profile"
                         className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"

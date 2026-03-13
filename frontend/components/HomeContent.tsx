@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import HeroSection from "./HeroSection";
 import ResultCard from "./ResultCard";
@@ -552,23 +553,23 @@ export function HomeContent() {
             {(stats.totalFavorites > 0 || stats.totalPlaylists > 0) && (
               <Card className="rounded-3xl bg-gradient-to-br from-brand-500/10 to-brand-600/5 border border-brand-300/20 p-6">
                 <div className="grid grid-cols-3 gap-4 text-center">
-                  <div>
+                  <Link href="/library?tab=favorites" className="rounded-xl p-2 transition hover:opacity-80">
                     <p className="text-2xl font-bold text-text-primary">{stats.totalFavorites}</p>
-                    <p className="text-xs text-text-muted mt-1">Favorites</p>
-                  </div>
-                  <div>
+                    <p className="mt-1 text-xs text-text-muted">Favorites</p>
+                  </Link>
+                  <Link href="/library?tab=playlists" className="rounded-xl p-2 transition hover:opacity-80">
                     <p className="text-2xl font-bold text-text-primary">{stats.totalPlaylists}</p>
-                    <p className="text-xs text-text-muted mt-1">Playlists</p>
-                  </div>
-                  <div>
+                    <p className="mt-1 text-xs text-text-muted">Playlists</p>
+                  </Link>
+                  <Link href="/library?tab=history" className="rounded-xl p-2 transition hover:opacity-80">
                     <p className="text-2xl font-bold text-text-primary">{stats.totalHistory}</p>
-                    <p className="text-xs text-text-muted mt-1">History</p>
-                  </div>
+                    <p className="mt-1 text-xs text-text-muted">History</p>
+                  </Link>
                 </div>
               </Card>
             )}
 
-            <HomePlaylistsSection playlists={playlists} onOpenLibrary={() => setIsLibraryOpen(true)} />
+            <HomePlaylistsSection playlists={playlists} />
 
             <HomeFavoritesSection
               favoritesSet={favoritesSet}
@@ -638,7 +639,7 @@ export function HomeContent() {
         />
       )}
 
-      <div className="fixed bottom-4 right-4 z-50 flex w-[320px] flex-col gap-3">
+      <div className="fixed bottom-28 right-4 z-50 flex w-[320px] flex-col gap-3 md:bottom-32">
         {toasts.map((toast) => (
           <div role="status" key={toast.id} className={`rounded-xl border px-4 py-3 shadow-xl ${toast.kind === "success" ? "border-emerald-300/40 bg-emerald-500/15" : toast.kind === "error" ? "border-red-300/40 bg-red-500/15" : "border-sky-300/40 bg-sky-500/15"}`}>
             <p className="text-sm">{toast.message}</p>
