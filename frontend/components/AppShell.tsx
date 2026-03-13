@@ -270,7 +270,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <main className="flex-1 px-4 pb-36 pt-6 sm:px-8 sm:pt-8">{children}</main>
+        <main className="flex-1 px-4 pb-44 pt-6 sm:px-8 sm:pt-8 sm:pb-48">{children}</main>
       </div>
       <nav className="fixed bottom-24 left-3 right-3 z-40 grid grid-cols-5 gap-2 rounded-2xl border border-border bg-surface/95 p-2 backdrop-blur md:hidden">
         {PRIMARY_NAV.map((item) => (

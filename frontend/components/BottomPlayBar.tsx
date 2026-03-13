@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
 
@@ -14,6 +14,8 @@ function formatTime(seconds: number) {
 export default function BottomPlayBar() {
   const { language } = useLanguage();
   const isBg = language === "bg";
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [lastVolume, setLastVolume] = useState(70);
 
   const {
     currentTrack,
@@ -26,8 +28,6 @@ export default function BottomPlayBar() {
     isBuffering,
     playerError,
     togglePlayPause,
-    skipNext,
-    skipPrevious,
     seekToPercent,
     setVolume,
   } = usePlayer();
@@ -37,86 +37,89 @@ export default function BottomPlayBar() {
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
     : "#";
 
+  function toggleMute() {
+    if (volume === 0) {
+      setVolume(lastVolume || 70);
+      return;
+    }
+    setLastVolume(volume);
+    setVolume(0);
+  }
+
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-white/95 text-gray-900 backdrop-blur-xl dark:bg-[linear-gradient(90deg,rgba(43,20,78,0.92),rgba(10,17,34,0.96))] dark:text-white px-3 py-3 sm:px-5">
-      <div className="mx-auto flex max-w-7xl flex-col gap-3">
-        {currentTrack && (
-          <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
-            {isBg ? "Сега звучи" : "Now playing"}: {currentTrack.title} — {currentTrack.artist}
-          </p>
-        )}
+    <>
+      {isExpanded && (
+        <button
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          aria-label={isBg ? "Затвори плейъра" : "Close player"}
+          onClick={() => setIsExpanded(false)}
+        />
+      )}
 
-        {currentTrack && currentVideoId && (
-          <>
-            <div className="md:hidden flex items-center gap-3 rounded-2xl border border-border bg-gray-100 p-2 dark:bg-surface-overlay">
-              <img src={`https://img.youtube.com/vi/${currentVideoId}/mqdefault.jpg`} alt={currentTrack.title} className="h-12 w-20 rounded-lg object-cover" />
-              <p className="text-xs text-text-muted">{isBg ? "Видео плеърът е наличен на по-голям екран." : "Full video player is shown on larger screens."}</p>
+      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-white/95 text-gray-900 backdrop-blur-xl dark:bg-[linear-gradient(90deg,rgba(43,20,78,0.92),rgba(10,17,34,0.96))] dark:text-white px-3 py-3 sm:px-5 transition-all duration-300 ease-in-out">
+        <div className="mx-auto max-w-7xl">
+          {!currentTrack || !currentVideoId ? (
+            <div className="rounded-2xl border border-dashed border-border bg-gray-100 px-4 py-3 text-sm text-gray-700 dark:bg-surface-overlay dark:text-text-muted">
+              {!currentTrack
+                ? (isBg ? "Избери песен, за да се покаже YouTube плейърът." : "Choose a track to show the YouTube player.")
+                : (isInitializing || isBuffering
+                  ? (isBg ? "Подготвяне на видео…" : "Preparing video…")
+                  : <span>
+                      {isBg ? "Възпроизвеждането е недостъпно — отвори в YouTube." : "Playback unavailable — open on YouTube."}{" "}
+                      <a className="underline" href={youtubeSearchUrl} target="_blank" rel="noreferrer">
+                        {isBg ? "Отвори търсене" : "Open search"}
+                      </a>
+                    </span>)}
             </div>
-            <div className="hidden overflow-hidden rounded-2xl border border-border bg-gray-200 md:block dark:bg-black/60">
-              <iframe
-                id="ponotai-yt-player"
-                title={currentTrack ? `${currentTrack.title} by ${currentTrack.artist}` : "YouTube player"}
-                src={`https://www.youtube.com/embed/${currentVideoId}?enablejsapi=1&autoplay=1&controls=1&rel=0&modestbranding=1`}
-                className="aspect-video w-full"
-                allow="autoplay; encrypted-media; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
-          </>
-        )}
+          ) : (
+            <div className="space-y-3">
+              <div className={`flex ${isExpanded ? "flex-col" : "flex-row items-center gap-3"} transition-all duration-300 ease-in-out`}>
+                <div
+                  className={`overflow-hidden rounded-xl border border-border bg-gray-200 dark:bg-black/60 shrink-0 transition-all duration-300 ease-in-out ${isExpanded ? "w-full aspect-video" : "w-[120px] h-[68px] sm:w-40 sm:h-[90px]"}`}
+                >
+                  <iframe
+                    id="ponotai-yt-player"
+                    title={`${currentTrack.title} by ${currentTrack.artist}`}
+                    src={`https://www.youtube.com/embed/${currentVideoId}?enablejsapi=1&autoplay=1&controls=1&rel=0&modestbranding=1`}
+                    className="h-full w-full"
+                    allow="autoplay; encrypted-media; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
 
-        {currentTrack && !currentVideoId && (
-          <div className="rounded-2xl border border-dashed border-border bg-gray-100 px-4 py-3 text-sm text-gray-700 dark:bg-surface-overlay dark:text-text-muted">
-            {isInitializing || isBuffering ? (
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--accent)]" />
-                <span>{isBg ? "Подготвяне на видео…" : "Preparing video…"}</span>
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded((v) => !v)}
+                  className={`text-left ${isExpanded ? "mt-2" : "flex-1"}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-gray-900 dark:text-text-primary">{currentTrack.title}</p>
+                      <p className="truncate text-xs text-gray-700 dark:text-text-muted">{currentTrack.artist}</p>
+                    </div>
+                    <span className="text-lg text-gray-700 dark:text-gray-200">{isExpanded ? "↓" : "↑"}</span>
+                  </div>
+                </button>
               </div>
-            ) : (
-              <p>
-                {isBg ? "Възпроизвеждането е недостъпно — отвори в YouTube." : "Playback unavailable — open on YouTube."} {" "}
-                <a className="underline" href={youtubeSearchUrl} target="_blank" rel="noreferrer">
-                  {isBg ? "Отвори търсене" : "Open search"}
-                </a>
-              </p>
-            )}
-          </div>
-        )}
 
-        {!currentTrack && (
-          <div className="rounded-2xl border border-dashed border-border bg-gray-100 px-4 py-3 text-sm text-gray-700 dark:bg-surface-overlay dark:text-text-muted">
-            {isBg ? "Избери песен, за да се покаже YouTube плейърът." : "Choose a track to show the YouTube player."}
-          </div>
-        )}
+              <div className="flex items-center gap-2">
+                <button onClick={togglePlayPause} className="h-10 w-10 rounded-full bg-gray-200 text-lg text-gray-900 dark:bg-surface dark:text-text-primary" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? "⏸" : "▶"}</button>
+                <button onClick={toggleMute} className="h-10 rounded-full border border-border px-3 text-sm bg-white text-gray-900 dark:bg-surface-overlay dark:text-text-primary" aria-label={volume === 0 ? (isBg ? "Включи звук" : "Unmute") : (isBg ? "Изключи звук" : "Mute")}>{volume === 0 ? "🔇" : "🔊"}</button>
 
-        <div className="flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-gray-900 dark:text-text-primary" suppressHydrationWarning>{currentTrack?.title ?? (isBg ? "Няма избрана песен" : "No song selected")}</p>
-            <div className="flex items-center gap-2 text-xs text-gray-700 dark:text-text-muted">
-              <span className="truncate" suppressHydrationWarning>{currentTrack?.artist ?? (isBg ? "Избери песен за стартиране" : "Pick a track to start playback")}</span>
-              <span aria-hidden>•</span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-red-400/40 bg-red-500/10 px-2 py-0.5 text-[11px] text-red-200">▶ YouTube</span>
+                <div className="ml-auto min-w-0 flex-1">
+                  <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2 text-xs text-gray-700 dark:text-text-muted">
+                    <span>{formatTime(currentTime)}</span>
+                    <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="w-full accent-violet-400" aria-label={isBg ? "Прогрес" : "Track progress"} />
+                    <span className="text-right">{formatTime(duration)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {playerError && <p className="text-xs text-red-300">{playerError}</p>}
             </div>
-            {playerError && <p className="mt-1 text-xs text-red-300">{playerError}</p>}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button onClick={skipPrevious} className="h-10 w-10 rounded-full border border-border bg-white text-sm text-gray-900 dark:bg-surface-overlay dark:text-text-primary" aria-label={isBg ? "Предишна песен" : "Previous track"}>⏮</button>
-            <button onClick={togglePlayPause} className="h-11 w-11 rounded-full bg-gray-200 text-lg text-gray-900 shadow-lg shadow-black/10 dark:bg-surface dark:text-text-primary dark:shadow-white/20" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? "⏸" : "▶"}</button>
-            <button onClick={skipNext} className="h-10 w-10 rounded-full border border-border bg-white text-sm text-gray-900 dark:bg-surface-overlay dark:text-text-primary" aria-label={isBg ? "Следваща песен" : "Next track"}>⏭</button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 items-center gap-2 text-xs text-gray-700 dark:text-text-muted sm:grid-cols-[52px_1fr_52px_120px] sm:gap-3">
-          <span>{formatTime(currentTime)}</span>
-          <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="w-full accent-violet-400" aria-label={isBg ? "Прогрес" : "Track progress"} />
-          <span className="text-right sm:text-left">{formatTime(duration)}</span>
-          <div className="flex items-center gap-2">
-            <span>🔊</span>
-            <input type="range" min={0} max={100} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="w-full accent-cyan-400" aria-label={isBg ? "Сила на звука" : "Volume"} />
-          </div>
+          )}
         </div>
       </div>
-    </div>
+    </>
   );
 }
