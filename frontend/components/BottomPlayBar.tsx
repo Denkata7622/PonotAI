@@ -75,7 +75,7 @@ export default function BottomPlayBar() {
             <div className="space-y-3">
               <div className={`flex ${isExpanded ? "flex-col" : "flex-row items-center gap-3"} transition-all duration-300 ease-in-out`}>
                 <div
-                  className={`overflow-hidden rounded-xl border border-border bg-gray-200 dark:bg-black/60 shrink-0 transition-all duration-300 ease-in-out ${isExpanded ? "w-full aspect-video" : "w-[120px] h-[68px] sm:w-40 sm:h-[90px]"}`}
+                  className={`overflow-hidden rounded-xl border border-border bg-gray-200 dark:bg-black/60 shrink-0 transition-all duration-300 ease-in-out ${isExpanded ? "w-full aspect-video" : "w-[120px] h-[68px] sm:w-40 sm:h-[90px] pointer-events-none"}`}
                 >
                   <iframe
                     id="ponotai-yt-player"
@@ -87,19 +87,36 @@ export default function BottomPlayBar() {
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setIsExpanded((v) => !v)}
-                  className={`text-left ${isExpanded ? "mt-2" : "flex-1"}`}
-                >
+                <div className={`${isExpanded ? "mt-2 w-full" : "flex-1"}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-gray-900 dark:text-text-primary">{currentTrack.title}</p>
                       <p className="truncate text-xs text-gray-700 dark:text-text-muted">{currentTrack.artist}</p>
                     </div>
-                    <span className="text-lg text-gray-700 dark:text-gray-200">{isExpanded ? "↓" : "↑"}</span>
+
+                    {!isExpanded && (
+                      <button
+                        type="button"
+                        onClick={() => setIsExpanded(true)}
+                        aria-label="Expand player"
+                        className="rounded-full bg-purple-600 p-2 text-white shadow-md hover:bg-purple-700"
+                      >
+                        <span className="text-lg leading-none">↑</span>
+                      </button>
+                    )}
                   </div>
-                </button>
+
+                  {isExpanded && (
+                    <button
+                      type="button"
+                      onClick={() => setIsExpanded(false)}
+                      aria-label="Collapse player"
+                      className="mt-2 rounded-full bg-purple-600 p-2 text-white shadow-md hover:bg-purple-700"
+                    >
+                      <span className="text-lg leading-none">↓</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center gap-2">
