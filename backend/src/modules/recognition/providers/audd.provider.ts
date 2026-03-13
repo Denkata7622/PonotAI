@@ -166,7 +166,7 @@ async function findYouTubeVideoId(query: string): Promise<string | null> {
 }
 
 export async function recognizeAudioWithAudd(buffer: Buffer, filename: string): Promise<ProviderSongMetadata | null> {
-  const apiToken = process.env.AUDD_API_TOKEN;
+  const apiToken = process.env.AUDD_API_TOKEN || process.env.AUDD_API_KEY;
   if (!apiToken) {
     throw new MissingProviderConfigError();
   }

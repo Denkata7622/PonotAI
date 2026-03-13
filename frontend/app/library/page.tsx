@@ -39,7 +39,7 @@ return fallback;
 export default function LibraryPage() {
 const { language } = useLanguage();
 const { addToQueue } = usePlayer();
-const { favorites: userFavorites, isAuthenticated } = useUser();
+const { favorites: userFavorites, isAuthenticated, isLoading } = useUser();
 const { profile } = useProfile();
 
 const getScoped = (key: string) => (profile?.id ? scopedKey(key, profile.id) : key);
@@ -92,6 +92,7 @@ return (raw || []).map(normalizeSong);
 
 const [playlists, setPlaylists] = useState<Playlist[]>([]);
 const [loading, setLoading] = useState(true);
+const [loadError, setLoadError] = useState<string | null>(null);
 
 const [history, setHistory] = useState<Song[]>(() => {
 const raw = parseStorage<any[]>(historyKey, []);
@@ -122,8 +123,14 @@ useEffect(() => {
 async function loadPlaylists() {
 if (isAuthenticated) {
 setLoading(true);
+setLoadError(null);
+try {
 const loaded = await getPlaylists();
 setPlaylists(loaded);
+} catch {
+setLoadError(language === "bg" ? "Грешка при зареждане на плейлистите." : "Failed to load playlists.");
+setPlaylists([]);
+}
 setLoading(false);
 } else {
 const stored = parseStorage<Playlist[]>(playlistsKey, []);
@@ -283,6 +290,10 @@ setSelectedPlaylist((prev) => (prev ? { ...prev, name: newName } : null));
 }
 }
 
+if (isLoading) {
+return <section className="space-y-4"><div className="card p-6 animate-pulse h-28" /><div className="card p-6 animate-pulse h-64" /></section>;
+}
+
 return ( <section className="space-y-6"> <div className="card p-6"> <h1 className="cardTitle text-3xl font-bold">{t("nav_library", language)}</h1> <p className="cardText mt-2">
 {language === "bg"
 ? "Управлявай любимите си песни, плейлистите и историята на едно място."
@@ -309,6 +320,8 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
       </p>
     </div>
   </div>
+
+  {loadError && <div className="card p-4 text-sm text-red-300">{loadError}</div>}
 
   {history.length > 0 && (
     <div className="card p-6">

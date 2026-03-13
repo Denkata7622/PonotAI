@@ -48,7 +48,7 @@ export default function TrackCard({
   const showRemoveFromPlaylist = Boolean(activePlaylistId && onRemoveFromPlaylist);
 
   return (
-    <article className="group relative flex items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-[color:var(--accent)]/50 hover:shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
+    <article tabIndex={0} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && onPlay) { event.preventDefault(); onPlay(track); } }} className="group relative flex items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-[color:var(--accent)]/50 hover:shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
       <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-[var(--border)]">
         <img src={track.artworkUrl} alt={`${track.title} cover`} className="h-full w-full object-cover" />
         <button
@@ -82,6 +82,7 @@ export default function TrackCard({
           onClick={() => setIsMenuOpen((prev) => !prev)}
           className="rounded-full p-1.5 text-xl leading-none text-[var(--muted)] opacity-70 transition hover:bg-[var(--hover-bg)] hover:text-[var(--text)] group-hover:opacity-100"
           aria-label={t("track_more_options", language)}
+          title={t("track_more_options", language)}
         >
           ⋮
         </button>

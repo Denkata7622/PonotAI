@@ -1,0 +1,9 @@
+{
+  "name": "PonotAI Music Recognition",
+  "short_name": "PonotAI",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#7c5cff",
+  "background_color": "#0a1122",
+  "icons": []
+}
