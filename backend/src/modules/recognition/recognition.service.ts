@@ -9,6 +9,7 @@ import {
 } from "./providers/audd.provider";
 import { recognizeWithAcrCloud } from "./providers/acrcloud.provider";
 import { recognizeWithShazam } from "./providers/shazam.provider";
+import { matchBulgarianSong } from "./providers/bulgarian.provider";
 
 export type SongMetadata = ProviderSongMetadata & {
   source: "provider" | "ocr_fallback";
@@ -438,7 +439,12 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng"): 
       if (providerResult) {
         songMetadataResults.push(toProviderResponse(providerResult));
       } else {
-        songMetadataResults.push(toFallbackResponse(candidate));
+        const bulgarianFallback = matchBulgarianSong(`${candidate.songName} ${candidate.artist}`);
+        if (bulgarianFallback) {
+          songMetadataResults.push(toProviderResponse(bulgarianFallback));
+        } else {
+          songMetadataResults.push(toFallbackResponse(candidate));
+        }
       }
     } catch {
       console.warn(`[recognition] Lookup failed for "${candidate.songName}" by "${candidate.artist}"`);

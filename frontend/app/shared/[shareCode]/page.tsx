@@ -1,8 +1,5 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { use } from "react";
-import { usePlayer } from "../../../components/PlayerProvider";
+import type { Metadata } from "next";
+import SharedSongClient from "../../../components/SharedSongClient";
 import { getApiBaseUrl } from "@/lib/apiConfig";
 
 type SharedPayload = {
@@ -14,75 +11,41 @@ type SharedPayload = {
   createdAt: string;
 };
 
-export default function SharedSongPage({ params }: { params: Promise<{ shareCode: string }> }) {
-  const { shareCode } = use(params);
-  const [data, setData] = useState<SharedPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [prefetchedVideoId, setPrefetchedVideoId] = useState<string | null>(null);
-  const { addToQueue } = usePlayer();
-
-  useEffect(() => {
-    fetch(`${getApiBaseUrl()}/api/share/${shareCode}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error("NOT_FOUND");
-        setData((await res.json()) as SharedPayload);
-      })
-      .catch(() => setError("Shared song not found"));
-  }, [shareCode]);
-
-  useEffect(() => {
-    if (!data) return;
-    const query = encodeURIComponent(`${data.title} ${data.artist} official audio`);
-    fetch(`/api/youtube/resolve?query=${query}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload) => {
-        const videoId = typeof payload?.videoId === "string" ? payload.videoId : null;
-        setPrefetchedVideoId(videoId);
-      })
-      .catch(() => setPrefetchedVideoId(null));
-  }, [data]);
-
-  function handlePlay() {
-    if (!data) return;
-    addToQueue({
-      id: `shared-${data.title}-${data.artist}`.toLowerCase().replace(/\s+/g, "-"),
-      title: data.title,
-      artist: data.artist,
-      artistId: `artist-${data.artist}`.toLowerCase().replace(/\s+/g, "-"),
-      artworkUrl: data.coverUrl || "https://picsum.photos/seed/shared/200",
-      license: "COPYRIGHTED",
-      query: `${data.title} ${data.artist} official audio`,
-      videoId: prefetchedVideoId ?? undefined,
-    });
+async function fetchSharedSong(shareCode: string): Promise<SharedPayload | null> {
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/api/share/${shareCode}`, { cache: "no-store" });
+    if (!response.ok) return null;
+    return (await response.json()) as SharedPayload;
+  } catch {
+    return null;
   }
-  
-  if (error) return <section className="card p-6">{error}</section>;
-  if (!data) return <section className="card p-6">Loading…</section>;
+}
 
-  return (
-    <section className="resultCardAnimated mx-auto max-w-2xl rounded-3xl border border-white/10 bg-white/5 p-6">
-      <div className="flex items-start gap-6">
-        {data.coverUrl && (
-          <img 
-            src={data.coverUrl} 
-            alt={`${data.title} cover`}
-            className="h-40 w-40 rounded-2xl object-cover shadow-lg"
-          />
-        )}
-        <div className="flex-1">
-          <p className="text-xs uppercase tracking-[0.2em] text-white/60">Shared song</p>
-          <h1 className="mt-2 text-3xl font-bold">{data.title}</h1>
-          <p className="mt-2 text-xl text-white/70">{data.artist}</p>
-          <p className="mt-2 text-sm text-white/60">{data.album || "Unknown Album"}</p>
-          <p className="mt-4 text-sm text-white/50">Shared by {data.sharedBy}</p>
-          <button
-            onClick={handlePlay}
-            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-6 py-3 font-semibold text-white transition hover:opacity-90"
-          >
-            ▶ Play
-          </button>
-        </div>
-      </div>
-    </section>
-  );
+export async function generateMetadata({ params }: { params: Promise<{ shareCode: string }> }): Promise<Metadata> {
+  const { shareCode } = await params;
+  const data = await fetchSharedSong(shareCode);
+
+  if (!data) {
+    return {
+      title: "Shared song",
+    };
+  }
+
+  return {
+    title: `${data.title} — ${data.artist}`,
+    description: `Listen to ${data.title} by ${data.artist} on Trackly`,
+    openGraph: {
+      title: `${data.title} — ${data.artist}`,
+      description: `Listen to ${data.title} by ${data.artist} on Trackly`,
+      images: data.coverUrl ? [{ url: data.coverUrl }] : undefined,
+    },
+  };
+}
+
+export default async function SharedSongPage({ params }: { params: Promise<{ shareCode: string }> }) {
+  const { shareCode } = await params;
+  const data = await fetchSharedSong(shareCode);
+
+  if (!data) return <section className="card p-6">Shared song not found</section>;
+  return <SharedSongClient data={data} />;
 }

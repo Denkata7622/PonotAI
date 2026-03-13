@@ -37,3 +37,6 @@ From repo root:
 npm run clean
 npm run setup
 ```
+
+### PWA icon requirement
+Place `frontend/public/icon-192.png` before deployment so `/manifest.json` resolves its icon.

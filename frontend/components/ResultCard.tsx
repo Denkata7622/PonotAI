@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { MicOff, Play, Save, ScrollText, Share2 } from "lucide-react";
 import type { SongMatch } from "../features/recognition/api";
 import { t, type Language } from "../lib/translations";
 import { Card } from "../src/components/ui/Card";
@@ -20,6 +21,13 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite 
   const { isAuthenticated, shareSong } = useUser();
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareHint, setShareHint] = useState<string | null>(null);
+  const [lyricsOpen, setLyricsOpen] = useState(false);
+  const [lyrics, setLyrics] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLyricsOpen(false);
+    setLyrics(null);
+  }, [song?.songName, song?.artist]);
 
   if (!song) {
     return (
@@ -30,23 +38,47 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite 
     );
   }
 
+  const currentSong = song;
+
   async function handleShare() {
-    if (!song) return;
+    if (!currentSong) return;
     if (!isAuthenticated) {
       setShareHint("Sign in to share");
       return;
     }
 
     const url = await shareSong({
-      title: song.songName,
-      artist: song.artist,
-      album: song.album,
-      coverUrl: song.albumArtUrl,
+      title: currentSong.songName,
+      artist: currentSong.artist,
+      album: currentSong.album,
+      coverUrl: currentSong.albumArtUrl,
     });
 
     if (url) {
       setShareUrl(url);
       setShareHint(null);
+    }
+  }
+
+  async function toggleLyrics() {
+    if (lyricsOpen) {
+      setLyricsOpen(false);
+      return;
+    }
+
+    setLyricsOpen(true);
+    if (lyrics !== null) return;
+
+    try {
+      const response = await fetch(`/api/lyrics?artist=${encodeURIComponent(currentSong.artist)}&title=${encodeURIComponent(currentSong.songName)}`);
+      if (!response.ok) {
+        setLyrics("");
+        return;
+      }
+      const payload = (await response.json()) as { lyrics: string | null };
+      setLyrics(payload.lyrics ?? "");
+    } catch {
+      setLyrics("");
     }
   }
 
@@ -71,14 +103,32 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite 
           )}
 
           <div className="mt-6 flex flex-wrap gap-3">
-            <button className="pillAction" onClick={() => onPlay(song)}>▶ {t("btn_play", language)}</button>
-            <button className="pillAction" onClick={() => onSave(song)}>💾 {t("btn_save", language)}</button>
-            <button className="glassBtn" onClick={() => void handleShare()}>🔗 Share</button>
-            {song.platformLinks.spotify && <a className="pillAction bg-[#1db954]/20" href={song.platformLinks.spotify} target="_blank" rel="noreferrer">🟢 {t("btn_spotify", language)}</a>}
-            {song.platformLinks.appleMusic && <a className="pillAction bg-rose-500/20" href={song.platformLinks.appleMusic} target="_blank" rel="noreferrer">🍎 {t("btn_apple_music", language)}</a>}
-            {song.platformLinks.youtubeMusic && <a className="pillAction bg-red-500/20" href={song.platformLinks.youtubeMusic} target="_blank" rel="noreferrer">▶ {t("btn_youtube_music", language)}</a>}
-            {onFavorite && <Button variant="ghost" size="sm" onClick={() => onFavorite(song)}>❤️ Favorite</Button>}
+            <button className="pillAction inline-flex items-center gap-2" onClick={() => onPlay(song)}><Play className="w-4 h-4 text-[var(--text)]" /> {t("btn_play", language)}</button>
+            <button className="pillAction inline-flex items-center gap-2" onClick={() => onSave(song)}><Save className="w-4 h-4 text-[var(--text)]" /> {t("btn_save", language)}</button>
+            <button className="glassBtn inline-flex items-center gap-2" onClick={() => void handleShare()}><Share2 className="w-4 h-4 text-[var(--text)]" /> Share</button>
+            {song.platformLinks.spotify && <a className="pillAction bg-[#1db954]/20" href={song.platformLinks.spotify} target="_blank" rel="noreferrer">{t("btn_spotify", language)}</a>}
+            {song.platformLinks.appleMusic && <a className="pillAction bg-rose-500/20" href={song.platformLinks.appleMusic} target="_blank" rel="noreferrer">{t("btn_apple_music", language)}</a>}
+            {song.platformLinks.youtubeMusic && <a className="pillAction bg-red-500/20" href={song.platformLinks.youtubeMusic} target="_blank" rel="noreferrer">{t("btn_youtube_music", language)}</a>}
+            {onFavorite && <Button variant="ghost" size="sm" onClick={() => onFavorite(song)}>Favorite</Button>}
           </div>
+
+          <button className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border bg-[var(--surface-raised)] px-4 py-2 text-sm" onClick={() => void toggleLyrics()}>
+            <ScrollText className="w-4 h-4 text-[var(--accent)]" />
+            {lyricsOpen ? t("btn_hide_lyrics", language) : t("btn_show_lyrics", language)}
+          </button>
+
+          {lyricsOpen && (
+            <div className="mt-3 max-h-80 overflow-y-auto rounded-xl border border-border bg-[var(--surface-raised)] p-4 text-sm whitespace-pre-wrap">
+              {lyrics && lyrics.trim().length > 0 ? (
+                lyrics
+              ) : (
+                <div className="flex items-center gap-2 text-text-muted">
+                  <MicOff className="w-4 h-4 text-[var(--muted)]" />
+                  <span>{t("lyrics_unavailable", language)}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {(shareHint || shareUrl) && (
             <div className="mt-3 rounded-xl border border-white/15 bg-black/25 p-3 text-sm">

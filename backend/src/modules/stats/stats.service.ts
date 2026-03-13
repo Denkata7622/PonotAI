@@ -10,16 +10,21 @@ export type GlobalStats = {
 export async function getGlobalStats(): Promise<GlobalStats> {
   const [users, publicHistory] = await Promise.all([listUsers(), readHistory()]);
   const artistCounts = new Map<string, number>();
+  let totalRecognitions = 0;
 
-  for (const item of publicHistory) {
+  for (const item of publicHistory ?? []) {
+    if ("recognized" in item && item.recognized === false) continue;
+    totalRecognitions += 1;
     if (!item.artist) continue;
     artistCounts.set(item.artist, (artistCounts.get(item.artist) ?? 0) + 1);
   }
 
-  for (const user of users) {
+  for (const user of users ?? []) {
     const history = await listUserHistory(user.id);
-    for (const item of history) {
-      if (!item.recognized || !item.artist) continue;
+    for (const item of history ?? []) {
+      if (!item.recognized) continue;
+      totalRecognitions += 1;
+      if (!item.artist) continue;
       artistCounts.set(item.artist, (artistCounts.get(item.artist) ?? 0) + 1);
     }
   }
@@ -30,8 +35,8 @@ export async function getGlobalStats(): Promise<GlobalStats> {
     .map(([name, count]) => ({ name, count }));
 
   return {
-    totalRecognitions: publicHistory.length,
-    totalUsers: users.length,
+    totalRecognitions,
+    totalUsers: (users ?? []).length,
     topArtists,
   };
 }

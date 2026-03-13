@@ -200,6 +200,21 @@ export function UserProvider({ children }: { children: ReactNode }) {
     document.documentElement.classList.toggle("dark", activePreferences.theme === "dark");
   }, [activePreferences.theme]);
 
+  async function fetchServerData() {
+    const [histRes, favRes] = await Promise.all([
+      apiFetch("/api/history?limit=50"),
+      apiFetch("/api/favorites"),
+    ]);
+    if (histRes.ok) {
+      const payload = (await histRes.json()) as { items: HistoryItem[] };
+      setServerHistory(payload.items || []);
+    }
+    if (favRes.ok) {
+      const payload = (await favRes.json()) as { items: FavoriteItem[] };
+      setServerFavorites(payload.items || []);
+    }
+  }
+
   // On mount: validate token and fetch server data
   useEffect(() => {
     if (!authState.token) return;
@@ -216,23 +231,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setAuthState({ token: null, user: null });
       })
       .finally(() => setAuthState({ isLoading: false }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authState.token]);
-
-  async function fetchServerData() {
-    const [histRes, favRes] = await Promise.all([
-      apiFetch("/api/history?limit=50"),
-      apiFetch("/api/favorites"),
-    ]);
-    if (histRes.ok) {
-      const payload = (await histRes.json()) as { items: HistoryItem[] };
-      setServerHistory(payload.items || []);
-    }
-    if (favRes.ok) {
-      const payload = (await favRes.json()) as { items: FavoriteItem[] };
-      setServerFavorites(payload.items || []);
-    }
-  }
 
   async function handleAuthSuccess(payload: { token: string; user: User }) {
     localStorage.setItem(TOKEN_KEY, payload.token);
@@ -402,8 +401,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setPreferences,
       deleteAccount,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [authState, serverHistory, serverFavorites, guest, isAuthenticated]
+        [authState, serverHistory, serverFavorites, guest, isAuthenticated]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

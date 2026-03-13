@@ -97,7 +97,9 @@ export default function SettingsPage() {
     try {
       await deleteAccount();
     } catch (e) {
-      console.error(e);
+      if (process.env.NODE_ENV !== "production") {
+        console.error(e);
+      }
     }
   }
 
@@ -109,10 +111,12 @@ export default function SettingsPage() {
         libraryData.playlists,
         user?.username || "library"
       );
-      alert("✅ Library exported successfully as JSON!");
+      alert("Library exported successfully as JSON!");
     } catch (e) {
-      console.error("Export failed:", e);
-      alert("❌ Export failed: " + (e instanceof Error ? e.message : "Unknown error"));
+      if (process.env.NODE_ENV !== "production") {
+        console.error("Export failed:", e);
+      }
+      alert("Export failed: " + (e instanceof Error ? e.message : "Unknown error"));
     }
   }
 
@@ -123,10 +127,12 @@ export default function SettingsPage() {
         history,
         user?.username || "library"
       );
-      alert("✅ Library exported successfully as CSV!");
+      alert("Library exported successfully as CSV!");
     } catch (e) {
-      console.error("Export failed:", e);
-      alert("❌ Export failed: " + (e instanceof Error ? e.message : "Unknown error"));
+      if (process.env.NODE_ENV !== "production") {
+        console.error("Export failed:", e);
+      }
+      alert("Export failed: " + (e instanceof Error ? e.message : "Unknown error"));
     }
   }
 

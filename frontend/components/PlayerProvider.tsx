@@ -14,6 +14,7 @@ import { upsertTrack, type QueueTrack } from "../features/player/state";
 
 type PlayerContextValue = {
   queue: QueueTrack[];
+  activeIndex: number;
   currentTrack: QueueTrack | null;
   isPlaying: boolean;
   currentTime: number;
@@ -29,6 +30,7 @@ type PlayerContextValue = {
   skipPrevious: () => void;
   seekToPercent: (percent: number) => void;
   setVolume: (volume: number) => void;
+  removeFromQueue: (index: number) => void;
 };
 
 type YTPlayerLike = {
@@ -124,7 +126,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(false);
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
-  const [lastVolumeBeforeMute, setLastVolumeBeforeMute] = useState(initialState.volume || 70);
+  const lastVolumeBeforeMuteRef = useRef(initialState.volume || 70);
   const playerRef = useRef<YTPlayerLike | null>(null);
 
   const currentTrack = queue[activeIndex] ?? null;
@@ -325,6 +327,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playerRef.current?.setVolume(normalized);
   }, []);
 
+  const removeFromQueue = useCallback((index: number) => {
+    setQueue((previousQueue) => previousQueue.filter((_, queueIndex) => queueIndex !== index));
+    setActiveIndex((previousIndex) => {
+      if (index < previousIndex) return Math.max(0, previousIndex - 1);
+      if (index === previousIndex) return Math.max(0, previousIndex - 1);
+      return previousIndex;
+    });
+  }, []);
+
   useEffect(() => {
     function isTypingTarget(target: EventTarget | null) {
       const element = target as HTMLElement | null;
@@ -345,9 +356,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         skipPrevious();
       } else if (event.key.toLowerCase() === "m") {
         if (volume === 0) {
-          setVolume(lastVolumeBeforeMute || 70);
+          setVolume(lastVolumeBeforeMuteRef.current || 70);
         } else {
-          setLastVolumeBeforeMute(volume);
+          lastVolumeBeforeMuteRef.current = volume;
           setVolume(0);
         }
       }
@@ -355,11 +366,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lastVolumeBeforeMute, setVolume, skipNext, skipPrevious, togglePlayPause, volume]);
+  }, [setVolume, skipNext, skipPrevious, togglePlayPause, volume]);
 
   const contextValue = useMemo<PlayerContextValue>(
     () => ({
       queue,
+      activeIndex,
       currentTrack,
       isPlaying,
       currentTime,
@@ -375,9 +387,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       skipPrevious,
       seekToPercent,
       setVolume,
+      removeFromQueue,
     }),
     [
       queue,
+      activeIndex,
       currentTrack,
       isPlaying,
       currentTime,
@@ -393,6 +407,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       skipPrevious,
       seekToPercent,
       setVolume,
+      removeFromQueue,
     ],
   );
 
