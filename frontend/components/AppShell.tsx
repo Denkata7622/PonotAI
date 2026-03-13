@@ -33,6 +33,11 @@ const PRIMARY_NAV = [
 const SECONDARY_NAV = [
   { href: "/about", key: "nav_about", icon: "ℹ️" },
   { href: "/how-to-use", key: "nav_how_to_use", icon: "❓" },
+  { href: "/concept", key: "nav_concept", icon: "🧠" },
+  { href: "/idea", key: "nav_idea", icon: "💡" },
+  { href: "/founders", key: "nav_founders", icon: "🧑‍💻" },
+  { href: "/the-future", key: "nav_the_future", icon: "🚀" },
+  { href: "/stats", key: "nav_stats", icon: "📊" },
 ] as const;
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -47,8 +52,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
-    // TODO(integration): sidebar reads history from localStorage cache only.
-    // A future pass should fetch from GET /api/history on auth change and update this cache.
+    
     function syncSidebarData() {
       try {
         const historyRaw = window.localStorage.getItem(scopedKey("ponotai-history", profile.id));
@@ -110,6 +114,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <button
               className="navItem !p-2 text-sm"
               onClick={() => setIsCollapsed((prev) => !prev)}
+              aria-label={language === "bg" ? "Свий страничното меню" : "Collapse sidebar"}
             >
               {isCollapsed ? "»" : "«"}
             </button>
@@ -135,7 +140,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   </button>
 
                   {showUserMenu && (
-                    <div className="absolute left-0 right-0 top-10 z-20 rounded-xl border border-[var(--border)] bg-[var(--surface-2,var(--surface))] p-2 shadow-xl">
+                    <div className="absolute left-0 right-0 top-10 z-20 rounded-xl border border-gray-200 bg-white p-2 text-gray-900 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
                       <Link
                         href="/profile"
                         className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"
@@ -265,8 +270,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <main className="flex-1 px-4 pb-36 pt-6 sm:px-8 sm:pt-8">{children}</main>
+        <main className="flex-1 px-4 pb-44 pt-6 sm:px-8 sm:pt-8 sm:pb-48">{children}</main>
       </div>
+      <nav className="fixed bottom-24 left-3 right-3 z-40 grid grid-cols-5 gap-2 rounded-2xl border border-border bg-surface/95 p-2 backdrop-blur md:hidden">
+        {PRIMARY_NAV.map((item) => (
+          <Link
+            key={`mobile-${item.href}`}
+            href={item.href}
+            className={`flex flex-col items-center justify-center rounded-xl px-2 py-1 text-xs ${pathname === item.href ? "bg-[var(--active-bg)] text-[var(--text)]" : "text-[var(--muted)]"}`}
+            aria-label={t(item.key, language)}
+          >
+            <span>{item.icon}</span>
+          </Link>
+        ))}
+      </nav>
       <BottomPlayBar />
     </PlayerProvider>
   );

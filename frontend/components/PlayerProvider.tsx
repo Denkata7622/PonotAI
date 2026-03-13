@@ -20,7 +20,9 @@ type PlayerContextValue = {
   duration: number;
   volume: number;
   isInitializing: boolean;
+  isBuffering: boolean;
   playerError: string | null;
+  currentVideoId: string | null;
   addToQueue: (track: Omit<QueueTrack, "id"> & { id?: string }) => void;
   togglePlayPause: () => void;
   skipNext: () => void;
@@ -47,6 +49,7 @@ type YouTubeWindow = Window & {
       PAUSED: number;
       ENDED: number;
       CUED: number;
+      BUFFERING: number;
     };
   };
   onYouTubeIframeAPIReady?: () => void;
@@ -119,6 +122,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [volume, setVolumeState] = useState(initialState.volume);
   const [isInitializing, setIsInitializing] = useState(true);
   const [playerError, setPlayerError] = useState<string | null>(null);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
+  const [lastVolumeBeforeMute, setLastVolumeBeforeMute] = useState(initialState.volume || 70);
   const playerRef = useRef<YTPlayerLike | null>(null);
 
   const currentTrack = queue[activeIndex] ?? null;
@@ -142,10 +148,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const ytWindow = window as YouTubeWindow;
     const setupPlayer = () => {
       if (!ytWindow.YT || playerRef.current) return;
+      if (!document.getElementById("ponotai-yt-player")) return;
 
-      playerRef.current = new ytWindow.YT.Player("ponotai-hidden-yt-player", {
-        width: "1",
-        height: "1",
+      playerRef.current = new ytWindow.YT.Player("ponotai-yt-player", {
+        width: "100%",
+        height: "100%",
         playerVars: {
           autoplay: 0,
           controls: 0,
@@ -169,8 +176,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             const state = ytWindow.YT?.PlayerState;
             if (!state) return;
 
-            if (event.data === state.PLAYING) setIsPlaying(true);
-            if (event.data === state.PAUSED || event.data === state.CUED) setIsPlaying(false);
+            if (event.data === state.PLAYING) { setIsPlaying(true); setIsBuffering(false); }
+            if (event.data === state.PAUSED || event.data === state.CUED) { setIsPlaying(false); setIsBuffering(false); }
+            if (event.data === state.BUFFERING) setIsBuffering(true);
             if (event.data === state.ENDED) {
               setIsPlaying(false);
               setActiveIndex((previous) => {
@@ -200,49 +208,59 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => {
       ytWindow.onYouTubeIframeAPIReady = previousHandler;
     };
-  }, [queue.length, volume]);
+  }, [queue.length, volume, currentTrack, currentVideoId]);
 
   useEffect(() => {
-    if (!playerRef.current || !currentTrack) return;
+    if (!currentTrack) return;
 
     const resolvedVideoId = normalizeVideoId(currentTrack.videoId);
+    setCurrentVideoId(resolvedVideoId ?? null);
 
-    if (resolvedVideoId) {
-      playerRef.current.loadVideoById(resolvedVideoId);
-      const startPlayback = window.setTimeout(() => playerRef.current?.playVideo(), 250);
-      return () => window.clearTimeout(startPlayback);
+    if (!resolvedVideoId) {
+      let cancelled = false;
+
+      (async () => {
+        try {
+          const response = await fetch(`/api/youtube/resolve?query=${encodeURIComponent(currentTrack.query)}`);
+          if (!response.ok) {
+            setPlayerError("Could not resolve a playable YouTube video.");
+            return;
+          }
+
+          const payload = (await response.json()) as { videoId?: string };
+          const fetchedVideoId = normalizeVideoId(payload.videoId);
+          if (!fetchedVideoId || cancelled) {
+            setPlayerError("Could not resolve a playable YouTube video.");
+            return;
+          }
+
+          setCurrentVideoId(fetchedVideoId);
+          setQueue((previous) =>
+            previous.map((item, index) => (index === activeIndex ? { ...item, videoId: fetchedVideoId } : item)),
+          );
+          setPlayerError(null);
+        } catch {
+          if (!cancelled) setPlayerError("Could not resolve a playable YouTube video.");
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
     }
 
-    let cancelled = false;
+    if (!playerRef.current) return;
 
-    (async () => {
-      try {
-        const response = await fetch(`/api/youtube/resolve?query=${encodeURIComponent(currentTrack.query)}`);
-        if (!response.ok) {
-          setPlayerError("Could not resolve a playable YouTube video.");
-          return;
-        }
-
-        const payload = (await response.json()) as { videoId?: string };
-        const fetchedVideoId = normalizeVideoId(payload.videoId);
-        if (!fetchedVideoId || cancelled) {
-          setPlayerError("Could not resolve a playable YouTube video.");
-          return;
-        }
-
-        setQueue((previous) =>
-          previous.map((item, index) => (index === activeIndex ? { ...item, videoId: fetchedVideoId } : item)),
-        );
-        setPlayerError(null);
-      } catch {
-        if (!cancelled) setPlayerError("Could not resolve a playable YouTube video.");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    playerRef.current.loadVideoById(resolvedVideoId);
+    const startPlayback = window.setTimeout(() => playerRef.current?.playVideo(), 250);
+    return () => window.clearTimeout(startPlayback);
   }, [activeIndex, currentTrack]);
+
+  useEffect(() => {
+    if (!currentTrack) {
+      setCurrentVideoId(null);
+    }
+  }, [currentTrack]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -307,6 +325,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playerRef.current?.setVolume(normalized);
   }, []);
 
+  useEffect(() => {
+    function isTypingTarget(target: EventTarget | null) {
+      const element = target as HTMLElement | null;
+      if (!element) return false;
+      const tag = element.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || element.isContentEditable;
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (isTypingTarget(event.target)) return;
+
+      if (event.code === "Space") {
+        event.preventDefault();
+        togglePlayPause();
+      } else if (event.key === "ArrowRight") {
+        skipNext();
+      } else if (event.key === "ArrowLeft") {
+        skipPrevious();
+      } else if (event.key.toLowerCase() === "m") {
+        if (volume === 0) {
+          setVolume(lastVolumeBeforeMute || 70);
+        } else {
+          setLastVolumeBeforeMute(volume);
+          setVolume(0);
+        }
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [lastVolumeBeforeMute, setVolume, skipNext, skipPrevious, togglePlayPause, volume]);
+
   const contextValue = useMemo<PlayerContextValue>(
     () => ({
       queue,
@@ -317,6 +367,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       volume,
       isInitializing,
       playerError,
+      isBuffering,
+      currentVideoId,
       addToQueue,
       togglePlayPause,
       skipNext,
@@ -333,6 +385,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       volume,
       isInitializing,
       playerError,
+      isBuffering,
+      currentVideoId,
       addToQueue,
       togglePlayPause,
       skipNext,
@@ -345,7 +399,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   return (
     <PlayerContext.Provider value={contextValue}>
       {children}
-      <div id="ponotai-hidden-yt-player" className="pointer-events-none fixed -left-[9999px] top-0 h-px w-px" aria-hidden />
     </PlayerContext.Provider>
   );
 }

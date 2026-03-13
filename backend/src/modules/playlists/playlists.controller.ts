@@ -111,11 +111,12 @@ export async function addSongToPlaylistController(req: Request, res: Response) {
   }
 
   const { playlistId } = req.params;
-  const { title, artist, album, coverUrl } = req.body as {
+  const { title, artist, album, coverUrl, videoId } = req.body as {
     title: string;
     artist: string;
     album?: string;
     coverUrl?: string;
+    videoId?: string;
   };
 
   if (!title || !artist) {
@@ -140,6 +141,7 @@ export async function addSongToPlaylistController(req: Request, res: Response) {
       artist,
       album,
       coverUrl,
+      videoId,
     });
 
     res.status(200).json(updated);

@@ -59,6 +59,7 @@ export type PlaylistSongRecord = {
   artist: string;
   album?: string;
   coverUrl?: string;
+  videoId?: string;
 };
 
 type AppDb = {
@@ -242,6 +243,7 @@ export async function addSongToPlaylist(
     artist: song.artist,
     album: song.album,
     coverUrl: song.coverUrl,
+    videoId: song.videoId,
   };
   
   playlist.songs.push(songRecord);
