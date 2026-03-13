@@ -21,6 +21,7 @@ type PlayerContextValue = {
   volume: number;
   isInitializing: boolean;
   playerError: string | null;
+  currentVideoId: string | null;
   addToQueue: (track: Omit<QueueTrack, "id"> & { id?: string }) => void;
   togglePlayPause: () => void;
   skipNext: () => void;
@@ -119,6 +120,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [volume, setVolumeState] = useState(initialState.volume);
   const [isInitializing, setIsInitializing] = useState(true);
   const [playerError, setPlayerError] = useState<string | null>(null);
+  const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
   const playerRef = useRef<YTPlayerLike | null>(null);
 
   const currentTrack = queue[activeIndex] ?? null;
@@ -142,10 +144,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const ytWindow = window as YouTubeWindow;
     const setupPlayer = () => {
       if (!ytWindow.YT || playerRef.current) return;
+      if (!document.getElementById("ponotai-yt-player")) return;
 
-      playerRef.current = new ytWindow.YT.Player("ponotai-hidden-yt-player", {
-        width: "1",
-        height: "1",
+      playerRef.current = new ytWindow.YT.Player("ponotai-yt-player", {
+        width: "100%",
+        height: "100%",
         playerVars: {
           autoplay: 0,
           controls: 0,
@@ -206,6 +209,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!playerRef.current || !currentTrack) return;
 
     const resolvedVideoId = normalizeVideoId(currentTrack.videoId);
+    setCurrentVideoId(resolvedVideoId ?? null);
 
     if (resolvedVideoId) {
       playerRef.current.loadVideoById(resolvedVideoId);
@@ -230,6 +234,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        setCurrentVideoId(fetchedVideoId);
+
         setQueue((previous) =>
           previous.map((item, index) => (index === activeIndex ? { ...item, videoId: fetchedVideoId } : item)),
         );
@@ -243,6 +249,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [activeIndex, currentTrack]);
+
+  useEffect(() => {
+    if (!currentTrack) {
+      setCurrentVideoId(null);
+    }
+  }, [currentTrack]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -317,6 +329,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       volume,
       isInitializing,
       playerError,
+      currentVideoId,
       addToQueue,
       togglePlayPause,
       skipNext,
@@ -333,6 +346,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       volume,
       isInitializing,
       playerError,
+      currentVideoId,
       addToQueue,
       togglePlayPause,
       skipNext,
@@ -345,7 +359,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   return (
     <PlayerContext.Provider value={contextValue}>
       {children}
-      <div id="ponotai-hidden-yt-player" className="pointer-events-none fixed -left-[9999px] top-0 h-px w-px" aria-hidden />
     </PlayerContext.Provider>
   );
 }

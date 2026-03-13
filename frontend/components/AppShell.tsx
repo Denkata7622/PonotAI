@@ -33,6 +33,10 @@ const PRIMARY_NAV = [
 const SECONDARY_NAV = [
   { href: "/about", key: "nav_about", icon: "ℹ️" },
   { href: "/how-to-use", key: "nav_how_to_use", icon: "❓" },
+  { href: "/concept", key: "nav_concept", icon: "🧠" },
+  { href: "/idea", key: "nav_idea", icon: "💡" },
+  { href: "/founders", key: "nav_founders", icon: "🧑‍💻" },
+  { href: "/the-future", key: "nav_the_future", icon: "🚀" },
 ] as const;
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -110,6 +114,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <button
               className="navItem !p-2 text-sm"
               onClick={() => setIsCollapsed((prev) => !prev)}
+              aria-label={language === "bg" ? "Свий страничното меню" : "Collapse sidebar"}
             >
               {isCollapsed ? "»" : "«"}
             </button>
@@ -267,6 +272,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         <main className="flex-1 px-4 pb-36 pt-6 sm:px-8 sm:pt-8">{children}</main>
       </div>
+      <nav className="fixed bottom-24 left-3 right-3 z-40 grid grid-cols-5 gap-2 rounded-2xl border border-border bg-surface/95 p-2 backdrop-blur md:hidden">
+        {PRIMARY_NAV.map((item) => (
+          <Link
+            key={`mobile-${item.href}`}
+            href={item.href}
+            className={`flex flex-col items-center justify-center rounded-xl px-2 py-1 text-xs ${pathname === item.href ? "bg-[var(--active-bg)] text-[var(--text)]" : "text-[var(--muted)]"}`}
+            aria-label={t(item.key, language)}
+          >
+            <span>{item.icon}</span>
+          </Link>
+        ))}
+      </nav>
       <BottomPlayBar />
     </PlayerProvider>
   );

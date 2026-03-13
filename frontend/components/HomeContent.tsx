@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import HeroSection from "./HeroSection";
 import ResultCard from "./ResultCard";
-import HistoryGrid from "./HistoryGrid";
+
 import UploadModal from "./UploadModal";
-import LibrarySidebar from "./LibrarySidebar";
+const LibrarySidebar = lazy(() => import("./LibrarySidebar"));
 import TrackCard from "./TrackCard";
 import SongReviewModal from "./SongReviewModal";
 import { usePlayer } from "./PlayerProvider";
@@ -26,6 +26,9 @@ import { t } from "../lib/translations";
 import { scopedKey, useProfile } from "../lib/ProfileContext";
 import { useUser } from "../src/context/UserContext";
 import { apiFetch } from "../src/lib/apiFetch";
+import HomeHistorySection from "./home/HomeHistorySection";
+import HomeFavoritesSection from "./home/HomeFavoritesSection";
+import HomePlaylistsSection from "./home/HomePlaylistsSection";
 import { Button } from "../src/components/ui/Button";
 import { Input } from "../src/components/ui/Input";
 import { Card } from "../src/components/ui/Card";
@@ -442,7 +445,7 @@ export function HomeContent() {
 
             <ResultCard language={language} song={latestResult} onSave={saveSong} onPlay={playSong} onFavorite={favoriteSong} />
 
-            <HistoryGrid language={language} items={history} onDelete={(id) => setHistory((prev) => prev.filter((entry) => entry.id !== id))} onPlay={playSong} />
+            <HomeHistorySection language={language} items={history} onDelete={(id) => setHistory((prev) => prev.filter((entry) => entry.id !== id))} onPlay={playSong} />
 
             {(stats.totalFavorites > 0 || stats.totalPlaylists > 0) && (
               <Card className="rounded-3xl bg-gradient-to-br from-brand-500/10 to-brand-600/5 border border-brand-300/20 p-6">
@@ -463,61 +466,17 @@ export function HomeContent() {
               </Card>
             )}
 
-            {playlists.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">Recent Playlists</h2>
-                  <Button variant="ghost" size="sm" onClick={() => setIsLibraryOpen(!isLibraryOpen)}>View all</Button>
-                </div>
-                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
-                  {playlists.slice(0, 4).map((playlist) => (
-                    <Card key={playlist.id} className="p-4 hover:border-brand-500/50 transition cursor-pointer" onClick={() => setIsLibraryOpen(true)}>
-                      <p className="font-medium text-text-primary truncate">{playlist.name}</p>
-                      <p className="text-xs text-text-muted mt-1">{playlist.songs.length} songs</p>
-                    </Card>
-                  ))}
-                </div>
-              </section>
-            )}
+            <HomePlaylistsSection playlists={playlists} onOpenLibrary={() => setIsLibraryOpen(true)} />
 
-            {favoritesSet.size > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">Your Favorites</h2>
-                  <span className="text-xs text-text-muted bg-surface rounded-full px-2 py-1">{favoritesSet.size} songs</span>
-                </div>
-                <div className="space-y-2">
-                  {Array.from(favoritesSet).slice(0, 6).map((trackId) => {
-                    const songTitle = trackId.split("-").slice(0, -1).join(" ");
-                    const coverUrl = `https://picsum.photos/seed/${trackId}/200`;
-                    const isMenuOpen = favoritesMenuOpen === trackId;
-                    return (
-                      <div key={trackId} className="group relative flex items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 transition-all hover:border-[var(--accent)]/50 hover:shadow-lg">
-                        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-[var(--border)]">
-                          <img src={coverUrl} alt={songTitle} className="h-full w-full object-cover" />
-                          <button onClick={() => playSong({ songName: songTitle, artist: "Favorite", album: "Collection", albumArtUrl: coverUrl, youtubeVideoId: "", genre: "Unknown", releaseYear: null, platformLinks: {}, confidence: 0.5, durationSec: 0 })} className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition group-hover:opacity-100"><span className="h-8 w-8 grid place-items-center rounded-full bg-[var(--accent)] text-white text-sm">▶</span></button>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-text-primary truncate text-sm">{songTitle}</p>
-                          <p className="text-xs text-text-muted">Favorite</p>
-                        </div>
-                        <div className="relative">
-                          <button onClick={() => setFavoritesMenuOpen(isMenuOpen ? null : trackId)} className="rounded-lg p-2 opacity-0 transition group-hover:opacity-100 hover:bg-surface-raised">⋯</button>
-                          {isMenuOpen && (
-                            <div className="absolute right-0 top-full mt-2 w-48 rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-lg z-50">
-                              <button onClick={() => { toggleFavorite(trackId); setFavoritesMenuOpen(null); }} className="block w-full px-4 py-2 text-left text-sm hover:bg-surface-raised text-text-primary rounded-t-lg">Remove from Favorites</button>
-                              {playlists.length > 0 && (<><hr className="border-[var(--border)]" />{playlists.slice(0, 3).map((playlist) => (<button key={playlist.id} onClick={() => { handleAddSongToPlaylist(trackId, playlist.id); setFavoritesMenuOpen(null); }} className="block w-full px-4 py-2 text-left text-sm hover:bg-surface-raised text-text-primary">Add to {playlist.name}</button>))}</>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                {favoritesSet.size > 6 && <p className="text-xs text-center text-text-muted py-2">+{favoritesSet.size - 6} more in Library</p>}
-              </section>
-            )}
+            <HomeFavoritesSection
+              favoritesSet={favoritesSet}
+              favoritesMenuOpen={favoritesMenuOpen}
+              setFavoritesMenuOpen={setFavoritesMenuOpen}
+              playSong={playSong}
+              toggleFavorite={toggleFavorite}
+              playlists={playlists}
+              addToPlaylist={handleAddSongToPlaylist}
+            />
 
             <section className="space-y-3">
               <h2 className="text-xl font-semibold">{t("songs_heading", language)}</h2>
@@ -548,7 +507,11 @@ export function HomeContent() {
             </section>
           </div>
 
-          {isLibraryOpen && <LibrarySidebar playlists={playlists} tracks={tracks} favoritesSet={favoritesSet} />}
+          {isLibraryOpen && (
+            <Suspense fallback={<Card className="p-4 text-sm text-text-muted">Loading library…</Card>}>
+              <LibrarySidebar playlists={playlists} tracks={tracks} favoritesSet={favoritesSet} />
+            </Suspense>
+          )}
         </div>
       </div>
 
@@ -575,7 +538,7 @@ export function HomeContent() {
 
       <div className="fixed bottom-4 right-4 z-50 flex w-[320px] flex-col gap-3">
         {toasts.map((toast) => (
-          <div key={toast.id} className={`rounded-xl border px-4 py-3 shadow-xl ${toast.kind === "success" ? "border-emerald-300/40 bg-emerald-500/15" : toast.kind === "error" ? "border-red-300/40 bg-red-500/15" : "border-sky-300/40 bg-sky-500/15"}`}>
+          <div role="status" key={toast.id} className={`rounded-xl border px-4 py-3 shadow-xl ${toast.kind === "success" ? "border-emerald-300/40 bg-emerald-500/15" : toast.kind === "error" ? "border-red-300/40 bg-red-500/15" : "border-sky-300/40 bg-sky-500/15"}`}>
             <p className="text-sm">{toast.message}</p>
           </div>
         ))}

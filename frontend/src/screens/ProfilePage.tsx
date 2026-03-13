@@ -110,9 +110,25 @@ export default function ProfilePage() {
   const avatarSrc = user?.avatarBase64 ?? null;
 
   if (isLoading) {
+    if (!user) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
+        <Card className="p-6 text-sm text-text-muted">Please sign in to view your profile.</Card>
+      </div>
+    );
+  }
+
+  return (
+      <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="h-32 rounded-xl bg-surface-raised animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <Card className="p-6 text-sm text-text-muted">Please sign in to view your profile.</Card>
       </div>
     );
   }
@@ -230,6 +246,7 @@ export default function ProfilePage() {
                   : <p className="text-sm text-danger">Not recognized</p>}
               </div>
               <button
+                aria-label="Delete history item"
                 className="text-text-muted hover:text-danger transition-all duration-200 cursor-pointer select-none"
                 onClick={() => void deleteHistoryItem(item.id)}
               >
@@ -259,6 +276,7 @@ export default function ProfilePage() {
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-text-muted">{song.savedAt ? formatDate(song.savedAt) : "—"}</p>
                     <button
+                      aria-label="Remove favorite"
                       className="cursor-pointer select-none transition-all duration-200 hover:scale-110"
                       onClick={() => void removeFavorite(song.id)}
                     >
