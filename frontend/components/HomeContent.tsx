@@ -34,7 +34,7 @@ import HomePlaylistsSection from "./home/HomePlaylistsSection";
 import { Button } from "../src/components/ui/Button";
 import { Input } from "../src/components/ui/Input";
 import { Card } from "../src/components/ui/Card";
-import { Library, Mic, Music, Play } from "lucide-react";
+import { Library, Mic, Music, Play } from "../lucide-react";
 
 type Toast = { id: string; kind: "success" | "error" | "info"; message: string };
 type HistoryEntry = { id: string; source: "audio" | "ocr"; createdAt: string; song: SongMatch };
@@ -156,15 +156,8 @@ export function HomeContent() {
   }, [history.length, favoritesSet.size, playlists.length]);
 
   const favoritedKeys = useMemo(() => {
-    const keys = new Set<string>();
-    for (const track of tracks) {
-      const trackKey = normalizeTrackKey(track.title, track.artistName);
-      if (favoritesSet.has(trackKey)) {
-        keys.add(trackKey);
-      }
-    }
-    return keys;
-  }, [favoritesSet, tracks]);
+    return new Set(favoritesSet);
+  }, [favoritesSet]);
 
   useEffect(() => {
     // Source-of-truth rule: fetch from backend first, write to localStorage as cache.
@@ -521,7 +514,7 @@ export function HomeContent() {
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-6">
             {!isAuthenticated && history.length === 0 && !demoSeen && (
-              <Card className="resultEnter rounded-3xl border border-border bg-surface p-6">
+              <Card className="resultEnter mb-6 rounded-3xl border border-border bg-surface p-6">
                 <p className="text-sm uppercase tracking-[0.22em] text-text-muted">Trackly</p>
                 <h3 className="mt-2 text-2xl font-bold">{language === "bg" ? "Добре дошъл в Trackly" : "Welcome to Trackly"}</h3>
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -634,12 +627,14 @@ export function HomeContent() {
 
             <section className="space-y-3">
               <h2 className="text-xl font-semibold">{t("songs_heading", language)}</h2>
-              {tracks.length > 0 ? tracks.map((track) => (
+              {tracks.length > 0 ? tracks.map((track) => {
+                const trackKey = normalizeTrackKey(track.title, track.artistName);
+                return (
                 <TrackCard
                   key={track.id}
                   track={track}
                   playlists={playlists}
-                  isFavorite={favoritesSet.has(normalizeTrackKey(track.title, track.artistName))}
+                  isFavorite={favoritesSet.has(trackKey)}
                   onToggleFavorite={toggleFavorite}
                   onAddToPlaylist={handleAddSongToPlaylist}
                   onCreatePlaylist={createPlaylist}
@@ -657,7 +652,8 @@ export function HomeContent() {
                     })
                   }
                 />
-              )) : <Card className="p-6 text-center"><p className="text-text-muted">Start recognizing songs to build your collection!</p></Card>}
+                );
+              }) : <Card className="p-6 text-center"><p className="text-text-muted">Start recognizing songs to build your collection!</p></Card>}
             </section>
           </div>
 

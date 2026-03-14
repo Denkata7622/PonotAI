@@ -43,3 +43,15 @@ export const Settings = (props: IconProps) => <BaseIcon {...props}><circle cx="1
 export const Info = (props: IconProps) => <BaseIcon {...props}><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></BaseIcon>;
 export const HelpCircle = (props: IconProps) => <BaseIcon {...props}><circle cx="12" cy="12" r="10" /><path d="M9 9a3 3 0 1 1 6 0c0 2-3 2-3 4" /><path d="M12 17h.01" /></BaseIcon>;
 export const LogOut = (props: IconProps) => <BaseIcon {...props}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></BaseIcon>;
+
+
+export const Check = (props: IconProps) => <BaseIcon {...props}><path d="M20 6 9 17l-5-5" /></BaseIcon>;
+export const Download = (props: IconProps) => <BaseIcon {...props}><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></BaseIcon>;
+export const Upload = (props: IconProps) => <BaseIcon {...props}><path d="M12 21V9" /><path d="m17 14-5-5-5 5" /><path d="M5 3h14" /></BaseIcon>;
+export const FileSpreadsheet = (props: IconProps) => <BaseIcon {...props}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8" /><path d="M8 17h8" /><path d="M8 9h2" /><path d="M14 9h2" /></BaseIcon>;
+export const Sun = (props: IconProps) => <BaseIcon {...props}><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></BaseIcon>;
+export const Moon = (props: IconProps) => <BaseIcon {...props}><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></BaseIcon>;
+export const ChevronDown = (props: IconProps) => <BaseIcon {...props}><path d="m6 9 6 6 6-6" /></BaseIcon>;
+export const ChevronLeft = (props: IconProps) => <BaseIcon {...props}><path d="m15 18-6-6 6-6" /></BaseIcon>;
+export const ChevronRight = (props: IconProps) => <BaseIcon {...props}><path d="m9 18 6-6-6-6" /></BaseIcon>;
+export const EllipsisVertical = (props: IconProps) => <BaseIcon {...props}><circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" /></BaseIcon>;
