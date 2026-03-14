@@ -97,9 +97,29 @@ async function ensureDb() {
 
 async function readDb(): Promise<AppDb> {
   await ensureDb();
-  return JSON.parse(await fs.readFile(DB_PATH, "utf8")) as AppDb;
+  try {
+    const raw = await fs.readFile(DB_PATH, "utf8");
+    if (!raw || !raw.trim()) throw new Error("empty");
+    const parsed = JSON.parse(raw) as Partial<AppDb>;
+    return {
+      users: parsed.users ?? [],
+      playlists: parsed.playlists ?? [],
+      searchHistory: parsed.searchHistory ?? [],
+      favorites: parsed.favorites ?? [],
+      sharedSongs: parsed.sharedSongs ?? [],
+    };
+  } catch {
+    const fresh: AppDb = {
+      users: [],
+      playlists: [],
+      searchHistory: [],
+      favorites: [],
+      sharedSongs: [],
+    };
+    await writeDb(fresh);
+    return fresh;
+  }
 }
-
 async function writeDb(db: AppDb): Promise<void> {
   await ensureDb();
   await fs.writeFile(DB_PATH, JSON.stringify(db, null, 2), "utf8");

@@ -308,9 +308,11 @@ async function extractMetadataWithHuggingFaceVision(buffer: Buffer): Promise<Ocr
   });
 
   if (!response.ok) {
+    const errorBody = await response.text().catch(() => "");
+    console.error("[vision] API error body:", errorBody);
     throw new NoVerifiedResultError(`Vision extraction failed with status ${response.status}.`);
   }
-
+  
   const payload = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
