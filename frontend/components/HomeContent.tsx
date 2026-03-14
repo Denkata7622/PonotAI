@@ -114,7 +114,7 @@ export function HomeContent() {
   const { playlists, favoritesSet, toggleFavorite, createPlaylist, deletePlaylist, addSongToPlaylist, removeSongFromPlaylist } = useLibrary(profile.id);
 
   // Adapter functions to convert track data for playlist operations
-  const handleAddSongToPlaylist = (trackId: string, playlistId: string) => {
+  const handleAddSongToPlaylist = (trackId: string, playlistId: string, videoId?: string) => {
     // Find the track in our tracks list
     const track = tracks.find((t) => t.id === trackId);
     if (!track) return;
@@ -123,7 +123,7 @@ export function HomeContent() {
       title: track.title,
       artist: track.artistName,
       coverUrl: track.artworkUrl,
-      videoId: track.youtubeVideoId,
+      videoId: videoId ?? track.youtubeVideoId,
     });
   };
 
@@ -663,7 +663,7 @@ export function HomeContent() {
 
           {isLibraryOpen && (
             <Suspense fallback={<Card className="p-4"><div className="h-20 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></Card>}>
-              <LibrarySidebar playlists={playlists} tracks={tracks} favoritesSet={favoritesSet} />
+              <LibrarySidebar playlists={playlists} favoritesSet={favoritesSet} onDeletePlaylist={deletePlaylist} />
             </Suspense>
           )}
         </div>
