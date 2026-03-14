@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { BarChart2, Headphones, HelpCircle, Info, Library, LogOut, Search, Settings, User } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { BarChart2, Headphones, HelpCircle, Info, Library, LogOut, Play, Search, Settings, User } from "lucide-react";
 import BottomPlayBar from "./BottomPlayBar";
 import { PlayerProvider } from "./PlayerProvider";
 import type { Playlist } from "../features/library/types";
@@ -11,6 +11,8 @@ import { scopedKey, useProfile } from "../lib/ProfileContext";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { useUser } from "../src/context/UserContext";
+import { usePlayer } from "./PlayerProvider";
+import SearchInput from "./SearchInput";
 
 type HistoryItem = {
   id: string;
@@ -21,6 +23,13 @@ type HistoryItem = {
 type LibrarySnapshot = {
   favorites: string[];
   playlists: Playlist[];
+};
+
+type SearchResult = {
+  videoId: string;
+  title: string;
+  artist: string;
+  thumbnailUrl: string;
 };
 
 const PRIMARY_NAV = [
@@ -41,7 +50,7 @@ const SECONDARY_NAV = [
   { href: "/stats", key: "nav_stats", icon: BarChart2 },
 ] as const;
 
-export default function AppShell({ children }: { children: ReactNode }) {
+function AppShellContent({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { language } = useLanguage();
@@ -51,6 +60,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [recentHistory, setRecentHistory] = useState<HistoryItem[]>([]);
   const [librarySnapshot, setLibrarySnapshot] = useState<LibrarySnapshot>({ favorites: [], playlists: [] });
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const { addToQueue } = usePlayer();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const blurTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     
@@ -86,6 +102,73 @@ export default function AppShell({ children }: { children: ReactNode }) {
     router.push("/");
   }
 
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchResults([]);
+      setIsSearching(false);
+      setHighlightedIndex(-1);
+      return;
+    }
+
+    const timeout = window.setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const payload = response.ok ? ((await response.json()) as SearchResult[]) : [];
+        setSearchResults(Array.isArray(payload) ? payload.slice(0, 8) : []);
+        setHighlightedIndex(-1);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 400);
+
+    return () => window.clearTimeout(timeout);
+  }, [searchQuery]);
+
+  function queueTrack(result: SearchResult) {
+    addToQueue({
+      title: result.title,
+      artist: result.artist,
+      artistId: result.videoId,
+      artworkUrl: result.thumbnailUrl,
+      videoId: result.videoId,
+      query: `${result.title} ${result.artist}`,
+      license: "COPYRIGHTED",
+    });
+    setShowSearchDropdown(false);
+  }
+
+  function handleSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      setShowSearchDropdown(false);
+      setHighlightedIndex(-1);
+      return;
+    }
+
+    if (!showSearchDropdown || searchResults.length === 0) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightedIndex((prev) => (prev + 1) % searchResults.length);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlightedIndex((prev) => (prev <= 0 ? searchResults.length - 1 : prev - 1));
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const target = highlightedIndex >= 0 ? searchResults[highlightedIndex] : searchResults[0];
+      if (target) queueTrack(target);
+    }
+  }
+
   // Avatar initials
   const initials = (user?.username ?? "G")
     .split(" ")
@@ -95,7 +178,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     .toUpperCase();
 
   return (
-    <PlayerProvider>
+    <>
       <div className="flex min-h-screen">
         {/* Sidebar */}
         <aside
@@ -271,7 +354,68 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <main className="flex-1 px-4 pb-44 pt-6 sm:px-8 sm:pt-8 sm:pb-48">{children}</main>
+        <main className="flex-1 px-4 pb-44 pt-6 sm:px-8 sm:pb-48 sm:pt-8">
+          <div className="relative mb-4">
+            <SearchInput
+              value={searchQuery}
+              onChange={(value) => {
+                setSearchQuery(value);
+                setShowSearchDropdown(true);
+              }}
+              onClear={() => {
+                setSearchQuery("");
+                setSearchResults([]);
+                setShowSearchDropdown(false);
+              }}
+              placeholder={t("search_placeholder", language)}
+              onFocus={() => {
+                if (blurTimeoutRef.current) window.clearTimeout(blurTimeoutRef.current);
+                setShowSearchDropdown(true);
+              }}
+              onBlur={() => {
+                blurTimeoutRef.current = window.setTimeout(() => setShowSearchDropdown(false), 200);
+              }}
+              onKeyDown={handleSearchKeyDown}
+            />
+
+            {showSearchDropdown && (searchQuery.trim() || isSearching) && (
+              <div className="absolute z-30 mt-2 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-xl">
+                {isSearching ? (
+                  <div className="flex items-center justify-center py-3 text-[var(--muted)]">
+                    <Search className="h-4 w-4 animate-spin" />
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  <p className="px-3 py-2 text-sm text-[var(--muted)]">{t("search_no_results", language)}</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {searchResults.map((result, index) => (
+                      <li
+                        key={result.videoId}
+                        className={`flex items-center gap-3 rounded-xl px-2 py-2 ${highlightedIndex === index ? "bg-[var(--hover-bg)]" : ""}`}
+                      >
+                        <img src={result.thumbnailUrl} alt={result.title} className="h-10 w-10 rounded-md object-cover" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[var(--text)]">{result.title}</p>
+                          <p className="truncate text-xs text-[var(--muted)]">{result.artist}</p>
+                        </div>
+                        <button
+                          type="button"
+                          className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => queueTrack(result)}
+                          aria-label={t("btn_play", language)}
+                        >
+                          <Play className="h-4 w-4 text-[var(--text)]" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+          {children}
+        </main>
       </div>
       <nav className="fixed bottom-24 left-3 right-3 z-40 grid grid-cols-5 gap-2 rounded-2xl border border-border bg-surface/95 p-2 backdrop-blur md:hidden">
         {PRIMARY_NAV.map((item) => (
@@ -286,6 +430,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
         ))}
       </nav>
       <BottomPlayBar />
+    </>
+  );
+}
+
+
+export default function AppShell({ children }: { children: ReactNode }) {
+  return (
+    <PlayerProvider>
+      <AppShellContent>{children}</AppShellContent>
     </PlayerProvider>
   );
 }

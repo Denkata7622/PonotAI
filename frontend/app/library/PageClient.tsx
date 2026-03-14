@@ -18,6 +18,7 @@ removeSongFromPlaylist,
 } from "../../features/library/api";
 import { Button } from "../../src/components/ui/Button";
 import { BarChart2, Clock, Heart, ListMusic, Play, Plus } from "../../components/icons";
+import { dedupeByTrack } from "../../lib/dedupe";
 
 type Song = {
 id: string;
@@ -119,6 +120,16 @@ setHistory((rawHistory || []).map(normalizeSong));
 
 }, [favoritesKey, historyKey, profile?.id, language]);
 
+const dedupedFavoritesLocal = useMemo(
+() => dedupeByTrack(favoritesLocal, (item) => item.title ?? "", (item) => item.artist ?? ""),
+[favoritesLocal],
+);
+
+const dedupedHistory = useMemo(
+() => dedupeByTrack(history, (item) => item.title ?? "", (item) => item.artist ?? ""),
+[history],
+);
+
 // load playlists from backend or localStorage
 useEffect(() => {
 async function loadPlaylists() {
@@ -144,7 +155,7 @@ loadPlaylists();
 
 // merge local and cloud favorites, dedupe by title+artist
 const mergedFavorites = useMemo(() => {
-const local = favoritesLocal || [];
+const local = dedupedFavoritesLocal || [];
 const cloud = userFavorites || [];
 const map = new Map<string, Song>();
 
@@ -159,14 +170,19 @@ cloud.forEach(add);
 
 return Array.from(map.values());
 
-}, [favoritesLocal, userFavorites, language]);
+}, [dedupedFavoritesLocal, userFavorites, language]);
+
+const dedupedMergedFavorites = useMemo(
+() => dedupeByTrack(mergedFavorites, (item) => item.title ?? "", (item) => item.artist ?? ""),
+[mergedFavorites],
+);
 
 // clear search when switching tabs
 useEffect(() => {
 setSearchQuery("");
 }, [selectedTab]);
 
-const recentSongs = useMemo(() => history.slice(0, 12), [history]);
+const recentSongs = useMemo(() => dedupedHistory.slice(0, 12), [dedupedHistory]);
 
 const filteredHistory = useMemo(() => {
 if (!searchQuery) return recentSongs;
@@ -180,15 +196,15 @@ return recentSongs.filter(
 }, [recentSongs, searchQuery]);
 
 const filteredFavorites = useMemo(() => {
-if (!searchQuery) return mergedFavorites;
+if (!searchQuery) return dedupedMergedFavorites;
 const q = searchQuery.toLowerCase();
-return mergedFavorites.filter(
+return dedupedMergedFavorites.filter(
 (fav) =>
 (fav.title ?? "").toLowerCase().includes(q) ||
 (fav.artist ?? "").toLowerCase().includes(q) ||
 (fav.album ?? "").toLowerCase().includes(q)
 );
-}, [mergedFavorites, searchQuery]);
+}, [dedupedMergedFavorites, searchQuery]);
 
 const filteredPlaylists = useMemo(() => {
 if (!searchQuery) return playlists;
@@ -304,7 +320,7 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
   <div className="grid gap-4 md:grid-cols-4">
     <div className="card p-5">
       <p className="cardText text-sm">{t("library_favorites", language)}</p>
-      <p className="cardTitle mt-2 text-3xl font-semibold">{mergedFavorites.length}</p>
+      <p className="cardTitle mt-2 text-3xl font-semibold">{dedupedMergedFavorites.length}</p>
     </div>
     <div className="card p-5">
       <p className="cardText text-sm">{t("library_playlists", language)}</p>
@@ -312,12 +328,12 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
     </div>
     <div className="card p-5">
       <p className="cardText text-sm">{t("history_title", language)}</p>
-      <p className="cardTitle mt-2 text-3xl font-semibold">{history.length}</p>
+      <p className="cardTitle mt-2 text-3xl font-semibold">{dedupedHistory.length}</p>
     </div>
     <div className="card p-5 bg-gradient-to-br from-[var(--accent)]/10 to-[var(--accent-2)]/10">
       <p className="cardText text-sm">Total Collection</p>
       <p className="cardTitle mt-2 text-3xl font-semibold">
-        {mergedFavorites.length + playlists.reduce((sum, p) => sum + p.songs.length, 0) + history.length}
+        {dedupedMergedFavorites.length + playlists.reduce((sum, p) => sum + p.songs.length, 0) + dedupedHistory.length}
       </p>
     </div>
   </div>

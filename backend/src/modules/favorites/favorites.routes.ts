@@ -16,7 +16,7 @@ favoritesRouter.post("/", async (req, res) => {
   if (!title || !artist) return void res.status(400).json({ error: "INVALID_PAYLOAD" });
 
   const dup = await findDuplicateFavorite(req.userId!, title, artist);
-  if (dup) return void res.status(409).json({ error: "ALREADY_FAVORITED" });
+  if (dup) return void res.status(200).json(dup);
 
   const item = await createFavorite({ userId: req.userId!, title, artist, album, coverUrl });
   res.status(201).json(item);

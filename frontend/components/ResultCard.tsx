@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MicOff, Play, Save, ScrollText, Share2 } from "lucide-react";
+import { Heart, MicOff, Play, Save, ScrollText, Share2 } from "lucide-react";
 import type { SongMatch } from "../features/recognition/api";
 import { t, type Language } from "../lib/translations";
+import { normalizeTrackKey } from "../lib/dedupe";
 import { Card } from "../src/components/ui/Card";
 import { Button } from "../src/components/ui/Button";
 import { Badge } from "../src/components/ui/Badge";
@@ -15,9 +16,10 @@ type ResultCardProps = {
   onSave: (song: SongMatch) => void;
   onPlay: (song: SongMatch) => void;
   onFavorite?: (song: SongMatch) => void;
+  favoritedKeys?: Set<string>;
 };
 
-export default function ResultCard({ language, song, onSave, onPlay, onFavorite }: ResultCardProps) {
+export default function ResultCard({ language, song, onSave, onPlay, onFavorite, favoritedKeys }: ResultCardProps) {
   const { isAuthenticated, shareSong } = useUser();
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareHint, setShareHint] = useState<string | null>(null);
@@ -39,6 +41,8 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite 
   }
 
   const currentSong = song;
+
+  const isFavorited = favoritedKeys?.has(normalizeTrackKey(song.songName, song.artist)) ?? false;
 
   async function handleShare() {
     if (!currentSong) return;
@@ -109,7 +113,11 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite 
             {song.platformLinks.spotify && <a className="pillAction bg-[#1db954]/20" href={song.platformLinks.spotify} target="_blank" rel="noreferrer">{t("btn_spotify", language)}</a>}
             {song.platformLinks.appleMusic && <a className="pillAction bg-rose-500/20" href={song.platformLinks.appleMusic} target="_blank" rel="noreferrer">{t("btn_apple_music", language)}</a>}
             {song.platformLinks.youtubeMusic && <a className="pillAction bg-red-500/20" href={song.platformLinks.youtubeMusic} target="_blank" rel="noreferrer">{t("btn_youtube_music", language)}</a>}
-            {onFavorite && <Button variant="ghost" size="sm" onClick={() => onFavorite(song)}>Favorite</Button>}
+            {onFavorite && (
+              <Button variant="ghost" size="sm" onClick={() => onFavorite(song)} disabled={isFavorited}>
+                <Heart className={`h-4 w-4 ${isFavorited ? "fill-current" : ""}`} />
+              </Button>
+            )}
           </div>
 
           <button className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border bg-[var(--surface-raised)] px-4 py-2 text-sm" onClick={() => void toggleLyrics()}>

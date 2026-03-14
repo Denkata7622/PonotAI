@@ -24,6 +24,7 @@ import type { Track } from "../features/tracks/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { useTheme } from "../lib/ThemeContext";
 import { t } from "../lib/translations";
+import { normalizeTrackKey } from "../lib/dedupe";
 import { scopedKey, useProfile } from "../lib/ProfileContext";
 import { useUser } from "../src/context/UserContext";
 import { apiFetch } from "../src/lib/apiFetch";
@@ -154,6 +155,16 @@ export function HomeContent() {
     };
   }, [history.length, favoritesSet.size, playlists.length]);
 
+  const favoritedKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const track of tracks) {
+      if (favoritesSet.has(track.id)) {
+        keys.add(normalizeTrackKey(track.title, track.artistName));
+      }
+    }
+    return keys;
+  }, [favoritesSet, tracks]);
+
   useEffect(() => {
     // Source-of-truth rule: fetch from backend first, write to localStorage as cache.
     // Fall back to localStorage silently if backend is unreachable.
@@ -262,8 +273,23 @@ export function HomeContent() {
 
   function addToHistoryLocal(source: HistoryEntry["source"], songs: SongMatch[]) {
     const createdAt = new Date().toISOString();
-    const entries = songs.map((song) => ({ id: crypto.randomUUID(), source, createdAt, song }));
-    setHistory((prev) => [...entries, ...prev].slice(0, 18));
+    setHistory((prev) => {
+      let next = [...prev];
+      for (const song of songs) {
+        const key = normalizeTrackKey(song.songName, song.artist);
+        const hadDuplicate = next.some(
+          (entry) => normalizeTrackKey(entry.song.songName, entry.song.artist) === key,
+        );
+        const filtered = next.filter(
+          (entry) => normalizeTrackKey(entry.song.songName, entry.song.artist) !== key,
+        );
+        if (hadDuplicate) {
+          pushToast("info", t("toast_duplicate_history", language));
+        }
+        next = [{ id: crypto.randomUUID(), source, createdAt, song }, ...filtered];
+      }
+      return next.slice(0, 18);
+    });
   }
 
   async function runRecognitionCountdown() {
@@ -568,7 +594,7 @@ export function HomeContent() {
               </Card>
             )}
 
-            <ResultCard language={language} song={latestResult} onSave={saveSong} onPlay={playSong} onFavorite={favoriteSong} />
+            <ResultCard language={language} song={latestResult} onSave={saveSong} onPlay={playSong} onFavorite={favoriteSong} favoritedKeys={favoritedKeys} />
 
             <HomeHistorySection language={language} items={history} onDelete={(id) => setHistory((prev) => prev.filter((entry) => entry.id !== id))} onPlay={playSong} />
 
