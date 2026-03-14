@@ -101,7 +101,7 @@ export default function PlaylistSongCard({
 
         {/* Options Menu */}
         {isMenuOpen && (
-          <div className="absolute right-0 top-full mt-2 z-50 w-56 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] shadow-lg overflow-hidden">
+          <div className="absolute right-0 top-full mt-2 z-20 w-56 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-2)] shadow-2xl [backdrop-filter:none]">
             {/* Open in Spotify */}
             <a
               href={`https://open.spotify.com/search/${searchQuery}`}

@@ -88,7 +88,7 @@ export default function TrackCard({
         </button>
 
         {isMenuOpen && (
-          <div className="absolute right-0 top-9 z-20 w-60 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 shadow-2xl backdrop-blur">
+          <div className="absolute right-0 top-9 z-20 w-60 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 shadow-2xl [backdrop-filter:none]">
             <div className="space-y-2 text-xs">
               <label className="block text-[var(--muted)]">{t("track_add_to_playlist", language)}</label>
               <select

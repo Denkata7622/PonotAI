@@ -243,7 +243,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                   </button>
 
                   {showUserMenu && (
-                    <div className="absolute left-0 right-0 top-10 z-20 rounded-xl border border-gray-200 bg-white p-2 text-gray-900 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                    <div className="absolute left-0 right-0 top-10 z-20 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2 text-[var(--text)] shadow-2xl [backdrop-filter:none]">
                       <Link
                         href="/profile"
                         className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"
@@ -373,8 +373,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <main className="flex-1 px-4 pb-44 pt-6 sm:px-8 sm:pb-48 sm:pt-8">
-          <div className="relative isolate mb-4 w-full md:mx-auto md:max-w-[600px]">
+        <main className="flex-1 px-4 pb-36 pt-6 sm:px-8 sm:pb-36 sm:pt-8">
+          <div className="relative mb-4">
             <SearchInput
               value={searchQuery}
               onChange={(value) => {
@@ -399,7 +399,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
             />
 
             {showSearchDropdown && (searchQuery.trim() || isSearching) && (
-              <div className="absolute left-0 top-full z-[9999] mt-2 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-2 shadow-2xl">
+              <div className="absolute z-20 mt-2 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-2 shadow-2xl [backdrop-filter:none]">
                 {isSearching ? (
                   <div className="flex items-center justify-center py-3 text-[var(--muted)]">
                     <Search className="h-4 w-4 animate-spin" />
