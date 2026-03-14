@@ -158,8 +158,9 @@ export function HomeContent() {
   const favoritedKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const track of tracks) {
-      if (favoritesSet.has(track.id)) {
-        keys.add(normalizeTrackKey(track.title, track.artistName));
+      const trackKey = normalizeTrackKey(track.title, track.artistName);
+      if (favoritesSet.has(trackKey)) {
+        keys.add(trackKey);
       }
     }
     return keys;
@@ -628,6 +629,7 @@ export function HomeContent() {
               toggleFavorite={toggleFavorite}
               playlists={playlists}
               addToPlaylist={handleAddSongToPlaylist}
+              tracks={tracks}
             />
 
             <section className="space-y-3">
@@ -637,7 +639,7 @@ export function HomeContent() {
                   key={track.id}
                   track={track}
                   playlists={playlists}
-                  isFavorite={favoritesSet.has(track.id)}
+                  isFavorite={favoritesSet.has(normalizeTrackKey(track.title, track.artistName))}
                   onToggleFavorite={toggleFavorite}
                   onAddToPlaylist={handleAddSongToPlaylist}
                   onCreatePlaylist={createPlaylist}

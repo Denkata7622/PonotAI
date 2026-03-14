@@ -34,12 +34,15 @@ export function useLibrary(profileId: string) {
 
   const favoritesSet = useMemo(() => new Set(libraryState.favorites), [libraryState.favorites]);
 
-  function toggleFavorite(songId: string) {
+  function toggleFavorite(trackId: string, title?: string, artist?: string) {
+    const favoriteKey = title && artist ? normalizeTrackKey(title, artist) : trackId;
     setLibraryState((prev) => {
-      const exists = prev.favorites.includes(songId);
+      const exists = prev.favorites.includes(favoriteKey);
       return {
         ...prev,
-        favorites: exists ? prev.favorites.filter((id) => id !== songId) : [...prev.favorites, songId],
+        favorites: exists
+          ? prev.favorites.filter((id) => id !== favoriteKey)
+          : [...prev.favorites, favoriteKey],
       };
     });
   }

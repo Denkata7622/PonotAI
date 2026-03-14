@@ -260,7 +260,14 @@ query: "",
 }
 
 async function handleRemoveSongFromPlaylist(playlistId: string, title: string, artist: string) {
-await removeSongFromPlaylist(playlistId, title, artist);
+try {
+const removedPlaylist = await removeSongFromPlaylist(playlistId, title, artist);
+if (!removedPlaylist && isAuthenticated) {
+console.error("Failed to remove song from playlist via API", { playlistId, title, artist });
+}
+} catch (error) {
+console.error("Failed to remove song from playlist", { playlistId, title, artist, error });
+}
 setPlaylists((prev) =>
 prev.map((p) =>
 p.id === playlistId
