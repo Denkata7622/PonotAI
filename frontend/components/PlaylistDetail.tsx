@@ -46,8 +46,8 @@ export default function PlaylistDetail({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="card max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
         {/* Header */}
         <div className="mb-6 flex items-start justify-between">
           <div className="flex-1">

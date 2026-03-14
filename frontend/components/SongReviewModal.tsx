@@ -80,8 +80,8 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
   const selectedCount = editableSongs.filter((s) => s.selected).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-page p-4 backdrop-blur-sm">
-      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-border bg-[#0a0b10] p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-2xl font-semibold">{t("modal_review_title", language)}</h2>
           <button

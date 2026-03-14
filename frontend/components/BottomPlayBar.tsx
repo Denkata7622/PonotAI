@@ -61,9 +61,15 @@ export default function BottomPlayBar() {
         <button className="fixed inset-0 z-40 bg-black/40 md:hidden" aria-label={isBg ? "Затвори плейъра" : "Close player"} onClick={() => setIsExpanded(false)} />
       )}
 
-      {isQueueOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" onClick={() => setIsQueueOpen(false)}>
-          <div className="fixed bottom-24 left-0 right-0 mx-auto w-full max-w-[480px] rounded-t-2xl border border-border bg-[var(--surface)] p-4" onClick={(event) => event.stopPropagation()}>
+      <div
+        className={`fixed inset-0 z-40 transition-opacity duration-200 ${isQueueOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
+        onClick={() => setIsQueueOpen(false)}
+      >
+        <div className="absolute inset-0 bg-black/60" />
+        <div
+          className={`fixed bottom-[100px] left-0 right-0 w-full border border-[var(--border)] bg-[var(--surface-2)] p-4 shadow-2xl [backdrop-filter:none] transition-transform duration-[250ms] ease-out md:left-1/2 md:max-w-[480px] md:-translate-x-1/2 ${isQueueOpen ? "translate-y-0" : "translate-y-full"}`}
+          onClick={(event) => event.stopPropagation()}
+        >
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold">Queue</h3>
               <button onClick={() => setIsQueueOpen(false)} aria-label="Close queue"><X className="w-5 h-5 text-[var(--muted)]" /></button>
@@ -79,13 +85,12 @@ export default function BottomPlayBar() {
                 </div>
               ))}
             </div>
-          </div>
         </div>
-      )}
+      </div>
 
       {isShortcutsOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50" onClick={() => setIsShortcutsOpen(false)}>
-          <div className="mx-auto mt-24 w-[92%] max-w-md rounded-2xl border border-border bg-[var(--surface)] p-5" onClick={(event) => event.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-black/60" onClick={() => setIsShortcutsOpen(false)}>
+          <div className="mx-auto mt-24 w-[92%] max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5" onClick={(event) => event.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-base font-semibold">{t("shortcuts_title", language)}</h3>
               <button onClick={() => setIsShortcutsOpen(false)} aria-label="Close shortcuts"><X className="w-5 h-5 text-[var(--muted)]" /></button>
