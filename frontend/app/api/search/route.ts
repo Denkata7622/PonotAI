@@ -12,7 +12,7 @@ type YouTubeSearchItem = {
 export async function GET(request: Request) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ error: "Search unavailable" }, { status: 503 });
+    return NextResponse.json({ error: "Search unavailable", reason: "no_key" }, { status: 503 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -31,12 +31,17 @@ export async function GET(request: Request) {
   target.searchParams.set("key", apiKey);
 
   try {
-    const response = await fetch(target.toString(), { cache: "no-store" });
-    if (!response.ok) {
-      return NextResponse.json([]);
+    const res = await fetch(target.toString(), { cache: "no-store" });
+    if (!res.ok) {
+      const ytError = await res.json().catch(() => ({}));
+      console.error("[search] YouTube API error:", ytError);
+      return NextResponse.json(
+        { error: "Search unavailable", reason: "youtube_error", details: ytError },
+        { status: 503 },
+      );
     }
 
-    const payload = (await response.json()) as { items?: YouTubeSearchItem[] };
+    const payload = (await res.json()) as { items?: YouTubeSearchItem[] };
     const results = (payload.items ?? [])
       .map((item) => {
         const videoId = item.id?.videoId;
@@ -55,7 +60,8 @@ export async function GET(request: Request) {
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
     return NextResponse.json(results);
-  } catch {
-    return NextResponse.json([]);
+  } catch (error) {
+    console.error("[search] Request failed:", error);
+    return NextResponse.json({ error: "Search unavailable", reason: "youtube_error" }, { status: 503 });
   }
 }

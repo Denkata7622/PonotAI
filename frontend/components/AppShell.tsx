@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BarChart2, Headphones, HelpCircle, Info, Library, LogOut, Play, Search, Settings, User } from "lucide-react";
+import { BarChart2, Headphones, HelpCircle, Info, Library, LogOut, Play, Search, Settings, User, WifiOff } from "lucide-react";
 import BottomPlayBar from "./BottomPlayBar";
 import { PlayerProvider } from "./PlayerProvider";
 import type { Playlist } from "../features/library/types";
@@ -65,6 +65,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [isSearchUnavailable, setIsSearchUnavailable] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const blurTimeoutRef = useRef<number | null>(null);
 
@@ -107,6 +108,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
     if (!query) {
       setSearchResults([]);
       setIsSearching(false);
+      setIsSearchUnavailable(false);
       setHighlightedIndex(-1);
       return;
     }
@@ -115,10 +117,27 @@ function AppShellContent({ children }: { children: ReactNode }) {
       setIsSearching(true);
       try {
         const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-        const payload = response.ok ? ((await response.json()) as SearchResult[]) : [];
-        setSearchResults(Array.isArray(payload) ? payload.slice(0, 8) : []);
-        setHighlightedIndex(-1);
+        if (response.status === 503) {
+          setIsSearchUnavailable(true);
+          setSearchResults([]);
+          setHighlightedIndex(-1);
+          return;
+        }
+
+        if (!response.ok) {
+          setIsSearchUnavailable(false);
+          setSearchResults([]);
+          setHighlightedIndex(-1);
+          return;
+        }
+
+        setIsSearchUnavailable(false);
+        const payload = (await response.json()) as SearchResult[];
+        const nextResults = Array.isArray(payload) ? payload.slice(0, 8) : [];
+        setSearchResults(nextResults);
+        setHighlightedIndex(nextResults.length > 0 ? 0 : -1);
       } catch {
+        setIsSearchUnavailable(true);
         setSearchResults([]);
       } finally {
         setIsSearching(false);
@@ -355,7 +374,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
         </aside>
 
         <main className="flex-1 px-4 pb-44 pt-6 sm:px-8 sm:pb-48 sm:pt-8">
-          <div className="relative mb-4">
+          <div className="relative isolate mb-4 w-full md:mx-auto md:max-w-[600px]">
             <SearchInput
               value={searchQuery}
               onChange={(value) => {
@@ -365,6 +384,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
               onClear={() => {
                 setSearchQuery("");
                 setSearchResults([]);
+                setIsSearchUnavailable(false);
                 setShowSearchDropdown(false);
               }}
               placeholder={t("search_placeholder", language)}
@@ -379,11 +399,16 @@ function AppShellContent({ children }: { children: ReactNode }) {
             />
 
             {showSearchDropdown && (searchQuery.trim() || isSearching) && (
-              <div className="absolute z-30 mt-2 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-xl">
+              <div className="absolute left-0 top-full z-[9999] mt-2 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-2 shadow-2xl">
                 {isSearching ? (
                   <div className="flex items-center justify-center py-3 text-[var(--muted)]">
                     <Search className="h-4 w-4 animate-spin" />
                   </div>
+                ) : isSearchUnavailable ? (
+                  <p className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--muted)]">
+                    <WifiOff className="w-4 h-4 text-[var(--muted)]" />
+                    {t("search_unavailable", language)}
+                  </p>
                 ) : searchResults.length === 0 ? (
                   <p className="px-3 py-2 text-sm text-[var(--muted)]">{t("search_no_results", language)}</p>
                 ) : (
