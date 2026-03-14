@@ -9,7 +9,7 @@ type TrackCardProps = {
   playlists: Playlist[];
   isFavorite: boolean;
   onToggleFavorite: (trackId: string, title?: string, artist?: string) => void;
-  onAddToPlaylist: (trackId: string, playlistId: string) => void;
+  onAddToPlaylist: (trackId: string, playlistId: string, videoId?: string) => void;
   onCreatePlaylist: (playlistName: string) => void;
   onDeletePlaylist: (playlistId: string) => void;
   onRemoveFromPlaylist?: (trackId: string, playlistId: string) => void;
@@ -110,7 +110,7 @@ export default function TrackCard({
                 disabled={!selectedPlaylistId}
                 onClick={() => {
                   if (!selectedPlaylistId) return;
-                  onAddToPlaylist(track.id, selectedPlaylistId);
+                  onAddToPlaylist(track.id, selectedPlaylistId, track.youtubeVideoId);
                   setIsMenuOpen(false);
                 }}
               >

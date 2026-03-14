@@ -7,13 +7,14 @@ import { t } from "../../lib/translations";
 import { usePlayer } from "../../components/PlayerProvider";
 import { useUser } from "../../src/context/UserContext";
 import PlaylistDetail from "../../components/PlaylistDetail";
+import PlaylistCard from "../../components/PlaylistCard";
 import type { Playlist } from "../../features/library/types";
+import { useLibrary } from "../../features/library/useLibrary";
 import {
 getPlaylists,
 createPlaylist,
 deletePlaylist,
 updatePlaylistName,
-addSongToPlaylist,
 removeSongFromPlaylist,
 } from "../../features/library/api";
 import { Button } from "../../src/components/ui/Button";
@@ -47,9 +48,9 @@ const { profile } = useProfile();
 const getScoped = (key: string) => (profile?.id ? scopedKey(key, profile.id) : key);
 
 const historyKey = getScoped("ponotai-history");
-const downloadsKey = getScoped("ponotai.library.downloads");
 const favoritesKey = getScoped("ponotai.library.favorites");
-const playlistsKey = getScoped("ponotai.library.playlists");
+
+const { playlists: guestPlaylists, createPlaylist: createGuestPlaylist, deletePlaylist: deleteGuestPlaylist } = useLibrary(profile.id);
 
 const normalizeSong = (item: any): Song => ({
   id:
@@ -87,10 +88,6 @@ const raw = parseStorage<any[]>(favoritesKey, []);
 return (raw || []).map(normalizeSong);
 });
 
-const [downloads] = useState<Song[]>(() => {
-const raw = parseStorage<any[]>(downloadsKey, []);
-return (raw || []).map(normalizeSong);
-});
 
 const [playlists, setPlaylists] = useState<Playlist[]>([]);
 const [loading, setLoading] = useState(true);
@@ -105,8 +102,6 @@ const [selectedTab, setSelectedTab] = useState<"favorites" | "playlists" | "hist
 const [searchQuery, setSearchQuery] = useState("");
 const [newPlaylistName, setNewPlaylistName] = useState("");
 const [showNewPlaylistInput, setShowNewPlaylistInput] = useState(false);
-const [expandedPlaylistId, setExpandedPlaylistId] = useState<string | null>(null);
-const [songMenuOpen, setSongMenuOpen] = useState<{ playlistId: string; songIndex: number } | null>(null);
 const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
 const [showPlaylistDetail, setShowPlaylistDetail] = useState(false);
 
@@ -130,7 +125,7 @@ const dedupedHistory = useMemo(
 [history],
 );
 
-// load playlists from backend or localStorage
+// load playlists from backend for authenticated users, otherwise from guest library state
 useEffect(() => {
 async function loadPlaylists() {
 if (isAuthenticated) {
@@ -144,14 +139,16 @@ setLoadError(language === "bg" ? "Грешка при зареждане на п
 setPlaylists([]);
 }
 setLoading(false);
-} else {
-const stored = parseStorage<Playlist[]>(playlistsKey, []);
-setPlaylists(stored);
+return;
+}
+
+setLoadError(null);
+setPlaylists(guestPlaylists);
 setLoading(false);
 }
-}
-loadPlaylists();
-}, [isAuthenticated, playlistsKey]);
+
+void loadPlaylists();
+}, [isAuthenticated, guestPlaylists, language]);
 
 // merge local and cloud favorites, dedupe by title+artist
 const mergedFavorites = useMemo(() => {
@@ -222,27 +219,41 @@ addToQueue({
   artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
   artworkUrl: song.coverUrl || "https://picsum.photos/seed/library/80",
   license: "COPYRIGHTED",
-  query: "",
+  query: `${song.title} ${song.artist} official audio`,
 });
 
 }
 
 async function handleCreatePlaylist() {
 if (!newPlaylistName.trim()) return;
-const created = await createPlaylist(newPlaylistName);
-if (created) {
-setPlaylists((prev) => [...prev, created]);
+
+if (isAuthenticated) {
+  const created = await createPlaylist(newPlaylistName);
+  if (created) {
+    setPlaylists((prev) => [...prev, created]);
+  }
+} else {
+  const created = await createGuestPlaylist(newPlaylistName);
+  if (created) {
+    setPlaylists((prev) => [...prev, created]);
+  }
+}
+
 setNewPlaylistName("");
 setShowNewPlaylistInput(false);
 }
-}
 
 async function handleDeletePlaylist(playlistId: string) {
-const success = await deletePlaylist(playlistId);
-if (success) {
-setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
-setExpandedPlaylistId(null);
+if (isAuthenticated) {
+  const success = await deletePlaylist(playlistId);
+  if (success) {
+    setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
+  }
+  return;
 }
+
+await deleteGuestPlaylist(playlistId);
+setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
 }
 
 function handlePlayPlaylistSong(song: any) {
@@ -252,10 +263,10 @@ id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
 title: song.title,
 artist: song.artist,
 artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-artworkUrl: song.coverUrl || "[https://picsum.photos/seed/playlist/80](https://picsum.photos/seed/playlist/80)",
+artworkUrl: song.coverUrl || "https://picsum.photos/seed/playlist/80",
 videoId: song.videoId,
 license: "COPYRIGHTED",
-query: "",
+query: `${song.title} ${song.artist} official audio`,
 });
 }
 
@@ -295,11 +306,18 @@ setShowPlaylistDetail(true);
 }
 
 async function handlePlaylistDetailDelete(playlistId: string) {
+if (isAuthenticated) {
 const success = await deletePlaylist(playlistId);
 if (success) {
 setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
 handlePlaylistDetailClose();
 }
+return;
+}
+
+await deleteGuestPlaylist(playlistId);
+setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
+handlePlaylistDetailClose();
 }
 
 async function handlePlaylistRename(playlistId: string, newName: string) {
@@ -453,19 +471,30 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
 
     {selectedTab === "playlists" && (
       <div className="space-y-4">
-        {isAuthenticated && (
-          <div className="card p-4">
-            {!showNewPlaylistInput ? (
-              <Button onClick={() => setShowNewPlaylistInput(true)} className="w-full flex items-center justify-center gap-2"><Plus className="w-4 h-4 text-[var(--text)]" />Create New Playlist</Button>
-            ) : (
-              <div className="flex gap-2">
-                <input type="text" placeholder="Playlist name..." value={newPlaylistName} onChange={(e) => setNewPlaylistName(e.target.value)} onKeyPress={(e) => { if (e.key === "Enter") handleCreatePlaylist(); }} className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-4 py-2 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" autoFocus />
-                <Button onClick={handleCreatePlaylist} className="flex-shrink-0">Create</Button>
-                <Button variant="secondary" onClick={() => { setShowNewPlaylistInput(false); setNewPlaylistName(""); }} className="flex-shrink-0">Cancel</Button>
-              </div>
-            )}
-          </div>
-        )}
+        <div className="card p-4">
+          {!showNewPlaylistInput ? (
+            <Button onClick={() => setShowNewPlaylistInput(true)} className="w-full flex items-center justify-center gap-2">
+              <Plus className="w-4 h-4 text-[var(--text)]" />
+              + {t("track_add_to_playlist", language)}
+            </Button>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder={t("track_new_playlist_placeholder", language)}
+                value={newPlaylistName}
+                onChange={(e) => setNewPlaylistName(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === "Enter") handleCreatePlaylist();
+                }}
+                className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-4 py-2 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                autoFocus
+              />
+              <Button onClick={handleCreatePlaylist} className="flex-shrink-0">{t("track_create", language)}</Button>
+              <Button variant="secondary" onClick={() => { setShowNewPlaylistInput(false); setNewPlaylistName(""); }} className="flex-shrink-0">{t("modal_cancel", language)}</Button>
+            </div>
+          )}
+        </div>
 
         {loading ? (
           <div className="card p-12 text-center"><div className="mx-auto h-16 w-full max-w-md animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div>
@@ -474,16 +503,12 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {filteredPlaylists.map((playlist) => (
-              <div key={playlist.id} onClick={() => handlePlaylistCardClick(playlist)} className="card p-5 hover:border-[var(--accent)]/50 transition cursor-pointer hover:bg-[var(--surface-2)]">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-[var(--text)]">{playlist.name}</h3>
-                    <p className="text-sm text-[var(--muted)] mt-1">{playlist.songs.length} {playlist.songs.length === 1 ? "song" : "songs"}</p>
-                    {playlist.songs.length > 0 && <div className="mt-3 space-y-1">{playlist.songs.slice(0, 2).map((song, idx) => (<p key={idx} className="text-xs text-[var(--muted)]">{song.title} • {song.artist}</p>))}{playlist.songs.length > 2 && <p className="text-xs text-[var(--muted)]">+{playlist.songs.length - 2} more</p>}</div>}
-                  </div>
-                  <button onClick={(e) => { e.stopPropagation(); handleDeletePlaylist(playlist.id); }} className="rounded-lg border border-red-400/40 px-2 py-1.5 text-red-300 hover:bg-red-500/10 text-xs">Delete</button>
-                </div>
-              </div>
+              <PlaylistCard
+                key={playlist.id}
+                playlist={playlist}
+                onClick={handlePlaylistCardClick}
+                onDelete={handleDeletePlaylist}
+              />
             ))}
           </div>
         )}
