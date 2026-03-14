@@ -72,6 +72,19 @@ type AppDb = {
 
 const DB_PATH = path.join(process.cwd(), "backend", "data", "appdb.json");
 
+function normalizeTrackKey(title: string, artist: string): string {
+  const normalizePart = (value: string) =>
+    value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  return `${normalizePart(title)}|||${normalizePart(artist)}`;
+}
+
+
 async function ensureDb() {
   await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
   try {
@@ -127,6 +140,13 @@ export async function findUserById(id: string) { return (await readDb()).users.f
 
 export async function createUserHistory(item: Omit<SearchHistoryRecord, "id" | "createdAt">): Promise<SearchHistoryRecord> {
   const db = await readDb();
+  const targetKey = normalizeTrackKey(item.title ?? "", item.artist ?? "");
+  db.searchHistory = (db.searchHistory ?? []).filter(
+    (entry) =>
+      entry.userId !== item.userId ||
+      normalizeTrackKey(entry.title ?? "", entry.artist ?? "") !== targetKey,
+  );
+
   const rec: SearchHistoryRecord = { id: randomUUID(), createdAt: new Date().toISOString(), ...item };
   db.searchHistory.unshift(rec);
   await writeDb(db);
@@ -160,7 +180,12 @@ export async function listFavorites(userId: string): Promise<FavoriteRecord[]> {
 }
 
 export async function findDuplicateFavorite(userId: string, title: string, artist: string) {
-  return (await readDb()).favorites.find((f) => f.userId===userId && f.title===title && f.artist===artist) || null;
+  const targetKey = normalizeTrackKey(title, artist);
+  return (
+    (await readDb()).favorites.find(
+      (f) => f.userId === userId && normalizeTrackKey(f.title, f.artist) === targetKey,
+    ) || null
+  );
 }
 
 export async function createFavorite(item: Omit<FavoriteRecord, "id" | "savedAt">): Promise<FavoriteRecord> {

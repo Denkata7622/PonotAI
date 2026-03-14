@@ -144,16 +144,14 @@ export default function BottomPlayBar() {
                   </div>
 
                   {isExpanded && (
-                    <button
-                      type="button"
-                      onClick={() => setIsExpanded(false)}
+                    <span
                       aria-label="Collapse player"
-                      className="mt-2 rounded-full bg-purple-600 p-2 text-white shadow-md hover:bg-purple-700"
+                      className="mt-2 inline-flex rounded-full bg-purple-600 p-2 text-white shadow-md"
                     >
                       <span className="text-lg leading-none">↓</span>
-                    </button>
+                    </span>
                   )}
-                </div>
+                </button>
               </div>
 
               <div className="flex items-center gap-2">

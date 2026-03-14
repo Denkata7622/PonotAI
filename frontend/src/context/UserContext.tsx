@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { apiFetch } from "../lib/apiFetch";
+import { normalizeTrackKey } from "../../lib/dedupe";
+import { t } from "../../lib/translations";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -299,12 +301,27 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   // ─── Data Actions (hybrid) ────────────────────────────────────────────────────
 
+  function notify(messageKey: "toast_already_favorited" | "toast_duplicate_history") {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { key: messageKey, text: t(messageKey, "bg") } }));
+  }
+
   async function addToHistory(item: Omit<HistoryItem, "id"> & { id?: string }) {
+    const incomingKey = normalizeTrackKey(item.title ?? "", item.artist ?? "");
+
     if (isAuthenticated) {
+      const duplicate = serverHistory.find(
+        (entry) => normalizeTrackKey(entry.title ?? "", entry.artist ?? "") === incomingKey,
+      );
+      if (duplicate) {
+        await apiFetch(`/api/history/${duplicate.id}`, { method: "DELETE" });
+        notify("toast_duplicate_history");
+      }
+
       const res = await apiFetch("/api/history", { method: "POST", body: JSON.stringify(item) });
       if (res.ok) {
         const created = (await res.json()) as HistoryItem;
-        setServerHistory([created, ...serverHistory]);
+        setServerHistory([created, ...serverHistory.filter((entry) => entry.id !== duplicate?.id)]);
       }
       return;
     }
@@ -333,6 +350,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }
 
   async function addFavorite(song: Omit<FavoriteItem, "id"> & { id?: string }) {
+    const incomingKey = normalizeTrackKey(song.title, song.artist);
+    const existingFavorite = (isAuthenticated ? serverFavorites : guest.favorites).find(
+      (item) => normalizeTrackKey(item.title, item.artist) === incomingKey,
+    );
+    if (existingFavorite) {
+      notify("toast_already_favorited");
+      return;
+    }
+
     if (isAuthenticated) {
       const res = await apiFetch("/api/favorites", { method: "POST", body: JSON.stringify(song) });
       const data = await res.json();

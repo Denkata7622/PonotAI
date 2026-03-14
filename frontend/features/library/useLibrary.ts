@@ -3,6 +3,7 @@ import { syncLibraryState } from "./api";
 import { loadLibraryState, persistLibraryState } from "./storage";
 import type { LibraryState, Playlist, PlaylistSong } from "./types";
 import * as playlistApi from "./api";
+import { normalizeTrackKey } from "../../lib/dedupe";
 
 function createPlaylistId() {
   return `pl-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
@@ -102,8 +103,9 @@ export function useLibrary(profileId: string) {
       playlists: prev.playlists.map((playlist) => {
         if (playlist.id !== playlistId) return playlist;
 
+        const targetKey = normalizeTrackKey(song.title, song.artist);
         const songExists = playlist.songs.some(
-          (s) => s.title === song.title && s.artist === song.artist
+          (s) => normalizeTrackKey(s.title, s.artist) === targetKey
         );
 
         if (songExists) return playlist;

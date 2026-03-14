@@ -140,6 +140,15 @@ export const translations = {
     sidebar_total_recognized: "Total recognized",
     sidebar_today_count: "Today",
 
+    search_discover: "Discover",
+    search_history: "History",
+    search_placeholder: "Search songs on YouTube",
+    search_unavailable: "Search is currently unavailable.",
+    search_no_results: "No results found.",
+    btn_add_to_queue: "Add to queue",
+    toast_already_favorited: "This song is already in favorites.",
+    toast_duplicate_history: "Updated existing history entry.",
+
   },
   bg: {
     nav_app: "Приложение",
@@ -281,6 +290,15 @@ export const translations = {
     sidebar_recent_history: "Скорошна история",
     sidebar_total_recognized: "Общо разпознати",
     sidebar_today_count: "Днес",
+
+    search_discover: "Открий",
+    search_history: "История",
+    search_placeholder: "Търси песни в YouTube",
+    search_unavailable: "Търсенето в момента не е налично.",
+    search_no_results: "Няма резултати.",
+    btn_add_to_queue: "Добави в опашката",
+    toast_already_favorited: "Тази песен вече е в любими.",
+    toast_duplicate_history: "Съществуващият запис в историята е обновен.",
 
   }
 };
