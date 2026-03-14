@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Heart, MicOff, Play, Save, ScrollText, Share2 } from "lucide-react";
+import { Check, Heart, MicOff, Play, Save, ScrollText, Share2 } from "../lucide-react";
 import type { SongMatch } from "../features/recognition/api";
 import { t, type Language } from "../lib/translations";
 import { normalizeTrackKey } from "../lib/dedupe";
@@ -25,10 +25,12 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite,
   const [shareHint, setShareHint] = useState<string | null>(null);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [lyrics, setLyrics] = useState<string | null>(null);
+  const [favoriteConfirmed, setFavoriteConfirmed] = useState(false);
 
   useEffect(() => {
     setLyricsOpen(false);
     setLyrics(null);
+    setFavoriteConfirmed(false);
   }, [song?.songName, song?.artist]);
 
   if (!song) {
@@ -114,8 +116,21 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite,
             {song.platformLinks.appleMusic && <a className="pillAction bg-rose-500/20" href={song.platformLinks.appleMusic} target="_blank" rel="noreferrer">{t("btn_apple_music", language)}</a>}
             {song.platformLinks.youtubeMusic && <a className="pillAction bg-red-500/20" href={song.platformLinks.youtubeMusic} target="_blank" rel="noreferrer">{t("btn_youtube_music", language)}</a>}
             {onFavorite && (
-              <Button variant="ghost" size="sm" onClick={() => onFavorite(song)} disabled={isFavorited}>
-                <Heart className={`h-4 w-4 ${isFavorited ? "fill-current" : ""}`} />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onFavorite(song);
+                  setFavoriteConfirmed(true);
+                  window.setTimeout(() => setFavoriteConfirmed(false), 500);
+                }}
+                disabled={favoriteConfirmed}
+              >
+                {favoriteConfirmed ? (
+                  <Check className="w-4 h-4 text-[var(--text)]" />
+                ) : (
+                  <Heart className={`w-4 h-4 ${isFavorited ? "fill-current text-rose-500" : "text-[var(--text)]"}`} />
+                )}
               </Button>
             )}
           </div>

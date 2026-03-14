@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BarChart2, Headphones, HelpCircle, Info, Library, LogOut, Play, Search, Settings, User, WifiOff } from "lucide-react";
+import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Headphones, HelpCircle, Info, Library, LogOut, Play, Search, Settings, User, WifiOff } from "../lucide-react";
 import BottomPlayBar from "./BottomPlayBar";
 import { PlayerProvider } from "./PlayerProvider";
 import type { Playlist } from "../features/library/types";
@@ -219,7 +219,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
               onClick={() => setIsCollapsed((prev) => !prev)}
               aria-label={language === "bg" ? "Свий страничното меню" : "Collapse sidebar"}
             >
-              {isCollapsed ? "»" : "«"}
+              {isCollapsed ? <ChevronRight className="w-4 h-4 text-[var(--muted)]" /> : <ChevronLeft className="w-4 h-4 text-[var(--muted)]" />}
             </button>
           </div>
 
@@ -239,7 +239,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                       <p className="truncate font-semibold text-[var(--text)]">{user.username}</p>
                       <p className="truncate text-[var(--muted)]">{user.email}</p>
                     </div>
-                    <span className="text-[var(--muted)]">▾</span>
+                    <ChevronDown className="w-4 h-4 text-[var(--muted)]" />
                   </button>
 
                   {showUserMenu && (
@@ -374,7 +374,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
         </aside>
 
         <main className="flex-1 px-4 pb-36 pt-6 sm:px-8 sm:pb-36 sm:pt-8">
-          <div className="relative mb-4">
+          <div className="relative mb-4 hidden md:block">
             <SearchInput
               value={searchQuery}
               onChange={(value) => {

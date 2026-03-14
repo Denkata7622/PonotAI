@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { Download, FileSpreadsheet, Moon, Sun, Trash2, Upload } from "../../lucide-react";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
@@ -232,7 +233,7 @@ export default function SettingsPage() {
             variant="secondary"
             onClick={toggleTheme}
           >
-            {theme === "dark" ? "☀️ Light Mode" : "🌙 Dark Mode"}
+            {theme === "dark" ? (<span className="inline-flex items-center gap-2"><Sun className="w-4 h-4 text-[var(--muted)]" />Light Mode</span>) : (<span className="inline-flex items-center gap-2"><Moon className="w-4 h-4 text-[var(--muted)]" />Dark Mode</span>)}
           </Button>
         </div>
       </Card>
@@ -256,10 +257,10 @@ export default function SettingsPage() {
             <label className="text-sm font-medium text-text-primary mb-2 block">Export Library</label>
             <div className="flex gap-2">
               <Button variant="secondary" onClick={handleExportJSON} className="flex-1">
-                📥 Export as JSON
+                <span className="inline-flex items-center gap-2"><Download className="w-4 h-4 text-[var(--muted)]" />Export as JSON</span>
               </Button>
               <Button variant="secondary" onClick={handleExportCSV} className="flex-1">
-                📄 Export as CSV
+                <span className="inline-flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 text-[var(--muted)]" />Export as CSV</span>
               </Button>
             </div>
           </div>
@@ -282,7 +283,7 @@ export default function SettingsPage() {
                 onClick={() => fileInputRef.current?.click()}
                 className="flex-1"
               >
-                📤 Import from JSON
+                <span className="inline-flex items-center gap-2"><Upload className="w-4 h-4 text-[var(--muted)]" />Import from JSON</span>
               </Button>
             </div>
             <p className="text-xs text-text-muted mt-2">
@@ -294,7 +295,7 @@ export default function SettingsPage() {
 
       <Card className="p-6 space-y-4" style={{ borderColor: "var(--color-danger, #ef4444)" }}>
         <h2 className="text-xl font-semibold text-text-primary">Danger Zone</h2>
-        <Button variant="danger" onClick={() => setShowDangerModal(true)}>Delete Account</Button>
+        <Button variant="danger" onClick={() => setShowDangerModal(true)}><span className="inline-flex items-center gap-2"><Trash2 className="w-4 h-4 text-white" />Delete Account</span></Button>
       </Card>
 
       {showDangerModal && (

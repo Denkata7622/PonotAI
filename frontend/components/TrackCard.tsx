@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { EllipsisVertical, Heart, Play } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import type { Track } from "../features/tracks/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
+import { normalizeTrackKey } from "../lib/dedupe";
 
 type TrackCardProps = {
   track: Track;
@@ -46,6 +48,7 @@ export default function TrackCard({
 
   const searchQuery = encodeURIComponent(`${track.title} ${track.artistName}`);
   const showRemoveFromPlaylist = Boolean(activePlaylistId && onRemoveFromPlaylist);
+  const normalizedTrackKey = normalizeTrackKey(track.title, track.artistName);
 
   return (
     <article tabIndex={0} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && onPlay) { event.preventDefault(); onPlay(track); } }} className="group relative flex items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-[color:var(--accent)]/50 hover:shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
@@ -57,7 +60,9 @@ export default function TrackCard({
           className="absolute inset-0 grid place-items-center rounded-xl bg-surface-overlay text-text-primary opacity-0 transition group-hover:opacity-100"
           aria-label={t("btn_play", language)}
         >
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--accent)] text-sm">▶</span>
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--accent)]">
+            <Play className="w-4 h-4 text-white fill-current" />
+          </span>
         </button>
       </div>
 
@@ -69,22 +74,22 @@ export default function TrackCard({
       <div className="relative flex items-center gap-2 self-start" ref={menuRef}>
         <button
           type="button"
-          onClick={() => onToggleFavorite(track.id, track.title, track.artistName)}
+          onClick={() => onToggleFavorite(normalizedTrackKey, track.title, track.artistName)}
           className="rounded-full p-1.5 text-base transition hover:bg-[var(--hover-bg)]"
           aria-label={isFavorite ? t("track_remove_from_favorites", language) : t("track_add_to_favorites", language)}
           title={isFavorite ? t("track_remove_from_favorites", language) : t("track_add_to_favorites", language)}
         >
-          <span className={isFavorite ? "text-rose-500" : "text-[var(--muted)]"}>{isFavorite ? "♥" : "♡"}</span>
+          <Heart className={`w-4 h-4 ${isFavorite ? "fill-current text-rose-500" : "text-[var(--muted)]"}`} />
         </button>
 
         <button
           type="button"
           onClick={() => setIsMenuOpen((prev) => !prev)}
-          className="rounded-full p-1.5 text-xl leading-none text-[var(--muted)] opacity-70 transition hover:bg-[var(--hover-bg)] hover:text-[var(--text)] group-hover:opacity-100"
+          className="rounded-full p-1.5 text-[var(--muted)] opacity-70 transition hover:bg-[var(--hover-bg)] hover:text-[var(--text)] group-hover:opacity-100"
           aria-label={t("track_more_options", language)}
           title={t("track_more_options", language)}
         >
-          ⋮
+          <EllipsisVertical className="w-4 h-4 text-[var(--muted)]" />
         </button>
 
         {isMenuOpen && (
