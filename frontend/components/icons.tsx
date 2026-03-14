@@ -13,6 +13,7 @@ function BaseIcon({ children, ...props }: IconProps & { children: ReactNode }) {
 export const Camera = (props: IconProps) => <BaseIcon {...props}><path d="M4 7h3l2-2h6l2 2h3v12H4z" /><circle cx="12" cy="13" r="4" /></BaseIcon>;
 export const Mic = (props: IconProps) => <BaseIcon {...props}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 10a7 7 0 0 0 14 0" /><path d="M12 17v4" /><path d="M8 21h8" /></BaseIcon>;
 export const MicOff = (props: IconProps) => <BaseIcon {...props}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 10a7 7 0 0 0 12 4" /><path d="M12 17v4" /><path d="M8 21h8" /><path d="M3 3l18 18" /></BaseIcon>;
+export const WifiOff = (props: IconProps) => <BaseIcon {...props}><path d="M12 20h.01" /><path d="M8.5 16.5a5 5 0 0 1 7 0" /><path d="M2 8.8a16 16 0 0 1 13.8-2.8" /><path d="M19 12.3a9.6 9.6 0 0 1 3 2.2" /><path d="m2 2 20 20" /></BaseIcon>;
 export const Radio = (props: IconProps) => <BaseIcon {...props}><circle cx="12" cy="12" r="2" /><path d="M16.2 7.8a6 6 0 0 1 0 8.4" /><path d="M7.8 16.2a6 6 0 0 1 0-8.4" /><path d="M19 5a10 10 0 0 1 0 14" /><path d="M5 19A10 10 0 0 1 5 5" /></BaseIcon>;
 export const ScrollText = (props: IconProps) => <BaseIcon {...props}><path d="M8 6h8" /><path d="M8 10h8" /><path d="M8 14h5" /><path d="M6 2h9l3 3v17H6z" /></BaseIcon>;
 export const Clock = (props: IconProps) => <BaseIcon {...props}><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></BaseIcon>;

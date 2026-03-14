@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Play, Plus, Search } from "lucide-react";
+import { Play, Plus, Search, WifiOff } from "lucide-react";
 import SearchInput from "../../components/SearchInput";
 import { usePlayer } from "../../components/PlayerProvider";
 import { scopedKey, useProfile } from "../../lib/ProfileContext";
@@ -62,6 +62,7 @@ export default function SearchPage() {
         const payload = response.ok ? ((await response.json()) as SearchResult[]) : [];
         setDiscoverResults(Array.isArray(payload) ? payload : []);
       } catch {
+        setIsUnavailable(true);
         setDiscoverResults([]);
       } finally {
         setIsLoading(false);
@@ -121,7 +122,12 @@ export default function SearchPage() {
             placeholder={t("search_placeholder", language)}
           />
 
-          {isUnavailable && <p className="cardText">{t("search_unavailable", language)}</p>}
+          {isUnavailable && (
+            <p className="cardText inline-flex items-center gap-2">
+              <WifiOff className="w-4 h-4 text-[var(--muted)]" />
+              {t("search_unavailable", language)}
+            </p>
+          )}
           {!isUnavailable && isLoading && <Search className="h-5 w-5 animate-spin text-[var(--muted)]" />}
           {!isUnavailable && !isLoading && query.trim().length > 0 && discoverResults.length === 0 && (
             <p className="cardText">{t("search_no_results", language)}</p>
