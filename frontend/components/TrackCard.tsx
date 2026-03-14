@@ -8,7 +8,7 @@ type TrackCardProps = {
   track: Track;
   playlists: Playlist[];
   isFavorite: boolean;
-  onToggleFavorite: (trackId: string) => void;
+  onToggleFavorite: (trackId: string, title?: string, artist?: string) => void;
   onAddToPlaylist: (trackId: string, playlistId: string) => void;
   onCreatePlaylist: (playlistName: string) => void;
   onDeletePlaylist: (playlistId: string) => void;
@@ -69,7 +69,7 @@ export default function TrackCard({
       <div className="relative flex items-center gap-2 self-start" ref={menuRef}>
         <button
           type="button"
-          onClick={() => onToggleFavorite(track.id)}
+          onClick={() => onToggleFavorite(track.id, track.title, track.artistName)}
           className="rounded-full p-1.5 text-base transition hover:bg-[var(--hover-bg)]"
           aria-label={isFavorite ? t("track_remove_from_favorites", language) : t("track_add_to_favorites", language)}
           title={isFavorite ? t("track_remove_from_favorites", language) : t("track_add_to_favorites", language)}

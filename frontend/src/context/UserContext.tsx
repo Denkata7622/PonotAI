@@ -94,6 +94,18 @@ function loadGuestState(): GuestState {
 function saveGuestState(state: GuestState) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(GUEST_STATE_KEY, JSON.stringify(state));
+
+  const persisted = window.localStorage.getItem(GUEST_STATE_KEY);
+  if (!persisted) {
+    console.error("Failed to persist guest state: missing localStorage value after write");
+    return;
+  }
+
+  try {
+    JSON.parse(persisted) as GuestState;
+  } catch (error) {
+    console.error("Failed to persist guest state: invalid localStorage payload", error);
+  }
 }
 
 type GuestAction =
@@ -374,8 +386,21 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   async function removeFavorite(id: string) {
     if (isAuthenticated) {
-      await apiFetch(`/api/favorites/${id}`, { method: "DELETE" });
-      setServerFavorites(serverFavorites.filter((f) => f.id !== id));
+      const resolvedId = serverFavorites.find((favorite) => favorite.id === id)?.id
+        ?? serverFavorites.find((favorite) => normalizeTrackKey(favorite.title, favorite.artist) === id)?.id;
+
+      if (!resolvedId) {
+        console.error("Failed to remove favorite: could not resolve backend favorite id", { id });
+        return;
+      }
+
+      const res = await apiFetch(`/api/favorites/${resolvedId}`, { method: "DELETE" });
+      if (!res.ok) {
+        console.error("Failed to remove favorite via API", { id, resolvedId, status: res.status });
+        return;
+      }
+
+      setServerFavorites(serverFavorites.filter((f) => f.id !== resolvedId));
       return;
     }
     dispatchGuest({ type: "REMOVE_FAVORITE", payload: id });
