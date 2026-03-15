@@ -427,37 +427,36 @@ function AppShellContent({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <main className="flex-1 px-4 pb-36 pt-6 sm:px-8 sm:pb-36 sm:pt-8">
+        <main className="flex-1 px-4 pb-[13rem] pt-6 sm:px-8 sm:pb-36 sm:pt-8">
           <div className="mb-4 hidden items-center gap-2 md:flex">
-            <div className="relative flex-1">
-              <SearchInput
-                inputRef={searchInputRef}
-                value={query}
-                onChange={(value) => {
-                  setQuery(value);
-                  if (!showSearchDropdown) setShowSearchDropdown(true);
-                }}
-                onClear={() => {
-                  setQuery("");
-                  setSearchResults([]);
-                  setIsSearchUnavailable(false);
-                }}
-                placeholder={t("search_placeholder", language)}
-                onFocus={() => {
-                  if (blurTimeoutRef.current) window.clearTimeout(blurTimeoutRef.current);
-                  if (!showSearchDropdown) setShowSearchDropdown(true);
-                }}
-                onBlur={() => {
-                  blurTimeoutRef.current = window.setTimeout(() => {
-                    setShowSearchDropdown(false);
-                    setOpenActionsId(null);
-                  }, 200);
-                }}
-                onKeyDown={handleSearchKeyDown}
-              />
+            <div className="relative flex-1 pointer-events-none">
+              <div className="pointer-events-auto">
+                <SearchInput
+                  inputRef={searchInputRef}
+                  value={query}
+                  onChange={(value) => executeSearchQuery(value)}
+                  onClear={() => {
+                    setQuery("");
+                    setSearchResults([]);
+                    setIsSearchUnavailable(false);
+                  }}
+                  placeholder={t("search_placeholder", language)}
+                  onFocus={() => {
+                    if (blurTimeoutRef.current) window.clearTimeout(blurTimeoutRef.current);
+                    setShowSearchDropdown(true);
+                  }}
+                  onBlur={() => {
+                    blurTimeoutRef.current = window.setTimeout(() => {
+                      setShowSearchDropdown(false);
+                      setOpenActionsId(null);
+                    }, 200);
+                  }}
+                  onKeyDown={handleSearchKeyDown}
+                />
+              </div>
 
               {showSearchDropdown && (
-                <div className="absolute z-[9999] mt-2 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-2 shadow-2xl">
+                <div className="pointer-events-auto absolute z-[9999] mt-2 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-2 shadow-2xl">
                   {!query.trim() ? (
                     recentSearches.length > 0 ? (
                       <div>
@@ -561,12 +560,12 @@ function AppShellContent({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
-      <nav className="fixed bottom-24 left-3 right-3 z-40 grid grid-cols-5 gap-2 rounded-2xl border border-border bg-surface/95 p-2 backdrop-blur md:hidden">
+      <nav className="fixed bottom-0 left-3 right-3 z-40 grid h-16 grid-cols-5 gap-2 rounded-2xl border border-border bg-surface/95 p-2 backdrop-blur md:hidden">
         {PRIMARY_NAV.map((item) => (
           <Link
             key={`mobile-${item.href}`}
             href={item.href}
-            className={`flex flex-col items-center justify-center rounded-xl px-2 py-1 text-xs ${pathname === item.href ? "bg-[var(--active-bg)] text-[var(--text)]" : "text-[var(--muted)]"}`}
+            className={`flex h-full flex-col items-center justify-center rounded-xl px-2 py-1 text-xs ${pathname === item.href ? "bg-[var(--active-bg)] text-[var(--text)]" : "text-[var(--muted)]"}`}
             aria-label={t(item.key, language)}
           >
             <item.icon className="w-4 h-4 text-[var(--muted)]" />
