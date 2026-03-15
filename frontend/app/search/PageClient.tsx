@@ -55,41 +55,63 @@ export default function SearchPage() {
   const history = useMemo(() => readHistory(profile.id), [profile.id]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedQuery(query), 500);
+    if (!query.trim()) {
+      setDebouncedQuery("");
+      return;
+    }
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 500);
     return () => window.clearTimeout(timer);
   }, [query]);
 
   useEffect(() => {
-    const q = debouncedQuery.trim();
-    if (!q) {
+    if (!debouncedQuery || debouncedQuery.length < 2) {
       setDiscoverResults([]);
       setIsUnavailable(false);
       setIsLoading(false);
       return;
     }
 
-    async function runSearch() {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+    let cancelled = false;
+    setIsLoading(true);
+    fetch(`/api/search?q=${encodeURIComponent(debouncedQuery)}`)
+      .then(async (response) => {
         if (response.status === 503) {
-          setIsUnavailable(true);
-          setDiscoverResults([]);
+          if (!cancelled) {
+            setIsUnavailable(true);
+            setDiscoverResults([]);
+          }
           return;
         }
-        setIsUnavailable(false);
-        const payload = response.ok ? ((await response.json()) as SearchResult[]) : [];
-        setDiscoverResults(Array.isArray(payload) ? payload : []);
-        saveQuery(q);
-      } catch {
-        setIsUnavailable(true);
-        setDiscoverResults([]);
-      } finally {
-        setIsLoading(false);
-      }
-    }
 
-    void runSearch();
+        if (!response.ok) {
+          if (!cancelled) {
+            setIsUnavailable(false);
+            setDiscoverResults([]);
+          }
+          return;
+        }
+
+        const payload = (await response.json()) as SearchResult[];
+        if (cancelled) return;
+        setIsUnavailable(false);
+        setDiscoverResults(Array.isArray(payload) ? payload : []);
+        saveQuery(debouncedQuery);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIsUnavailable(true);
+          setDiscoverResults([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [debouncedQuery, saveQuery]);
 
   const historyResults = useMemo(() => {
