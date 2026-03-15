@@ -3,7 +3,7 @@ import type { Playlist, PlaylistSong } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { Button } from "../src/components/ui/Button";
-import PlaylistSongCard from "./PlaylistSongCard";
+import SongRow from "./SongRow";
 
 type PlaylistDetailProps = {
   playlist: Playlist;
@@ -112,12 +112,15 @@ export default function PlaylistDetail({
           ) : (
             <div className="grid gap-2">
               {playlist.songs.map((song, idx) => (
-                <PlaylistSongCard
+                <SongRow
                   key={`${song.title}-${song.artist}-${idx}`}
-                  song={song}
-                  index={idx}
-                  onPlay={onPlaySong}
-                  onRemove={onRemoveSong}
+                  id={`${song.title}-${song.artist}-${idx}`}
+                  title={song.title}
+                  artist={song.artist}
+                  artworkUrl={song.coverUrl}
+                  videoId={song.videoId}
+                  onPlay={() => onPlaySong(song)}
+                  onDelete={() => onRemoveSong(song.title, song.artist)}
                 />
               ))}
             </div>

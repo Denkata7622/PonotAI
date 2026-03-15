@@ -1,8 +1,10 @@
 "use client";
 
 import type { SongMatch } from "../features/recognition/api";
+import { normalizeTrackKey } from "../lib/dedupe";
 import { t, type Language } from "../lib/translations";
-import { Clock, Play, X } from "./icons";
+import { Clock } from "./icons";
+import SongRow from "./SongRow";
 
 type HistoryEntry = {
   id: string;
@@ -15,9 +17,11 @@ type HistoryGridProps = {
   items: HistoryEntry[];
   onDelete: (id: string) => void;
   onPlay?: (song: SongMatch) => void;
+  favoritesSet?: Set<string>;
+  onFavorite?: (id: string, title?: string, artist?: string) => void;
 };
 
-export default function HistoryGrid({ language, items, onDelete, onPlay }: HistoryGridProps) {
+export default function HistoryGrid({ language, items, onDelete, onPlay, favoritesSet = new Set<string>(), onFavorite }: HistoryGridProps) {
   return (
     <section className="rounded-3xl border border-border bg-surface p-6">
       <h2 className="text-2xl font-semibold">{t("history_recent", language)}</h2>
@@ -30,34 +34,23 @@ export default function HistoryGrid({ language, items, onDelete, onPlay }: Histo
           </div>
         </div>
       ) : (
-        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {items.map((entry) => (
-            <article key={entry.id} className="group relative overflow-hidden rounded-2xl border border-border bg-surface-overlay transition hover:-translate-y-1 hover:shadow-xl">
-              <img src={entry.song.albumArtUrl} alt={t("album_cover", language)} className="h-40 w-full object-cover" />
-              <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/40 opacity-0 transition group-hover:opacity-100">
-                {onPlay && (
-                  <button
-                    onClick={() => onPlay(entry.song)}
-                    className="rounded-full bg-[var(--accent)] p-3 text-white transition hover:opacity-90"
-                    title={t("btn_play", language)}
-                  >
-                    <Play className="w-4 h-4 text-white" />
-                  </button>
-                )}
-                <button
-                  onClick={() => onDelete(entry.id)}
-                  className="rounded-full bg-red-500/75 px-3 py-2 text-xs text-white transition hover:bg-red-600"
-                  title={t("history_delete", language)}
-                >
-                    <X className="w-4 h-4 text-white" />
-                </button>
-              </div>
-              <div className="p-3">
-                <p className="truncate text-sm font-semibold">{entry.song.songName}</p>
-                <p className="truncate text-xs text-text-muted">{entry.song.artist}</p>
-              </div>
-            </article>
-          ))}
+        <div className="mt-5 space-y-2">
+          {items.map((entry) => {
+            const trackKey = normalizeTrackKey(entry.song.songName, entry.song.artist);
+            return (
+              <SongRow
+                key={entry.id}
+                id={entry.id}
+                title={entry.song.songName}
+                artist={entry.song.artist}
+                artworkUrl={entry.song.albumArtUrl}
+                onPlay={onPlay ? () => onPlay(entry.song) : undefined}
+                onDelete={() => onDelete(entry.id)}
+                isFavorite={favoritesSet.has(trackKey)}
+                onFavorite={onFavorite ? () => onFavorite(trackKey, entry.song.songName, entry.song.artist) : undefined}
+              />
+            );
+          })}
         </div>
       )}
     </section>

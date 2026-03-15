@@ -8,6 +8,7 @@ import { usePlayer } from "../../components/PlayerProvider";
 import { useUser } from "../../src/context/UserContext";
 import PlaylistDetail from "../../components/PlaylistDetail";
 import PlaylistCard from "../../components/PlaylistCard";
+import SongRow from "../../components/SongRow";
 import type { Playlist } from "../../features/library/types";
 import { useLibrary } from "../../features/library/useLibrary";
 import {
@@ -18,7 +19,7 @@ updatePlaylistName,
 removeSongFromPlaylist,
 } from "../../features/library/api";
 import { Button } from "../../src/components/ui/Button";
-import { BarChart2, Clock, Heart, ListMusic, Play, Plus } from "../../components/icons";
+import { BarChart2, Clock, Heart, ListMusic, Plus } from "../../components/icons";
 import { dedupeByTrack } from "../../lib/dedupe";
 
 type Song = {
@@ -224,6 +225,16 @@ addToQueue({
 
 }
 
+function handleDeleteHistoryItem(id: string) {
+setHistory((prev) => {
+  const updated = prev.filter((entry) => entry.id !== id);
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(historyKey, JSON.stringify(updated));
+  }
+  return updated;
+});
+}
+
 async function handleCreatePlaylist() {
 if (!newPlaylistName.trim()) return;
 
@@ -416,19 +427,15 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
             <div className="flex flex-col items-center gap-2 py-6 text-center"><Clock className="w-10 h-10 text-[var(--muted)]" /><p className="font-semibold">{t("empty_history_heading", language)}</p><p className="cardText">{t("empty_history_hint", language)}</p></div>
           ) : (
             filteredHistory.map((item) => (
-              <div
+              <SongRow
                 key={item.id}
-                className="group flex items-center justify-between gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 transition hover:border-[var(--accent)]/50 hover:bg-[var(--surface-2)]"
-              >
-                {item.coverUrl && <img src={item.coverUrl} alt="cover" className="h-12 w-12 rounded-lg object-cover" />}
-                <div className="flex-1 min-w-0">
-                  <p className="truncate font-medium text-[var(--text)]">{item.title ?? t("unknown_song", language)}</p>
-                  <p className="truncate text-sm cardText">{item.artist ?? "-"}</p>
-                  {item.album && <p className="truncate text-xs text-[var(--muted)] opacity-75">{item.album}</p>}
-                </div>
-                {item.createdAt && <p className="text-xs text-[var(--muted)] whitespace-nowrap">{new Date(item.createdAt).toLocaleDateString()}</p>}
-                <button onClick={() => handlePlaySong(item)} className="rounded-full bg-[var(--accent)] p-2.5 text-white opacity-0 transition group-hover:opacity-100" title="Play"><Play className="w-4 h-4 text-white" /></button>
-              </div>
+                id={item.id}
+                title={item.title ?? t("unknown_song", language)}
+                artist={item.artist ?? "-"}
+                artworkUrl={item.coverUrl}
+                onPlay={() => handlePlaySong(item)}
+                onDelete={() => handleDeleteHistoryItem(item.id)}
+              />
             ))
           )}
         </div>
@@ -452,15 +459,14 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
         <div className="space-y-2">
           {filteredFavorites.length > 0 ? (
             filteredFavorites.map((fav, idx) => (
-              <div key={fav.id ?? idx} className="group flex items-center justify-between gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 transition hover:border-[var(--accent)]/50 hover:bg-[var(--surface-2)]">
-                {fav.coverUrl && <img src={fav.coverUrl} alt="cover" className="h-12 w-12 rounded-lg object-cover" />}
-                <div className="flex-1 min-w-0">
-                  <p className="truncate font-medium text-[var(--text)]">{fav.title}</p>
-                  <p className="truncate text-sm cardText">{fav.artist}</p>
-                  {fav.album && <p className="truncate text-xs text-[var(--muted)] opacity-75">{fav.album}</p>}
-                </div>
-                <button onClick={() => handlePlaySong(fav)} className="rounded-full bg-[var(--accent)] p-2.5 text-white opacity-0 transition group-hover:opacity-100" title="Play"><Play className="w-4 h-4 text-white" /></button>
-              </div>
+              <SongRow
+                key={fav.id ?? idx}
+                id={fav.id ?? `${fav.title}-${fav.artist}-${idx}`}
+                title={fav.title ?? t("unknown_song", language)}
+                artist={fav.artist ?? "-"}
+                artworkUrl={fav.coverUrl}
+                onPlay={() => handlePlaySong(fav)}
+              />
             ))
           ) : (
             <div className="flex flex-col items-center gap-2 py-6 text-center"><Heart className="w-10 h-10 text-[var(--muted)]" /><p className="font-semibold">{t("empty_favorites_heading", language)}</p><p className="cardText">{t("empty_favorites_hint", language)}</p></div>

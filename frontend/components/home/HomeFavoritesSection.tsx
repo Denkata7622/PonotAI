@@ -1,17 +1,16 @@
 "use client";
 
-import { Heart, MoreHorizontal, Play } from "../icons";
+import { Heart } from "../icons";
 import type { Playlist } from "../../features/library/types";
 import type { SongMatch } from "../../features/recognition/api";
 import type { Track } from "../../features/tracks/types";
 import { t, type Language } from "../../lib/translations";
 import { normalizeTrackKey } from "../../lib/dedupe";
+import SongRow from "../SongRow";
 
 export default function HomeFavoritesSection({
   language,
   favoritesSet,
-  favoritesMenuOpen,
-  setFavoritesMenuOpen,
   playSong,
   toggleFavorite,
   playlists,
@@ -20,14 +19,14 @@ export default function HomeFavoritesSection({
 }: {
   language: Language;
   favoritesSet: Set<string>;
-  favoritesMenuOpen: string | null;
-  setFavoritesMenuOpen: (value: string | null) => void;
   playSong: (song: SongMatch) => void;
   toggleFavorite: (trackId: string, title?: string, artist?: string) => void;
   playlists: Playlist[];
   addToPlaylist: (trackId: string, playlistId: string) => void;
   tracks: Track[];
 }) {
+  const favoriteTracks = tracks.filter((track) => favoritesSet.has(normalizeTrackKey(track.title, track.artistName))).slice(0, 6);
+
   if (favoritesSet.size === 0) {
     return (
       <section className="rounded-3xl border border-border bg-surface p-8">
@@ -43,39 +42,43 @@ export default function HomeFavoritesSection({
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Your Favorites</h2>
-        <span className="text-xs text-text-muted bg-surface rounded-full px-2 py-1">{favoritesSet.size} songs</span>
+        <h2 className="text-xl font-semibold">{t("library_favorites", language)}</h2>
+        <span className="rounded-full bg-surface px-2 py-1 text-xs text-text-muted">{favoritesSet.size}</span>
       </div>
       <div className="space-y-2">
-        {tracks.filter((track) => favoritesSet.has(normalizeTrackKey(track.title, track.artistName))).slice(0, 6).map((track) => {
+        {favoriteTracks.map((track) => {
           const favoriteKey = normalizeTrackKey(track.title, track.artistName);
-          const songTitle = track.title;
-          const coverUrl = track.artworkUrl || `https://picsum.photos/seed/${favoriteKey}/200`;
-          const isMenuOpen = favoritesMenuOpen === favoriteKey;
           return (
-            <div key={favoriteKey} className="group relative flex items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 transition-all hover:border-[var(--accent)]/50 hover:shadow-lg">
-              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-[var(--border)]">
-                <img src={coverUrl} alt={songTitle} className="h-full w-full object-cover" />
-                <button aria-label="Play favorite" onClick={() => playSong({ songName: track.title, artist: track.artistName, album: "Collection", albumArtUrl: coverUrl, youtubeVideoId: track.youtubeVideoId || "", genre: "Unknown", releaseYear: null, platformLinks: {}, confidence: 0.5, durationSec: 0 })} className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition group-hover:opacity-100"><span className="h-8 w-8 grid place-items-center rounded-full bg-[var(--accent)] text-white"><Play className="w-4 h-4 text-white" /></span></button>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-text-primary truncate text-sm">{songTitle}</p>
-                                <p className="text-xs text-text-muted">{track.artistName}</p>
-              </div>
-              <div className="relative">
-                <button aria-label="Favorite item options" onClick={() => setFavoritesMenuOpen(isMenuOpen ? null : favoriteKey)} className="rounded-lg p-2 opacity-0 transition group-hover:opacity-100 hover:bg-surface-raised"><MoreHorizontal className="w-4 h-4 text-[var(--muted)]" /></button>
-                {isMenuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-48 rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-lg z-50">
-                    <button onClick={() => { toggleFavorite(track.id, track.title, track.artistName); setFavoritesMenuOpen(null); }} className="block w-full px-4 py-2 text-left text-sm hover:bg-surface-raised text-text-primary rounded-t-lg">Remove from Favorites</button>
-                    {playlists.length > 0 && (<><hr className="border-[var(--border)]" />{playlists.slice(0, 3).map((playlist) => (<button key={playlist.id} onClick={() => { addToPlaylist(track.id, playlist.id); setFavoritesMenuOpen(null); }} className="block w-full px-4 py-2 text-left text-sm hover:bg-surface-raised text-text-primary">Add to {playlist.name}</button>))}</>)}
-                  </div>
-                )}
-              </div>
-            </div>
+            <SongRow
+              key={favoriteKey}
+              id={track.id}
+              title={track.title}
+              artist={track.artistName}
+              artworkUrl={track.artworkUrl}
+              videoId={track.youtubeVideoId}
+              onPlay={() =>
+                playSong({
+                  songName: track.title,
+                  artist: track.artistName,
+                  album: "Collection",
+                  albumArtUrl: track.artworkUrl,
+                  youtubeVideoId: track.youtubeVideoId || "",
+                  genre: "Unknown",
+                  releaseYear: null,
+                  platformLinks: {},
+                  confidence: 0.5,
+                  durationSec: 0,
+                })
+              }
+              isFavorite
+              onFavorite={() => toggleFavorite(track.id, track.title, track.artistName)}
+              showMoreMenu
+              playlists={playlists}
+              onAddToPlaylist={(playlistId) => addToPlaylist(track.id, playlistId)}
+            />
           );
         })}
       </div>
-      {favoritesSet.size > 6 && <p className="text-xs text-center text-text-muted py-2">+{favoritesSet.size - 6} more in Library</p>}
     </section>
   );
 }
