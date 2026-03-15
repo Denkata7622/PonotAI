@@ -1,47 +1,47 @@
 {
-  "users": [
-    {
-      "id": "bf24f7fe-70ba-4b51-8ca7-917cb70395cc",
-      "createdAt": "2026-03-14T17:34:26.901Z",
-      "username": "denkata",
-      "email": "ddd@gmail.com",
-      "passwordHash": "8c75458d5c6aca2fdc256b455cf778b4:7f68e44070d54bbf40509279aea678140e79c8fb2c07f7546d8fbdede6a5683dfe98c889b0f1289a89b7392f55dff670d18f03e09dcc8bf02541484ee4cd8427"
-    }
-  ],
-  "playlists": [
-    {
-      "id": "pl-1772306140884-93cda8",
-      "userId": "bf24f7fe-70ba-4b51-8ca7-917cb70395cc",
-      "name": "ddd",
-      "songs": [
-        {
-          "title": "I'm Legendary",
-          "artist": "Mason Jar Moonshine",
-          "coverUrl": "https://picsum.photos/seed/recognized/120"
-        },
-        {
-          "title": "Blinding Lights",
-          "artist": "The Weeknd",
-          "coverUrl": "https://picsum.photos/seed/1/80"
-        },
-        {
-          "title": "Levitating",
-          "artist": "Dua Lipa",
-          "coverUrl": "https://picsum.photos/seed/2/80"
-        }
-      ],
-      "createdAt": "2026-03-14T17:35:20.162Z",
-      "updatedAt": "2026-03-14T17:35:20.162Z"
-    }
-  ],
+  "users": [],
+  "playlists": [],
   "searchHistory": [
     {
-      "id": "a7f59a4b-1096-4fa2-a2aa-829b517e6d2e",
-      "createdAt": "2026-03-14T17:34:52.118Z",
+      "id": "7a3ea7cc-7804-466b-9883-dc56c2fec945",
+      "createdAt": "2026-03-14T20:53:39.301Z",
       "userId": "bf24f7fe-70ba-4b51-8ca7-917cb70395cc",
       "method": "album-image",
       "title": "I'm Legendary",
       "artist": "Mason Jar Moonshine",
+      "album": "Unknown Album",
+      "coverUrl": "https://picsum.photos/seed/recognized/120",
+      "recognized": true
+    },
+    {
+      "id": "f16aadc2-7d3a-4e53-9313-e5d14db73a67",
+      "createdAt": "2026-03-14T20:53:39.105Z",
+      "userId": "bf24f7fe-70ba-4b51-8ca7-917cb70395cc",
+      "method": "album-image",
+      "title": "Rockstar",
+      "artist": "Post Malone",
+      "album": "Unknown Album",
+      "coverUrl": "https://picsum.photos/seed/recognized/120",
+      "recognized": true
+    },
+    {
+      "id": "a5af1d9e-e202-443a-b6c7-ad5726f44d33",
+      "createdAt": "2026-03-14T20:53:39.005Z",
+      "userId": "bf24f7fe-70ba-4b51-8ca7-917cb70395cc",
+      "method": "album-image",
+      "title": "Levitating",
+      "artist": "Dua Lipa",
+      "album": "Unknown Album",
+      "coverUrl": "https://picsum.photos/seed/recognized/120",
+      "recognized": true
+    },
+    {
+      "id": "c0a744e6-10f5-4899-aa76-5d5bd11bd65a",
+      "createdAt": "2026-03-14T20:53:38.921Z",
+      "userId": "bf24f7fe-70ba-4b51-8ca7-917cb70395cc",
+      "method": "album-image",
+      "title": "Blinding Lights",
+      "artist": "The Weeknd",
       "album": "Unknown Album",
       "coverUrl": "https://picsum.photos/seed/recognized/120",
       "recognized": true
