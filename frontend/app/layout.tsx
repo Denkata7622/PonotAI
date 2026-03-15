@@ -33,7 +33,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <ThemeProvider>
             <LanguageProvider>
               <ProfileProvider>
-                <AppShell>{children}</AppShell>
+                <AppShell><div className="pageTransition">{children}</div></AppShell>
               </ProfileProvider>
             </LanguageProvider>
           </ThemeProvider>

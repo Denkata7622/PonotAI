@@ -610,3 +610,26 @@ body {
   transform: translateY(-1px) scale(1.04);
   background: rgba(255, 255, 255, 0.18);
 }
+
+
+.pageTransition {
+  animation: pageFadeIn 180ms ease both;
+}
+
+@keyframes pageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pageTransition {
+    animation: none;
+  }
+}
+

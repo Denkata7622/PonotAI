@@ -161,6 +161,7 @@ export const translations = {
     search_placeholder: "Search songs on YouTube",
     search_unavailable: "Search is currently unavailable.",
     search_no_results: "No results found.",
+    search_no_results_for: "No results for",
     search_recent: "Recent",
     search_clear_recent: "Clear",
     search_suggested: "Suggested",
@@ -173,6 +174,8 @@ export const translations = {
     btn_add_to_queue: "Add to queue",
     toast_already_favorited: "This song is already in favorites.",
     toast_duplicate_history: "Updated existing history entry.",
+    toast_playlist_deleted: "Playlist deleted",
+    toast_undo: "Undo",
 
   },
   bg: {
@@ -337,6 +340,7 @@ export const translations = {
     search_placeholder: "Търси песни в YouTube",
     search_unavailable: "Търсенето в момента не е налично.",
     search_no_results: "Няма резултати.",
+    search_no_results_for: "Няма резултати за",
     search_recent: "Скорошни",
     search_clear_recent: "Изчисти",
     search_suggested: "Предложени",
@@ -349,6 +353,8 @@ export const translations = {
     btn_add_to_queue: "Добави в опашката",
     toast_already_favorited: "Тази песен вече е в любими.",
     toast_duplicate_history: "Съществуващият запис в историята е обновен.",
+    toast_playlist_deleted: "Плейлистът е изтрит",
+    toast_undo: "Отмени",
 
   }
 };

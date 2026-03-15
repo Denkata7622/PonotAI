@@ -6,6 +6,7 @@ import { Heart, EllipsisVertical, Music, Play, Trash2 } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
+import { formatArtist } from "../lib/formatArtist";
 
 type SongRowProps = {
   id: string;
@@ -63,7 +64,7 @@ export default function SongRow({
   return (
     <article
       data-song-id={id}
-      className={`group relative flex w-full items-center gap-3 rounded-2xl border bg-[var(--surface)] p-3 transition-all duration-200 hover:border-[color:var(--accent)]/50 hover:bg-[var(--surface-2)] ${
+      className={`group relative flex w-full items-center gap-3 rounded-2xl border bg-[var(--surface)] p-3 transition-[transform,border-color] duration-150 hover:translate-x-1 hover:border-[var(--accent)]/50 hover:bg-[var(--surface-2)] ${
         isHighlighted
           ? "border-[var(--accent)] border-l-[3px]"
           : "border-[var(--border)]"
@@ -81,7 +82,7 @@ export default function SongRow({
 
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-[var(--text)]">{title}</p>
-        <p className="truncate text-sm text-[var(--muted)]">{artist}</p>
+        <p className="truncate text-sm text-[var(--muted)]">{formatArtist(artist)}</p>
       </div>
 
       <div className="relative flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" ref={menuRef}>
