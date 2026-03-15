@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Clock, Play, Search, TrendingUp, WifiOff, X } from "../../lucide-react";
+import { Clock, Play, Search, SearchX, TrendingUp, WifiOff, X } from "../../lucide-react";
 import SearchInput from "../../components/SearchInput";
 import SearchResultActions from "../../components/SearchResultActions";
 import { usePlayer } from "../../components/PlayerProvider";
@@ -12,6 +12,7 @@ import { useLibrary } from "../../features/library/useLibrary";
 import { useUser } from "../../src/context/UserContext";
 import { useRouter } from "next/navigation";
 import { useRecentSearches } from "../../lib/useRecentSearches";
+import { formatArtist } from "../../lib/formatArtist";
 
 type HistoryItem = {
   id: string;
@@ -23,6 +24,7 @@ type SearchResult = {
   title: string;
   artist: string;
   thumbnailUrl: string;
+  isTopicChannel?: boolean;
 };
 
 function readHistory(profileId: string): HistoryItem[] {
@@ -94,7 +96,7 @@ export default function SearchPage() {
         const payload = (await response.json()) as SearchResult[];
         if (cancelled) return;
         setIsUnavailable(false);
-        setDiscoverResults(Array.isArray(payload) ? payload : []);
+        setDiscoverResults(Array.isArray(payload) ? payload.map((item) => ({ ...item, isTopicChannel: item.artist.endsWith("- Topic"), artist: formatArtist(item.artist) })) : []);
         saveQuery(debouncedQuery);
       })
       .catch(() => {
@@ -125,8 +127,8 @@ export default function SearchPage() {
   }, [history, historyQuery]);
 
   const groupedResults = useMemo(() => ({
-    songs: discoverResults.filter((result) => !result.artist.endsWith("- Topic")),
-    channels: discoverResults.filter((result) => result.artist.endsWith("- Topic")),
+    songs: discoverResults.filter((result) => !result.isTopicChannel),
+    channels: discoverResults.filter((result) => result.isTopicChannel),
   }), [discoverResults]);
 
   function queueResult(result: SearchResult) {
@@ -195,7 +197,12 @@ export default function SearchPage() {
 
           {isUnavailable && <p className="cardText inline-flex items-center gap-2"><WifiOff className="w-4 h-4 text-[var(--muted)]" />{t("search_unavailable", language)}</p>}
           {!isUnavailable && (query !== debouncedQuery || isLoading) && <Search className="h-5 w-5 animate-spin text-[var(--muted)]" />}
-          {!isUnavailable && !isLoading && query === debouncedQuery && query.trim().length > 0 && discoverResults.length === 0 && <p className="cardText">{t("search_no_results", language)}</p>}
+          {!isUnavailable && !isLoading && query === debouncedQuery && query.trim().length > 0 && discoverResults.length === 0 && (
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] py-8 text-center">
+              <SearchX className="w-8 h-8 text-[var(--muted)]" />
+              <p className="cardText">{t("search_no_results_for", language)} "{debouncedQuery}"</p>
+            </div>
+          )}
 
           {discoverResults.length > 0 && (
             <div className="space-y-3">

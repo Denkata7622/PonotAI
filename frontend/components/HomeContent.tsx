@@ -35,7 +35,7 @@ import NewPlaylistModal from "./NewPlaylistModal";
 import { Button } from "../src/components/ui/Button";
 import { Input } from "../src/components/ui/Input";
 import { Card } from "../src/components/ui/Card";
-import { Library, Mic, Music, Play } from "../lucide-react";
+import { Library, Mic, Music, Play, X } from "../lucide-react";
 
 type Toast = { id: string; kind: "success" | "error" | "info"; message: string };
 type HistoryEntry = { id: string; source: "audio" | "ocr"; createdAt: string; song: SongMatch };
@@ -105,6 +105,9 @@ export function HomeContent() {
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
 
   const imageCache = useRef<Map<string, ImageRecognitionResult>>(new Map());
+  const deletedPlaylistRef = useRef<any | null>(null);
+  const deletePlaylistTimeoutRef = useRef<number | null>(null);
+  const [showPlaylistUndoToast, setShowPlaylistUndoToast] = useState(false);
 
   const { addToQueue } = usePlayer();
   const { language, setLanguage } = useLanguage();
@@ -253,6 +256,12 @@ export function HomeContent() {
     setDemoSeen(seen);
   }, [profile.id]);
 
+  useEffect(() => () => {
+    if (deletePlaylistTimeoutRef.current) {
+      window.clearTimeout(deletePlaylistTimeoutRef.current);
+    }
+  }, []);
+
   function handleDeleteHistoryItem(id: string) {
     setHistory((prev) => {
       const updated = prev.filter((entry) => entry.id !== id);
@@ -290,8 +299,39 @@ export function HomeContent() {
 
   function pushToast(kind: Toast["kind"], message: string) {
     const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { id, kind, message }]);
+    setToasts((prev) => [{ id, kind, message }, ...prev]);
     window.setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
+  }
+
+
+  function handleDeletePlaylistWithUndo(playlistId: string) {
+    const playlistToDelete = playlists.find((playlist) => playlist.id === playlistId);
+    if (!playlistToDelete) return;
+
+    if (deletePlaylistTimeoutRef.current) {
+      window.clearTimeout(deletePlaylistTimeoutRef.current);
+    }
+
+    deletedPlaylistRef.current = playlistToDelete;
+    setShowPlaylistUndoToast(true);
+
+    deletePlaylistTimeoutRef.current = window.setTimeout(() => {
+      if (deletedPlaylistRef.current?.id === playlistId) {
+        void deletePlaylist(playlistId);
+      }
+      deletedPlaylistRef.current = null;
+      setShowPlaylistUndoToast(false);
+      deletePlaylistTimeoutRef.current = null;
+    }, 4000);
+  }
+
+  function handleUndoDeletePlaylist() {
+    if (deletePlaylistTimeoutRef.current) {
+      window.clearTimeout(deletePlaylistTimeoutRef.current);
+      deletePlaylistTimeoutRef.current = null;
+    }
+    deletedPlaylistRef.current = null;
+    setShowPlaylistUndoToast(false);
   }
 
   function addToHistoryLocal(source: HistoryEntry["source"], songs: SongMatch[]) {
@@ -648,7 +688,7 @@ export function HomeContent() {
               </Card>
             )}
 
-            <HomePlaylistsSection playlists={playlists} language={language} onOpenNewPlaylist={() => setShowNewPlaylistModal(true)} />
+            <HomePlaylistsSection playlists={playlists} language={language} onOpenNewPlaylist={() => setShowNewPlaylistModal(true)} onDeletePlaylist={handleDeletePlaylistWithUndo} />
 
             <HomeFavoritesSection
               language={language}
@@ -673,7 +713,7 @@ export function HomeContent() {
                   onToggleFavorite={toggleFavorite}
                   onAddToPlaylist={handleAddSongToPlaylist}
                   onCreatePlaylist={createPlaylist}
-                  onDeletePlaylist={deletePlaylist}
+                  onDeletePlaylist={handleDeletePlaylistWithUndo}
                   onRemoveFromPlaylist={handleRemoveSongFromPlaylist}
                   onPlay={(currentTrack) =>
                     addToQueue({
@@ -694,7 +734,7 @@ export function HomeContent() {
 
           {isLibraryOpen && (
             <Suspense fallback={<Card className="p-4"><div className="h-20 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></Card>}>
-              <LibrarySidebar playlists={playlists} favoritesSet={favoritesSet} onDeletePlaylist={deletePlaylist} />
+              <LibrarySidebar playlists={playlists} favoritesSet={favoritesSet} onDeletePlaylist={handleDeletePlaylistWithUndo} />
             </Suspense>
           )}
         </div>
@@ -729,10 +769,28 @@ export function HomeContent() {
         />
       )}
 
-      <div className="fixed bottom-28 right-4 z-50 flex w-[320px] flex-col gap-3 md:bottom-32">
+      <div className="fixed top-4 right-4 z-50 flex w-[320px] flex-col gap-3">
+        {showPlaylistUndoToast && (
+          <div role="status" className="relative overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 shadow-xl">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm">{t("toast_playlist_deleted", language)}</p>
+              <button type="button" className="text-xs font-semibold text-[var(--accent)] hover:opacity-80" onClick={handleUndoDeletePlaylist}>{t("toast_undo", language)}</button>
+            </div>
+            <div className="absolute bottom-0 left-0 h-[2px] bg-[var(--accent)]" style={{ animation: "shrink 4s linear forwards" }} />
+          </div>
+        )}
         {toasts.map((toast) => (
-          <div role="status" key={toast.id} className={`rounded-xl border px-4 py-3 shadow-xl ${toast.kind === "success" ? "border-emerald-300/40 bg-emerald-500/15" : toast.kind === "error" ? "border-red-300/40 bg-red-500/15" : "border-sky-300/40 bg-sky-500/15"}`}>
-            <p className="text-sm">{toast.message}</p>
+          <div role="status" key={toast.id} className={`relative overflow-hidden rounded-xl border px-4 py-3 shadow-xl ${toast.kind === "success" ? "border-emerald-300/40 bg-emerald-500/15" : toast.kind === "error" ? "border-red-300/40 bg-red-500/15" : "border-sky-300/40 bg-sky-500/15"}`}>
+            <button
+              type="button"
+              className="absolute right-2 top-2 rounded p-1 text-[var(--muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--text)]"
+              onClick={() => setToasts((prev) => prev.filter((item) => item.id !== toast.id))}
+              aria-label={t("modal_close", language)}
+            >
+              <X className="w-3 h-3 text-[var(--muted)]" />
+            </button>
+            <p className="pr-6 text-sm">{toast.message}</p>
+            <div className="absolute bottom-0 left-0 h-[2px] bg-[var(--accent)]" style={{ animation: "shrink 3.5s linear forwards" }} />
           </div>
         ))}
       </div>

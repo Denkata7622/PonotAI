@@ -8,7 +8,7 @@ import type { Playlist } from "../../features/library/types";
 import { t, type Language } from "../../lib/translations";
 import PlaylistCard from "../PlaylistCard";
 
-export default function HomePlaylistsSection({ playlists, language, onOpenNewPlaylist }: { playlists: Playlist[]; language: Language; onOpenNewPlaylist?: () => void }) {
+export default function HomePlaylistsSection({ playlists, language, onOpenNewPlaylist, onDeletePlaylist }: { playlists: Playlist[]; language: Language; onOpenNewPlaylist?: () => void; onDeletePlaylist?: (playlistId: string) => void }) {
   const router = useRouter();
 
   if (playlists.length === 0) {
@@ -45,6 +45,7 @@ export default function HomePlaylistsSection({ playlists, language, onOpenNewPla
             key={playlist.id}
             playlist={playlist}
             onClick={() => router.push("/library?tab=playlists")}
+            onDelete={onDeletePlaylist}
           />
         ))}
       </div>

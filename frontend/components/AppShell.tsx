@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Clock, Headphones, Heart, HelpCircle, Info, Library, LogOut, Music, Play, Search, Settings, TrendingUp, User, WifiOff, X } from "../lucide-react";
+import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Clock, Headphones, Heart, HelpCircle, Info, Library, LogOut, Music, Play, Search, SearchX, Settings, TrendingUp, User, WifiOff, X } from "../lucide-react";
 import BottomPlayBar from "./BottomPlayBar";
 import { PlayerProvider } from "./PlayerProvider";
 import type { Playlist, StoredFavorite } from "../features/library/types";
@@ -16,6 +16,7 @@ import SearchInput from "./SearchInput";
 import SearchResultActions from "./SearchResultActions";
 import { useLibrary } from "../features/library/useLibrary";
 import { useRecentSearches } from "../lib/useRecentSearches";
+import { formatArtist } from "../lib/formatArtist";
 
 type HistoryItem = {
   id: string;
@@ -33,6 +34,7 @@ type SearchResult = {
   title: string;
   artist: string;
   thumbnailUrl: string;
+  isTopicChannel?: boolean;
 };
 
 const PRIMARY_NAV = [
@@ -77,6 +79,13 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const { playlists, addSongToPlaylist } = useLibrary(profile.id);
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
+
+  const isNavItemActive = (href: string) => {
+    if (href === "/library") {
+      return pathname === href || pathname.startsWith(`${href}/`);
+    }
+    return pathname === href;
+  };
 
   useEffect(() => {
     
@@ -158,7 +167,9 @@ function AppShellContent({ children }: { children: ReactNode }) {
         const payload = (await response.json()) as SearchResult[];
         if (cancelled) return;
         setIsSearchUnavailable(false);
-        const nextResults = Array.isArray(payload) ? payload.slice(0, 8) : [];
+        const nextResults = Array.isArray(payload)
+          ? payload.slice(0, 8).map((item) => ({ ...item, isTopicChannel: item.artist.endsWith("- Topic"), artist: formatArtist(item.artist) }))
+          : [];
         saveQuery(debouncedQuery);
         setSearchResults(nextResults);
         setHighlightedIndex(nextResults.length > 0 ? 0 : -1);
@@ -237,8 +248,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
   }, []);
 
   const groupedSearchResults = useMemo(() => {
-    const songs = searchResults.filter((result) => !result.artist.endsWith("- Topic"));
-    const channels = searchResults.filter((result) => result.artist.endsWith("- Topic"));
+    const songs = searchResults.filter((result) => !result.isTopicChannel);
+    const channels = searchResults.filter((result) => result.isTopicChannel);
     return { songs, channels };
   }, [searchResults]);
 
@@ -369,7 +380,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
             {PRIMARY_NAV.map((item) => (
               <Link
                 key={item.href}
-                className={pathname === item.href ? "navItemActive" : "navItem"}
+                className={isNavItemActive(item.href) ? "navItemActive" : "navItem"}
                 href={item.href}
               >
                 <item.icon className="w-4 h-4 text-[var(--muted)]" />
@@ -416,7 +427,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
               {SECONDARY_NAV.map((item) => (
                 <Link
                   key={item.href}
-                  className={pathname === item.href ? "navItemActive" : "navItem"}
+                  className={isNavItemActive(item.href) ? "navItemActive" : "navItem"}
                   href={item.href}
                 >
                   <item.icon className="w-4 h-4 text-[var(--muted)]" />
@@ -427,7 +438,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <main className="flex-1 px-4 pb-[13rem] pt-6 sm:px-8 sm:pb-36 sm:pt-8">
+        <main key={pathname} className="pageTransition flex-1 px-4 pb-[13rem] pt-6 sm:px-8 sm:pb-36 sm:pt-8">
           <div className="mb-4 hidden items-center gap-2 md:flex">
             <div className="relative flex-1 pointer-events-none">
               <div className="pointer-events-auto">
@@ -496,7 +507,10 @@ function AppShellContent({ children }: { children: ReactNode }) {
                       {t("search_unavailable", language)}
                     </p>
                   ) : query === debouncedQuery && searchResults.length === 0 ? (
-                    <p className="px-3 py-2 text-sm text-[var(--muted)]">{t("search_no_results", language)}</p>
+                    <div className="flex flex-col items-center justify-center gap-2 px-3 py-4 text-center text-[var(--muted)]">
+                      <SearchX className="w-8 h-8 text-[var(--muted)]" />
+                      <p className="text-sm">{t("search_no_results_for", language)} "{debouncedQuery}"</p>
+                    </div>
                   ) : (
                     <div className="space-y-2">
                       <p className="px-2 text-xs uppercase tracking-wider text-[var(--muted)]">Songs</p>
@@ -565,7 +579,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
           <Link
             key={`mobile-${item.href}`}
             href={item.href}
-            className={`flex h-full flex-col items-center justify-center rounded-xl px-2 py-1 text-xs ${pathname === item.href ? "bg-[var(--active-bg)] text-[var(--text)]" : "text-[var(--muted)]"}`}
+            className={`flex h-full flex-col items-center justify-center px-2 py-1 text-xs ${isNavItemActive(item.href) ? "navItemActive" : "navItem"}`}
             aria-label={t(item.key, language)}
           >
             <item.icon className="w-4 h-4 text-[var(--muted)]" />

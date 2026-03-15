@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { scopedKey, useProfile } from "../../lib/ProfileContext";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
@@ -105,6 +105,9 @@ const [showNewPlaylistModal, setShowNewPlaylistModal] = useState(false);
 const [isCreating, setIsCreating] = useState(false);
 const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
 const [showPlaylistDetail, setShowPlaylistDetail] = useState(false);
+const [showUndoToast, setShowUndoToast] = useState(false);
+const deletedPlaylistRef = useRef<Playlist | null>(null);
+const deleteTimerRef = useRef<number | null>(null);
 
 // refresh local reads when profile or language changes
 useEffect(() => {
@@ -244,16 +247,28 @@ try {
 }
 
 async function handleDeletePlaylist(playlistId: string) {
-if (isAuthenticated) {
-  const success = await deletePlaylist(playlistId);
-  if (success) {
-    setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
-  }
-  return;
+const target = playlists.find((playlist) => playlist.id === playlistId);
+if (!target) return;
+
+if (deleteTimerRef.current) {
+  window.clearTimeout(deleteTimerRef.current);
 }
 
-await deleteGuestPlaylist(playlistId);
-setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
+deletedPlaylistRef.current = target;
+setPlaylists((prev) => prev.filter((playlist) => playlist.id !== playlistId));
+setShowUndoToast(true);
+
+deleteTimerRef.current = window.setTimeout(async () => {
+  if (!deletedPlaylistRef.current) return;
+  if (isAuthenticated) {
+    await deletePlaylist(playlistId);
+  } else {
+    await deleteGuestPlaylist(playlistId);
+  }
+  deletedPlaylistRef.current = null;
+  setShowUndoToast(false);
+  deleteTimerRef.current = null;
+}, 4000);
 }
 
 function handlePlayPlaylistSong(song: any) {
@@ -306,17 +321,7 @@ setShowPlaylistDetail(true);
 }
 
 async function handlePlaylistDetailDelete(playlistId: string) {
-if (isAuthenticated) {
-const success = await deletePlaylist(playlistId);
-if (success) {
-setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
-handlePlaylistDetailClose();
-}
-return;
-}
-
-await deleteGuestPlaylist(playlistId);
-setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
+await handleDeletePlaylist(playlistId);
 handlePlaylistDetailClose();
 }
 
@@ -331,6 +336,25 @@ setSelectedPlaylist((prev) => (prev ? { ...prev, name: newName } : null));
 }
 }
 }
+
+
+function handleUndoDeletePlaylist() {
+if (deleteTimerRef.current) {
+window.clearTimeout(deleteTimerRef.current);
+deleteTimerRef.current = null;
+}
+if (deletedPlaylistRef.current) {
+setPlaylists((prev) => [deletedPlaylistRef.current as Playlist, ...prev]);
+}
+deletedPlaylistRef.current = null;
+setShowUndoToast(false);
+}
+
+useEffect(() => () => {
+if (deleteTimerRef.current) {
+window.clearTimeout(deleteTimerRef.current);
+}
+}, []);
 
 if (isLoading) {
 return <section className="space-y-4"><div className="card p-6"><div className="h-28 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div><div className="card p-6"><div className="h-64 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div></section>;
@@ -364,6 +388,16 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
   </div>
 
   {loadError && <div className="card p-4 text-sm text-red-300">{loadError}</div>}
+
+  {showUndoToast && (
+    <div className="card relative overflow-hidden p-4 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span>{t("toast_playlist_deleted", language)}</span>
+        <button type="button" className="font-semibold text-[var(--accent)]" onClick={handleUndoDeletePlaylist}>{t("toast_undo", language)}</button>
+      </div>
+      <div className="absolute bottom-0 left-0 h-[2px] bg-[var(--accent)]" style={{ animation: "shrink 4s linear forwards" }} />
+    </div>
+  )}
 
   {history.length > 0 && (
     <div className="card p-6">
