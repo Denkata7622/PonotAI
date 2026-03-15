@@ -14,8 +14,7 @@ import { useUser } from "../src/context/UserContext";
 import { usePlayer } from "./PlayerProvider";
 import SearchInput from "./SearchInput";
 import SearchResultActions from "./SearchResultActions";
-import { useLibrary } from "../features/library/useLibrary";
-import { useRecentSearches } from "../lib/useRecentSearches";
+import { addSongToPlaylist as addSongToPlaylistApi } from "../features/library/api";
 import { formatArtist } from "../lib/formatArtist";
 
 type HistoryItem = {
@@ -74,11 +73,15 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [isSearchUnavailable, setIsSearchUnavailable] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const blurTimeoutRef = useRef<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const { playlists, addSongToPlaylist } = useLibrary(profile.id);
-  const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const isNavItemActive = (href: string) => {
     if (href === "/library") {
@@ -133,6 +136,41 @@ function AppShellContent({ children }: { children: ReactNode }) {
     const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 500);
     return () => window.clearTimeout(timer);
   }, [query]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = JSON.parse(window.localStorage.getItem("trackly.search.recent") ?? "[]") as string[];
+      setRecentSearches(Array.isArray(stored) ? stored : []);
+    } catch {
+      setRecentSearches([]);
+    }
+  }, []);
+
+  function saveQuery(q: string) {
+    if (!q || q.length < 2 || typeof window === "undefined") return;
+    setRecentSearches((prev) => {
+      const deduped = [q, ...prev.filter((item) => item.toLowerCase() !== q.toLowerCase())].slice(0, 5);
+      window.localStorage.setItem("trackly.search.recent", JSON.stringify(deduped));
+      return deduped;
+    });
+  }
+
+  function clearRecent() {
+    setRecentSearches([]);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("trackly.search.recent", "[]");
+    }
+  }
+
+  function removeRecent(item: string) {
+    if (typeof window === "undefined") return;
+    setRecentSearches((prev) => {
+      const next = prev.filter((search) => search !== item);
+      window.localStorage.setItem("trackly.search.recent", JSON.stringify(next));
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (!debouncedQuery || debouncedQuery.length < 2) {
@@ -190,7 +228,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery, saveQuery]);
+  }, [debouncedQuery]);
 
   function queueTrack(result: SearchResult, closeDropdown = true) {
     addToQueue({
@@ -533,8 +571,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
                               onPlayNow={() => queueTrack(result)}
                               onAddToQueue={() => queueTrack(result, false)}
                               onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
-                              onAddToPlaylist={(playlistId) => addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })}
-                              playlists={playlists}
+                              onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })}
+                              playlists={librarySnapshot.playlists}
                               onGoToLibrary={() => router.push('/library')}
                             />
                           </li>
@@ -550,7 +588,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                 <img src={result.thumbnailUrl} alt={result.title} className="h-10 w-10 rounded-md object-cover" />
                                 <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-[var(--text)]">{result.title}</p><p className="truncate text-xs text-[var(--muted)]">{result.artist}</p></div>
                                 <button type="button" className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => queueTrack(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result)} onAddToQueue={() => queueTrack(result, false)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
+                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result)} onAddToQueue={() => queueTrack(result, false)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={librarySnapshot.playlists} onGoToLibrary={() => router.push('/library')} />
                               </li>
                             ))}
                           </ul>
@@ -561,7 +599,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                 </div>
               )}
             </div>
-            {currentTrack && (
+            {mounted && currentTrack && (
               <button
                 type="button"
                 className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--text)]"
