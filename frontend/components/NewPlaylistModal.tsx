@@ -77,26 +77,31 @@ export default function NewPlaylistModal({ onClose, onCreated, onCreatePlaylist,
   }, [favoritesKey, historyKey, language]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery.trim());
-    }, 500);
+    if (!searchQuery.trim()) {
+      setDebouncedSearchQuery("");
+      return;
+    }
+    const timer = window.setTimeout(() => setDebouncedSearchQuery(searchQuery.trim()), 500);
     return () => window.clearTimeout(timer);
   }, [searchQuery]);
 
   useEffect(() => {
-    async function runSearch() {
-      if (!debouncedSearchQuery) {
-        setSearchResults([]);
-        return;
-      }
+    if (!debouncedSearchQuery || debouncedSearchQuery.length < 2) {
+      setSearchResults([]);
+      return;
+    }
 
-      try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(debouncedSearchQuery)}`);
+    let cancelled = false;
+    fetch(`/api/search?q=${encodeURIComponent(debouncedSearchQuery)}`)
+      .then(async (response) => {
         if (!response.ok) {
-          setSearchResults([]);
+          if (!cancelled) {
+            setSearchResults([]);
+          }
           return;
         }
         const payload = (await response.json()) as Array<{ videoId?: string; title: string; artist: string; thumbnailUrl?: string }>;
+        if (cancelled) return;
         const normalizedResults = payload.map((item, index) => ({
           id: item.videoId ?? `search-${index}-${item.title}`,
           title: item.title,
@@ -105,12 +110,16 @@ export default function NewPlaylistModal({ onClose, onCreated, onCreatePlaylist,
           videoId: item.videoId,
         }));
         setSearchResults(normalizedResults);
-      } catch {
-        setSearchResults([]);
-      }
-    }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSearchResults([]);
+        }
+      });
 
-    void runSearch();
+    return () => {
+      cancelled = true;
+    };
   }, [debouncedSearchQuery]);
 
   useEffect(() => {

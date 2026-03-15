@@ -1,3 +1,7 @@
+// IMPORTANT: This route calls the YouTube Data API v3 which has a daily quota of 10,000 units.
+// Each search request costs 100 units. Never remove the minimum query length check or call
+// this route without debouncing on the frontend — doing so will exhaust the quota immediately.
+
 import { NextResponse } from "next/server";
 
 type YouTubeSearchItem = {
@@ -22,6 +26,10 @@ export async function GET(request: Request) {
   console.log("[search] query:", query);
 
   if (!query) {
+    return NextResponse.json([]);
+  }
+
+  if (query.length < 2) {
     return NextResponse.json([]);
   }
 

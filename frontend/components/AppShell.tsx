@@ -118,53 +118,68 @@ function AppShellContent({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedQuery(query), 500);
+    if (!query.trim()) {
+      setDebouncedQuery("");
+      return;
+    }
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 500);
     return () => window.clearTimeout(timer);
   }, [query]);
 
   useEffect(() => {
-    const value = debouncedQuery.trim();
-    if (!value) {
+    if (!debouncedQuery || debouncedQuery.length < 2) {
       setSearchResults([]);
       setIsSearching(false);
       setIsSearchUnavailable(false);
       setHighlightedIndex(-1);
       return;
     }
-
-    async function runSearch() {
-      setIsSearching(true);
-      try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(value)}`);
+    let cancelled = false;
+    setIsSearching(true);
+    fetch(`/api/search?q=${encodeURIComponent(debouncedQuery)}`)
+      .then(async (response) => {
         if (response.status === 503) {
-          setIsSearchUnavailable(true);
-          setSearchResults([]);
-          setHighlightedIndex(-1);
+          if (!cancelled) {
+            setIsSearchUnavailable(true);
+            setSearchResults([]);
+            setHighlightedIndex(-1);
+          }
           return;
         }
 
         if (!response.ok) {
-          setIsSearchUnavailable(false);
-          setSearchResults([]);
-          setHighlightedIndex(-1);
+          if (!cancelled) {
+            setIsSearchUnavailable(false);
+            setSearchResults([]);
+            setHighlightedIndex(-1);
+          }
           return;
         }
 
-        setIsSearchUnavailable(false);
         const payload = (await response.json()) as SearchResult[];
+        if (cancelled) return;
+        setIsSearchUnavailable(false);
         const nextResults = Array.isArray(payload) ? payload.slice(0, 8) : [];
-        saveQuery(value);
+        saveQuery(debouncedQuery);
         setSearchResults(nextResults);
         setHighlightedIndex(nextResults.length > 0 ? 0 : -1);
-      } catch {
-        setIsSearchUnavailable(true);
-        setSearchResults([]);
-      } finally {
-        setIsSearching(false);
-      }
-    }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIsSearchUnavailable(true);
+          setSearchResults([]);
+          setHighlightedIndex(-1);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsSearching(false);
+        }
+      });
 
-    void runSearch();
+    return () => {
+      cancelled = true;
+    };
   }, [debouncedQuery, saveQuery]);
 
   function queueTrack(result: SearchResult, closeDropdown = true) {
