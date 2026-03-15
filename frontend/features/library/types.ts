@@ -15,7 +15,15 @@ export type Playlist = {
   updatedAt?: string;
 };
 
+export type StoredFavorite = {
+  key: string;
+  title: string;
+  artist: string;
+  artworkUrl?: string;
+  videoId?: string;
+};
+
 export type LibraryState = {
-  favorites: string[];
+  favorites: StoredFavorite[];
   playlists: Playlist[];
 };

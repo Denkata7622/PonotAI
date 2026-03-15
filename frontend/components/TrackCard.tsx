@@ -2,14 +2,13 @@
 
 import type { Playlist } from "../features/library/types";
 import type { Track } from "../features/tracks/types";
-import { normalizeTrackKey } from "../lib/dedupe";
 import SongRow from "./SongRow";
 
 type TrackCardProps = {
   track: Track;
   playlists: Playlist[];
   isFavorite: boolean;
-  onToggleFavorite: (trackId: string, title?: string, artist?: string) => void;
+  onToggleFavorite: (trackId: string, title?: string, artist?: string, artworkUrl?: string, videoId?: string) => void;
   onAddToPlaylist: (trackId: string, playlistId: string, videoId?: string) => void;
   onCreatePlaylist: (playlistName: string) => void;
   onDeletePlaylist: (playlistId: string) => void;
@@ -19,8 +18,6 @@ type TrackCardProps = {
 };
 
 export default function TrackCard({ track, playlists, isFavorite, onToggleFavorite, onAddToPlaylist, onPlay }: TrackCardProps) {
-  const normalizedTrackKey = normalizeTrackKey(track.title, track.artistName);
-
   return (
     <SongRow
       id={track.id}
@@ -29,7 +26,7 @@ export default function TrackCard({ track, playlists, isFavorite, onToggleFavori
       artworkUrl={track.artworkUrl}
       videoId={track.youtubeVideoId}
       isFavorite={isFavorite}
-      onFavorite={() => onToggleFavorite(normalizedTrackKey, track.title, track.artistName)}
+      onFavorite={() => onToggleFavorite(track.id, track.title, track.artistName, track.artworkUrl, track.youtubeVideoId)}
       onPlay={() => onPlay?.(track)}
       showMoreMenu
       playlists={playlists}
