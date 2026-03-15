@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Heart, EllipsisVertical, Music, Play, Trash2 } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
@@ -13,6 +14,8 @@ type SongRowProps = {
   artworkUrl?: string;
   videoId?: string;
   onPlay?: () => void;
+  actionIcon?: ReactNode;
+  actionLabel?: string;
   onDelete?: () => void;
   onFavorite?: () => void;
   isFavorite?: boolean;
@@ -29,6 +32,8 @@ export default function SongRow({
   artist,
   artworkUrl,
   onPlay,
+  actionIcon,
+  actionLabel,
   onDelete,
   onFavorite,
   isFavorite = false,
@@ -109,10 +114,10 @@ export default function SongRow({
             type="button"
             onClick={onPlay}
             className="rounded-full bg-[var(--accent)] p-2 text-white"
-            aria-label={t("song_row_play", language)}
-            title={t("song_row_play", language)}
+            aria-label={actionLabel ?? t("song_row_play", language)}
+            title={actionLabel ?? t("song_row_play", language)}
           >
-            <Play className="w-4 h-4 text-white" />
+            {actionIcon ?? <Play className="w-4 h-4 text-white" />}
           </button>
         )}
 
