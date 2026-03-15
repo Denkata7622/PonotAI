@@ -108,7 +108,6 @@ function AppShellContent({ children }: { children: ReactNode }) {
 
   function executeSearchQuery(value: string) {
     setQuery(value);
-    setShowSearchDropdown(true);
   }
 
   async function handleLogout() {
@@ -231,7 +230,6 @@ function AppShellContent({ children }: { children: ReactNode }) {
       if (tag === "input" || tag === "textarea" || tag === "select") return;
       event.preventDefault();
       searchInputRef.current?.focus();
-      setShowSearchDropdown(true);
     }
 
     window.addEventListener("keydown", onWindowKeyDown);
