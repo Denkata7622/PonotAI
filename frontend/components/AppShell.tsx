@@ -108,7 +108,6 @@ function AppShellContent({ children }: { children: ReactNode }) {
 
   function executeSearchQuery(value: string) {
     setQuery(value);
-    setShowSearchDropdown(true);
   }
 
   async function handleLogout() {
@@ -231,7 +230,6 @@ function AppShellContent({ children }: { children: ReactNode }) {
       if (tag === "input" || tag === "textarea" || tag === "select") return;
       event.preventDefault();
       searchInputRef.current?.focus();
-      setShowSearchDropdown(true);
     }
 
     window.addEventListener("keydown", onWindowKeyDown);
@@ -435,7 +433,10 @@ function AppShellContent({ children }: { children: ReactNode }) {
               <SearchInput
                 inputRef={searchInputRef}
                 value={query}
-                onChange={(value) => executeSearchQuery(value)}
+                onChange={(value) => {
+                  setQuery(value);
+                  if (!showSearchDropdown) setShowSearchDropdown(true);
+                }}
                 onClear={() => {
                   setQuery("");
                   setSearchResults([]);
@@ -444,7 +445,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                 placeholder={t("search_placeholder", language)}
                 onFocus={() => {
                   if (blurTimeoutRef.current) window.clearTimeout(blurTimeoutRef.current);
-                  setShowSearchDropdown(true);
+                  if (!showSearchDropdown) setShowSearchDropdown(true);
                 }}
                 onBlur={() => {
                   blurTimeoutRef.current = window.setTimeout(() => {
