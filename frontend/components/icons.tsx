@@ -26,6 +26,8 @@ export const VolumeX = (props: IconProps) => <BaseIcon {...props}><polygon point
 export const X = (props: IconProps) => <BaseIcon {...props}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></BaseIcon>;
 export const Heart = (props: IconProps) => <BaseIcon {...props}><path d="M12 21s-7-4.4-9-8.8C1.2 8.6 3.3 5 7 5c2 0 3.3 1 5 3 1.7-2 3-3 5-3 3.7 0 5.8 3.6 4 7.2C19 16.6 12 21 12 21z" /></BaseIcon>;
 export const MoreHorizontal = (props: IconProps) => <BaseIcon {...props}><circle cx="6" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="18" cy="12" r="1.5" /></BaseIcon>;
+export const ListPlus = (props: IconProps) => <BaseIcon {...props}><path d="M3 6h12" /><path d="M3 12h12" /><path d="M3 18h8" /><path d="M18 8v8" /><path d="M14 12h8" /></BaseIcon>;
+export const TrendingUp = (props: IconProps) => <BaseIcon {...props}><path d="M22 7 13 16l-5-5-6 6" /><path d="M16 7h6v6" /></BaseIcon>;
 export const ListMusic = (props: IconProps) => <BaseIcon {...props}><path d="M3 6h11" /><path d="M3 12h11" /><path d="M3 18h7" /><path d="M16 6v10a2 2 0 1 0 2 2V8l4-1V5z" /></BaseIcon>;
 export const BarChart2 = (props: IconProps) => <BaseIcon {...props}><line x1="18" x2="18" y1="20" y2="10" /><line x1="12" x2="12" y1="20" y2="4" /><line x1="6" x2="6" y1="20" y2="14" /></BaseIcon>;
 export const Plus = (props: IconProps) => <BaseIcon {...props}><path d="M12 5v14" /><path d="M5 12h14" /></BaseIcon>;

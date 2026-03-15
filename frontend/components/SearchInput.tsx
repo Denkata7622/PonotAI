@@ -1,6 +1,6 @@
 "use client";
 
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, RefObject } from "react";
 import { Search, X } from "lucide-react";
 
 type SearchInputProps = {
@@ -11,6 +11,7 @@ type SearchInputProps = {
   onFocus?: () => void;
   onBlur?: () => void;
   onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void;
+  inputRef?: RefObject<HTMLInputElement | null>;
   className?: string;
 };
 
@@ -22,6 +23,7 @@ export default function SearchInput({
   onFocus,
   onBlur,
   onKeyDown,
+  inputRef,
   className = "",
 }: SearchInputProps) {
   return (
@@ -30,6 +32,7 @@ export default function SearchInput({
     >
       <Search className="h-4 w-4 shrink-0 text-[var(--muted)]" />
       <input
+        ref={inputRef}
         className="ml-2 w-full bg-transparent text-sm text-[var(--text)] outline-none placeholder:text-[var(--muted)]"
         value={value}
         onChange={(event) => onChange(event.target.value)}
