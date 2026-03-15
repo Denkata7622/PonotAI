@@ -2,13 +2,14 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Heart, Trash2, User } from "lucide-react";
+import { Heart, User } from "lucide-react";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Textarea } from "../components/ui/Textarea";
 import { useUser } from "../context/UserContext";
+import SongRow from "../../components/SongRow";
 import type { HistoryItem } from "../context/UserContext";
 
 function formatDate(dateIso: string) {
@@ -289,23 +290,13 @@ export default function ProfilePage() {
             <p className="text-sm text-text-muted text-center py-6">No history yet.</p>
           )}
           {filteredHistory.map((item) => (
-            <div key={item.id} className="bg-surface-raised border border-border rounded-xl p-4 flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs text-text-muted">
-                  {item.createdAt ? formatDate(item.createdAt) : "—"} • {item.method ?? "unknown"}
-                </p>
-                {item.recognized && item.title
-                  ? <p className="text-sm text-text-primary">{item.title}{item.artist ? ` — ${item.artist}` : ""}</p>
-                  : <p className="text-sm text-danger">Not recognized</p>}
-              </div>
-              <button
-                aria-label="Delete history item"
-                className="text-text-muted hover:text-danger transition-all duration-200 cursor-pointer select-none"
-                onClick={() => void deleteHistoryItem(item.id)}
-              >
-                <Trash2 className="w-4 h-4 text-[var(--muted)]" />
-              </button>
-            </div>
+            <SongRow
+              key={item.id}
+              id={item.id}
+              title={item.recognized && item.title ? item.title : "Not recognized"}
+              artist={item.artist ?? (item.method ?? "unknown")}
+              onDelete={() => void deleteHistoryItem(item.id)}
+            />
           ))}
         </div>
       </Card>

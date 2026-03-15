@@ -45,6 +45,7 @@ export default function SearchPage() {
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
   const [activeTab, setActiveTab] = useState<"discover" | "history">("discover");
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [historyQuery, setHistoryQuery] = useState("");
   const [discoverResults, setDiscoverResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -54,14 +55,20 @@ export default function SearchPage() {
   const history = useMemo(() => readHistory(profile.id), [profile.id]);
 
   useEffect(() => {
-    const q = query.trim();
+    const timer = window.setTimeout(() => setDebouncedQuery(query), 500);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    const q = debouncedQuery.trim();
     if (!q) {
       setDiscoverResults([]);
       setIsUnavailable(false);
+      setIsLoading(false);
       return;
     }
 
-    const timeout = window.setTimeout(async () => {
+    async function runSearch() {
       setIsLoading(true);
       try {
         const response = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
@@ -80,10 +87,10 @@ export default function SearchPage() {
       } finally {
         setIsLoading(false);
       }
-    }, 400);
+    }
 
-    return () => window.clearTimeout(timeout);
-  }, [query, saveQuery]);
+    void runSearch();
+  }, [debouncedQuery, saveQuery]);
 
   const historyResults = useMemo(() => {
     const q = historyQuery.trim().toLowerCase();
@@ -165,8 +172,8 @@ export default function SearchPage() {
           </div>
 
           {isUnavailable && <p className="cardText inline-flex items-center gap-2"><WifiOff className="w-4 h-4 text-[var(--muted)]" />{t("search_unavailable", language)}</p>}
-          {!isUnavailable && isLoading && <Search className="h-5 w-5 animate-spin text-[var(--muted)]" />}
-          {!isUnavailable && !isLoading && query.trim().length > 0 && discoverResults.length === 0 && <p className="cardText">{t("search_no_results", language)}</p>}
+          {!isUnavailable && (query !== debouncedQuery || isLoading) && <Search className="h-5 w-5 animate-spin text-[var(--muted)]" />}
+          {!isUnavailable && !isLoading && query === debouncedQuery && query.trim().length > 0 && discoverResults.length === 0 && <p className="cardText">{t("search_no_results", language)}</p>}
 
           {discoverResults.length > 0 && (
             <div className="space-y-3">

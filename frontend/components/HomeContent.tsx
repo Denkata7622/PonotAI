@@ -99,7 +99,6 @@ export function HomeContent() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
-  const [favoritesMenuOpen, setFavoritesMenuOpen] = useState<string | null>(null);
   const [demoSeen, setDemoSeen] = useState(true);
 
   const imageCache = useRef<Map<string, ImageRecognitionResult>>(new Map());
@@ -237,6 +236,20 @@ export function HomeContent() {
     const seen = window.localStorage.getItem(scopedKey(DEMO_SEEN_KEY, profile.id)) === "true";
     setDemoSeen(seen);
   }, [profile.id]);
+
+  function handleDeleteHistoryItem(id: string) {
+    setHistory((prev) => {
+      const updated = prev.filter((entry) => entry.id !== id);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(profileHistoryKey, JSON.stringify(updated));
+      }
+      return updated;
+    });
+
+    if (isAuthenticated) {
+      void apiFetch(`/api/history/${id}`, { method: "DELETE" });
+    }
+  }
 
   function handleDemoRecognition() {
     const fallback = DEMO_FALLBACKS[Math.floor(Math.random() * DEMO_FALLBACKS.length)] ?? DEMO_FALLBACKS[0];
@@ -590,7 +603,7 @@ export function HomeContent() {
 
             <ResultCard language={language} song={latestResult} onSave={saveSong} onPlay={playSong} onFavorite={favoriteSong} favoritedKeys={favoritedKeys} />
 
-            <HomeHistorySection language={language} items={history} onDelete={(id) => setHistory((prev) => prev.filter((entry) => entry.id !== id))} onPlay={playSong} />
+            <HomeHistorySection language={language} items={history} onDelete={handleDeleteHistoryItem} onPlay={playSong} favoritesSet={favoritesSet} onFavorite={toggleFavorite} />
 
             {(stats.totalFavorites > 0 || stats.totalPlaylists > 0) && (
               <Card className="rounded-3xl bg-gradient-to-br from-brand-500/10 to-brand-600/5 border border-brand-300/20 p-6">
@@ -616,8 +629,6 @@ export function HomeContent() {
             <HomeFavoritesSection
               language={language}
               favoritesSet={favoritesSet}
-              favoritesMenuOpen={favoritesMenuOpen}
-              setFavoritesMenuOpen={setFavoritesMenuOpen}
               playSong={playSong}
               toggleFavorite={toggleFavorite}
               playlists={playlists}

@@ -64,7 +64,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [librarySnapshot, setLibrarySnapshot] = useState<LibrarySnapshot>({ favorites: [], playlists: [] });
   const [showUserMenu, setShowUserMenu] = useState(false);
   const { addToQueue, currentTrack } = usePlayer();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
@@ -106,7 +107,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   }, [recentHistory]);
 
   function executeSearchQuery(value: string) {
-    setSearchQuery(value);
+    setQuery(value);
     setShowSearchDropdown(true);
   }
 
@@ -117,8 +118,13 @@ function AppShellContent({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    const query = searchQuery.trim();
-    if (!query) {
+    const timer = window.setTimeout(() => setDebouncedQuery(query), 500);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    const value = debouncedQuery.trim();
+    if (!value) {
       setSearchResults([]);
       setIsSearching(false);
       setIsSearchUnavailable(false);
@@ -126,10 +132,10 @@ function AppShellContent({ children }: { children: ReactNode }) {
       return;
     }
 
-    const timeout = window.setTimeout(async () => {
+    async function runSearch() {
       setIsSearching(true);
       try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const response = await fetch(`/api/search?q=${encodeURIComponent(value)}`);
         if (response.status === 503) {
           setIsSearchUnavailable(true);
           setSearchResults([]);
@@ -147,7 +153,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
         setIsSearchUnavailable(false);
         const payload = (await response.json()) as SearchResult[];
         const nextResults = Array.isArray(payload) ? payload.slice(0, 8) : [];
-        saveQuery(query);
+        saveQuery(value);
         setSearchResults(nextResults);
         setHighlightedIndex(nextResults.length > 0 ? 0 : -1);
       } catch {
@@ -156,10 +162,10 @@ function AppShellContent({ children }: { children: ReactNode }) {
       } finally {
         setIsSearching(false);
       }
-    }, 400);
+    }
 
-    return () => window.clearTimeout(timeout);
-  }, [searchQuery, saveQuery]);
+    void runSearch();
+  }, [debouncedQuery, saveQuery]);
 
   function queueTrack(result: SearchResult, closeDropdown = true) {
     addToQueue({
@@ -413,10 +419,10 @@ function AppShellContent({ children }: { children: ReactNode }) {
             <div className="relative flex-1">
               <SearchInput
                 inputRef={searchInputRef}
-                value={searchQuery}
+                value={query}
                 onChange={(value) => executeSearchQuery(value)}
                 onClear={() => {
-                  setSearchQuery("");
+                  setQuery("");
                   setSearchResults([]);
                   setIsSearchUnavailable(false);
                 }}
@@ -436,7 +442,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
 
               {showSearchDropdown && (
                 <div className="absolute z-[9999] mt-2 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-2 shadow-2xl">
-                  {!searchQuery.trim() ? (
+                  {!query.trim() ? (
                     recentSearches.length > 0 ? (
                       <div>
                         <div className="mb-1 flex items-center justify-between px-2 py-1">
@@ -465,7 +471,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                         </div>
                       </div>
                     )
-                  ) : isSearching ? (
+                  ) : (query !== debouncedQuery || isSearching) ? (
                     <div className="flex items-center justify-center py-3 text-[var(--muted)]">
                       <Search className="h-4 w-4 animate-spin" />
                     </div>
@@ -474,7 +480,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                       <WifiOff className="w-4 h-4 text-[var(--muted)]" />
                       {t("search_unavailable", language)}
                     </p>
-                  ) : searchResults.length === 0 ? (
+                  ) : query === debouncedQuery && searchResults.length === 0 ? (
                     <p className="px-3 py-2 text-sm text-[var(--muted)]">{t("search_no_results", language)}</p>
                   ) : (
                     <div className="space-y-2">
