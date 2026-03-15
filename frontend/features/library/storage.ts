@@ -1,5 +1,5 @@
 import { scopedKey } from "../../lib/ProfileContext";
-import type { LibraryState, Playlist } from "./types";
+import type { LibraryState, Playlist, StoredFavorite } from "./types";
 
 const FAVORITES_KEY = "ponotai.library.favorites";
 const PLAYLISTS_KEY = "ponotai.library.playlists";
@@ -8,6 +8,27 @@ const initialState: LibraryState = {
   favorites: [],
   playlists: [],
 };
+
+
+function isStoredFavorite(value: unknown): value is StoredFavorite {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<StoredFavorite>;
+  return (
+    typeof candidate.key === "string" &&
+    typeof candidate.title === "string" &&
+    typeof candidate.artist === "string" &&
+    (candidate.artworkUrl === undefined || typeof candidate.artworkUrl === "string") &&
+    (candidate.videoId === undefined || typeof candidate.videoId === "string")
+  );
+}
+
+function migrateLegacyFavorite(favorite: string): StoredFavorite {
+  return {
+    key: favorite,
+    title: "",
+    artist: "",
+  };
+}
 
 function isPlaylist(value: unknown): value is Playlist {
   if (!value || typeof value !== "object") return false;
@@ -42,7 +63,17 @@ export function loadLibraryState(profileId: string): LibraryState {
   const rawPlaylists = safeJsonParse<unknown>(window.localStorage.getItem(scopedKey(PLAYLISTS_KEY, profileId)), []);
 
   const favorites = Array.isArray(rawFavorites)
-    ? rawFavorites.filter((id): id is string => typeof id === "string")
+    ? rawFavorites.flatMap((favorite): StoredFavorite[] => {
+        if (typeof favorite === "string") {
+          return [migrateLegacyFavorite(favorite)];
+        }
+
+        if (isStoredFavorite(favorite)) {
+          return [favorite];
+        }
+
+        return [];
+      })
     : [];
 
   const playlists = Array.isArray(rawPlaylists) ? rawPlaylists.filter(isPlaylist) : [];

@@ -113,7 +113,7 @@ export function HomeContent() {
   const profileHistoryKey = scopedKey(HISTORY_KEY, profile.id);
   const profileMaxSongsKey = scopedKey(MAX_SONGS_KEY, profile.id);
   const profileOcrLanguageKey = scopedKey(OCR_LANGUAGE_KEY, profile.id);
-  const { playlists, favoritesSet, toggleFavorite, createPlaylist, deletePlaylist, addSongToPlaylist, removeSongFromPlaylist } = useLibrary(profile.id);
+  const { playlists, favoritesSet, favoritesList, toggleFavorite, createPlaylist, deletePlaylist, addSongToPlaylist, removeSongFromPlaylist } = useLibrary(profile.id);
 
   // Adapter functions to convert track data for playlist operations
   const handleAddSongToPlaylist = (trackId: string, playlistId: string, videoId?: string) => {
@@ -510,6 +510,10 @@ export function HomeContent() {
   function saveSong(song: SongMatch) {
     addToHistoryLocal("audio", [song]);
     void addFavorite({ title: song.songName, artist: song.artist, album: song.album, coverUrl: song.albumArtUrl });
+    const favoriteKey = normalizeTrackKey(song.songName, song.artist);
+    if (!favoritesSet.has(favoriteKey)) {
+      toggleFavorite(song.songName, song.songName, song.artist, song.albumArtUrl, song.youtubeVideoId);
+    }
     pushToast("success", t("toast_saved", language, { song: song.songName }));
   }
 
@@ -522,6 +526,10 @@ export function HomeContent() {
       album: song.album,
       coverUrl: song.albumArtUrl,
     });
+    const favoriteKey = normalizeTrackKey(song.songName, song.artist);
+    if (!favoritesSet.has(favoriteKey)) {
+      toggleFavorite(song.songName, song.songName, song.artist, song.albumArtUrl, song.youtubeVideoId);
+    }
     pushToast("success", `Added ${song.songName} to favorites`);
   }
 
@@ -644,7 +652,7 @@ export function HomeContent() {
 
             <HomeFavoritesSection
               language={language}
-              favoritesSet={favoritesSet}
+              favoritesList={favoritesList}
               playSong={playSong}
               toggleFavorite={toggleFavorite}
               playlists={playlists}

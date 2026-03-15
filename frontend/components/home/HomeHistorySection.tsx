@@ -21,7 +21,7 @@ export default function HomeHistorySection({
   onDelete: (id: string) => void;
   onPlay: (song: SongMatch) => void;
   favoritesSet: Set<string>;
-  onFavorite: (id: string, title?: string, artist?: string) => void;
+  onFavorite: (id: string, title?: string, artist?: string, artworkUrl?: string, videoId?: string) => void;
 }) {
   return (
     <section className="rounded-3xl border border-border bg-surface p-6">
@@ -49,7 +49,7 @@ export default function HomeHistorySection({
                 onPlay={() => onPlay(entry.song)}
                 onDelete={() => onDelete(entry.id)}
                 isFavorite={favoritesSet.has(key)}
-                onFavorite={() => onFavorite(key, entry.song.songName, entry.song.artist)}
+                onFavorite={() => onFavorite(entry.id, entry.song.songName, entry.song.artist, entry.song.albumArtUrl, entry.song.youtubeVideoId)}
               />
             );
           })}

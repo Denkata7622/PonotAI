@@ -44,7 +44,12 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite,
 
   const currentSong = song;
 
-  const isFavorited = favoritedKeys?.has(normalizeTrackKey(song.songName, song.artist)) ?? false;
+  const favoriteKey = normalizeTrackKey(song.songName, song.artist);
+  const isFavorited = favoritedKeys?.has(favoriteKey) ?? false;
+
+  if (process.env.NODE_ENV === "development") {
+    console.log("[ResultCard] favorite key check", { favoriteKey, isFavorited });
+  }
 
   async function handleShare() {
     if (!currentSong) return;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { syncLibraryState } from "./api";
 import { loadLibraryState, persistLibraryState } from "./storage";
-import type { LibraryState, Playlist, PlaylistSong } from "./types";
+import type { LibraryState, Playlist, PlaylistSong, StoredFavorite } from "./types";
 import * as playlistApi from "./api";
 import { normalizeTrackKey } from "../../lib/dedupe";
 
@@ -32,17 +32,38 @@ export function useLibrary(profileId: string) {
     }
   }, [libraryState, profileId, isAuthenticated]);
 
-  const favoritesSet = useMemo(() => new Set(libraryState.favorites), [libraryState.favorites]);
+  const favoritesSet = useMemo(() => new Set(libraryState.favorites.map((favorite) => favorite.key)), [libraryState.favorites]);
+  const favoritesList: StoredFavorite[] = libraryState.favorites;
 
-  function toggleFavorite(trackId: string, title?: string, artist?: string) {
-    const favoriteKey = title && artist ? normalizeTrackKey(title, artist) : trackId;
+  function toggleFavorite(
+    trackId: string,
+    title?: string,
+    artist?: string,
+    artworkUrl?: string,
+    videoId?: string,
+  ) {
+    const favoriteKey = normalizeTrackKey(title ?? trackId, artist ?? "");
     setLibraryState((prev) => {
-      const exists = prev.favorites.includes(favoriteKey);
+      const exists = prev.favorites.some((favorite) => favorite.key === favoriteKey);
+      if (exists) {
+        return {
+          ...prev,
+          favorites: prev.favorites.filter((favorite) => favorite.key !== favoriteKey),
+        };
+      }
+
       return {
         ...prev,
-        favorites: exists
-          ? prev.favorites.filter((id) => id !== favoriteKey)
-          : [...prev.favorites, favoriteKey],
+        favorites: [
+          ...prev.favorites,
+          {
+            key: favoriteKey,
+            title: title ?? trackId,
+            artist: artist ?? "",
+            artworkUrl,
+            videoId,
+          },
+        ],
       };
     });
   }
@@ -151,6 +172,7 @@ export function useLibrary(profileId: string) {
   return {
     playlists: libraryState.playlists,
     favoritesSet,
+    favoritesList,
     toggleFavorite,
     createPlaylist,
     deletePlaylist,

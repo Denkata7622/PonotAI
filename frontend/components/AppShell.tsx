@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Clock, Headphones, Heart, HelpCircle, Info, Library, LogOut, Music, Play, Search, Settings, TrendingUp, User, WifiOff, X } from "../lucide-react";
 import BottomPlayBar from "./BottomPlayBar";
 import { PlayerProvider } from "./PlayerProvider";
-import type { Playlist } from "../features/library/types";
+import type { Playlist, StoredFavorite } from "../features/library/types";
 import { scopedKey, useProfile } from "../lib/ProfileContext";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -24,7 +24,7 @@ type HistoryItem = {
 };
 
 type LibrarySnapshot = {
-  favorites: string[];
+  favorites: StoredFavorite[];
   playlists: Playlist[];
 };
 
@@ -87,7 +87,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
         const favoritesRaw = window.localStorage.getItem(scopedKey("ponotai.library.favorites", profile.id));
         const history = historyRaw ? (JSON.parse(historyRaw) as HistoryItem[]) : [];
         const playlists = libraryRaw ? (JSON.parse(libraryRaw) as Playlist[]) : [];
-        const favorites = favoritesRaw ? (JSON.parse(favoritesRaw) as string[]) : [];
+        const favorites = favoritesRaw ? (JSON.parse(favoritesRaw) as StoredFavorite[]) : [];
         setRecentHistory(history.slice(0, 5));
         setLibrarySnapshot({ favorites, playlists });
       } catch {

@@ -21,7 +21,7 @@ removeSongFromPlaylist,
 } from "../../features/library/api";
 import { Button } from "../../src/components/ui/Button";
 import { BarChart2, Clock, Heart, ListMusic, Plus } from "../../components/icons";
-import { dedupeByTrack } from "../../lib/dedupe";
+import { dedupeByTrack, normalizeTrackKey } from "../../lib/dedupe";
 
 type Song = {
 id: string;
@@ -44,15 +44,19 @@ return fallback;
 export default function LibraryPage() {
 const { language } = useLanguage();
 const { addToQueue } = usePlayer();
-const { favorites: userFavorites, isAuthenticated, isLoading } = useUser();
+const { favorites: userFavorites, removeFavorite, isAuthenticated, isLoading } = useUser();
 const { profile } = useProfile();
 
 const getScoped = (key: string) => (profile?.id ? scopedKey(key, profile.id) : key);
 
 const historyKey = getScoped("ponotai-history");
-const favoritesKey = getScoped("ponotai.library.favorites");
-
-const { playlists: guestPlaylists, createPlaylist: createGuestPlaylist, deletePlaylist: deleteGuestPlaylist } = useLibrary(profile.id);
+const {
+  playlists: guestPlaylists,
+  favoritesList,
+  toggleFavorite,
+  createPlaylist: createGuestPlaylist,
+  deletePlaylist: deleteGuestPlaylist,
+} = useLibrary(profile.id);
 
 const normalizeSong = (item: any): Song => ({
   id:
@@ -85,11 +89,6 @@ const normalizeSong = (item: any): Song => ({
   createdAt: item.createdAt ?? undefined,
 });
 
-const [favoritesLocal, setFavoritesLocal] = useState<Song[]>(() => {
-const raw = parseStorage<any[]>(favoritesKey, []);
-return (raw || []).map(normalizeSong);
-});
-
 
 const [playlists, setPlaylists] = useState<Playlist[]>([]);
 const [loading, setLoading] = useState(true);
@@ -109,18 +108,10 @@ const [showPlaylistDetail, setShowPlaylistDetail] = useState(false);
 
 // refresh local reads when profile or language changes
 useEffect(() => {
-const rawFav = parseStorage<any[]>(favoritesKey, []);
-setFavoritesLocal((rawFav || []).map(normalizeSong));
-
 const rawHistory = parseStorage<any[]>(historyKey, []);
 setHistory((rawHistory || []).map(normalizeSong));
 
-}, [favoritesKey, historyKey, profile?.id, language]);
-
-const dedupedFavoritesLocal = useMemo(
-() => dedupeByTrack(favoritesLocal, (item) => item.title ?? "", (item) => item.artist ?? ""),
-[favoritesLocal],
-);
+}, [historyKey, profile?.id, language]);
 
 const dedupedHistory = useMemo(
 () => dedupeByTrack(history, (item) => item.title ?? "", (item) => item.artist ?? ""),
@@ -152,29 +143,21 @@ setLoading(false);
 void loadPlaylists();
 }, [isAuthenticated, guestPlaylists, language]);
 
-// merge local and cloud favorites, dedupe by title+artist
+// favorites source: cloud for authenticated users, local library state for guests
 const mergedFavorites = useMemo(() => {
-const local = dedupedFavoritesLocal || [];
-const cloud = userFavorites || [];
-const map = new Map<string, Song>();
+const baseFavorites = isAuthenticated
+? (userFavorites || []).map(normalizeSong)
+: favoritesList.map((favorite) =>
+    normalizeSong({
+      id: favorite.key,
+      title: favorite.title,
+      artist: favorite.artist,
+      coverUrl: favorite.artworkUrl,
+    }),
+  );
 
-const add = (s: any) => {
-  const normalized = normalizeSong(s);
-  const key = `${(normalized.title ?? "").toLowerCase()}|||${(normalized.artist ?? "").toLowerCase()}`;
-  if (!map.has(key)) map.set(key, normalized);
-};
-
-local.forEach(add);
-cloud.forEach(add);
-
-return Array.from(map.values());
-
-}, [dedupedFavoritesLocal, userFavorites, language]);
-
-const dedupedMergedFavorites = useMemo(
-() => dedupeByTrack(mergedFavorites, (item) => item.title ?? "", (item) => item.artist ?? ""),
-[mergedFavorites],
-);
+return dedupeByTrack(baseFavorites, (item) => item.title ?? "", (item) => item.artist ?? "");
+}, [favoritesList, isAuthenticated, userFavorites, language]);
 
 // clear search when switching tabs
 useEffect(() => {
@@ -195,15 +178,15 @@ return recentSongs.filter(
 }, [recentSongs, searchQuery]);
 
 const filteredFavorites = useMemo(() => {
-if (!searchQuery) return dedupedMergedFavorites;
+if (!searchQuery) return mergedFavorites;
 const q = searchQuery.toLowerCase();
-return dedupedMergedFavorites.filter(
+return mergedFavorites.filter(
 (fav) =>
 (fav.title ?? "").toLowerCase().includes(q) ||
 (fav.artist ?? "").toLowerCase().includes(q) ||
 (fav.album ?? "").toLowerCase().includes(q)
 );
-}, [dedupedMergedFavorites, searchQuery]);
+}, [mergedFavorites, searchQuery]);
 
 const filteredPlaylists = useMemo(() => {
 if (!searchQuery) return playlists;
@@ -362,7 +345,7 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
   <div className="grid gap-4 md:grid-cols-4">
     <div className="card p-5">
       <p className="cardText text-sm">{t("library_favorites", language)}</p>
-      <p className="cardTitle mt-2 text-3xl font-semibold">{dedupedMergedFavorites.length}</p>
+      <p className="cardTitle mt-2 text-3xl font-semibold">{mergedFavorites.length}</p>
     </div>
     <div className="card p-5">
       <p className="cardText text-sm">{t("library_playlists", language)}</p>
@@ -375,7 +358,7 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
     <div className="card p-5 bg-gradient-to-br from-[var(--accent)]/10 to-[var(--accent-2)]/10">
       <p className="cardText text-sm">Total Collection</p>
       <p className="cardTitle mt-2 text-3xl font-semibold">
-        {dedupedMergedFavorites.length + playlists.reduce((sum, p) => sum + p.songs.length, 0) + dedupedHistory.length}
+        {mergedFavorites.length + playlists.reduce((sum, p) => sum + p.songs.length, 0) + dedupedHistory.length}
       </p>
     </div>
   </div>
@@ -472,6 +455,15 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
                 artist={fav.artist ?? "-"}
                 artworkUrl={fav.coverUrl}
                 onPlay={() => handlePlaySong(fav)}
+                isFavorite
+                onFavorite={() => {
+                  const favoriteKey = normalizeTrackKey(fav.title ?? "", fav.artist ?? "");
+                  if (isAuthenticated) {
+                    void removeFavorite(favoriteKey);
+                    return;
+                  }
+                  toggleFavorite(favoriteKey, fav.title, fav.artist, fav.coverUrl);
+                }}
               />
             ))
           ) : (
