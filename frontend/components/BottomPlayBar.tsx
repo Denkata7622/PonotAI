@@ -101,6 +101,7 @@ export default function BottomPlayBar() {
                 { key: "→", label: t("shortcut_next", language) },
                 { key: "←", label: t("shortcut_previous", language) },
                 { key: "M", label: t("shortcut_mute", language) },
+                { key: "/", label: t("shortcut_focus_search", language) },
               ].map((item) => (
                 <div key={item.key} className="flex items-center justify-between rounded-lg border border-border bg-[var(--surface-raised)] px-3 py-2">
                   <kbd className="rounded border border-border bg-[var(--surface)] px-2 py-1 text-xs">{item.key}</kbd>
