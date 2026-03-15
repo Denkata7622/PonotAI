@@ -31,6 +31,7 @@ import { apiFetch } from "../src/lib/apiFetch";
 import HomeHistorySection from "./home/HomeHistorySection";
 import HomeFavoritesSection from "./home/HomeFavoritesSection";
 import HomePlaylistsSection from "./home/HomePlaylistsSection";
+import NewPlaylistModal from "./NewPlaylistModal";
 import { Button } from "../src/components/ui/Button";
 import { Input } from "../src/components/ui/Input";
 import { Card } from "../src/components/ui/Card";
@@ -100,6 +101,8 @@ export function HomeContent() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [demoSeen, setDemoSeen] = useState(true);
+  const [showNewPlaylistModal, setShowNewPlaylistModal] = useState(false);
+  const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
 
   const imageCache = useRef<Map<string, ImageRecognitionResult>>(new Map());
 
@@ -132,6 +135,19 @@ export function HomeContent() {
 
     removeSongFromPlaylist(playlistId, track.title, track.artistName);
   };
+
+
+  async function handleCreatePlaylist(name: string) {
+    if (isCreatingPlaylist) return null;
+    if (!name.trim()) return null;
+
+    setIsCreatingPlaylist(true);
+    try {
+      return await createPlaylist(name);
+    } finally {
+      setIsCreatingPlaylist(false);
+    }
+  }
 
   const latestResult: SongRecognitionResult | null = useMemo(() => {
     if (audioResult) return songMatchToRecognitionResult(audioResult.primaryMatch, "audio");
@@ -624,7 +640,7 @@ export function HomeContent() {
               </Card>
             )}
 
-            <HomePlaylistsSection playlists={playlists} language={language} />
+            <HomePlaylistsSection playlists={playlists} language={language} onOpenNewPlaylist={() => setShowNewPlaylistModal(true)} />
 
             <HomeFavoritesSection
               language={language}
@@ -685,6 +701,14 @@ export function HomeContent() {
         onSubmit={handleSubmitUpload}
         disabled={isLoadingImage}
       />
+
+      {showNewPlaylistModal && (
+        <NewPlaylistModal
+          onClose={() => setShowNewPlaylistModal(false)}
+          onCreatePlaylist={handleCreatePlaylist}
+          onCreated={() => setShowNewPlaylistModal(false)}
+        />
+      )}
 
       {showReviewModal && pendingImageResult && (
         <SongReviewModal

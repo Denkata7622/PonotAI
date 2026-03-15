@@ -9,6 +9,7 @@ import { useUser } from "../../src/context/UserContext";
 import PlaylistDetail from "../../components/PlaylistDetail";
 import PlaylistCard from "../../components/PlaylistCard";
 import SongRow from "../../components/SongRow";
+import NewPlaylistModal from "../../components/NewPlaylistModal";
 import type { Playlist } from "../../features/library/types";
 import { useLibrary } from "../../features/library/useLibrary";
 import {
@@ -101,8 +102,8 @@ return (raw || []).map(normalizeSong);
 
 const [selectedTab, setSelectedTab] = useState<"favorites" | "playlists" | "history">("history");
 const [searchQuery, setSearchQuery] = useState("");
-const [newPlaylistName, setNewPlaylistName] = useState("");
-const [showNewPlaylistInput, setShowNewPlaylistInput] = useState(false);
+const [showNewPlaylistModal, setShowNewPlaylistModal] = useState(false);
+const [isCreating, setIsCreating] = useState(false);
 const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
 const [showPlaylistDetail, setShowPlaylistDetail] = useState(false);
 
@@ -235,23 +236,28 @@ setHistory((prev) => {
 });
 }
 
-async function handleCreatePlaylist() {
-if (!newPlaylistName.trim()) return;
+async function handleCreatePlaylist(name: string) {
+if (isCreating) return null;
+if (!name.trim()) return null;
 
-if (isAuthenticated) {
-  const created = await createPlaylist(newPlaylistName);
+setIsCreating(true);
+try {
+  if (isAuthenticated) {
+    const created = await createPlaylist(name);
+    if (created) {
+      setPlaylists((prev) => [...prev, created]);
+    }
+    return created;
+  }
+
+  const created = await createGuestPlaylist(name);
   if (created) {
     setPlaylists((prev) => [...prev, created]);
   }
-} else {
-  const created = await createGuestPlaylist(newPlaylistName);
-  if (created) {
-    setPlaylists((prev) => [...prev, created]);
-  }
+  return created;
+} finally {
+  setIsCreating(false);
 }
-
-setNewPlaylistName("");
-setShowNewPlaylistInput(false);
 }
 
 async function handleDeletePlaylist(playlistId: string) {
@@ -478,28 +484,10 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
     {selectedTab === "playlists" && (
       <div className="space-y-4">
         <div className="card p-4">
-          {!showNewPlaylistInput ? (
-            <Button onClick={() => setShowNewPlaylistInput(true)} className="w-full flex items-center justify-center gap-2">
-              <Plus className="w-4 h-4 text-[var(--text)]" />
-              + {t("track_add_to_playlist", language)}
-            </Button>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder={t("track_new_playlist_placeholder", language)}
-                value={newPlaylistName}
-                onChange={(e) => setNewPlaylistName(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") handleCreatePlaylist();
-                }}
-                className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-4 py-2 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                autoFocus
-              />
-              <Button onClick={handleCreatePlaylist} className="flex-shrink-0">{t("track_create", language)}</Button>
-              <Button variant="secondary" onClick={() => { setShowNewPlaylistInput(false); setNewPlaylistName(""); }} className="flex-shrink-0">{t("modal_cancel", language)}</Button>
-            </div>
-          )}
+          <Button onClick={() => setShowNewPlaylistModal(true)} className="w-full flex items-center justify-center gap-2">
+            <Plus className="w-4 h-4 text-[var(--text)]" />
+            {t("playlist_new", language)}
+          </Button>
         </div>
 
         {loading ? (
@@ -521,6 +509,17 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
       </div>
     )}
   </div>
+
+  {showNewPlaylistModal && (
+    <NewPlaylistModal
+      onClose={() => setShowNewPlaylistModal(false)}
+      onCreatePlaylist={handleCreatePlaylist}
+      onCreated={(playlist) => {
+        setPlaylists((prev) => [...prev.filter((p) => p.id !== playlist.id), playlist]);
+        setShowNewPlaylistModal(false);
+      }}
+    />
+  )}
 
   {showPlaylistDetail && selectedPlaylist && (
     <PlaylistDetail
