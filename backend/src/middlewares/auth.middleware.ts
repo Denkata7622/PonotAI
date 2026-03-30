@@ -1,16 +1,27 @@
 import type { NextFunction, Request, Response } from "express";
 import crypto from "node:crypto";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
-
 type TokenPayload = { sub: string; exp: number };
+
+function resolveJwtSecret(): string {
+  const secret = process.env.JWT_SECRET?.trim();
+  if (secret) {
+    return secret;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("[auth] JWT_SECRET must be configured in production.");
+  }
+
+  return "dev-secret";
+}
 
 function base64url(input: string) {
   return Buffer.from(input).toString("base64url");
 }
 
 function signPart(payload: string) {
-  return crypto.createHmac("sha256", JWT_SECRET).update(payload).digest("base64url");
+  return crypto.createHmac("sha256", resolveJwtSecret()).update(payload).digest("base64url");
 }
 
 export function signAuthToken(userId: string): string {
