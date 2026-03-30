@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { sendError } from "../../errors/errorCatalog";
 import {
   addHistoryEntry,
   addUserHistoryEntry,
@@ -36,7 +37,7 @@ export async function createHistoryEntryController(req: Request, res: Response):
 
   if (req.userId) {
     if (!method) {
-      res.status(400).json({ error: "METHOD_REQUIRED" });
+      sendError(req, res, 400, "METHOD_REQUIRED");
       return;
     }
 
@@ -60,7 +61,9 @@ export async function createHistoryEntryController(req: Request, res: Response):
   }
 
   if (!songName && !title) {
-    res.status(400).json({ message: "songName/title required for guest history." });
+    sendError(req, res, 400, "INVALID_PAYLOAD", {
+      message: "songName/title required for guest history.",
+    });
     return;
   }
 
@@ -76,14 +79,14 @@ export async function deleteHistoryItemController(req: Request, res: Response): 
   try {
     const ok = await deleteUserHistoryItem(req.userId!, req.params.id);
     if (!ok) {
-      res.status(404).json({ error: "NOT_FOUND" });
+      sendError(req, res, 404, "NOT_FOUND");
       return;
     }
 
     res.status(200).json({ ok: true });
   } catch (error) {
     if ((error as Error).message === "FORBIDDEN") {
-      res.status(403).json({ error: "FORBIDDEN" });
+      sendError(req, res, 403, "FORBIDDEN");
       return;
     }
     throw error;

@@ -1,27 +1,25 @@
 import { Request, Response } from "express";
+import { sendError } from "../../errors/errorCatalog";
 import { addHistoryEntry } from "../history/history.service";
 import { MissingProviderConfigError, NoVerifiedResultError } from "./providers/audd.provider";
 import { recognizeSongFromAudio, recognizeSongFromImage } from "./recognition.service";
 
-function handleRecognitionError(res: Response, error: unknown, fallbackMessage: string): void {
+function handleRecognitionError(req: Request, res: Response, error: unknown, code: "AUDIO_RECOGNITION_FAILED" | "IMAGE_RECOGNITION_FAILED"): void {
   if (error instanceof NoVerifiedResultError) {
-    res.status(404).json({
+    sendError(req, res, 404, "NO_VERIFIED_RESULT", {
       message: error.message,
-      code: "NO_VERIFIED_RESULT",
     });
     return;
   }
 
   if (error instanceof MissingProviderConfigError) {
-    res.status(500).json({
+    sendError(req, res, 500, "PROVIDER_CONFIG_ERROR", {
       message: error.message,
-      code: "PROVIDER_CONFIG_ERROR",
     });
     return;
   }
 
-  res.status(500).json({
-    message: fallbackMessage,
+  sendError(req, res, 500, code, {
     details: (error as Error).message,
   });
 }
@@ -29,7 +27,7 @@ function handleRecognitionError(res: Response, error: unknown, fallbackMessage: 
 export async function recognizeAudioController(req: Request, res: Response): Promise<void> {
   try {
     if (!req.file) {
-      res.status(400).json({ message: "Audio file is required in field 'audio'." });
+      sendError(req, res, 400, "AUDIO_FILE_REQUIRED");
       return;
     }
 
@@ -41,14 +39,14 @@ export async function recognizeAudioController(req: Request, res: Response): Pro
     });
     res.status(200).json(metadata);
   } catch (error) {
-    handleRecognitionError(res, error, "Audio recognition failed.");
+    handleRecognitionError(req, res, error, "AUDIO_RECOGNITION_FAILED");
   }
 }
 
 export async function recognizeImageController(req: Request, res: Response): Promise<void> {
   try {
     if (!req.file) {
-      res.status(400).json({ message: "Image file is required in field 'image'." });
+      sendError(req, res, 400, "IMAGE_FILE_REQUIRED");
       return;
     }
 
@@ -72,6 +70,6 @@ export async function recognizeImageController(req: Request, res: Response): Pro
       language: language ?? "eng",
     });
   } catch (error) {
-    handleRecognitionError(res, error, "Image recognition failed.");
+    handleRecognitionError(req, res, error, "IMAGE_RECOGNITION_FAILED");
   }
 }
