@@ -55,6 +55,17 @@ function loadEnvironmentFiles(): void {
 export function validateEnvironment(): void {
   loadEnvironmentFiles();
 
+  const isProduction = process.env.NODE_ENV === "production";
+  const jwtSecret = process.env.JWT_SECRET?.trim();
+
+  if (jwtSecret) {
+    process.env.JWT_SECRET = jwtSecret;
+  }
+
+  if (isProduction && !jwtSecret) {
+    throw new Error("[env] JWT_SECRET must be set when NODE_ENV=production.");
+  }
+
   const auddToken = process.env.AUDD_API_TOKEN?.trim() || process.env.AUDD_API_KEY?.trim();
   const youtubeKey = process.env.YOUTUBE_API_KEY?.trim();
   const acrKey = process.env.ACRCLOUD_ACCESS_KEY?.trim();
