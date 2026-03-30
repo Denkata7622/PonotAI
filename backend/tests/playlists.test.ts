@@ -30,7 +30,7 @@ const expectObject = { objectContaining: (obj: any) => obj };
 const beforeAll = (fn: () => void) => fn();
 const afterAll = (fn: () => void) => fn();
 
-import * as db from "../src/db/authStore";
+import * as db from "../src/db/authStore.ts";
 
 describe("Playlist Database Operations", () => {
   const testUserId = "test-user-123";

@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { createSharedSong, findSharedSongByCode, findUserById } from "../../db/authStore";
 import { requireAuth } from "../../middlewares/auth.middleware";
+import { sendError } from "../../errors/errorCatalog";
 
 const shareRouter = Router();
 
 shareRouter.post("/", requireAuth, async (req, res) => {
   const { title, artist, album, coverUrl } = req.body as { title?: string; artist?: string; album?: string; coverUrl?: string };
-  if (!title || !artist) return void res.status(400).json({ error: "INVALID_PAYLOAD" });
+  if (!title || !artist) return void sendError(req, res, 400, "INVALID_PAYLOAD");
 
   const shared = await createSharedSong({ userId: req.userId!, title, artist, album, coverUrl });
   const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
@@ -15,7 +16,7 @@ shareRouter.post("/", requireAuth, async (req, res) => {
 
 shareRouter.get("/:shareCode", async (req, res) => {
   const item = await findSharedSongByCode(req.params.shareCode);
-  if (!item) return void res.status(404).json({ error: "NOT_FOUND" });
+  if (!item) return void sendError(req, res, 404, "NOT_FOUND");
 
   const user = await findUserById(item.userId);
   res.status(200).json({

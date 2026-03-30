@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { sendError } from "../errors/errorCatalog";
 
 type ClientBucket = {
   count: number;
@@ -29,9 +30,8 @@ export function recognitionRateLimit(req: Request, res: Response, next: NextFunc
   }
 
   if (existing.count >= MAX_REQUESTS_PER_WINDOW) {
-    res.status(429).json({
-      message: "Too many recognition requests. Please retry in a minute.",
-      retryAfterSeconds: Math.ceil((WINDOW_MS - (now - existing.windowStartedAt)) / 1000),
+    sendError(req, res, 429, "TOO_MANY_RECOGNITION_REQUESTS", {
+      details: { retryAfterSeconds: Math.ceil((WINDOW_MS - (now - existing.windowStartedAt)) / 1000) },
     });
     return;
   }
@@ -52,9 +52,8 @@ export function authLoginRateLimit(req: Request, res: Response, next: NextFuncti
   }
 
   if (existing.count >= MAX_LOGIN_ATTEMPTS_PER_WINDOW) {
-    res.status(429).json({
-      error: "TOO_MANY_LOGIN_ATTEMPTS",
-      retryAfterSeconds: Math.ceil((LOGIN_WINDOW_MS - (now - existing.windowStartedAt)) / 1000),
+    sendError(req, res, 429, "TOO_MANY_LOGIN_ATTEMPTS", {
+      details: { retryAfterSeconds: Math.ceil((LOGIN_WINDOW_MS - (now - existing.windowStartedAt)) / 1000) },
     });
     return;
   }

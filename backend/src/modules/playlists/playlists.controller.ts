@@ -1,17 +1,18 @@
 import type { Request, Response } from "express";
 import * as db from "../../db/authStore";
+import { sendError } from "../../errors/errorCatalog";
 
 export async function createPlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
-    res.status(401).json({ error: "UNAUTHORIZED" });
+    sendError(req, res, 401, "UNAUTHORIZED");
     return;
   }
 
   const { name } = req.body as { name: string };
 
   if (!name || typeof name !== "string" || !name.trim()) {
-    res.status(400).json({ error: "INVALID_NAME" });
+    sendError(req, res, 400, "INVALID_NAME");
     return;
   }
 
@@ -20,14 +21,14 @@ export async function createPlaylistController(req: Request, res: Response) {
     res.status(201).json(playlist);
   } catch (error) {
     console.error("Create playlist error:", error);
-    res.status(500).json({ error: "CREATE_FAILED" });
+    sendError(req, res, 500, "CREATE_FAILED");
   }
 }
 
 export async function getPlaylistsController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
-    res.status(401).json({ error: "UNAUTHORIZED" });
+    sendError(req, res, 401, "UNAUTHORIZED");
     return;
   }
 
@@ -36,14 +37,14 @@ export async function getPlaylistsController(req: Request, res: Response) {
     res.status(200).json({ playlists });
   } catch (error) {
     console.error("Get playlists error:", error);
-    res.status(500).json({ error: "GET_FAILED" });
+    sendError(req, res, 500, "GET_FAILED");
   }
 }
 
 export async function getPlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
-    res.status(401).json({ error: "UNAUTHORIZED" });
+    sendError(req, res, 401, "UNAUTHORIZED");
     return;
   }
 
@@ -52,26 +53,26 @@ export async function getPlaylistController(req: Request, res: Response) {
   try {
     const playlist = await db.findPlaylistById(playlistId);
     if (!playlist) {
-      res.status(404).json({ error: "NOT_FOUND" });
+      sendError(req, res, 404, "NOT_FOUND");
       return;
     }
 
     if (playlist.userId !== userId) {
-      res.status(403).json({ error: "FORBIDDEN" });
+      sendError(req, res, 403, "FORBIDDEN");
       return;
     }
 
     res.status(200).json(playlist);
   } catch (error) {
     console.error("Get playlist error:", error);
-    res.status(500).json({ error: "GET_FAILED" });
+    sendError(req, res, 500, "GET_FAILED");
   }
 }
 
 export async function updatePlaylistNameController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
-    res.status(401).json({ error: "UNAUTHORIZED" });
+    sendError(req, res, 401, "UNAUTHORIZED");
     return;
   }
 
@@ -79,19 +80,19 @@ export async function updatePlaylistNameController(req: Request, res: Response) 
   const { name } = req.body as { name: string };
 
   if (!name || typeof name !== "string" || !name.trim()) {
-    res.status(400).json({ error: "INVALID_NAME" });
+    sendError(req, res, 400, "INVALID_NAME");
     return;
   }
 
   try {
     const playlist = await db.findPlaylistById(playlistId);
     if (!playlist) {
-      res.status(404).json({ error: "NOT_FOUND" });
+      sendError(req, res, 404, "NOT_FOUND");
       return;
     }
 
     if (playlist.userId !== userId) {
-      res.status(403).json({ error: "FORBIDDEN" });
+      sendError(req, res, 403, "FORBIDDEN");
       return;
     }
 
@@ -99,14 +100,14 @@ export async function updatePlaylistNameController(req: Request, res: Response) 
     res.status(200).json(updated);
   } catch (error) {
     console.error("Update playlist error:", error);
-    res.status(500).json({ error: "UPDATE_FAILED" });
+    sendError(req, res, 500, "UPDATE_FAILED");
   }
 }
 
 export async function addSongToPlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
-    res.status(401).json({ error: "UNAUTHORIZED" });
+    sendError(req, res, 401, "UNAUTHORIZED");
     return;
   }
 
@@ -120,19 +121,19 @@ export async function addSongToPlaylistController(req: Request, res: Response) {
   };
 
   if (!title || !artist) {
-    res.status(400).json({ error: "MISSING_SONG_INFO" });
+    sendError(req, res, 400, "MISSING_SONG_INFO");
     return;
   }
 
   try {
     const playlist = await db.findPlaylistById(playlistId);
     if (!playlist) {
-      res.status(404).json({ error: "NOT_FOUND" });
+      sendError(req, res, 404, "NOT_FOUND");
       return;
     }
 
     if (playlist.userId !== userId) {
-      res.status(403).json({ error: "FORBIDDEN" });
+      sendError(req, res, 403, "FORBIDDEN");
       return;
     }
 
@@ -147,14 +148,14 @@ export async function addSongToPlaylistController(req: Request, res: Response) {
     res.status(200).json(updated);
   } catch (error) {
     console.error("Add song error:", error);
-    res.status(500).json({ error: "ADD_SONG_FAILED" });
+    sendError(req, res, 500, "ADD_SONG_FAILED");
   }
 }
 
 export async function removeSongFromPlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
-    res.status(401).json({ error: "UNAUTHORIZED" });
+    sendError(req, res, 401, "UNAUTHORIZED");
     return;
   }
 
@@ -162,19 +163,19 @@ export async function removeSongFromPlaylistController(req: Request, res: Respon
   const { title, artist } = req.body as { title: string; artist: string };
 
   if (!title || !artist) {
-    res.status(400).json({ error: "MISSING_SONG_INFO" });
+    sendError(req, res, 400, "MISSING_SONG_INFO");
     return;
   }
 
   try {
     const playlist = await db.findPlaylistById(playlistId);
     if (!playlist) {
-      res.status(404).json({ error: "NOT_FOUND" });
+      sendError(req, res, 404, "NOT_FOUND");
       return;
     }
 
     if (playlist.userId !== userId) {
-      res.status(403).json({ error: "FORBIDDEN" });
+      sendError(req, res, 403, "FORBIDDEN");
       return;
     }
 
@@ -182,14 +183,14 @@ export async function removeSongFromPlaylistController(req: Request, res: Respon
     res.status(200).json(updated);
   } catch (error) {
     console.error("Remove song error:", error);
-    res.status(500).json({ error: "REMOVE_SONG_FAILED" });
+    sendError(req, res, 500, "REMOVE_SONG_FAILED");
   }
 }
 
 export async function deletePlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
-    res.status(401).json({ error: "UNAUTHORIZED" });
+    sendError(req, res, 401, "UNAUTHORIZED");
     return;
   }
 
@@ -198,12 +199,12 @@ export async function deletePlaylistController(req: Request, res: Response) {
   try {
     const playlist = await db.findPlaylistById(playlistId);
     if (!playlist) {
-      res.status(404).json({ error: "NOT_FOUND" });
+      sendError(req, res, 404, "NOT_FOUND");
       return;
     }
 
     if (playlist.userId !== userId) {
-      res.status(403).json({ error: "FORBIDDEN" });
+      sendError(req, res, 403, "FORBIDDEN");
       return;
     }
 
@@ -211,6 +212,6 @@ export async function deletePlaylistController(req: Request, res: Response) {
     res.status(200).json({ ok: true });
   } catch (error) {
     console.error("Delete playlist error:", error);
-    res.status(500).json({ error: "DELETE_FAILED" });
+    sendError(req, res, 500, "DELETE_FAILED");
   }
 }

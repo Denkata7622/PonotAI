@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import crypto from "node:crypto";
+import { sendError } from "../errors/errorCatalog";
 
 type TokenPayload = { sub: string; exp: number };
 
@@ -49,13 +50,13 @@ function verifyToken(token: string): TokenPayload | null {
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "UNAUTHORIZED" });
+    sendError(req, res, 401, "UNAUTHORIZED");
     return;
   }
 
   const payload = verifyToken(header.slice("Bearer ".length).trim());
   if (!payload) {
-    res.status(401).json({ error: "UNAUTHORIZED" });
+    sendError(req, res, 401, "UNAUTHORIZED");
     return;
   }
 
