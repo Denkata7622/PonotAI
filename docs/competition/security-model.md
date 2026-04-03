@@ -1,72 +1,94 @@
-# Security model (STRIDE-lite)
+# Security model (STRIDE-lite, verified against code)
 
-Date: 2026-03-30  
-Scope: backend authentication (`/api/auth/*`) and recognition uploads (`/api/recognition/audio`, `/api/recognition/image`).
+Date: 2026-04-03
+Scope: Express backend auth, API surface, upload handling, and third-party API key usage.
 
 ## System boundaries and trust zones
 
-1. **Client zone (untrusted):** Browser/mobile clients submit credentials, JWT bearer tokens, and upload files.
-2. **API zone (trusted runtime):** Express backend validates input, enforces auth and rate limits, processes files in-memory, and calls providers.
-3. **Data zone (trusted persistent):** User records and history store.
-4. **Third-party zone (partially trusted):** Recognition providers and YouTube metadata APIs.
+1. **Client zone (untrusted):** Browser/mobile clients submit credentials, bearer tokens, and multipart uploads.
+2. **API zone (trusted runtime):** Express app handles auth, CORS, security headers, rate limiting, and request processing.
+3. **Data zone (trusted persistence):** user/profile/favorites/playlists/history/shared-song records in the backend store.
+4. **External provider zone (partially trusted):** AuDD, ACRCloud, YouTube Data API, optional Shazam client.
 
-Primary entry points:
+## Verified auth flow (actual code path)
+
+1. User submits credentials to `POST /api/auth/login`.
+2. Password hashes are verified using `crypto.scryptSync` and `crypto.timingSafeEqual`.
+3. Backend signs token payload `{ sub, exp }` via HMAC-SHA256.
+4. Protected routes call `requireAuth` and reject absent/invalid/expired bearer tokens.
+5. JWT secret handling:
+   - Production: process exits with `FATAL: JWT_SECRET environment variable is required in production` when missing.
+   - Non-production: default fallback secret is allowed with warning `WARN: Using default JWT_SECRET — do not use in production`.
+
+## Verified upload handling (actual code path)
+
+- `POST /api/recognition/audio`:
+  - `multer.memoryStorage()` in-memory processing.
+  - MIME gate: only `audio/*`.
+  - File size cap: 15 MB.
+- `POST /api/recognition/image`:
+  - MIME gate: only `image/*`.
+  - File size cap: 10 MB.
+
+## Verified API key usage
+
+- `AUDD_API_TOKEN` / `AUDD_API_KEY`: sent server-side to AuDD via form-data; never returned in API responses.
+- `YOUTUBE_API_KEY`: used server-side for YouTube search enrichment.
+- `ACRCLOUD_ACCESS_KEY`, `ACRCLOUD_ACCESS_SECRET`, `ACRCLOUD_HOST`: used server-side for signed ACRCloud requests.
+- Missing provider keys degrade recognition paths, but key material is not exposed to clients in normal responses.
+
+## STRIDE-lite threat model
+
+| Threat class | Attack surface | Mitigations implemented | Residual risk |
+|---|---|---|---|
+| **Spoofing** | Auth bypass via forged bearer token. | HMAC signature validation + token expiry + `requireAuth` enforcement on protected routes. | Stolen valid token remains usable until expiry (no revocation list). |
+| **Tampering** | Manipulated request payloads or crafted upload files. | Input validation on auth/profile payloads; multer MIME + size limits; centralized error responses. | MIME spoofing is still possible without deep file content verification/sandbox scanning. |
+| **Information Disclosure** | Secret/API key leakage or sensitive response leakage. | Secrets read from env only; production JWT secret hard-fail; Helmet + CORS allowlist reduce passive leakage. | Internal error `details` fields may expose limited internals on some 500 paths; third-party provider metadata still leaves backend boundary. |
+| **Denial of Service** | Brute-force auth, API flooding, upload abuse. | `/api` rate limit (100 req/min/IP), strict auth endpoint rate limit (10 req/15min/IP), recognition limiter (30 req/min/IP), upload size limits. | In-memory limiters are per-process and reset on restart; not globally shared across replicas. |
+| **Elevation of Privilege** | Accessing user-scoped operations without auth. | `requireAuth` middleware attached to sensitive routers/routes (`/favorites`, `/library`, `/playlists`, mutating auth endpoints, etc.). | Any accidental future route added without middleware could create exposure if not caught in review/tests. |
+
+## Route authorization matrix (verified)
+
+### Routes that require auth
+
+- `GET /api/auth/me`
+- `PATCH /api/auth/me`
+- `POST /api/auth/change-password`
+- `DELETE /api/auth/me`
+- `POST /api/share`
+- `GET /api/favorites`
+- `POST /api/favorites`
+- `DELETE /api/favorites/:id`
+- `POST /api/library/sync`
+- `GET /api/library`
+- `GET /api/playlists`
+- `POST /api/playlists`
+- `GET /api/playlists/:playlistId`
+- `PATCH /api/playlists/:playlistId`
+- `POST /api/playlists/:playlistId/songs`
+- `DELETE /api/playlists/:playlistId/songs`
+- `DELETE /api/playlists/:playlistId`
+- `DELETE /api/history/:id`
+- `DELETE /api/history`
+
+### Intentionally public routes
+
+- `GET /health`
+- `GET /docs`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
-- `GET/PATCH/DELETE /api/auth/me`
-- `POST /api/auth/change-password`
-- `POST /api/recognition/audio` (multipart, field `audio`)
-- `POST /api/recognition/image` (multipart, field `image`)
+- `POST /api/auth/logout`
+- `GET /api/share/:shareCode`
+- `GET /api/stats/global`
+- `POST /api/recognition/audio`
+- `POST /api/recognition/image`
+- `GET /api/history`
+- `POST /api/history` (guest-compatible via `attachUserIfPresent`)
 
-## Auth flow (actual)
+## Residual-risk summary and next hardening steps
 
-1. Client sends email/password to `/api/auth/login`.
-2. Backend looks up user by email and verifies password hash with `scrypt` + timing-safe comparison.
-3. Backend returns signed token containing `{ sub, exp }`.
-4. Protected endpoints read `Authorization: Bearer <token>` and validate signature + expiry.
-5. In production, startup fails if `JWT_SECRET` is missing.
-
-## Upload flow (actual)
-
-1. Client uploads multipart audio/image to recognition routes.
-2. Multer accepts only `audio/*` or `image/*` mimetypes and enforces size caps (audio 15 MB, image 10 MB).
-3. File is processed in memory and passed to recognition service.
-4. Service may call external providers; successful results are written to history.
-5. General recognition limiter and endpoint-specific controls reduce abuse potential.
-
-## STRIDE-lite threat table
-
-| STRIDE | Threat in this system | Current mitigation in code | Residual risk |
-|---|---|---|---|
-| **S**poofing | Stolen/forged identity token used on protected endpoints. | HMAC-signed tokens with expiry; auth middleware rejects missing/invalid bearer tokens. | Token theft on compromised client remains possible; no token revocation list. |
-| **T**ampering | Upload payload manipulation or malformed files sent to processing pipeline. | Multer field + mimetype filtering and file size limits; centralized error middleware. | Mimetype spoofing can still occur; deep content validation/sandboxing not present. |
-| **R**epudiation | User denies sensitive actions (profile update, password change, uploads). | Route structure and status codes are deterministic; response-time header assists operational tracing. | No immutable audit log or request-ID correlation in current scope. |
-| **I**nformation disclosure | Leakage of stack details, weak headers, or secrets in misconfigured production. | Helmet security headers; production startup validation for `JWT_SECRET`; CORS allowlist. | Verbose error `details` on some 500 paths may reveal internals; third-party metadata leakage risk persists. |
-| **D**enial of service | Brute-force login and high-volume recognition uploads. | Login-specific brute-force limiter; recognition rate limiter; upload size caps. | In-memory limiter is per-process (not shared across replicas) and resets on restart. |
-| **E**levation of privilege | Unauthorized access to `/api/auth/me` and other protected mutations. | `requireAuth` middleware validates signature+expiry and binds `req.userId`. | Compromised valid tokens still inherit user privileges until expiry. |
-
-## Security controls checklist (implemented)
-
-- [x] Production secret hard-fail (`JWT_SECRET`).
-- [x] Secure baseline headers via Helmet.
-- [x] Login brute-force limiter on `POST /api/auth/login`.
-- [x] Recognition abuse limiter on `/api/recognition/*`.
-- [x] Upload type and size restrictions.
-- [x] Password hashing with per-password salt and timing-safe verify.
-- [x] CORS allowlist enforcement.
-
-## Secret-management policy (competition scope)
-
-1. Never commit `.env` files containing real secrets.
-2. Store production secrets only in deployment environment variables.
-3. Rotate `JWT_SECRET` immediately after any suspected leak.
-4. Use distinct secrets per environment (dev/staging/prod).
-5. Treat API provider keys as secrets; avoid logging them.
-
-## Recommended next hardening steps (post-competition)
-
-1. Add distributed rate limiting (e.g., Redis-backed) for multi-instance deployments.
-2. Add token revocation/session tracking for logout-all and incident response.
-3. Add request IDs + append-only audit events for sensitive auth/profile actions.
-4. Add malware/content scanning for uploads before deeper processing.
-5. Normalize error responses to avoid leaking internal exception details.
+1. Move rate limiters to distributed storage (Redis) for horizontally scaled deployments.
+2. Add token/session revocation for incident response.
+3. Add request-id propagation and immutable audit logging for sensitive actions.
+4. Add deep file-type verification and malware scanning before heavy processing.
+5. Reduce 500-class error detail exposure in production responses.

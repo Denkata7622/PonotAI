@@ -6,32 +6,41 @@ type ClientBucket = {
   windowStartedAt: number;
 };
 
-const WINDOW_MS = 60_000;
-const MAX_REQUESTS_PER_WINDOW = 30;
-const buckets = new Map<string, ClientBucket>();
+type RateLimitOptions = {
+  windowMs: number;
+  maxRequests: number;
+};
 
-const LOGIN_WINDOW_MS = 15 * 60_000;
-const MAX_LOGIN_ATTEMPTS_PER_WINDOW = 8;
-const loginBuckets = new Map<string, ClientBucket>();
+const recognitionBuckets = new Map<string, ClientBucket>();
+const authBuckets = new Map<string, ClientBucket>();
+const apiBuckets = new Map<string, ClientBucket>();
 
 function resolveClientKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
 }
 
-export function recognitionRateLimit(req: Request, res: Response, next: NextFunction): void {
+function enforceRateLimit(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  buckets: Map<string, ClientBucket>,
+  options: RateLimitOptions,
+): void {
   const clientKey = resolveClientKey(req);
   const now = Date.now();
   const existing = buckets.get(clientKey);
 
-  if (!existing || now - existing.windowStartedAt > WINDOW_MS) {
+  if (!existing || now - existing.windowStartedAt > options.windowMs) {
     buckets.set(clientKey, { count: 1, windowStartedAt: now });
     next();
     return;
   }
 
-  if (existing.count >= MAX_REQUESTS_PER_WINDOW) {
-    sendError(req, res, 429, "TOO_MANY_RECOGNITION_REQUESTS", {
-      details: { retryAfterSeconds: Math.ceil((WINDOW_MS - (now - existing.windowStartedAt)) / 1000) },
+  if (existing.count >= options.maxRequests) {
+    const retryAfter = Math.ceil((options.windowMs - (now - existing.windowStartedAt)) / 1000);
+    sendError(req, res, 429, "RATE_LIMIT_EXCEEDED", {
+      message: "Too many requests. Please try again later.",
+      retryAfter,
     });
     return;
   }
@@ -40,24 +49,23 @@ export function recognitionRateLimit(req: Request, res: Response, next: NextFunc
   next();
 }
 
-export function authLoginRateLimit(req: Request, res: Response, next: NextFunction): void {
-  const clientKey = resolveClientKey(req);
-  const now = Date.now();
-  const existing = loginBuckets.get(clientKey);
+export function recognitionRateLimit(req: Request, res: Response, next: NextFunction): void {
+  enforceRateLimit(req, res, next, recognitionBuckets, {
+    windowMs: 60_000,
+    maxRequests: 30,
+  });
+}
 
-  if (!existing || now - existing.windowStartedAt > LOGIN_WINDOW_MS) {
-    loginBuckets.set(clientKey, { count: 1, windowStartedAt: now });
-    next();
-    return;
-  }
+export function authSensitiveRateLimit(req: Request, res: Response, next: NextFunction): void {
+  enforceRateLimit(req, res, next, authBuckets, {
+    windowMs: 15 * 60_000,
+    maxRequests: 10,
+  });
+}
 
-  if (existing.count >= MAX_LOGIN_ATTEMPTS_PER_WINDOW) {
-    sendError(req, res, 429, "TOO_MANY_LOGIN_ATTEMPTS", {
-      details: { retryAfterSeconds: Math.ceil((LOGIN_WINDOW_MS - (now - existing.windowStartedAt)) / 1000) },
-    });
-    return;
-  }
-
-  existing.count += 1;
-  next();
+export function apiRateLimit(req: Request, res: Response, next: NextFunction): void {
+  enforceRateLimit(req, res, next, apiBuckets, {
+    windowMs: 60_000,
+    maxRequests: 100,
+  });
 }

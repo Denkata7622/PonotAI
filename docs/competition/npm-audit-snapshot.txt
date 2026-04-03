@@ -1,5 +1,46 @@
-npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
-npm warn audit 403 Forbidden - POST https://registry.npmjs.org/-/npm/v1/security/advisories/bulk
-Forbidden
-npm error audit endpoint returned an error
-npm error A complete log of this run can be found in: /root/.npm/_logs/2026-03-30T19_38_20_659Z-debug-0.log
+# npm audit snapshot
+Date: 2026-04-03 (UTC)
+
+## Commands run
+
+### backend/
+Command: `npm audit --omit=dev`
+Result:
+- npm warn Unknown env config "http-proxy".
+- npm warn audit 403 Forbidden - POST https://registry.npmjs.org/-/npm/v1/security/advisories/bulk
+- npm error audit endpoint returned an error
+
+Command: `npm audit fix --omit=dev`
+Result:
+- npm warn Unknown env config "http-proxy".
+- npm error code E403
+- npm error 403 Forbidden - GET https://registry.npmjs.org/helmet
+
+### frontend/
+Command: `npm audit --omit=dev`
+Result:
+- npm warn Unknown env config "http-proxy".
+- npm warn audit 403 Forbidden - POST https://registry.npmjs.org/-/npm/v1/security/advisories/bulk
+- npm error audit endpoint returned an error
+
+Command: `npm audit fix --omit=dev`
+Result:
+- npm warn Unknown env config "http-proxy".
+- npm warn audit 403 Forbidden - POST https://registry.npmjs.org/-/npm/v1/security/advisories/bulk
+- npm error audit endpoint returned an error
+
+## Findings and remediation status
+
+- Direct vulnerability report data could not be retrieved in this environment because the npm advisory endpoint and package fetches returned 403 Forbidden.
+- Automatic fixes could not be applied due to the same registry access restriction.
+- No high/critical issues could be triaged from advisory payloads because advisory payloads were not returned.
+
+## Unfixable in this run (environment-limited)
+
+1. npm audit advisory retrieval blocked by registry 403.
+2. npm audit fix blocked by registry 403 package fetch errors.
+
+Recommended follow-up in CI or a network with npm registry access:
+1. Run `npm audit --omit=dev` in both backend and frontend.
+2. Run `npm audit fix --omit=dev`.
+3. Manually patch or override remaining high/critical advisories and re-run audit.

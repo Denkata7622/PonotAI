@@ -9,7 +9,7 @@ import {
   updateUser,
 } from "../../db/authStore";
 import { requireAuth, signAuthToken } from "../../middlewares/auth.middleware";
-import { authLoginRateLimit } from "../../middlewares/rateLimit.middleware";
+import { authSensitiveRateLimit } from "../../middlewares/rateLimit.middleware";
 import { sendError } from "../../errors/errorCatalog";
 
 const authRouter = Router();
@@ -48,7 +48,7 @@ function toUserPayload(user: {
   };
 }
 
-authRouter.post("/register", async (req, res) => {
+authRouter.post("/register", authSensitiveRateLimit, async (req, res) => {
   const { username, email, password } = req.body as {
     username?: string;
     email?: string;
@@ -67,7 +67,7 @@ authRouter.post("/register", async (req, res) => {
   res.status(201).json({ token, user: toUserPayload(user) });
 });
 
-authRouter.post("/login", authLoginRateLimit, async (req, res) => {
+authRouter.post("/login", authSensitiveRateLimit, async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
   if (!email || !password) return void sendError(req, res, 401, "INVALID_CREDENTIALS");
 
