@@ -1,0 +1,1134 @@
+openapi: 3.0.3
+info:
+  title: Trackly API
+  version: 1.0.0
+  description: |
+    OpenAPI specification for the Trackly backend.
+    Interactive Swagger UI is available at `GET /docs`.
+servers:
+  - url: http://localhost:4000
+    description: Local development
+security:
+  - bearerAuth: []
+tags:
+  - name: Health
+  - name: Auth
+  - name: Recognition
+  - name: History
+  - name: Favorites
+  - name: Share
+  - name: Library
+  - name: Playlists
+  - name: Stats
+paths:
+  /health:
+    get:
+      tags: [Health]
+      security: []
+      summary: Health check
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Register user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccessResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Username or email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          description: Too many login attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Logout current client session
+      responses:
+        '200':
+          description: Logout acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Auth]
+      summary: Update current authenticated user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeRequest'
+      responses:
+        '200':
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Username or email already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Auth]
+      summary: Delete current authenticated account and related resources
+      responses:
+        '200':
+          description: Deletion successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change current user password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/recognition/audio:
+    post:
+      tags: [Recognition]
+      security: []
+      summary: Recognize song from uploaded audio
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Recognition result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SongMetadata'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: No verified result found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Recognition rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/recognition/image:
+    post:
+      tags: [Recognition]
+      security: []
+      summary: Recognize songs from uploaded image
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                language:
+                  type: string
+                  description: OCR language code
+      responses:
+        '200':
+          description: Recognition results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageRecognitionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: No verified result found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Recognition rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/history:
+    get:
+      tags: [History]
+      security:
+        - bearerAuth: []
+        - {}
+      summary: Get history (user-scoped for authenticated users, global guest history otherwise)
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: filter
+          schema:
+            type: string
+            enum: [all, recognized, unrecognized, audio-record, audio-file, album-image]
+      responses:
+        '200':
+          description: History payload
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/UserHistoryResponse'
+                  - $ref: '#/components/schemas/LegacyHistoryResponse'
+    post:
+      tags: [History]
+      security:
+        - bearerAuth: []
+        - {}
+      summary: Add history entry (guest or authenticated)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHistoryRequest'
+      responses:
+        '201':
+          description: Created history entry
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/UserHistoryItem'
+                  - $ref: '#/components/schemas/HistoryEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    delete:
+      tags: [History]
+      summary: Clear authenticated user history
+      responses:
+        '200':
+          description: Cleared user history count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: integer
+                    example: 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/history/{id}:
+    delete:
+      tags: [History]
+      summary: Delete a specific user history entry
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: History item deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/favorites:
+    get:
+      tags: [Favorites]
+      summary: List current user favorites
+      responses:
+        '200':
+          description: Favorite items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Favorite'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Favorites]
+      summary: Add favorite song
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertFavoriteRequest'
+      responses:
+        '200':
+          description: Existing duplicate favorite
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Favorite'
+        '201':
+          description: Favorite created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Favorite'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/favorites/{id}:
+    delete:
+      tags: [Favorites]
+      summary: Delete favorite by id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Favorite deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/share:
+    post:
+      tags: [Share]
+      summary: Create public share code for a song
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertFavoriteRequest'
+      responses:
+        '201':
+          description: Share created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shareCode:
+                    type: string
+                  shareUrl:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/share/{shareCode}:
+    get:
+      tags: [Share]
+      security: []
+      summary: Get shared song by share code
+      parameters:
+        - in: path
+          name: shareCode
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Shared song
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedSong'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/library:
+    get:
+      tags: [Library]
+      summary: Get user library playlists
+      responses:
+        '200':
+          description: Playlists in library
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  playlists:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Playlist'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/library/sync:
+    post:
+      tags: [Library]
+      summary: Replace user playlists with provided payload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncLibraryRequest'
+      responses:
+        '200':
+          description: Library synced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/playlists:
+    get:
+      tags: [Playlists]
+      summary: List user playlists
+      responses:
+        '200':
+          description: User playlists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  playlists:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Playlist'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Playlists]
+      summary: Create playlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlaylistRequest'
+      responses:
+        '201':
+          description: Playlist created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Playlist'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/playlists/{playlistId}:
+    get:
+      tags: [Playlists]
+      summary: Get playlist by id
+      parameters:
+        - in: path
+          name: playlistId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Playlist details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Playlist'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Playlists]
+      summary: Update playlist name
+      parameters:
+        - in: path
+          name: playlistId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlaylistRequest'
+      responses:
+        '200':
+          description: Playlist updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Playlist'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Playlists]
+      summary: Delete playlist
+      parameters:
+        - in: path
+          name: playlistId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Playlist deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/playlists/{playlistId}/songs:
+    post:
+      tags: [Playlists]
+      summary: Add song to playlist
+      parameters:
+        - in: path
+          name: playlistId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaylistSongInput'
+      responses:
+        '200':
+          description: Playlist updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Playlist'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Playlists]
+      summary: Remove song from playlist
+      parameters:
+        - in: path
+          name: playlistId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, artist]
+              properties:
+                title:
+                  type: string
+                artist:
+                  type: string
+      responses:
+        '200':
+          description: Playlist updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Playlist'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/stats/global:
+    get:
+      tags: [Stats]
+      security: []
+      summary: Get global usage stats
+      responses:
+        '200':
+          description: Global statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GlobalStats'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid authorization
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - INTERNAL_SERVER_ERROR
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - NOT_FOUND
+            - INVALID_PAYLOAD
+            - INVALID_USERNAME
+            - INVALID_EMAIL
+            - WEAK_PASSWORD
+            - USERNAME_TAKEN
+            - EMAIL_TAKEN
+            - INVALID_CREDENTIALS
+            - INVALID_PASSWORD
+            - INVALID_NAME
+            - MISSING_SONG_INFO
+            - METHOD_REQUIRED
+            - NO_VERIFIED_RESULT
+            - PROVIDER_CONFIG_ERROR
+            - AUDIO_FILE_REQUIRED
+            - IMAGE_FILE_REQUIRED
+            - AUDIO_RECOGNITION_FAILED
+            - IMAGE_RECOGNITION_FAILED
+            - TOO_MANY_RECOGNITION_REQUESTS
+            - TOO_MANY_LOGIN_ATTEMPTS
+            - SYNC_FAILED
+            - GET_LIBRARY_FAILED
+            - CREATE_FAILED
+            - GET_FAILED
+            - UPDATE_FAILED
+            - ADD_SONG_FAILED
+            - REMOVE_SONG_FAILED
+            - DELETE_FAILED
+        message:
+          type: string
+        details:
+          nullable: true
+        requestId:
+          type: string
+    OkResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+    User:
+      type: object
+      required: [id, username, email, createdAt]
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        avatarBase64:
+          type: string
+          nullable: true
+        bio:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    AuthSuccessResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+    RegisterRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+    UpdateMeRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        bio:
+          type: string
+        avatarBase64:
+          type: string
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+    SongMetadata:
+      type: object
+      required: [songName, artist, album, genre, releaseYear, confidenceScore, source, verificationStatus, platformLinks]
+      properties:
+        songName:
+          type: string
+        artist:
+          type: string
+        album:
+          type: string
+        genre:
+          type: string
+        releaseYear:
+          type: integer
+          nullable: true
+        confidenceScore:
+          type: number
+        youtubeVideoId:
+          type: string
+          nullable: true
+        platformLinks:
+          type: object
+          additionalProperties:
+            type: string
+        source:
+          type: string
+          enum: [provider, ocr_fallback]
+        verificationStatus:
+          type: string
+          enum: [verified, not_found]
+    ImageRecognitionResponse:
+      type: object
+      required: [songs, count, language]
+      properties:
+        songs:
+          type: array
+          items:
+            $ref: '#/components/schemas/SongMetadata'
+        count:
+          type: integer
+        language:
+          type: string
+    HistoryEntry:
+      type: object
+      required: [id, songName, artist, createdAt]
+      properties:
+        id:
+          type: string
+        songName:
+          type: string
+        artist:
+          type: string
+        youtubeVideoId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    UserHistoryItem:
+      type: object
+      required: [id, userId, method, recognized, createdAt]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        method:
+          type: string
+          enum: [audio-record, audio-file, album-image]
+        title:
+          type: string
+          nullable: true
+        artist:
+          type: string
+          nullable: true
+        album:
+          type: string
+          nullable: true
+        coverUrl:
+          type: string
+          nullable: true
+        recognized:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    LegacyHistoryResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoryEntry'
+    UserHistoryResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserHistoryItem'
+        total:
+          type: integer
+    CreateHistoryRequest:
+      type: object
+      properties:
+        method:
+          type: string
+          enum: [audio-record, audio-file, album-image]
+        title:
+          type: string
+        artist:
+          type: string
+        album:
+          type: string
+        coverUrl:
+          type: string
+        recognized:
+          type: boolean
+        songName:
+          type: string
+        youtubeVideoId:
+          type: string
+    Favorite:
+      type: object
+      required: [id, userId, title, artist, createdAt]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        title:
+          type: string
+        artist:
+          type: string
+        album:
+          type: string
+          nullable: true
+        coverUrl:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    UpsertFavoriteRequest:
+      type: object
+      required: [title, artist]
+      properties:
+        title:
+          type: string
+        artist:
+          type: string
+        album:
+          type: string
+        coverUrl:
+          type: string
+    SharedSong:
+      type: object
+      required: [title, artist, sharedBy, createdAt]
+      properties:
+        title:
+          type: string
+        artist:
+          type: string
+        album:
+          type: string
+          nullable: true
+        coverUrl:
+          type: string
+          nullable: true
+        sharedBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    PlaylistSong:
+      type: object
+      required: [title, artist]
+      properties:
+        title:
+          type: string
+        artist:
+          type: string
+        album:
+          type: string
+          nullable: true
+        coverUrl:
+          type: string
+          nullable: true
+        videoId:
+          type: string
+          nullable: true
+    PlaylistSongInput:
+      allOf:
+        - $ref: '#/components/schemas/PlaylistSong'
+    Playlist:
+      type: object
+      required: [id, userId, name, songs, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        name:
+          type: string
+        songs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaylistSong'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreatePlaylistRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+    SyncLibraryRequest:
+      type: object
+      properties:
+        favorites:
+          type: array
+          items:
+            type: string
+        playlists:
+          type: array
+          items:
+            type: object
+            required: [id, name, songs]
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              songs:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlaylistSong'
+    GlobalStats:
+      type: object
+      required: [totalRecognitions, totalUsers, topArtists]
+      properties:
+        totalRecognitions:
+          type: integer
+        totalUsers:
+          type: integer
+        topArtists:
+          type: array
+          items:
+            type: object
+            required: [name, count]
+            properties:
+              name:
+                type: string
+              count:
+                type: integer

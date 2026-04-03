@@ -1,6 +1,8 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import path from "node:path";
+import { readFileSync } from "node:fs";
 import type { Request, Response } from "express";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import authRouter from "./modules/auth/auth.routes";
@@ -29,11 +31,15 @@ const corsOptions = {
 };
 
 const app = express();
+const YAML = require("js-yaml");
+const swaggerUi = require("swagger-ui-express");
+const openApiSpec = YAML.load(readFileSync(path.resolve(__dirname, "..", "openapi.yaml"), "utf8"));
 
 app.use(helmet());
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use(express.json());
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
 app.use((req, res, next) => {
   const startedAt = process.hrtime.bigint();

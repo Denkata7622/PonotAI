@@ -148,6 +148,7 @@ function scoreLineForTitle(line: InterpretedLine): number {
   );
 }
 
+/** Heuristically derives fallback song metadata from interpreted OCR lines. */
 export function deriveBestEffortMetadata(lines: InterpretedLine[]): OcrCandidateMetadata | null {
   if (lines.length === 0) {
     return null;
@@ -360,6 +361,7 @@ async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise
   }
 }
 
+/** Runs provider chain + tag fallback to resolve audio files into normalized song metadata. */
 export async function recognizeSongFromAudio(buffer: Buffer, originalName: string): Promise<SongMetadata> {
   if (!hasConfiguredAudioProvider()) {
     return buildMockAudioRecognition();
@@ -418,6 +420,7 @@ export async function recognizeSongFromAudio(buffer: Buffer, originalName: strin
   throw new NoVerifiedResultError("Recognition failed across all providers and local metadata tags.");
 }
 
+/** Extracts song candidates from image content and verifies each via lookup providers when possible. */
 export async function recognizeSongFromImage(buffer: Buffer, language = "eng"): Promise<SongMetadata[]> {
   let visionResults: OcrCandidateMetadata[];
 

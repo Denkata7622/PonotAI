@@ -10,6 +10,11 @@ import {
   type HistoryFilter,
 } from "./history.service";
 
+/**
+ * Returns history entries for the current request context.
+ * Authenticated users receive paginated, filterable user history.
+ * Guests receive the legacy public history list.
+ */
 export async function getHistoryController(req: Request, res: Response): Promise<void> {
   // If no authenticated user, serve the legacy flat history.json (guest recognitions)
   if (!req.userId) {
@@ -23,6 +28,11 @@ export async function getHistoryController(req: Request, res: Response): Promise
   res.status(200).json(result);
 }
 
+/**
+ * Creates a history entry.
+ * For authenticated users this writes both user history and global history.
+ * For guests this writes only the legacy global history entry format.
+ */
 export async function createHistoryEntryController(req: Request, res: Response): Promise<void> {
   const { method, title, artist, album, coverUrl, recognized, songName, youtubeVideoId } = req.body as {
     method?: string;
@@ -75,6 +85,7 @@ export async function createHistoryEntryController(req: Request, res: Response):
   res.status(201).json(entry);
 }
 
+/** Deletes a single authenticated user's history item by id. */
 export async function deleteHistoryItemController(req: Request, res: Response): Promise<void> {
   try {
     const ok = await deleteUserHistoryItem(req.userId!, req.params.id);
@@ -93,11 +104,13 @@ export async function deleteHistoryItemController(req: Request, res: Response): 
   }
 }
 
+/** Deletes all history entries for the authenticated user. */
 export async function clearHistoryController(req: Request, res: Response): Promise<void> {
   const deleted = await clearUserHistory(req.userId!);
   res.status(200).json({ deleted });
 }
 
+/** Returns the legacy public history feed used by unauthenticated requests. */
 export async function getLegacyHistoryController(_req: Request, res: Response): Promise<void> {
   const items = await listHistory(20);
   res.status(200).json({ items });

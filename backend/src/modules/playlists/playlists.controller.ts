@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import * as db from "../../db/authStore";
 import { sendError } from "../../errors/errorCatalog";
 
+/** Creates a new playlist for the authenticated user. */
 export async function createPlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -25,6 +26,7 @@ export async function createPlaylistController(req: Request, res: Response) {
   }
 }
 
+/** Lists all playlists owned by the authenticated user. */
 export async function getPlaylistsController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -41,6 +43,7 @@ export async function getPlaylistsController(req: Request, res: Response) {
   }
 }
 
+/** Gets one playlist by id and verifies ownership before returning it. */
 export async function getPlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -69,6 +72,7 @@ export async function getPlaylistController(req: Request, res: Response) {
   }
 }
 
+/** Renames one playlist owned by the authenticated user. */
 export async function updatePlaylistNameController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -104,6 +108,7 @@ export async function updatePlaylistNameController(req: Request, res: Response) 
   }
 }
 
+/** Adds a song payload to a playlist after authorization and ownership checks. */
 export async function addSongToPlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -152,6 +157,7 @@ export async function addSongToPlaylistController(req: Request, res: Response) {
   }
 }
 
+/** Removes a song from a playlist after authorization and ownership checks. */
 export async function removeSongFromPlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -187,6 +193,7 @@ export async function removeSongFromPlaylistController(req: Request, res: Respon
   }
 }
 
+/** Deletes a playlist owned by the authenticated user. */
 export async function deletePlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
