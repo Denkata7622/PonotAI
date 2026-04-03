@@ -42,12 +42,12 @@ function assertStandardErrorShape(body: unknown): asserts body is StandardError 
   }
 }
 
-test("auth validation endpoint returns standardized error shape", async () => {
+test("auth register validation returns standard error shape", async () => {
   const response = await fetch(`${baseUrl}/api/auth/register`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-request-id": "req-auth-1",
+      "x-request-id": "req-auth-register-1",
     },
     body: JSON.stringify({ username: "x", email: "valid@example.com", password: "password123" }),
   });
@@ -56,10 +56,10 @@ test("auth validation endpoint returns standardized error shape", async () => {
   const body = (await response.json()) as unknown;
   assertStandardErrorShape(body);
   assert.equal(body.code, "INVALID_USERNAME");
-  assert.equal(body.requestId, "req-auth-1");
+  assert.equal(body.requestId, "req-auth-register-1");
 });
 
-test("protected endpoint returns standardized unauthorized response", async () => {
+test("favorites unauthorized returns standard error shape", async () => {
   const response = await fetch(`${baseUrl}/api/favorites`);
 
   assert.equal(response.status, 401);
@@ -68,7 +68,7 @@ test("protected endpoint returns standardized unauthorized response", async () =
   assert.equal(body.code, "UNAUTHORIZED");
 });
 
-test("not found endpoint returns standardized error shape", async () => {
+test("share lookup missing resource returns standard error shape", async () => {
   const response = await fetch(`${baseUrl}/api/share/not-a-real-code`);
 
   assert.equal(response.status, 404);
@@ -77,7 +77,7 @@ test("not found endpoint returns standardized error shape", async () => {
   assert.equal(body.code, "NOT_FOUND");
 });
 
-test("guest history validation error keeps standardized shape", async () => {
+test("history guest validation returns standard error shape", async () => {
   const response = await fetch(`${baseUrl}/api/history`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -88,4 +88,35 @@ test("guest history validation error keeps standardized shape", async () => {
   const body = (await response.json()) as unknown;
   assertStandardErrorShape(body);
   assert.equal(body.code, "INVALID_PAYLOAD");
+});
+
+test("recognition audio without multipart file returns standard error shape", async () => {
+  const response = await fetch(`${baseUrl}/api/recognition/audio`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({}),
+  });
+
+  assert.equal(response.status, 400);
+  const body = (await response.json()) as unknown;
+  assertStandardErrorShape(body);
+  assert.equal(body.code, "AUDIO_FILE_REQUIRED");
+});
+
+test("playlists unauthorized returns standard error shape", async () => {
+  const response = await fetch(`${baseUrl}/api/playlists`);
+
+  assert.equal(response.status, 401);
+  const body = (await response.json()) as unknown;
+  assertStandardErrorShape(body);
+  assert.equal(body.code, "UNAUTHORIZED");
+});
+
+test("library unauthorized returns standard error shape", async () => {
+  const response = await fetch(`${baseUrl}/api/library`);
+
+  assert.equal(response.status, 401);
+  const body = (await response.json()) as unknown;
+  assertStandardErrorShape(body);
+  assert.equal(body.code, "UNAUTHORIZED");
 });
