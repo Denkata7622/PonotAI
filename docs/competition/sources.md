@@ -36,6 +36,10 @@ This bibliography covers the primary frameworks, APIs, and libraries currently u
 
 [16] Node.js Contributors, “Node.js API documentation,” OpenJS Foundation, 2026. [Online]. Available: https://nodejs.org/docs/latest/api/. [Accessed: Mar. 30, 2026].
 
+[17] OpenAPI Initiative, “OpenAPI Specification v3.0.3,” Linux Foundation, 2026. [Online]. Available: https://spec.openapis.org/oas/v3.0.3. [Accessed: Mar. 30, 2026].
+
+[18] swagger-api, “swagger-ui-express,” npm, 2026. [Online]. Available: https://www.npmjs.com/package/swagger-ui-express. [Accessed: Mar. 30, 2026].
+
 ## APA-style references
 
 Next.js. (2026). *Next.js Documentation*. Vercel. https://nextjs.org/docs (Accessed March 30, 2026).
@@ -47,3 +51,5 @@ Express.js. (2026). *Express 4.x API Reference*. OpenJS Foundation. https://expr
 Google for Developers. (2026). *YouTube IFrame Player API Reference*. https://developers.google.com/youtube/iframe_api_reference (Accessed March 30, 2026).
 
 tesseract.js contributors. (2026). *tesseract.js* [Computer software]. https://github.com/naptha/tesseract.js (Accessed March 30, 2026).
+
+OpenAPI Initiative. (2026). *OpenAPI Specification v3.0.3*. Linux Foundation. https://spec.openapis.org/oas/v3.0.3 (Accessed March 30, 2026).

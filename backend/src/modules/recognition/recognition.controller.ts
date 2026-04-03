@@ -24,6 +24,7 @@ function handleRecognitionError(req: Request, res: Response, error: unknown, cod
   });
 }
 
+/** Accepts an uploaded audio file and returns normalized recognition metadata. */
 export async function recognizeAudioController(req: Request, res: Response): Promise<void> {
   try {
     if (!req.file) {
@@ -43,6 +44,7 @@ export async function recognizeAudioController(req: Request, res: Response): Pro
   }
 }
 
+/** Accepts an uploaded image and returns one or more recognized song candidates. */
 export async function recognizeImageController(req: Request, res: Response): Promise<void> {
   try {
     if (!req.file) {

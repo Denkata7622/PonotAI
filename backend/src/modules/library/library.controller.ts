@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import * as db from "../../db/authStore";
 import { sendError } from "../../errors/errorCatalog";
 
+/** Replaces the authenticated user's playlists with a client-provided synchronized snapshot. */
 export async function syncLibraryController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -32,6 +33,7 @@ export async function syncLibraryController(req: Request, res: Response) {
   }
 }
 
+/** Returns the authenticated user's library payload (currently user playlists). */
 export async function getLibraryController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
