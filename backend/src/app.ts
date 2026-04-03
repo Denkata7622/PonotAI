@@ -15,7 +15,6 @@ import recognitionRouter from "./modules/recognition/recognition.routes";
 import statsRouter from "./modules/stats/stats.routes";
 import { apiRateLimit, recognitionRateLimit } from "./middlewares/rateLimit.middleware";
 import { responseTimeMiddleware } from "./middlewares/responseTime.middleware";
-import { corsOptions } from "./config/cors";
 
 const app = express();
 const YAML = require("js-yaml");
@@ -55,8 +54,32 @@ app.use(
     },
   }),
 );
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  ...(process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+    : []),
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS: origin ${origin} not allowed`));
+      }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Request-ID"],
+    exposedHeaders: ["X-Response-Time", "X-Request-ID"],
+  }),
+);
+
+// Handle preflight for all routes
+app.options("*", cors());
 app.use(express.json());
 app.use(responseTimeMiddleware);
 

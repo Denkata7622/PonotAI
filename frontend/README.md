@@ -11,10 +11,10 @@ The client calls `/api/recognize` (same-origin Next route).
 
 Set backend URL in `.env.local`:
 ```bash
-TRACKLY_API_BASE_URL=http://localhost:4000
+NEXT_PUBLIC_API_URL=http://localhost:4000
 ```
 
-`NEXT_PUBLIC_API_BASE_URL` is also supported as a fallback.
+Set `NEXT_PUBLIC_API_URL` to point at the backend API.
 
 ### Feature structure
 - `features/recognition/api.ts` - API client for recognition.
@@ -39,4 +39,4 @@ npm run setup
 ```
 
 ### PWA icon requirement
-Place `frontend/public/icon-192.png` before deployment so `/manifest.json` resolves its icon.
+Place `frontend/public/icon-192.svg` and `frontend/public/icon-512.svg` before deployment so `/manifest.json` resolves its icons.

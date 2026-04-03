@@ -5,12 +5,18 @@
   "display": "standalone",
   "background_color": "#0b0d12",
   "theme_color": "#7c5cff",
-  "_comment": "Place icon-192.png in frontend/public/ before deployment.",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/icon-192.svg",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }
