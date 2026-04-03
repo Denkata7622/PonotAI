@@ -1,12 +1,12 @@
 import type { Request, Response } from "express";
 import * as db from "../../db/authStore";
-import { sendError } from "../../errors/errorCatalog";
+import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 
 /** Replaces the authenticated user's playlists with a client-provided synchronized snapshot. */
 export async function syncLibraryController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
-    sendError(req, res, 401, "UNAUTHORIZED");
+    sendError(res, ErrorCatalog.UNAUTHORIZED);
     return;
   }
 
@@ -29,7 +29,7 @@ export async function syncLibraryController(req: Request, res: Response) {
     res.status(200).json({ ok: true });
   } catch (error) {
     console.error("Library sync error:", error);
-    sendError(req, res, 500, "SYNC_FAILED");
+    sendError(res, ErrorCatalog.SYNC_FAILED);
   }
 }
 
@@ -37,7 +37,7 @@ export async function syncLibraryController(req: Request, res: Response) {
 export async function getLibraryController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
-    sendError(req, res, 401, "UNAUTHORIZED");
+    sendError(res, ErrorCatalog.UNAUTHORIZED);
     return;
   }
 
@@ -46,6 +46,6 @@ export async function getLibraryController(req: Request, res: Response) {
     res.status(200).json({ playlists });
   } catch (error) {
     console.error("Get library error:", error);
-    sendError(req, res, 500, "GET_LIBRARY_FAILED");
+    sendError(res, ErrorCatalog.GET_LIBRARY_FAILED);
   }
 }

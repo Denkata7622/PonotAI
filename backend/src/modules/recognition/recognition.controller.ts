@@ -1,34 +1,33 @@
 import { Request, Response } from "express";
-import { sendError } from "../../errors/errorCatalog";
+import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 import { addHistoryEntry } from "../history/history.service";
 import { MissingProviderConfigError, NoVerifiedResultError } from "./providers/audd.provider";
 import { recognizeSongFromAudio, recognizeSongFromImage } from "./recognition.service";
 
-function handleRecognitionError(req: Request, res: Response, error: unknown, code: "AUDIO_RECOGNITION_FAILED" | "IMAGE_RECOGNITION_FAILED"): void {
+function handleRecognitionError(
+  res: Response,
+  error: unknown,
+  code: "AUDIO_RECOGNITION_FAILED" | "IMAGE_RECOGNITION_FAILED",
+): void {
   if (error instanceof NoVerifiedResultError) {
-    sendError(req, res, 404, "NO_VERIFIED_RESULT", {
-      message: error.message,
-    });
+    sendError(res, ErrorCatalog.NO_VERIFIED_RESULT);
     return;
   }
 
   if (error instanceof MissingProviderConfigError) {
-    sendError(req, res, 500, "PROVIDER_CONFIG_ERROR", {
-      message: error.message,
-    });
+    sendError(res, ErrorCatalog.PROVIDER_CONFIG_ERROR);
     return;
   }
 
-  sendError(req, res, 500, code, {
-    details: (error as Error).message,
-  });
+  const errorKey = code === "AUDIO_RECOGNITION_FAILED" ? ErrorCatalog.AUDIO_RECOGNITION_FAILED : ErrorCatalog.IMAGE_RECOGNITION_FAILED;
+  sendError(res, errorKey, process.env.NODE_ENV === "production" ? undefined : { cause: (error as Error).message });
 }
 
 /** Accepts an uploaded audio file and returns normalized recognition metadata. */
 export async function recognizeAudioController(req: Request, res: Response): Promise<void> {
   try {
     if (!req.file) {
-      sendError(req, res, 400, "AUDIO_FILE_REQUIRED");
+      sendError(res, ErrorCatalog.AUDIO_FILE_REQUIRED);
       return;
     }
 
@@ -40,7 +39,7 @@ export async function recognizeAudioController(req: Request, res: Response): Pro
     });
     res.status(200).json(metadata);
   } catch (error) {
-    handleRecognitionError(req, res, error, "AUDIO_RECOGNITION_FAILED");
+    handleRecognitionError(res, error, "AUDIO_RECOGNITION_FAILED");
   }
 }
 
@@ -48,7 +47,7 @@ export async function recognizeAudioController(req: Request, res: Response): Pro
 export async function recognizeImageController(req: Request, res: Response): Promise<void> {
   try {
     if (!req.file) {
-      sendError(req, res, 400, "IMAGE_FILE_REQUIRED");
+      sendError(res, ErrorCatalog.IMAGE_FILE_REQUIRED);
       return;
     }
 
@@ -72,6 +71,6 @@ export async function recognizeImageController(req: Request, res: Response): Pro
       language: language ?? "eng",
     });
   } catch (error) {
-    handleRecognitionError(req, res, error, "IMAGE_RECOGNITION_FAILED");
+    handleRecognitionError(res, error, "IMAGE_RECOGNITION_FAILED");
   }
 }

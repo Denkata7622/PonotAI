@@ -22,6 +22,22 @@ const YAML = require("js-yaml");
 const swaggerUi = require("swagger-ui-express");
 const openApiSpec = YAML.load(readFileSync(path.resolve(__dirname, "..", "openapi.yaml"), "utf8"));
 
+
+let processHandlersRegistered = false;
+
+function registerProcessErrorHandlers(): void {
+  if (processHandlersRegistered) return;
+  processHandlersRegistered = true;
+
+  process.on("unhandledRejection", (reason) => {
+    console.error("Unhandled promise rejection:", reason);
+  });
+
+  process.on("uncaughtException", (error) => {
+    console.error("Uncaught exception:", error);
+  });
+}
+
 app.use(
   helmet({
     hsts: true,
@@ -61,5 +77,7 @@ app.use("/api/playlists", playlistsRouter);
 app.use("/api/stats", statsRouter);
 
 app.use(errorMiddleware);
+
+registerProcessErrorHandlers();
 
 export default app;

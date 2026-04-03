@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware";
 import { createFavorite, deleteFavorite, findDuplicateFavorite, listFavorites } from "../../db/authStore";
-import { sendError } from "../../errors/errorCatalog";
+import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 
 const favoritesRouter = Router();
 
@@ -14,7 +14,7 @@ favoritesRouter.get("/", async (req, res) => {
 
 favoritesRouter.post("/", async (req, res) => {
   const { title, artist, album, coverUrl } = req.body as { title?: string; artist?: string; album?: string; coverUrl?: string };
-  if (!title || !artist) return void sendError(req, res, 400, "INVALID_PAYLOAD");
+  if (!title || !artist) return void sendError(res, ErrorCatalog.INVALID_PAYLOAD);
 
   const dup = await findDuplicateFavorite(req.userId!, title, artist);
   if (dup) return void res.status(200).json(dup);
@@ -25,8 +25,8 @@ favoritesRouter.post("/", async (req, res) => {
 
 favoritesRouter.delete("/:id", async (req, res) => {
   const status = await deleteFavorite(req.userId!, req.params.id);
-  if (status === "missing") return void sendError(req, res, 404, "NOT_FOUND");
-  if (status === "forbidden") return void sendError(req, res, 403, "FORBIDDEN");
+  if (status === "missing") return void sendError(res, ErrorCatalog.NOT_FOUND);
+  if (status === "forbidden") return void sendError(res, ErrorCatalog.FORBIDDEN);
   res.status(200).json({ ok: true });
 });
 

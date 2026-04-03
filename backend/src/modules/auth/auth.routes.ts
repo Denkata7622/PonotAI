@@ -10,7 +10,7 @@ import {
 } from "../../db/authStore";
 import { requireAuth, signAuthToken } from "../../middlewares/auth.middleware";
 import { authSensitiveRateLimit } from "../../middlewares/rateLimit.middleware";
-import { sendError } from "../../errors/errorCatalog";
+import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 
 const authRouter = Router();
 
@@ -55,12 +55,12 @@ authRouter.post("/register", authSensitiveRateLimit, async (req, res) => {
     password?: string;
   };
 
-  if (!username || !USERNAME_REGEX.test(username)) return void sendError(req, res, 400, "INVALID_USERNAME");
-  if (!email || !EMAIL_REGEX.test(email)) return void sendError(req, res, 400, "INVALID_EMAIL");
-  if (!password || password.length < 8) return void sendError(req, res, 400, "WEAK_PASSWORD");
+  if (!username || !USERNAME_REGEX.test(username)) return void sendError(res, ErrorCatalog.INVALID_USERNAME);
+  if (!email || !EMAIL_REGEX.test(email)) return void sendError(res, ErrorCatalog.INVALID_EMAIL);
+  if (!password || password.length < 8) return void sendError(res, ErrorCatalog.WEAK_PASSWORD);
 
-  if (await findUserByUsername(username)) return void sendError(req, res, 409, "USERNAME_TAKEN");
-  if (await findUserByEmail(email)) return void sendError(req, res, 409, "EMAIL_TAKEN");
+  if (await findUserByUsername(username)) return void sendError(res, ErrorCatalog.USERNAME_TAKEN);
+  if (await findUserByEmail(email)) return void sendError(res, ErrorCatalog.EMAIL_TAKEN);
 
   const user = await createUser({ username, email, passwordHash: hashPassword(password) });
   const token = signAuthToken(user.id);
@@ -69,11 +69,11 @@ authRouter.post("/register", authSensitiveRateLimit, async (req, res) => {
 
 authRouter.post("/login", authSensitiveRateLimit, async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
-  if (!email || !password) return void sendError(req, res, 401, "INVALID_CREDENTIALS");
+  if (!email || !password) return void sendError(res, ErrorCatalog.INVALID_CREDENTIALS);
 
   const user = await findUserByEmail(email);
-  if (!user) return void sendError(req, res, 401, "INVALID_CREDENTIALS");
-  if (!verifyPassword(password, user.passwordHash)) return void sendError(req, res, 401, "INVALID_CREDENTIALS");
+  if (!user) return void sendError(res, ErrorCatalog.INVALID_CREDENTIALS);
+  if (!verifyPassword(password, user.passwordHash)) return void sendError(res, ErrorCatalog.INVALID_CREDENTIALS);
 
   const token = signAuthToken(user.id);
   res.status(200).json({ token, user: toUserPayload(user) });
@@ -83,7 +83,7 @@ authRouter.post("/logout", (_req, res) => res.status(200).json({ ok: true }));
 
 authRouter.get("/me", requireAuth, async (req, res) => {
   const user = await findUserById(req.userId!);
-  if (!user) return void sendError(req, res, 404, "NOT_FOUND");
+  if (!user) return void sendError(res, ErrorCatalog.NOT_FOUND);
   res.status(200).json(toUserPayload(user));
 });
 
@@ -95,16 +95,16 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     avatarBase64?: string;
   };
 
-  if (username !== undefined && !USERNAME_REGEX.test(username)) return void sendError(req, res, 400, "INVALID_USERNAME");
-  if (email !== undefined && !EMAIL_REGEX.test(email)) return void sendError(req, res, 400, "INVALID_EMAIL");
+  if (username !== undefined && !USERNAME_REGEX.test(username)) return void sendError(res, ErrorCatalog.INVALID_USERNAME);
+  if (email !== undefined && !EMAIL_REGEX.test(email)) return void sendError(res, ErrorCatalog.INVALID_EMAIL);
 
   if (username) {
     const existing = await findUserByUsername(username);
-    if (existing && existing.id !== req.userId) return void sendError(req, res, 409, "USERNAME_TAKEN");
+    if (existing && existing.id !== req.userId) return void sendError(res, ErrorCatalog.USERNAME_TAKEN);
   }
   if (email) {
     const existing = await findUserByEmail(email);
-    if (existing && existing.id !== req.userId) return void sendError(req, res, 409, "EMAIL_TAKEN");
+    if (existing && existing.id !== req.userId) return void sendError(res, ErrorCatalog.EMAIL_TAKEN);
   }
 
   const user = await updateUser(req.userId!, {
@@ -114,16 +114,16 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     ...(avatarBase64 !== undefined ? { avatarBase64 } : {}),
   });
 
-  if (!user) return void sendError(req, res, 404, "NOT_FOUND");
+  if (!user) return void sendError(res, ErrorCatalog.NOT_FOUND);
   res.status(200).json(toUserPayload(user));
 });
 
 authRouter.post("/change-password", requireAuth, async (req, res) => {
   const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
-  if (!currentPassword || !newPassword || newPassword.length < 8) return void sendError(req, res, 400, "INVALID_PASSWORD");
+  if (!currentPassword || !newPassword || newPassword.length < 8) return void sendError(res, ErrorCatalog.INVALID_PASSWORD);
 
   const user = await findUserById(req.userId!);
-  if (!user || !verifyPassword(currentPassword, user.passwordHash)) return void sendError(req, res, 401, "INVALID_CREDENTIALS");
+  if (!user || !verifyPassword(currentPassword, user.passwordHash)) return void sendError(res, ErrorCatalog.INVALID_CREDENTIALS);
 
   await updateUser(user.id, { passwordHash: hashPassword(newPassword) });
   res.status(200).json({ ok: true });

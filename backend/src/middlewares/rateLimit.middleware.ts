@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { sendError } from "../errors/errorCatalog";
+import { ErrorCatalog, sendError } from "../errors/errorCatalog";
 
 type ClientBucket = {
   count: number;
@@ -38,8 +38,7 @@ function enforceRateLimit(
 
   if (existing.count >= options.maxRequests) {
     const retryAfter = Math.ceil((options.windowMs - (now - existing.windowStartedAt)) / 1000);
-    sendError(req, res, 429, "RATE_LIMIT_EXCEEDED", {
-      message: "Too many requests. Please try again later.",
+    sendError(res, ErrorCatalog.RATE_LIMIT_EXCEEDED, {
       retryAfter,
     });
     return;
