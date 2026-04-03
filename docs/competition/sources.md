@@ -1,55 +1,81 @@
-# Competition Sources (APA/IEEE Style)
+# Competition Sources (APA 7th Edition)
 
-This bibliography covers the primary frameworks, APIs, and libraries currently used in the Trackly codebase (frontend, backend, and project tooling).
+Access date for all web sources: **April 3, 2026**.
 
-## IEEE-style references
+## Frontend Frameworks
 
-[1] Next.js, “Next.js Documentation,” Vercel, 2026. [Online]. Available: https://nextjs.org/docs. [Accessed: Mar. 30, 2026].
+Vercel. (2026). *Next.js* (Version 16.1.6) [Computer software]. https://nextjs.org/
 
-[2] React, “React Documentation,” Meta Open Source, 2026. [Online]. Available: https://react.dev/. [Accessed: Mar. 30, 2026].
+Meta Open Source. (2026). *React* (Version 19.2.3) [Computer software]. https://react.dev/
 
-[3] TypeScript Team, “TypeScript Handbook,” Microsoft, 2026. [Online]. Available: https://www.typescriptlang.org/docs/. [Accessed: Mar. 30, 2026].
+Meta Open Source. (2026). *React DOM* (Version 19.2.3) [Computer software]. https://react.dev/reference/react-dom
 
-[4] Express.js, “Express 4.x API Reference,” OpenJS Foundation, 2026. [Online]. Available: https://expressjs.com/en/4x/api.html. [Accessed: Mar. 30, 2026].
+PonotAI Team. (2026). *ponotai* (Version file:..) [Local monorepo package]. https://github.com/ (repository-local dependency; resolved via file reference)
 
-[5] Tailwind Labs, “Tailwind CSS Documentation,” 2026. [Online]. Available: https://tailwindcss.com/docs. [Accessed: Mar. 30, 2026].
+## Backend Frameworks
 
-[6] Multer, “Multer: Node.js middleware for handling multipart/form-data,” ExpressJS, 2026. [Online]. Available: https://github.com/expressjs/multer. [Accessed: Mar. 30, 2026].
+OpenJS Foundation. (2026). *Express* (Version 4.21.2) [Computer software]. https://expressjs.com/
 
-[7] tesseract.js contributors, “tesseract.js,” 2026. [Online]. Available: https://github.com/naptha/tesseract.js. [Accessed: Mar. 30, 2026].
+ExpressJS Middleware Team. (2026). *CORS* (Version 2.8.5) [Computer software]. https://www.npmjs.com/package/cors
 
-[8] B. Owsianik et al., “music-metadata,” 2026. [Online]. Available: https://github.com/Borewit/music-metadata. [Accessed: Mar. 30, 2026].
+Helmet Maintainers. (2026). *Helmet* (Version 8.1.0) [Computer software]. https://helmetjs.github.io/
 
-[9] sindresorhus et al., “file-type,” 2026. [Online]. Available: https://github.com/sindresorhus/file-type. [Accessed: Mar. 30, 2026].
+ExpressJS Community. (2026). *Multer* (Version 1.4.5-lts.1) [Computer software]. https://github.com/expressjs/multer
 
-[10] CORS middleware maintainers, “cors,” npm, 2026. [Online]. Available: https://www.npmjs.com/package/cors. [Accessed: Mar. 30, 2026].
+Eemeli Aro. (2026). *js-yaml* (Version 4.1.0) [Computer software]. https://github.com/nodeca/js-yaml
 
-[11] Google for Developers, “YouTube Data API v3,” 2026. [Online]. Available: https://developers.google.com/youtube/v3. [Accessed: Mar. 30, 2026].
+Borewit. (2026). *music-metadata* (Version 10.6.5) [Computer software]. https://github.com/Borewit/music-metadata
 
-[12] Google for Developers, “YouTube IFrame Player API Reference,” 2026. [Online]. Available: https://developers.google.com/youtube/iframe_api_reference. [Accessed: Mar. 30, 2026].
+naptha. (2026). *tesseract.js* (Version 5.1.1) [Computer software]. https://github.com/naptha/tesseract.js
 
-[13] AuDDAI, “AuDD Music Recognition API,” 2026. [Online]. Available: https://docs.audd.io/. [Accessed: Mar. 30, 2026].
+sindresorhus. (2026). *file-type* (Version 18.x via override) [Computer software]. https://github.com/sindresorhus/file-type
 
-[14] ACRCloud, “ACRCloud Music Recognition API,” 2026. [Online]. Available: https://docs.acrcloud.com/reference/identification-api. [Accessed: Mar. 30, 2026].
+Swagger API Contributors. (2026). *swagger-ui-express* (Version 5.0.1) [Computer software]. https://www.npmjs.com/package/swagger-ui-express
 
-[15] Hugging Face, “Inference Providers / Chat Completions,” 2026. [Online]. Available: https://huggingface.co/docs/inference-providers/en/tasks/chat-completion. [Accessed: Mar. 30, 2026].
+## External APIs
 
-[16] Node.js Contributors, “Node.js API documentation,” OpenJS Foundation, 2026. [Online]. Available: https://nodejs.org/docs/latest/api/. [Accessed: Mar. 30, 2026].
+Google for Developers. (2026). *YouTube Data API v3* [API documentation]. https://developers.google.com/youtube/v3
 
-[17] OpenAPI Initiative, “OpenAPI Specification v3.0.3,” Linux Foundation, 2026. [Online]. Available: https://spec.openapis.org/oas/v3.0.3. [Accessed: Mar. 30, 2026].
+Google for Developers. (2026). *YouTube IFrame Player API Reference* [API documentation]. https://developers.google.com/youtube/iframe_api_reference
 
-[18] swagger-api, “swagger-ui-express,” npm, 2026. [Online]. Available: https://www.npmjs.com/package/swagger-ui-express. [Accessed: Mar. 30, 2026].
+AuDD. (2026). *AuDD Music Recognition API* [API documentation]. https://docs.audd.io/
 
-## APA-style references
+ACRCloud. (2026). *ACRCloud Identify API* [API documentation]. https://docs.acrcloud.com/reference/identification-api
 
-Next.js. (2026). *Next.js Documentation*. Vercel. https://nextjs.org/docs (Accessed March 30, 2026).
+MongoDB, Inc. (2026). *MongoDB Atlas Documentation* [Cloud database platform documentation]. https://www.mongodb.com/docs/atlas/
 
-React. (2026). *React Documentation*. Meta Open Source. https://react.dev/ (Accessed March 30, 2026).
+> Note: MongoDB Atlas is included as an external infrastructure reference for competition documentation completeness; the current runtime persistence in this repository is file-based JSON with a Prisma schema configured for SQLite.
 
-Express.js. (2026). *Express 4.x API Reference*. OpenJS Foundation. https://expressjs.com/en/4x/api.html (Accessed March 30, 2026).
+## Development Tools
 
-Google for Developers. (2026). *YouTube IFrame Player API Reference*. https://developers.google.com/youtube/iframe_api_reference (Accessed March 30, 2026).
+Microsoft. (2026). *TypeScript* (Version 5.x) [Computer software]. https://www.typescriptlang.org/
 
-tesseract.js contributors. (2026). *tesseract.js* [Computer software]. https://github.com/naptha/tesseract.js (Accessed March 30, 2026).
+ESLint Team. (2026). *ESLint* (Version 9.x) [Computer software]. https://eslint.org/
 
-OpenAPI Initiative. (2026). *OpenAPI Specification v3.0.3*. Linux Foundation. https://spec.openapis.org/oas/v3.0.3 (Accessed March 30, 2026).
+Vercel. (2026). *eslint-config-next* (Version 16.1.6) [Computer software]. https://nextjs.org/docs/app/api-reference/config/eslint
+
+Tailwind Labs. (2026). *Tailwind CSS* (Version 4.x) [Computer software]. https://tailwindcss.com/
+
+Tailwind Labs. (2026). *@tailwindcss/postcss* (Version 4.x) [Computer software]. https://www.npmjs.com/package/@tailwindcss/postcss
+
+TypeStrong. (2026). *tsx* (Version 4.19.3) [Computer software]. https://tsx.is/
+
+DefinitelyTyped Contributors. (2026). *@types/node* (Frontend: 20.x; Backend: 20.17.24) [Type definitions]. https://www.npmjs.com/package/@types/node
+
+DefinitelyTyped Contributors. (2026). *@types/react* (Version 19.x) [Type definitions]. https://www.npmjs.com/package/@types/react
+
+DefinitelyTyped Contributors. (2026). *@types/react-dom* (Version 19.x) [Type definitions]. https://www.npmjs.com/package/@types/react-dom
+
+DefinitelyTyped Contributors. (2026). *@types/express* (Version 4.17.21) [Type definitions]. https://www.npmjs.com/package/@types/express
+
+DefinitelyTyped Contributors. (2026). *@types/cors* (Version 2.8.17) [Type definitions]. https://www.npmjs.com/package/@types/cors
+
+DefinitelyTyped Contributors. (2026). *@types/multer* (Version 1.4.12) [Type definitions]. https://www.npmjs.com/package/@types/multer
+
+## Deployment Infrastructure
+
+Railway. (2026). *Railway Documentation* [Cloud deployment platform documentation]. https://docs.railway.com/
+
+Vercel. (2026). *Vercel Documentation* [Frontend deployment platform documentation]. https://vercel.com/docs
+
+Node.js Contributors. (2026). *Node.js Documentation* [Runtime documentation]. https://nodejs.org/docs/latest/api/

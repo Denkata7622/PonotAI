@@ -1,65 +1,15 @@
-# Design Patterns Catalog (Trackly)
+# Design Patterns (Code-Evidenced)
 
-This catalog documents concrete pattern usage in the current codebase only.
+All entries below are backed by concrete implementation in the current repository.
 
-## 1) Provider Pattern (React Context Providers)
-- **Intent:** Share cross-cutting app state without prop drilling.
-- **Where used:** `PlayerProvider`, `LanguageProvider`, `ThemeContext`, `ProfileContext`, `UserContext`.
-- **Module references:** `frontend/components/PlayerProvider.tsx`, `frontend/lib/LanguageContext.tsx`, `frontend/lib/ThemeContext.tsx`, `frontend/lib/ProfileContext.tsx`, `frontend/src/context/UserContext.tsx`.
-- **Benefits:** Consistent state APIs across routes; centralized side effects (player persistence, auth state, language/theme).
-- **Trade-offs:** Harder isolated component testing when providers are deeply nested.
-
-## 2) Strategy Pattern (Recognition provider fallback chain)
-- **Intent:** Select one recognition algorithm/provider among interchangeable strategies.
-- **Where used:** Audio recognition path chooses between AuDD, ACRCloud, Shazam/mock and fallback logic.
-- **Module references:** `backend/src/modules/recognition/recognition.service.ts`, `backend/src/modules/recognition/providers/audd.provider.ts`, `backend/src/modules/recognition/providers/acrcloud.provider.ts`, `backend/src/modules/recognition/providers/shazam.provider.ts`, `backend/src/modules/recognition/providers/bulgarian.provider.ts`.
-- **Benefits:** Provider-specific logic is encapsulated and replaceable.
-- **Trade-offs:** More branching and config complexity in orchestration service.
-
-## 3) Router–Controller–Service Layering (MVC-like)
-- **Intent:** Separate transport concerns from business logic.
-- **Where used:** Backend modules split `*.routes.ts` → `*.controller.ts` → `*.service.ts`.
-- **Module references:**
-  - Recognition: `recognition.routes.ts`, `recognition.controller.ts`, `recognition.service.ts`
-  - History: `history.routes.ts`, `history.controller.ts`, `history.service.ts`
-  - Stats: `stats.routes.ts`, `stats.controller.ts`, `stats.service.ts`
-- **Benefits:** Clear responsibilities and easier route-level testing.
-- **Trade-offs:** Slightly more boilerplate for small features.
-
-## 4) Adapter Pattern (data-shape normalization)
-- **Intent:** Convert heterogeneous payloads into a common app shape.
-- **Where used:**
-  - Recognition response mapping (`toProviderResponse`, `toFallbackResponse`).
-  - Frontend `normalizeSong()` for mixed local/backend song shapes.
-  - Artist-display formatting (`formatArtist`) for YouTube “- Topic” cleanup.
-- **Module references:** `backend/src/modules/recognition/recognition.service.ts`, `frontend/app/library/PageClient.tsx`, `frontend/lib/formatArtist.ts`.
-- **Benefits:** UI consumes stable structures despite source variability.
-- **Trade-offs:** Adapters must be maintained as external payloads evolve.
-
-## 5) Observer/Event-driven Pattern (state sync via listeners/effects)
-- **Intent:** React to state and browser events to keep UI synchronized.
-- **Where used:**
-  - `storage` event sync in `AppShell`.
-  - YouTube player event callbacks in `PlayerProvider` (`onReady`, `onError`, `onStateChange`).
-  - React `useEffect` chains for debounced search and persistence.
-- **Module references:** `frontend/components/AppShell.tsx`, `frontend/components/PlayerProvider.tsx`, `frontend/app/search/PageClient.tsx`.
-- **Benefits:** Real-time updates without explicit polling.
-- **Trade-offs:** Event sequencing bugs are possible if dependencies drift.
-
-## 6) Facade Pattern (feature hooks wrapping storage/API complexity)
-- **Intent:** Present simple APIs to components while hiding implementation details.
-- **Where used:**
-  - `useLibrary` exposes favorites/playlists actions for authenticated and guest modes.
-  - `apiFetch` centralizes base URL + auth token handling.
-- **Module references:** `frontend/features/library/useLibrary.ts`, `frontend/features/library/api.ts`, `frontend/src/lib/apiFetch.ts`.
-- **Benefits:** Components remain UI-focused; reduced duplicate request logic.
-- **Trade-offs:** Facade growth can create large “god hooks” if not split over time.
-
-## 7) Dedupe/Idempotency Utility Pattern (functional utility)
-- **Intent:** Enforce deterministic uniqueness and avoid duplicate user-visible entities.
-- **Where used:**
-  - `dedupeByTrack`, `normalizeTrackKey` for history/favorites.
-  - `upsertTrack` for queue insertion without duplicates.
-- **Module references:** `frontend/lib/dedupe.ts`, `frontend/features/player/state.ts`, `frontend/app/library/PageClient.tsx`, `frontend/components/HomeContent.tsx`.
-- **Benefits:** Stable UX and repeatable behavior across flows.
-- **Trade-offs:** Requires consistent keying assumptions (title/artist normalization).
+| Pattern | Intent | Exact usage in code | Why chosen | Problem solved |
+|---|---|---|---|---|
+| Provider | Share cross-cutting state without prop drilling. | `UserProvider` in `frontend/src/context/UserContext.tsx`; `PlayerProvider` in `frontend/components/PlayerProvider.tsx`; `LanguageProvider` in `frontend/lib/LanguageContext.tsx`; `ThemeProvider` in `frontend/lib/ThemeContext.tsx`. | App has global auth/player/theme/language state used by many pages. | Removes deeply nested prop chains and keeps global concerns centralized. |
+| Observer | React to state/event changes and propagate updates. | `window.addEventListener("storage", ...)` in `frontend/components/AppShell.tsx`; player callbacks (`onReady`, `onStateChange`, `onError`) in `frontend/components/PlayerProvider.tsx`; multiple `useEffect` subscriptions in page clients. | UI must react to browser events and player state changes immediately. | Synchronizes UI across tabs/components and keeps player/queue state coherent. |
+| Strategy | Switch between interchangeable algorithms/providers. | Audio provider fallback chain in `recognizeSongFromAudio` (`backend/src/modules/recognition/recognition.service.ts`) selecting AuDD (`audd.provider.ts`), ACRCloud (`acrcloud.provider.ts`), Shazam (`shazam.provider.ts`), and deterministic fallback. | External recognition providers vary by availability and credential state. | Keeps recognition operational when one provider fails/misses data. |
+| Adapter | Normalize heterogeneous external data into one internal shape. | `toProviderResponse` and `toFallbackResponse` in `backend/src/modules/recognition/recognition.service.ts`; `normalizeSong` in `frontend/app/library/PageClient.tsx`; `formatArtist` in `frontend/lib/formatArtist.ts`. | Providers and local objects return different field shapes. | Gives the UI and downstream logic a consistent song model. |
+| Facade | Expose a simplified API over complex subsystems. | `useLibrary` in `frontend/features/library/useLibrary.ts`; `apiFetch` in `frontend/src/lib/apiFetch.ts`. | Components should not manage low-level fetch/auth/storage details repeatedly. | Reduces duplication and standardizes data access behavior. |
+| Decorator (middleware) | Add cross-cutting behavior around request handling. | Express middleware stack in `backend/src/app.ts`: `helmet()`, `cors(...)`, JSON parser, response-time header middleware, `recognitionRateLimit`, `errorMiddleware`. | Security, rate-limit, and error handling must apply uniformly across routes. | Adds policy and observability without changing each route implementation. |
+| Singleton (module-scoped state) | Maintain one shared instance of mutable runtime state. | `analytics` and `youtubeRateLimitedUntil` module-level state in `backend/src/modules/recognition/providers/audd.provider.ts`. | Recognition telemetry and temporary quota backoff need process-wide memory. | Prevents repeated quota hammering and tracks aggregate success rate. |
+| Repository-like data access layer | Isolate persistence operations from route/controller logic. | Data access functions in `backend/src/db/authStore.ts` and `backend/src/db/client.ts`, consumed by routes/controllers (`auth.routes.ts`, `favorites.routes.ts`, `share.routes.ts`, etc.). | Keeps route logic focused on HTTP concerns. | Improves maintainability and enables future persistence engine swaps. |
+| Factory (object construction helper) | Centralize object creation with guaranteed structure. | `toUserPayload` in `backend/src/modules/auth/auth.routes.ts`; `normalizeSong` in `frontend/app/library/PageClient.tsx`; `buildMockAudioRecognition` in `recognition.service.ts`. | Repeated payload creation risks shape drift. | Ensures consistent output contracts for UI and API responses. |

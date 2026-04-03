@@ -1,73 +1,69 @@
-# Coding Standards (Trackly)
+# Coding Standards (Actual, Tool-Backed vs Convention)
 
-These standards reflect conventions used in the current codebase and should be followed for new work.
+This document reflects what is **currently enforced by configuration** in this repository.
 
-## 1) Naming conventions
+## Standards enforced automatically
 
-### TypeScript/JavaScript
-- Use **camelCase** for variables/functions (`handlePlaySong`, `normalizeTrackKey`).
-- Use **PascalCase** for React components/types (`HomeContent`, `PlaylistDetail`, `QueueTrack`).
-- Use **UPPER_SNAKE_CASE** for module constants (`STORAGE_KEY`, `OCR_CHAR_WHITELIST`).
-- Route/controller/service files should use module naming:
-  - `*.routes.ts`
-  - `*.controller.ts`
-  - `*.service.ts`
+### 1) Frontend ESLint (`frontend/eslint.config.mjs`)
+- Base rule sets: `eslint-config-next/core-web-vitals` and `eslint-config-next/typescript`.
+- Important rules explicitly turned **off** in current config:
+  - `@typescript-eslint/no-explicit-any`
+  - `@typescript-eslint/no-unused-vars`
+  - `@typescript-eslint/no-namespace`
+  - `@next/next/no-img-element`
+  - `react/no-unescaped-entities`
+  - `react-hooks/exhaustive-deps`
+  - `react-hooks/set-state-in-effect`
+  - `react-hooks/preserve-manual-memoization`
+  - `prefer-const`
+- Ignore paths: `.next/**`, `out/**`, `build/**`, `next-env.d.ts`.
 
-### Routes and paths
-- Frontend routes use Next.js App Router directory naming (`/library`, `/search`, `/shared/[shareCode]`).
-- Backend API route prefixes use `/api/<resource>` with plural resources where applicable (`/api/playlists`, `/api/favorites`).
+### 2) TypeScript compiler settings
 
-## 2) Layering and module boundaries
+**Frontend (`frontend/tsconfig.json`)**
+- `strict: true`.
+- `moduleResolution: "bundler"`.
+- `jsx: "react-jsx"`.
+- `noEmit: true` (compile checks only).
+- `allowJs: true`, `skipLibCheck: true`.
+- Path aliases include `@/*`, plus local shims for `lucide-react` and `recharts`.
 
-### Frontend layering
-- **Route pages** under `frontend/app/**` should primarily delegate to page client/components.
-- **Feature logic** belongs in `frontend/features/**` hooks/APIs/types.
-- **Reusable UI components** belong in `frontend/components/**` and `frontend/src/components/ui/**`.
-- Shared utilities belong in `frontend/lib/**` or `frontend/src/lib/**`.
+**Backend (`backend/tsconfig.json`)**
+- `strict: true`.
+- `module: "CommonJS"`, `moduleResolution: "Node"`.
+- Output to `dist/` from `src/`.
+- `esModuleInterop: true`, `skipLibCheck: true`.
 
-### Backend layering
-- Keep HTTP wiring in `*.routes.ts`.
-- Keep request/response handling in controllers.
-- Keep recognition/business logic in services.
-- Keep persistence helpers in `backend/src/db/**`.
+### 3) Automatically enforced by runtime middleware (backend)
+- Security headers via `helmet()`.
+- CORS allowlist checking.
+- Global JSON parsing and centralized error middleware.
+- Recognition and login rate-limit middleware.
 
-## 3) Error handling conventions
+## Standards enforced by convention
 
-### Backend
-- Validate inputs early and return explicit status codes (`400`, `401`, `404`, `409`, `500`).
-- Return machine-readable error objects consistently (existing code uses `error`, `message`, and `code`; prefer stable `code` for new endpoints).
-- Use centralized `errorMiddleware` for uncaught route errors.
-- Avoid leaking sensitive runtime data in error messages.
+### 1) Naming conventions (observed in source)
+- Functions/variables: `camelCase` (e.g., `handleCreatePlaylist`, `normalizeSong`).
+- React components/types: `PascalCase` (e.g., `HomeContent`, `PlaylistDetail`, `UserProvider`).
+- Constant values: `UPPER_SNAKE_CASE` (e.g., `USERNAME_REGEX`, `TOKEN_KEY`, `OCR_CHAR_WHITELIST`).
+- Backend module files follow functional split: `*.routes.ts`, `*.controller.ts`, `*.service.ts`.
 
-### Frontend
-- Handle API failures with graceful UI fallback states (empty/error messaging and toasts).
-- Preserve UX continuity: localStorage fallback when backend is unavailable (history/library patterns).
-- For async flows, always set loading and clear loading in `finally`/completion paths.
+### 2) Folder structure conventions (observed)
+- Frontend pages/routes in `frontend/app/**`.
+- Frontend reusable components in `frontend/components/**` and `frontend/src/components/ui/**`.
+- Frontend feature logic in `frontend/features/**`.
+- Backend domain modules in `backend/src/modules/**`.
+- Backend cross-cutting middleware in `backend/src/middlewares/**`.
 
-## 4) Testing conventions
+### 3) Error handling conventions
+- Backend commonly uses `sendError(req, res, status, code, details?)` from `errorCatalog`.
+- Routes return stable `code` values for machine-readable handling.
+- Frontend catches API failures and shows UI fallback/toast/error text.
 
-### Test stack
-- Use Node built-in test runner (`node --test --experimental-strip-types`) for TS tests in both backend/frontend test directories.
-- Keep tests under:
-  - `backend/tests/**/*.test.ts`
-  - `frontend/tests/**/*.test.ts`
+### 4) Import ordering / component structure
+- No explicit import-order lint plugin/config is present.
+- Component structure is consistent by convention: imports → types → component/state/hooks → handlers → JSX return.
 
-### Test coverage expectations
-- Each feature change should include at least one of:
-  1. unit test for utility/service logic,
-  2. integration test for flow behavior,
-  3. documented manual acceptance scenario when automation is not yet feasible.
-
-### Test naming
-- Name tests by behavior (`shouldRetryStatus retries on 429 and 5xx`, `upsertTrack prevents duplicates`).
-- Prefer deterministic test inputs and avoid network calls in tests.
-
-## 5) i18n conventions
-- UI strings should use translation keys via `t(key, language)`.
-- Add keys to all supported locales in `frontend/lib/translations.ts`.
-- Run `node frontend/scripts/check-i18n-keys.mjs` before merge to detect missing locale keys.
-
-## 6) Commit and review conventions
-- Keep commits focused and descriptive (single concern per commit when feasible).
-- Reference affected module/feature in commit message.
-- Before opening a PR, run lint/tests relevant to changed areas and document any expected limitations.
+### 5) Formatting tools
+- No `.prettierrc` file is present in this repository at the time of writing.
+- Formatting consistency is therefore convention-driven plus editor defaults.
