@@ -13,51 +13,44 @@ import libraryRouter from "./modules/library/library.routes";
 import playlistsRouter from "./modules/playlists/playlists.routes";
 import recognitionRouter from "./modules/recognition/recognition.routes";
 import statsRouter from "./modules/stats/stats.routes";
-import { recognitionRateLimit } from "./middlewares/rateLimit.middleware";
-
-const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(",").map((origin) => origin.trim())
-  : ["http://localhost:3000"];
-
-const corsOptions = {
-  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS blocked: ${origin}`));
-    }
-  },
-  credentials: true,
-};
+import { apiRateLimit, recognitionRateLimit } from "./middlewares/rateLimit.middleware";
+import { responseTimeMiddleware } from "./middlewares/responseTime.middleware";
+import { corsOptions } from "./config/cors";
 
 const app = express();
 const YAML = require("js-yaml");
 const swaggerUi = require("swagger-ui-express");
 const openApiSpec = YAML.load(readFileSync(path.resolve(__dirname, "..", "openapi.yaml"), "utf8"));
 
-app.use(helmet());
+app.use(
+  helmet({
+    hsts: true,
+    noSniff: true,
+    // Equivalent to an XSS filter header where supported.
+    xXssProtection: true,
+    frameguard: { action: "deny" },
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        "script-src": ["'self'", "'unsafe-inline'"],
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "img-src": ["'self'", "data:", "https:"],
+      },
+    },
+  }),
+);
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use(express.json());
+app.use(responseTimeMiddleware);
+
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
-
-app.use((req, res, next) => {
-  const startedAt = process.hrtime.bigint();
-  const originalEnd = res.end.bind(res);
-
-  res.end = ((chunk?: any, encoding?: any, cb?: any) => {
-    const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
-    res.setHeader("X-Response-Time", `${elapsedMs.toFixed(2)}ms`);
-    return originalEnd(chunk, encoding, cb);
-  }) as typeof res.end;
-
-  next();
-});
 
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+app.use("/api", apiRateLimit);
 app.use("/api/recognition", recognitionRateLimit, recognitionRouter);
 app.use("/api/history", historyRouter);
 app.use("/api/auth", authRouter);

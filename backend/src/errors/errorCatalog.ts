@@ -24,6 +24,7 @@ export type ErrorCode =
   | "IMAGE_RECOGNITION_FAILED"
   | "TOO_MANY_RECOGNITION_REQUESTS"
   | "TOO_MANY_LOGIN_ATTEMPTS"
+  | "RATE_LIMIT_EXCEEDED"
   | "SYNC_FAILED"
   | "GET_LIBRARY_FAILED"
   | "CREATE_FAILED"
@@ -38,6 +39,7 @@ export type StandardErrorResponse = {
   message: string;
   details?: unknown;
   requestId?: string;
+  retryAfter?: number;
 };
 
 const ERROR_MESSAGES: Record<ErrorCode, string> = {
@@ -64,6 +66,7 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   IMAGE_RECOGNITION_FAILED: "Image recognition failed.",
   TOO_MANY_RECOGNITION_REQUESTS: "Too many recognition requests. Please retry in a minute.",
   TOO_MANY_LOGIN_ATTEMPTS: "Too many login attempts. Please retry later.",
+  RATE_LIMIT_EXCEEDED: "Too many requests. Please try again later.",
   SYNC_FAILED: "Library sync failed.",
   GET_LIBRARY_FAILED: "Failed to load library.",
   CREATE_FAILED: "Creation failed.",
@@ -84,13 +87,14 @@ function resolveRequestId(req: Request): string | undefined {
 export function buildErrorResponse(
   req: Request,
   code: ErrorCode,
-  options?: { message?: string; details?: unknown },
+  options?: { message?: string; details?: unknown; retryAfter?: number },
 ): StandardErrorResponse {
   return {
     code,
     message: options?.message ?? ERROR_MESSAGES[code],
     ...(options?.details !== undefined ? { details: options.details } : {}),
     ...(resolveRequestId(req) ? { requestId: resolveRequestId(req) } : {}),
+    ...(options?.retryAfter !== undefined ? { retryAfter: options.retryAfter } : {}),
   };
 }
 
@@ -99,7 +103,7 @@ export function sendError(
   res: Response,
   statusCode: number,
   code: ErrorCode,
-  options?: { message?: string; details?: unknown },
+  options?: { message?: string; details?: unknown; retryAfter?: number },
 ): void {
   res.status(statusCode).json(buildErrorResponse(req, code, options));
 }

@@ -4,6 +4,8 @@ import { sendError } from "../errors/errorCatalog";
 
 type TokenPayload = { sub: string; exp: number };
 
+let hasWarnedOnDefaultSecret = false;
+
 function resolveJwtSecret(): string {
   const secret = process.env.JWT_SECRET?.trim();
   if (secret) {
@@ -11,10 +13,16 @@ function resolveJwtSecret(): string {
   }
 
   if (process.env.NODE_ENV === "production") {
-    throw new Error("[auth] JWT_SECRET must be configured in production.");
+    console.error("FATAL: JWT_SECRET environment variable is required in production");
+    process.exit(1);
   }
 
-  return "dev-secret";
+  if (!hasWarnedOnDefaultSecret) {
+    console.warn("WARN: Using default JWT_SECRET — do not use in production");
+    hasWarnedOnDefaultSecret = true;
+  }
+
+  return "development-only-default-jwt-secret";
 }
 
 function base64url(input: string) {

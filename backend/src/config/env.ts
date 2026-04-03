@@ -63,7 +63,12 @@ export function validateEnvironment(): void {
   }
 
   if (isProduction && !jwtSecret) {
-    throw new Error("[env] JWT_SECRET must be set when NODE_ENV=production.");
+    console.error("FATAL: JWT_SECRET environment variable is required in production");
+    process.exit(1);
+  }
+
+  if (!isProduction && !jwtSecret) {
+    console.warn("WARN: Using default JWT_SECRET — do not use in production");
   }
 
   const auddToken = process.env.AUDD_API_TOKEN?.trim() || process.env.AUDD_API_KEY?.trim();
