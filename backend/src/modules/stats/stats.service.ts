@@ -7,7 +7,11 @@ export type GlobalStats = {
   topArtists: Array<{ name: string; count: number }>;
 };
 
-/** Aggregates recognition totals and top artists across public and per-user histories. */
+/**
+ * Aggregates recognition totals and top artists across public and per-user histories.
+ * @returns Promise resolving to global Trackly usage statistics.
+ * @throws Propagates underlying datastore read failures.
+ */
 export async function getGlobalStats(): Promise<GlobalStats> {
   const [users, publicHistory] = await Promise.all([listUsers(), readHistory()]);
   const artistCounts = new Map<string, number>();

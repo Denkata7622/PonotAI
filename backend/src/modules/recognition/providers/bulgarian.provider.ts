@@ -47,6 +47,12 @@ function similarity(a: string, b: string): number {
   return overlap / Math.max(left.length, right.length);
 }
 
+/**
+ * Attempts to match Bulgarian song metadata from fuzzy OCR text.
+ * @param text OCR-derived free-form text.
+ * @returns A boosted static song match or `null` when confidence is too low.
+ * @throws Does not throw intentionally.
+ */
 export function matchBulgarianSong(text: string): SongMatch | null {
   const normalized = text.trim();
   if (!normalized) return null;

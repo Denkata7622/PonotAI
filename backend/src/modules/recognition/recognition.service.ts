@@ -148,7 +148,12 @@ function scoreLineForTitle(line: InterpretedLine): number {
   );
 }
 
-/** Heuristically derives fallback song metadata from interpreted OCR lines. */
+/**
+ * Heuristically derives fallback song metadata from interpreted OCR lines.
+ * @param lines Interpreted OCR lines with extracted geometric/text features.
+ * @returns Best-effort metadata when a plausible title is found, otherwise `null`.
+ * @throws Does not throw intentionally; parsing guards return `null` on low confidence.
+ */
 export function deriveBestEffortMetadata(lines: InterpretedLine[]): OcrCandidateMetadata | null {
   if (lines.length === 0) {
     return null;
@@ -361,7 +366,13 @@ async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise
   }
 }
 
-/** Runs provider chain + tag fallback to resolve audio files into normalized song metadata. */
+/**
+ * Runs provider chain + tag fallback to resolve audio files into normalized song metadata.
+ * @param buffer Uploaded audio file buffer.
+ * @param originalName Original uploaded filename.
+ * @returns Promise resolving to normalized song metadata.
+ * @throws NoVerifiedResultError when providers and metadata tag fallback cannot verify a song.
+ */
 export async function recognizeSongFromAudio(buffer: Buffer, originalName: string): Promise<SongMetadata> {
   if (!hasConfiguredAudioProvider()) {
     return buildMockAudioRecognition();
@@ -420,7 +431,13 @@ export async function recognizeSongFromAudio(buffer: Buffer, originalName: strin
   throw new NoVerifiedResultError("Recognition failed across all providers and local metadata tags.");
 }
 
-/** Extracts song candidates from image content and verifies each via lookup providers when possible. */
+/**
+ * Extracts song candidates from image content and verifies each via lookup providers when possible.
+ * @param buffer Uploaded image buffer.
+ * @param language OCR language code (defaults to `eng`).
+ * @returns Promise resolving to one or more normalized song metadata entries.
+ * @throws NoVerifiedResultError when no song candidates can be extracted.
+ */
 export async function recognizeSongFromImage(buffer: Buffer, language = "eng"): Promise<SongMetadata[]> {
   let visionResults: OcrCandidateMetadata[];
 

@@ -2,7 +2,16 @@ import type { Request, Response } from "express";
 import * as db from "../../db/authStore";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 
-/** Creates a new playlist for the authenticated user. */
+/**
+ * Creates a new playlist for the authenticated user.
+ * @route POST /api/playlists
+ * @auth Required bearer token.
+ * @example POST /api/playlists {"name":"Gym Mix"}
+ * @param req Express request containing the playlist name.
+ * @param res Express response returning the created playlist.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected datastore failures.
+ */
 export async function createPlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -26,7 +35,16 @@ export async function createPlaylistController(req: Request, res: Response) {
   }
 }
 
-/** Lists all playlists owned by the authenticated user. */
+/**
+ * Lists all playlists owned by the authenticated user.
+ * @route GET /api/playlists
+ * @auth Required bearer token.
+ * @example GET /api/playlists
+ * @param req Express request containing the authenticated user id.
+ * @param res Express response returning user playlists.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected datastore failures.
+ */
 export async function getPlaylistsController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -43,7 +61,16 @@ export async function getPlaylistsController(req: Request, res: Response) {
   }
 }
 
-/** Gets one playlist by id and verifies ownership before returning it. */
+/**
+ * Gets one playlist by id and verifies ownership before returning it.
+ * @route GET /api/playlists/:playlistId
+ * @auth Required bearer token.
+ * @example GET /api/playlists/pl_123
+ * @param req Express request containing playlist id path param.
+ * @param res Express response returning playlist payload.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected datastore failures.
+ */
 export async function getPlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -72,7 +99,16 @@ export async function getPlaylistController(req: Request, res: Response) {
   }
 }
 
-/** Renames one playlist owned by the authenticated user. */
+/**
+ * Renames one playlist owned by the authenticated user.
+ * @route PATCH /api/playlists/:playlistId
+ * @auth Required bearer token.
+ * @example PATCH /api/playlists/pl_123 {"name":"Evening Chill"}
+ * @param req Express request with playlist id and replacement name.
+ * @param res Express response returning updated playlist payload.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected datastore failures.
+ */
 export async function updatePlaylistNameController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -108,7 +144,16 @@ export async function updatePlaylistNameController(req: Request, res: Response) 
   }
 }
 
-/** Adds a song payload to a playlist after authorization and ownership checks. */
+/**
+ * Adds a song payload to a playlist after authorization and ownership checks.
+ * @route POST /api/playlists/:playlistId/songs
+ * @auth Required bearer token.
+ * @example POST /api/playlists/pl_123/songs {"title":"Song","artist":"Artist"}
+ * @param req Express request with playlist id and song payload.
+ * @param res Express response returning updated playlist payload.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected datastore failures.
+ */
 export async function addSongToPlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -157,7 +202,16 @@ export async function addSongToPlaylistController(req: Request, res: Response) {
   }
 }
 
-/** Removes a song from a playlist after authorization and ownership checks. */
+/**
+ * Removes a song from a playlist after authorization and ownership checks.
+ * @route DELETE /api/playlists/:playlistId/songs
+ * @auth Required bearer token.
+ * @example DELETE /api/playlists/pl_123/songs {"title":"Song","artist":"Artist"}
+ * @param req Express request with playlist id and song identifiers.
+ * @param res Express response returning updated playlist payload.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected datastore failures.
+ */
 export async function removeSongFromPlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -193,7 +247,16 @@ export async function removeSongFromPlaylistController(req: Request, res: Respon
   }
 }
 
-/** Deletes a playlist owned by the authenticated user. */
+/**
+ * Deletes a playlist owned by the authenticated user.
+ * @route DELETE /api/playlists/:playlistId
+ * @auth Required bearer token.
+ * @example DELETE /api/playlists/pl_123
+ * @param req Express request containing playlist id path param.
+ * @param res Express response returning `{ ok: true }`.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected datastore failures.
+ */
 export async function deletePlaylistController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {

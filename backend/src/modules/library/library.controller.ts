@@ -2,7 +2,16 @@ import type { Request, Response } from "express";
 import * as db from "../../db/authStore";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 
-/** Replaces the authenticated user's playlists with a client-provided synchronized snapshot. */
+/**
+ * Replaces the authenticated user's playlists with a client-provided synchronized snapshot.
+ * @route POST /api/library/sync
+ * @auth Required bearer token.
+ * @example POST /api/library/sync {"playlists":[{"id":"pl_1","name":"Road Trip","songs":[]}]}
+ * @param req Express request containing synced favorites/playlists payload.
+ * @param res Express response returning `{ ok: true }` on success.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected datastore failures.
+ */
 export async function syncLibraryController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {
@@ -33,7 +42,16 @@ export async function syncLibraryController(req: Request, res: Response) {
   }
 }
 
-/** Returns the authenticated user's library payload (currently user playlists). */
+/**
+ * Returns the authenticated user's library payload (currently user playlists).
+ * @route GET /api/library
+ * @auth Required bearer token.
+ * @example GET /api/library
+ * @param req Express request containing the authenticated user id.
+ * @param res Express response returning playlists in the user's library.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected datastore failures.
+ */
 export async function getLibraryController(req: Request, res: Response) {
   const userId = req.userId;
   if (!userId) {

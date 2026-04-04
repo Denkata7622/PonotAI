@@ -2,7 +2,7 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import path from "node:path";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type { Request, Response } from "express";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import authRouter from "./modules/auth/auth.routes";
@@ -19,7 +19,12 @@ import { responseTimeMiddleware } from "./middlewares/responseTime.middleware";
 const app = express();
 const YAML = require("js-yaml");
 const swaggerUi = require("swagger-ui-express");
-const openApiSpec = YAML.load(readFileSync(path.resolve(__dirname, "..", "openapi.yaml"), "utf8"));
+const openApiPathCandidates = [
+  path.join(__dirname, "..", "openapi.yaml"),
+  path.join(__dirname, "../../openapi.yaml"),
+];
+const openApiPath = openApiPathCandidates.find((candidate) => existsSync(candidate)) ?? openApiPathCandidates[0];
+const openApiSpec = YAML.load(readFileSync(openApiPath, "utf8"));
 
 
 let processHandlersRegistered = false;

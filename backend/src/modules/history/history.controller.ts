@@ -14,6 +14,13 @@ import {
  * Returns history entries for the current request context.
  * Authenticated users receive paginated, filterable user history.
  * Guests receive the legacy public history list.
+ * @route GET /api/history
+ * @auth Optional bearer token.
+ * @example GET /api/history?limit=20&offset=0&filter=recognized
+ * @param req Express request carrying optional auth and pagination query params.
+ * @param res Express response returning either legacy or user-scoped history payload.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected persistence failures.
  */
 export async function getHistoryController(req: Request, res: Response): Promise<void> {
   // If no authenticated user, serve the legacy flat history.json (guest recognitions)
@@ -32,6 +39,13 @@ export async function getHistoryController(req: Request, res: Response): Promise
  * Creates a history entry.
  * For authenticated users this writes both user history and global history.
  * For guests this writes only the legacy global history entry format.
+ * @route POST /api/history
+ * @auth Optional bearer token.
+ * @example POST /api/history {"method":"audio-file","title":"Song","artist":"Artist","recognized":true}
+ * @param req Express request containing history payload fields.
+ * @param res Express response returning the created entry.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected persistence failures.
  */
 export async function createHistoryEntryController(req: Request, res: Response): Promise<void> {
   const { method, title, artist, album, coverUrl, recognized, songName, youtubeVideoId } = req.body as {
@@ -83,7 +97,16 @@ export async function createHistoryEntryController(req: Request, res: Response):
   res.status(201).json(entry);
 }
 
-/** Deletes a single authenticated user's history item by id. */
+/**
+ * Deletes a single authenticated user's history item by id.
+ * @route DELETE /api/history/:id
+ * @auth Required bearer token.
+ * @example DELETE /api/history/2e6d18f5-77bf-448f-b8bf-4f7e00f6dd54
+ * @param req Express request containing the history id path parameter.
+ * @param res Express response returning `{ ok: true }` when deleted.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected errors other than ownership violations.
+ */
 export async function deleteHistoryItemController(req: Request, res: Response): Promise<void> {
   try {
     const ok = await deleteUserHistoryItem(req.userId!, req.params.id);
@@ -102,13 +125,31 @@ export async function deleteHistoryItemController(req: Request, res: Response): 
   }
 }
 
-/** Deletes all history entries for the authenticated user. */
+/**
+ * Deletes all history entries for the authenticated user.
+ * @route DELETE /api/history
+ * @auth Required bearer token.
+ * @example DELETE /api/history
+ * @param req Express request containing the authenticated user id.
+ * @param res Express response returning deleted count.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected persistence failures.
+ */
 export async function clearHistoryController(req: Request, res: Response): Promise<void> {
   const deleted = await clearUserHistory(req.userId!);
   res.status(200).json({ deleted });
 }
 
-/** Returns the legacy public history feed used by unauthenticated requests. */
+/**
+ * Returns the legacy public history feed used by unauthenticated requests.
+ * @route GET /api/history
+ * @auth No authentication required.
+ * @example GET /api/history
+ * @param _req Express request (unused).
+ * @param res Express response returning the legacy history payload.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected persistence failures.
+ */
 export async function getLegacyHistoryController(_req: Request, res: Response): Promise<void> {
   const items = await listHistory(20);
   res.status(200).json({ items });

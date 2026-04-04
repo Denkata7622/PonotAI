@@ -90,6 +90,12 @@ function logRecognition(success: boolean) {
   }
 }
 
+/**
+ * Determines whether an HTTP status should be retried.
+ * @param status HTTP status code.
+ * @returns `true` when status is retryable.
+ * @throws Does not throw.
+ */
 export function shouldRetryStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
@@ -98,6 +104,14 @@ async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Executes a fetch call with retry-on-failure semantics.
+ * @param input URL or URL string for the request.
+ * @param init Fetch init options.
+ * @param options Retry configuration.
+ * @returns Promise resolving to a response, or `null` if attempts are exhausted.
+ * @throws Does not throw intentionally for retryable failures; network errors are swallowed and retried.
+ */
 export async function fetchWithRetry(
   input: URL | string,
   init: RequestInit,
@@ -165,6 +179,13 @@ async function findYouTubeVideoId(query: string): Promise<string | null> {
   return payload.items?.[0]?.id?.videoId ?? null;
 }
 
+/**
+ * Recognizes an audio clip using the AuDD provider API.
+ * @param buffer Audio file buffer.
+ * @param filename Original upload filename.
+ * @returns Promise resolving to normalized provider metadata, or `null` when no match is found.
+ * @throws MissingProviderConfigError when required AuDD credentials are not configured.
+ */
 export async function recognizeAudioWithAudd(buffer: Buffer, filename: string): Promise<ProviderSongMetadata | null> {
   const apiToken = process.env.AUDD_API_TOKEN || process.env.AUDD_API_KEY;
   if (!apiToken) {
@@ -222,6 +243,13 @@ export async function recognizeAudioWithAudd(buffer: Buffer, filename: string): 
   return result;
 }
 
+/**
+ * Resolves a song by title and artist via YouTube lookup enrichment.
+ * @param title Candidate song title.
+ * @param artist Candidate artist name.
+ * @returns Promise resolving to provider metadata, or `null` when no YouTube match is found.
+ * @throws Propagates unexpected fetch parsing failures.
+ */
 export async function lookupSongByTitleAndArtist(title: string, artist: string): Promise<ProviderSongMetadata | null> {
   const youtubeVideoId = await findYouTubeVideoId(`${title} ${artist} official audio`);
 
