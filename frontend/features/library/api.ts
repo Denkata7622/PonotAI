@@ -101,6 +101,9 @@ export async function addSongToPlaylist(
   const token = getAuthToken();
   if (!token) return null;
 
+  const payload = JSON.stringify(song);
+  console.debug("[playlist:addSong] request", { playlistId, body: song, hasAuthToken: Boolean(token) });
+
   try {
     const response = await fetch(`${getApiBaseUrl()}/api/playlists/${playlistId}/songs`, {
       method: "POST",
@@ -108,9 +111,14 @@ export async function addSongToPlaylist(
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(song),
+      body: payload,
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[playlist:addSong] failed", { playlistId, status: response.status, errorText });
+      return null;
+    }
+    console.debug("[playlist:addSong] success", { playlistId, status: response.status });
     return (await response.json()) as Playlist;
   } catch {
     return null;

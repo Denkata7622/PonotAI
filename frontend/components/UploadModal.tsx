@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
+import { createPortal } from "react-dom";
 import { t, type Language } from "../lib/translations";
 
 type UploadModalProps = {
@@ -23,7 +24,13 @@ export default function UploadModal({
   disabled,
 }: UploadModalProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  if (!open) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!open || !mounted) return null;
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
@@ -31,9 +38,12 @@ export default function UploadModal({
     if (file) onSelectFile(file);
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-2xl rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[4px] p-4" onClick={onClose}>
+      <div
+        className="relative z-[51] w-[90%] max-w-[480px] max-h-[90vh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-[0_8px_32px_rgba(0,0,0,0.4)] md:w-[90%] max-md:fixed max-md:bottom-0 max-md:left-0 max-md:right-0 max-md:w-full max-md:max-w-full max-md:max-h-[85vh] max-md:rounded-t-2xl max-md:rounded-b-none"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-2xl font-semibold">{t("upload_modal_title", language)}</h3>
           <button onClick={onClose} className="glassBtn">✕</button>
@@ -68,6 +78,7 @@ export default function UploadModal({
           <button onClick={onSubmit} disabled={!previewUrl || disabled} className="pillAction disabled:opacity-50">{t("upload_process", language)}</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

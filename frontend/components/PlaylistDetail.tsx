@@ -14,6 +14,8 @@ type PlaylistDetailProps = {
   onClose: () => void;
   onPlaySong: (song: PlaylistSong) => void;
   onRemoveSong: (title: string, artist: string) => void;
+  onSongsAdded?: (playlistId: string, songs: PlaylistSong[]) => void | Promise<void>;
+  onToast?: (kind: "success" | "error", message: string) => void;
   onDeletePlaylist: () => void;
   onRenamePlaylist?: (newName: string) => void;
 };
@@ -23,6 +25,8 @@ export default function PlaylistDetail({
   onClose,
   onPlaySong,
   onRemoveSong,
+  onSongsAdded,
+  onToast,
   onDeletePlaylist,
   onRenamePlaylist,
 }: PlaylistDetailProps) {
@@ -142,6 +146,8 @@ export default function PlaylistDetail({
         <NewPlaylistModal
           existingPlaylistId={playlist.id}
           initialName={playlist.name}
+          onSongsAdded={onSongsAdded}
+          onToast={onToast}
           onClose={() => setShowAddSongsModal(false)}
           onCreated={() => setShowAddSongsModal(false)}
         />

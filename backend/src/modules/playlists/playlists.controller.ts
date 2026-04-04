@@ -175,6 +175,13 @@ export async function addSongToPlaylistController(req: Request, res: Response) {
     return;
   }
 
+  console.info("Add song request received", {
+    userId,
+    playlistId,
+    hasAuthorizationHeader: Boolean(req.headers.authorization),
+    body: { title, artist, album, coverUrl, videoId },
+  });
+
   try {
     const playlist = await db.findPlaylistById(playlistId);
     if (!playlist) {

@@ -113,12 +113,11 @@ export function useLibrary(profileId: string) {
   async function addSongToPlaylist(
     playlistId: string,
     song: PlaylistSong
-  ) {
+  ): Promise<boolean> {
     if (isAuthenticated) {
-      try {
-        await playlistApi.addSongToPlaylist(playlistId, song);
-      } catch {
-        // no-op: local state still updates for offline resilience
+      const updatedRemotePlaylist = await playlistApi.addSongToPlaylist(playlistId, song);
+      if (!updatedRemotePlaylist) {
+        return false;
       }
     }
 
@@ -140,6 +139,7 @@ export function useLibrary(profileId: string) {
         };
       }),
     }));
+    return true;
   }
 
   async function removeSongFromPlaylist(
