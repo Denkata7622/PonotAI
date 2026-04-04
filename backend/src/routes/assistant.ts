@@ -75,9 +75,27 @@ assistantRouter.post("/", async (req, res) => {
   }));
 
   try {
-    const context = await buildLibraryContext(userId);
+    const context = await buildLibraryContext(userId, {
+      currentTheme: req.headers["x-trackly-theme"] as "light" | "dark" | "system" | undefined,
+      currentLanguage: req.headers["x-trackly-language"] as "en" | "bg" | undefined,
+      currentQueue: typeof req.headers["x-trackly-queue"] === "string"
+        ? req.headers["x-trackly-queue"].split("|").filter(Boolean).slice(0, 10)
+        : [],
+    });
+    if (context.topTracks.length === 0) {
+      res.status(200).json({
+        reply: "Your library is empty. Recognize and save some songs first, then I can give you personalized recommendations.",
+        actionIntent: null,
+        meta: { model: "fallback", latencyMs: 0, contextTracksCount: 0 },
+      });
+      return;
+    }
     const systemPrompt = buildSystemPrompt(context);
     const result = await generateAssistantReply(systemPrompt, conversation, message);
+    if (!result.text?.trim()) {
+      sendError(res, ErrorCatalog.AI_SERVICE_UNAVAILABLE, { message: "I couldn't generate a response. Please rephrase your question." });
+      return;
+    }
     const parsed = parseActionIntent(result.text);
 
     res.status(200).json({
@@ -91,6 +109,10 @@ assistantRouter.post("/", async (req, res) => {
     });
   } catch (error) {
     const messageText = (error as Error).message || "Unknown error";
+    if ((error as { code?: string }).code === "MISSING_API_KEY" || messageText.includes("MISSING_API_KEY")) {
+      res.status(503).json({ code: "ASSISTANT_NOT_CONFIGURED", message: "AI Assistant is not configured. Please contact support." });
+      return;
+    }
     if ((error as Error).name === "GeminiError" || messageText.includes("Gemini")) {
       sendError(res, ErrorCatalog.AI_SERVICE_UNAVAILABLE);
       return;

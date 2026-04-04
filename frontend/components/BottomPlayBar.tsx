@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Keyboard, ListMusic, Pause, Play, SkipBack, SkipForward, Trash2, Volume2, VolumeX, X } from "lucide-react";
+import { Keyboard, ListMusic, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, X } from "lucide-react";
+import QueuePanel from "../src/components/player/QueuePanel";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -17,13 +18,12 @@ export default function BottomPlayBar() {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [lastVolume, setLastVolume] = useState(70);
 
   const {
     queue,
-    activeIndex,
+    currentIndex,
     currentTrack,
     currentVideoId,
     isPlaying,
@@ -38,7 +38,8 @@ export default function BottomPlayBar() {
     setVolume,
     skipNext,
     skipPrevious,
-    removeFromQueue,
+    isQueueOpen,
+    toggleQueuePanel,
   } = usePlayer();
 
   const progress = useMemo(() => (duration ? Math.min(100, (currentTime / duration) * 100) : 0), [currentTime, duration]);
@@ -61,32 +62,7 @@ export default function BottomPlayBar() {
         <button className="fixed inset-0 z-40 bg-black/40 md:hidden" aria-label={isBg ? "Затвори плейъра" : "Close player"} onClick={() => setIsExpanded(false)} />
       )}
 
-      <div
-        className={`fixed inset-0 z-40 transition-opacity duration-200 ${isQueueOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
-        onClick={() => setIsQueueOpen(false)}
-      >
-        <div className="absolute inset-0 bg-black/60" />
-        <div
-          className={`fixed bottom-[100px] left-0 right-0 w-full border border-[var(--border)] bg-[var(--surface-2)] p-4 shadow-2xl [backdrop-filter:none] transition-transform duration-[250ms] ease-out md:left-1/2 md:max-w-[480px] md:-translate-x-1/2 ${isQueueOpen ? "translate-y-0" : "translate-y-full"}`}
-          onClick={(event) => event.stopPropagation()}
-        >
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold">Queue</h3>
-              <button onClick={() => setIsQueueOpen(false)} aria-label="Close queue"><X className="w-5 h-5 text-[var(--muted)]" /></button>
-            </div>
-            <div className="max-h-[55vh] overflow-y-auto space-y-2">
-              {queue.map((track, index) => (
-                <div key={`${track.id}-${index}`} className={`flex items-center justify-between rounded-xl border bg-[var(--surface-raised)] p-3 ${index === activeIndex ? "border-[var(--accent)] border-l-4" : "border-border"}`}>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{track.title}</p>
-                    <p className="truncate text-xs text-text-muted">{track.artist}</p>
-                  </div>
-                  <button onClick={() => removeFromQueue(index)} aria-label="Remove from queue" className="rounded-lg p-2 hover:bg-black/10"><Trash2 className="w-4 h-4 text-[var(--muted)]" /></button>
-                </div>
-              ))}
-            </div>
-        </div>
-      </div>
+      <QueuePanel />
 
       {isShortcutsOpen && (
         <div className="fixed inset-0 z-50 bg-black/60" onClick={() => setIsShortcutsOpen(false)}>
@@ -165,7 +141,7 @@ export default function BottomPlayBar() {
                 <button onClick={togglePlayPause} className="h-10 w-10 rounded-full bg-[var(--surface-raised)] grid place-items-center" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="w-4 h-4 text-[var(--text)]" /> : <Play className="w-4 h-4 text-[var(--text)]" />}</button>
                 <button onClick={skipNext} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Next"><SkipForward className="w-4 h-4 text-[var(--text)]" /></button>
                 <button onClick={toggleMute} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="w-4 h-4 text-[var(--muted)]" /> : <Volume2 className="w-4 h-4 text-[var(--text)]" />}</button>
-                <button onClick={() => setIsQueueOpen(true)} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Queue"><ListMusic className="w-4 h-4 text-[var(--text)]" /></button>
+                <button onClick={toggleQueuePanel} className="relative h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Queue"><ListMusic className={`w-4 h-4 ${isQueueOpen ? "text-[var(--accent)]" : "text-[var(--text)]"}`} />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
                 <button onClick={() => setIsShortcutsOpen(true)} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Keyboard shortcuts"><Keyboard className="w-4 h-4 text-[var(--text)]" /></button>
 
                 <div className="ml-auto min-w-0 flex-1">

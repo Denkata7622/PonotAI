@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Heart, EllipsisVertical, Music, Play, Trash2 } from "../lucide-react";
+import { Heart, EllipsisVertical, Music, Play, Trash2, ListPlus } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { formatArtist } from "../lib/formatArtist";
+import { usePlayer } from "./PlayerProvider";
 
 type SongRowProps = {
   id: string;
@@ -32,6 +33,7 @@ export default function SongRow({
   title,
   artist,
   artworkUrl,
+  videoId,
   onPlay,
   actionIcon,
   actionLabel,
@@ -45,6 +47,7 @@ export default function SongRow({
   className = "",
 }: SongRowProps) {
   const { language } = useLanguage();
+  const { addToQueue } = usePlayer();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -136,6 +139,26 @@ export default function SongRow({
 
             {menuOpen && (
               <div className="absolute right-0 top-10 z-20 min-w-52 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2 shadow-2xl">
+                <button
+                  type="button"
+                  className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
+                  onClick={() => {
+                    addToQueue({
+                      id,
+                      title,
+                      artist,
+                      artistId: `artist-${artist}`.toLowerCase().replace(/\s+/g, "-"),
+                      artworkUrl: artworkUrl || "https://picsum.photos/seed/song-row/80",
+                      videoId,
+                      license: "COPYRIGHTED",
+                      query: `${title} ${artist}`,
+                    }, "manual");
+                    window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: "Added to queue" } }));
+                    setMenuOpen(false);
+                  }}
+                >
+                  <ListPlus className="h-[15px] w-[15px]" /> Add to queue
+                </button>
                 <p className="px-2 py-1 text-xs text-[var(--muted)]">{t("song_row_add_to_playlist", language)}</p>
                 {playlists.length === 0 && (
                   <p className="px-2 py-1 text-xs text-[var(--muted)]">{t("no_playlists_created", language)}</p>

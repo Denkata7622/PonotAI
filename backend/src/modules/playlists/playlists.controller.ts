@@ -90,7 +90,7 @@ export async function getPlaylistController(req: Request, res: Response) {
     }
 
     if (playlist.userId !== userId) {
-      sendError(res, ErrorCatalog.FORBIDDEN);
+      sendError(res, ErrorCatalog.NOT_FOUND);
       return;
     }
 

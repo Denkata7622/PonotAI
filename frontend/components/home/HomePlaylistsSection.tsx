@@ -7,17 +7,29 @@ import { Button } from "../../src/components/ui/Button";
 import type { Playlist } from "../../features/library/types";
 import { t, type Language } from "../../lib/translations";
 import PlaylistCard from "../PlaylistCard";
+import { usePlayer } from "../PlayerProvider";
 
-export default function HomePlaylistsSection({ playlists, language, onOpenNewPlaylist, onDeletePlaylist }: { playlists: Playlist[]; language: Language; onOpenNewPlaylist?: () => void; onDeletePlaylist?: (playlistId: string) => void }) {
+export default function HomePlaylistsSection({ playlists, language, isAuthenticated, onOpenNewPlaylist, onDeletePlaylist }: { playlists: Playlist[]; language: Language; isAuthenticated: boolean; onOpenNewPlaylist?: () => void; onDeletePlaylist?: (playlistId: string) => void }) {
   const router = useRouter();
+  const { addManyToQueue } = usePlayer();
+
+  if (!isAuthenticated) {
+    return (
+      <section className="rounded-3xl border border-border bg-surface p-8">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <ListMusic className="w-10 h-10 text-[var(--muted)]" />
+          <p className="text-lg font-semibold">Sign in to manage playlists</p>
+        </div>
+      </section>
+    );
+  }
 
   if (playlists.length === 0) {
     return (
       <section className="rounded-3xl border border-border bg-surface p-8">
         <div className="flex flex-col items-center gap-3 text-center">
           <ListMusic className="w-10 h-10 text-[var(--muted)]" />
-          <p className="text-lg font-semibold">{t("empty_playlists_heading", language)}</p>
-          <p className="text-sm text-text-muted">{t("empty_playlists_hint", language)}</p>
+          <p className="text-lg font-semibold">No playlists yet — create your first one</p>
           <Button onClick={onOpenNewPlaylist} className="mt-2 flex items-center gap-2" disabled={!onOpenNewPlaylist}>
             <Plus className="w-4 h-4 text-[var(--text)]" />
             {t("playlist_new", language)}
@@ -46,6 +58,21 @@ export default function HomePlaylistsSection({ playlists, language, onOpenNewPla
             playlist={playlist}
             onClick={() => router.push("/library?tab=playlists")}
             onDelete={onDeletePlaylist}
+            onPlay={(target) =>
+              addManyToQueue(
+                target.songs.map((song) => ({
+                  id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+                  title: song.title,
+                  artist: song.artist,
+                  artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+                  artworkUrl: song.coverUrl || "https://picsum.photos/seed/home-playlist/80",
+                  videoId: song.videoId,
+                  license: "COPYRIGHTED",
+                  query: `${song.title} ${song.artist}`,
+                })),
+                "playlist",
+              )
+            }
           />
         ))}
       </div>

@@ -101,13 +101,23 @@ async function readDb(): Promise<AppDb> {
     const raw = await fs.readFile(DB_PATH, "utf8");
     if (!raw || !raw.trim()) throw new Error("empty");
     const parsed = JSON.parse(raw) as Partial<AppDb>;
-    return {
+    const db: AppDb = {
       users: parsed.users ?? [],
       playlists: parsed.playlists ?? [],
       searchHistory: parsed.searchHistory ?? [],
       favorites: parsed.favorites ?? [],
       sharedSongs: parsed.sharedSongs ?? [],
     };
+    let hasPlaylistMigration = false;
+    db.playlists = db.playlists.map((playlist) => {
+      if ((playlist as Partial<PlaylistRecord>).userId) return playlist;
+      hasPlaylistMigration = true;
+      return { ...playlist, userId: "legacy" };
+    });
+    if (hasPlaylistMigration) {
+      await writeDb(db);
+    }
+    return db;
   } catch {
     const fresh: AppDb = {
       users: [],

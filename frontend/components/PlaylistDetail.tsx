@@ -8,6 +8,7 @@ import { Button } from "../src/components/ui/Button";
 import SongRow from "./SongRow";
 import NewPlaylistModal from "./NewPlaylistModal";
 import { ListMusic, Plus, Trash2, X } from "../lucide-react";
+import { Play } from "../lucide-react";
 
 type PlaylistDetailProps = {
   playlist: Playlist;
@@ -18,6 +19,7 @@ type PlaylistDetailProps = {
   onToast?: (kind: "success" | "error", message: string) => void;
   onDeletePlaylist: () => void;
   onRenamePlaylist?: (newName: string) => void;
+  onPlayAll?: (songs: PlaylistSong[]) => void;
 };
 
 export default function PlaylistDetail({
@@ -29,6 +31,7 @@ export default function PlaylistDetail({
   onToast,
   onDeletePlaylist,
   onRenamePlaylist,
+  onPlayAll,
 }: PlaylistDetailProps) {
   const { language } = useLanguage();
   const [isRenaming, setIsRenaming] = useState(false);
@@ -78,6 +81,11 @@ export default function PlaylistDetail({
               <div>
                 <h2 className="text-2xl font-bold text-[var(--text)]">{playlist.name}</h2>
                 <p className="mt-1 text-sm text-[var(--muted)]">{t("library_songs_count", language).replace("{count}", `${playlist.songs.length}`)}</p>
+                {playlist.songs.length > 0 && onPlayAll ? (
+                  <Button onClick={() => onPlayAll(playlist.songs)} className="mt-3">
+                    <span className="inline-flex items-center gap-2"><Play className="h-[18px] w-[18px]" fill="currentColor" /> Play all ({playlist.songs.length} songs)</span>
+                  </Button>
+                ) : null}
                 {playlist.createdAt && (
                   <p className="mt-1 text-xs text-[var(--muted)]">{new Date(playlist.createdAt).toLocaleDateString()}</p>
                 )}

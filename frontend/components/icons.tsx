@@ -58,6 +58,7 @@ export const ChevronDown = (props: IconProps) => <BaseIcon {...props}><path d="m
 export const ChevronLeft = (props: IconProps) => <BaseIcon {...props}><path d="m15 18-6-6 6-6" /></BaseIcon>;
 export const ChevronRight = (props: IconProps) => <BaseIcon {...props}><path d="m9 18 6-6-6-6" /></BaseIcon>;
 export const EllipsisVertical = (props: IconProps) => <BaseIcon {...props}><circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" /></BaseIcon>;
+export const Languages = (props: IconProps) => <BaseIcon {...props}><path d="M5 8h14" /><path d="M5 16h14" /><path d="m9 4 3 16" /><path d="m15 4-3 16" /></BaseIcon>;
 
 export const Sparkles = (props: IconProps) => <BaseIcon {...props}><path d="M12 3l1.6 3.8L17 8.4l-3.4 1.6L12 14l-1.6-4L7 8.4l3.4-1.6z" /><path d="M19 3l.8 1.9L22 5.7l-2.2 1-.8 2.3-.8-2.3-2.2-1 2.2-.8z" /><path d="M5 15l1 2.3L8.3 18 6 19l-1 2.3L4 19l-2.3-1 2.3-.7z" /></BaseIcon>;
 export const RotateCcw = (props: IconProps) => <BaseIcon {...props}><path d="M3 2v6h6" /><path d="M3 8a9 9 0 1 0 3-6.7" /></BaseIcon>;

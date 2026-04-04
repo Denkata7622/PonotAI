@@ -43,20 +43,14 @@ return fallback;
 
 export default function LibraryPage() {
 const { language } = useLanguage();
-const { addToQueue } = usePlayer();
+const { addToQueue, addManyToQueue, clearQueue } = usePlayer();
 const { favorites: userFavorites, removeFavorite, isAuthenticated, isLoading } = useUser();
 const { profile } = useProfile();
 
 const getScoped = (key: string) => (profile?.id ? scopedKey(key, profile.id) : key);
 
 const historyKey = getScoped("ponotai-history");
-const {
-  playlists: guestPlaylists,
-  favoritesList,
-  toggleFavorite,
-  createPlaylist: createGuestPlaylist,
-  deletePlaylist: deleteGuestPlaylist,
-} = useLibrary(profile.id);
+const { favoritesList, toggleFavorite } = useLibrary(profile.id);
 
 const normalizeSong = (item: any): Song => ({
   id:
@@ -140,12 +134,12 @@ return;
 }
 
 setLoadError(null);
-setPlaylists(guestPlaylists);
+setPlaylists([]);
 setLoading(false);
 }
 
 void loadPlaylists();
-}, [isAuthenticated, guestPlaylists, language]);
+}, [isAuthenticated, language]);
 
 // favorites source: cloud for authenticated users, local library state for guests
 const mergedFavorites = useMemo(() => {
@@ -229,15 +223,9 @@ if (!name.trim()) return null;
 
 setIsCreating(true);
 try {
-  if (isAuthenticated) {
-    const created = await createPlaylist(name);
-    if (created) {
-      setPlaylists((prev) => [...prev, created]);
-    }
-    return created;
-  }
+  if (!isAuthenticated) return null;
 
-  const created = await createGuestPlaylist(name);
+  const created = await createPlaylist(name);
   if (created) {
     setPlaylists((prev) => [...prev, created]);
   }
@@ -263,8 +251,6 @@ deleteTimerRef.current = window.setTimeout(async () => {
   if (!deletedPlaylistRef.current) return;
   if (isAuthenticated) {
     await deletePlaylist(playlistId);
-  } else {
-    await deleteGuestPlaylist(playlistId);
   }
   deletedPlaylistRef.current = null;
   setShowUndoToast(false);
@@ -286,6 +272,34 @@ query: `${song.title} ${song.artist} official audio`,
 });
 }
 
+
+function handlePlayPlaylist(playlist: Playlist) {
+  if (playlist.songs.length === 0) return;
+  addManyToQueue(playlist.songs.map((song) => ({
+    id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+    title: song.title,
+    artist: song.artist,
+    artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+    artworkUrl: song.coverUrl || "https://picsum.photos/seed/playlist/80",
+    videoId: song.videoId,
+    license: "COPYRIGHTED",
+    query: `${song.title} ${song.artist} official audio`,
+  })), "playlist");
+}
+
+function handlePlayAllFromDetail(songs: Array<{ title: string; artist: string; coverUrl?: string; videoId?: string }>) {
+  clearQueue();
+  addManyToQueue(songs.map((song) => ({
+    id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+    title: song.title,
+    artist: song.artist,
+    artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+    artworkUrl: song.coverUrl || "https://picsum.photos/seed/playlist/80",
+    videoId: song.videoId,
+    license: "COPYRIGHTED",
+    query: `${song.title} ${song.artist} official audio`,
+  })), "playlist");
+}
 async function handleRemoveSongFromPlaylist(playlistId: string, title: string, artist: string) {
 try {
 const removedPlaylist = await removeSongFromPlaylist(playlistId, title, artist);
@@ -551,7 +565,7 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
     {selectedTab === "playlists" && (
       <div className="space-y-4">
         <div className="card p-4">
-          <Button onClick={() => setShowNewPlaylistModal(true)} className="w-full flex items-center justify-center gap-2">
+          <Button onClick={() => setShowNewPlaylistModal(true)} className="w-full flex items-center justify-center gap-2" disabled={!isAuthenticated}>
             <Plus className="w-4 h-4 text-[var(--text)]" />
             {t("playlist_new", language)}
           </Button>
@@ -559,8 +573,10 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
 
         {loading ? (
           <div className="card p-12 text-center"><div className="mx-auto h-16 w-full max-w-md animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div>
+        ) : !isAuthenticated ? (
+          <div className="col-span-full card p-12 text-center"><div className="flex flex-col items-center gap-2"><ListMusic className="w-10 h-10 text-[var(--muted)]" /><p className="font-semibold">Sign in to manage playlists</p></div></div>
         ) : filteredPlaylists.length === 0 ? (
-          <div className="col-span-full card p-12 text-center"><div className="flex flex-col items-center gap-2"><ListMusic className="w-10 h-10 text-[var(--muted)]" /><p className="font-semibold">{t("empty_playlists_heading", language)}</p><p className="cardText">{t("empty_playlists_hint", language)}</p></div></div>
+          <div className="col-span-full card p-12 text-center"><div className="flex flex-col items-center gap-2"><ListMusic className="w-10 h-10 text-[var(--muted)]" /><p className="font-semibold">No playlists yet — create your first one</p></div></div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {filteredPlaylists.map((playlist) => (
@@ -569,6 +585,7 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
                 playlist={playlist}
                 onClick={handlePlaylistCardClick}
                 onDelete={handleDeletePlaylist}
+                onPlay={handlePlayPlaylist}
               />
             ))}
           </div>
@@ -598,6 +615,7 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
       onToast={showStatusToast}
       onDeletePlaylist={() => handlePlaylistDetailDelete(selectedPlaylist.id)}
       onRenamePlaylist={(newName) => handlePlaylistRename(selectedPlaylist.id, newName)}
+      onPlayAll={handlePlayAllFromDetail}
     />
   )}
 </section>

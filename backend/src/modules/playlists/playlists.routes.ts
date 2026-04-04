@@ -25,6 +25,7 @@ playlistsRouter.get("/:playlistId", getPlaylistController);
 
 // Update playlist name
 playlistsRouter.patch("/:playlistId", updatePlaylistNameController);
+playlistsRouter.put("/:playlistId", updatePlaylistNameController);
 
 // Add a song to playlist
 playlistsRouter.post("/:playlistId/songs", addSongToPlaylistController);
