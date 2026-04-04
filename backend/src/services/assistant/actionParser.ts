@@ -5,6 +5,8 @@ const ACTION_TYPES = new Set<ActionIntent["type"]>([
   "CREATE_PLAYLIST",
   "FAVORITE_TRACK",
   "SEARCH_AND_SUGGEST",
+  "CHANGE_THEME",
+  "CHANGE_LANGUAGE",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -31,6 +33,10 @@ function validatePayload(type: ActionIntent["type"], payload: Record<string, unk
       return typeof payload.trackId === "string" && payload.trackId.length > 0 && payload.source === "assistant";
     case "SEARCH_AND_SUGGEST":
       return typeof payload.query === "string" && payload.query.length > 0 && typeof payload.reason === "string";
+    case "CHANGE_THEME":
+      return payload.theme === "light" || payload.theme === "dark" || payload.theme === "system";
+    case "CHANGE_LANGUAGE":
+      return payload.locale === "en" || payload.locale === "bg";
     default:
       return false;
   }

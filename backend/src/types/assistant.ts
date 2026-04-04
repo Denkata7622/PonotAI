@@ -1,4 +1,10 @@
-export type AssistantActionType = "ADD_TO_QUEUE" | "CREATE_PLAYLIST" | "FAVORITE_TRACK" | "SEARCH_AND_SUGGEST";
+export type AssistantActionType =
+  | "ADD_TO_QUEUE"
+  | "CREATE_PLAYLIST"
+  | "FAVORITE_TRACK"
+  | "SEARCH_AND_SUGGEST"
+  | "CHANGE_THEME"
+  | "CHANGE_LANGUAGE";
 
 export interface ActionIntent {
   type: AssistantActionType;
@@ -31,6 +37,7 @@ export interface LibraryPlaylistSummary {
   name: string;
   description?: string;
   trackIds: string[];
+  tracks?: Array<{ trackId: string; title: string; artist: string }>;
 }
 
 export interface LibraryStatItem {
@@ -47,6 +54,9 @@ export interface LibraryContextPayload {
   topTracks: LibraryTrack[];
   recentHistory: LibraryHistoryEntry[];
   playlists: LibraryPlaylistSummary[];
+  currentTheme?: "light" | "dark" | "system";
+  currentLanguage?: "en" | "bg";
+  currentQueue?: string[];
   stats?: {
     topGenres: LibraryStatItem[];
     topArtists: LibraryStatItem[];

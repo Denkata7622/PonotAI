@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-type Theme = "dark" | "light";
+type Theme = "dark" | "light" | "system";
 
 type ThemeContextValue = {
   theme: Theme;
@@ -18,14 +18,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === "undefined") return "dark";
     const savedTheme = window.localStorage.getItem(THEME_KEY);
-    if (savedTheme === "dark" || savedTheme === "light") return savedTheme;
+    if (savedTheme === "dark" || savedTheme === "light" || savedTheme === "system") return savedTheme;
     return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
   });
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    document.body.setAttribute("data-theme", theme);
-    document.documentElement.style.colorScheme = theme;
+    const resolvedTheme = theme === "system"
+      ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+      : theme;
+    document.documentElement.setAttribute("data-theme", resolvedTheme);
+    document.body.setAttribute("data-theme", resolvedTheme);
+    document.documentElement.style.colorScheme = resolvedTheme;
     window.localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
 

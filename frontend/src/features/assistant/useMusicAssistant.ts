@@ -29,6 +29,7 @@ export function useMusicAssistant() {
   }, [messages]);
 
   async function sendMessage(text: string): Promise<void> {
+    if (isLoading) return;
     const trimmed = text.trim();
     if (!trimmed || trimmed.length > 2000) {
       setError("Message must be between 1 and 2000 characters.");
@@ -54,9 +55,12 @@ export function useMusicAssistant() {
         saveConversation(updated);
         return updated;
       });
-    } catch {
-      setMessages((prev) => [...prev, createMessage({ role: "system", content: "I ran into an issue. Please try again." })]);
-      setError("I ran into an issue. Please try again.");
+    } catch (error) {
+      const message = (error as Error).message?.includes("not configured")
+        ? "AI Assistant is not configured. Please contact support."
+        : "I ran into an issue. Please try again.";
+      setMessages((prev) => [...prev, createMessage({ role: "system", content: message })]);
+      setError(message);
     } finally {
       setIsLoading(false);
     }

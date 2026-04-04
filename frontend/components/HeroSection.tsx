@@ -16,7 +16,7 @@ type HeroSectionProps = {
   onToggleLibrary: () => void;
   onStreamReady?: (stream: MediaStream) => void;
   isLibraryOpen: boolean;
-  theme: "dark" | "light";
+  theme: "dark" | "light" | "system";
 };
 
 export default function HeroSection({

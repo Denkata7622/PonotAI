@@ -2,6 +2,7 @@
 
 import type { Playlist } from "../features/library/types";
 import { Trash2 } from "./icons";
+import { Play } from "../lucide-react";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 
@@ -9,6 +10,7 @@ type PlaylistCardProps = {
   playlist: Playlist;
   onClick: (playlist: Playlist) => void;
   onDelete?: (playlistId: string) => void;
+  onPlay?: (playlist: Playlist) => void;
   showSongPreview?: boolean;
 };
 
@@ -16,6 +18,7 @@ export default function PlaylistCard({
   playlist,
   onClick,
   onDelete,
+  onPlay,
   showSongPreview = true,
 }: PlaylistCardProps) {
   const { language } = useLanguage();
@@ -23,7 +26,7 @@ export default function PlaylistCard({
   return (
     <div
       onClick={() => onClick(playlist)}
-      className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:border-[var(--accent)]/50 hover:bg-[var(--surface-2)] cursor-pointer"
+      className="group rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:border-[var(--accent)]/50 hover:bg-[var(--surface-2)] cursor-pointer"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -55,6 +58,18 @@ export default function PlaylistCard({
             title={t("track_delete_playlist", language)}
           >
             <Trash2 className="w-4 h-4 text-red-300" />
+          </button>
+        )}
+        {onPlay && playlist.songs.length > 0 && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onPlay(playlist);
+            }}
+            className="rounded-full bg-[var(--accent)] px-3 py-1 text-xs text-white md:opacity-0 md:transition md:group-hover:opacity-100"
+          >
+            <span className="inline-flex items-center gap-1"><Play className="h-4 w-4" fill="currentColor" /> Play</span>
           </button>
         )}
       </div>

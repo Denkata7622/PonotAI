@@ -6,14 +6,26 @@ import type { Language } from "./translations";
 type LanguageContextValue = {
   language: Language;
   setLanguage: (lang: Language) => void;
+  setLocale: (lang: Language) => void;
 };
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguage] = useState<Language>("bg");
+  const [language, setLanguage] = useState<Language>(() => {
+    if (typeof window === "undefined") return "bg";
+    const saved = window.localStorage.getItem("ponotai-language");
+    return saved === "en" || saved === "bg" ? saved : "bg";
+  });
 
-  return <LanguageContext.Provider value={{ language, setLanguage }}>{children}</LanguageContext.Provider>;
+  const setLocale = (lang: Language) => {
+    setLanguage(lang);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("ponotai-language", lang);
+    }
+  };
+
+  return <LanguageContext.Provider value={{ language, setLanguage: setLocale, setLocale }}>{children}</LanguageContext.Provider>;
 }
 
 export function useLanguage() {

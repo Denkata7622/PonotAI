@@ -688,7 +688,7 @@ export function HomeContent() {
               </Card>
             )}
 
-            <HomePlaylistsSection playlists={playlists} language={language} onOpenNewPlaylist={() => setShowNewPlaylistModal(true)} onDeletePlaylist={handleDeletePlaylistWithUndo} />
+            <HomePlaylistsSection playlists={playlists} language={language} isAuthenticated={isAuthenticated} onOpenNewPlaylist={() => setShowNewPlaylistModal(true)} onDeletePlaylist={handleDeletePlaylistWithUndo} />
 
             <HomeFavoritesSection
               language={language}
