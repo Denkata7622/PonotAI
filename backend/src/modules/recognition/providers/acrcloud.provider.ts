@@ -43,6 +43,13 @@ function buildSignature(accessKey: string, accessSecret: string, dataType: strin
   return crypto.createHmac("sha1", accessSecret).update(stringToSign).digest("base64");
 }
 
+/**
+ * Recognizes an audio clip using ACRCloud identify API.
+ * @param buffer Audio file buffer.
+ * @param filename Original upload filename.
+ * @returns Promise resolving to normalized provider metadata, or `null` when no match is found.
+ * @throws MissingAcrCloudConfigError when required ACRCloud env configuration is missing.
+ */
 export async function recognizeWithAcrCloud(buffer: Buffer, filename: string): Promise<ProviderSongMetadata | null> {
   const accessKey = process.env.ACRCLOUD_ACCESS_KEY?.trim();
   const accessSecret = process.env.ACRCLOUD_ACCESS_SECRET?.trim();

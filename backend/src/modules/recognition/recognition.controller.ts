@@ -23,7 +23,16 @@ function handleRecognitionError(
   sendError(res, errorKey, process.env.NODE_ENV === "production" ? undefined : { cause: (error as Error).message });
 }
 
-/** Accepts an uploaded audio file and returns normalized recognition metadata. */
+/**
+ * Accepts an uploaded audio file and returns normalized recognition metadata.
+ * @route POST /api/recognition/audio
+ * @auth No authentication required.
+ * @example curl -F "audio=@clip.webm" http://localhost:4000/api/recognition/audio
+ * @param req Express multipart request with an `audio` file field.
+ * @param res Express response returning normalized song metadata.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected provider/storage failures through shared error handler.
+ */
 export async function recognizeAudioController(req: Request, res: Response): Promise<void> {
   try {
     if (!req.file) {
@@ -43,7 +52,16 @@ export async function recognizeAudioController(req: Request, res: Response): Pro
   }
 }
 
-/** Accepts an uploaded image and returns one or more recognized song candidates. */
+/**
+ * Accepts an uploaded image and returns one or more recognized song candidates.
+ * @route POST /api/recognition/image
+ * @auth No authentication required.
+ * @example curl -F "image=@playlist.png" -F "language=eng" http://localhost:4000/api/recognition/image
+ * @param req Express multipart request with an `image` file and optional `language`.
+ * @param res Express response returning recognized song candidates.
+ * @returns Promise that resolves after sending an HTTP response.
+ * @throws Re-throws unexpected provider/storage failures through shared error handler.
+ */
 export async function recognizeImageController(req: Request, res: Response): Promise<void> {
   try {
     if (!req.file) {

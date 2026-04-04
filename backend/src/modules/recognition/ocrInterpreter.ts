@@ -467,6 +467,12 @@ function extractMusic(lines: FeatureLine[], context: ScreenType): InterpretedRes
   };
 }
 
+/**
+ * Interprets OCR word blocks into scored lines and optional music metadata extraction.
+ * @param blocks OCR word blocks.
+ * @returns Structured OCR interpretation output.
+ * @throws Does not throw intentionally; returns conservative output when extraction confidence is low.
+ */
 export function interpretOcr(blocks: OcrBlock[]): InterpretedResult {
   const normalized = normalizeBlocks(blocks);
   const reconstructed = reconstructLines(normalized);

@@ -65,6 +65,13 @@ async function recognizeWithCommunityClient(filePath: string): Promise<ShazamRec
   throw new MissingShazamClientError("shazam-api client does not expose recognize methods.");
 }
 
+/**
+ * Recognizes an audio clip using Shazam mock data or community client fallback.
+ * @param buffer Audio file buffer.
+ * @param filename Original upload filename.
+ * @returns Promise resolving to normalized provider metadata, or `null` when no match is found.
+ * @throws MissingShazamClientError when live fallback is attempted without compatible shazam client package.
+ */
 export async function recognizeWithShazam(buffer: Buffer, filename: string): Promise<ProviderSongMetadata | null> {
   const mocked = process.env.SHAZAM_MOCK_RESPONSE;
   if (mocked) {
