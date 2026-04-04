@@ -58,3 +58,11 @@ export const ChevronDown = (props: IconProps) => <BaseIcon {...props}><path d="m
 export const ChevronLeft = (props: IconProps) => <BaseIcon {...props}><path d="m15 18-6-6 6-6" /></BaseIcon>;
 export const ChevronRight = (props: IconProps) => <BaseIcon {...props}><path d="m9 18 6-6-6-6" /></BaseIcon>;
 export const EllipsisVertical = (props: IconProps) => <BaseIcon {...props}><circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" /></BaseIcon>;
+
+export const Sparkles = (props: IconProps) => <BaseIcon {...props}><path d="M12 3l1.6 3.8L17 8.4l-3.4 1.6L12 14l-1.6-4L7 8.4l3.4-1.6z" /><path d="M19 3l.8 1.9L22 5.7l-2.2 1-.8 2.3-.8-2.3-2.2-1 2.2-.8z" /><path d="M5 15l1 2.3L8.3 18 6 19l-1 2.3L4 19l-2.3-1 2.3-.7z" /></BaseIcon>;
+export const RotateCcw = (props: IconProps) => <BaseIcon {...props}><path d="M3 2v6h6" /><path d="M3 8a9 9 0 1 0 3-6.7" /></BaseIcon>;
+export const Send = (props: IconProps) => <BaseIcon {...props}><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4z" /></BaseIcon>;
+export const Zap = (props: IconProps) => <BaseIcon {...props}><path d="M13 2 3 14h7l-1 8 10-12h-7z" /></BaseIcon>;
+export const Mic2 = (props: IconProps) => <BaseIcon {...props}><path d="M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z" /><path d="M19 10a7 7 0 0 1-14 0" /><path d="M12 17v4" /><path d="M8 21h8" /></BaseIcon>;
+export const CheckCircle = (props: IconProps) => <BaseIcon {...props}><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></BaseIcon>;
+export const AlertCircle = (props: IconProps) => <BaseIcon {...props}><circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" /></BaseIcon>;

@@ -6,6 +6,7 @@ import { LanguageProvider } from "../lib/LanguageContext";
 import { ThemeProvider } from "../lib/ThemeContext";
 import { ProfileProvider } from "../lib/ProfileContext";
 import { UserProvider } from "../src/context/UserContext";
+import AssistantFAB from "../src/components/AssistantFAB";
 
 export const metadata: Metadata = {
   title: {
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <LanguageProvider>
               <ProfileProvider>
                 <AppShell><div className="pageTransition">{children}</div></AppShell>
+                <AssistantFAB />
               </ProfileProvider>
             </LanguageProvider>
           </ThemeProvider>
