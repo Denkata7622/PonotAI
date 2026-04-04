@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
+import { invalidateLibraryContextCache } from "../../services/assistant/contextBuilder";
 import {
   addHistoryEntry,
   addUserHistoryEntry,
@@ -80,6 +81,7 @@ export async function createHistoryEntryController(req: Request, res: Response):
       youtubeVideoId,
     });
 
+    invalidateLibraryContextCache(req.userId!);
     res.status(201).json(item);
     return;
   }
@@ -115,6 +117,7 @@ export async function deleteHistoryItemController(req: Request, res: Response): 
       return;
     }
 
+    invalidateLibraryContextCache(req.userId!);
     res.status(200).json({ ok: true });
   } catch (error) {
     if ((error as Error).message === "FORBIDDEN") {
@@ -137,6 +140,7 @@ export async function deleteHistoryItemController(req: Request, res: Response): 
  */
 export async function clearHistoryController(req: Request, res: Response): Promise<void> {
   const deleted = await clearUserHistory(req.userId!);
+  invalidateLibraryContextCache(req.userId!);
   res.status(200).json({ deleted });
 }
 

@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import * as db from "../../db/authStore";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
+import { invalidateLibraryContextCache } from "../../services/assistant/contextBuilder";
 
 /**
  * Replaces the authenticated user's playlists with a client-provided synchronized snapshot.
@@ -35,6 +36,7 @@ export async function syncLibraryController(req: Request, res: Response) {
       }
     }
 
+    invalidateLibraryContextCache(userId);
     res.status(200).json({ ok: true });
   } catch (error) {
     console.error("Library sync error:", error);

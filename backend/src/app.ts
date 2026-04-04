@@ -15,6 +15,7 @@ import recognitionRouter from "./modules/recognition/recognition.routes";
 import statsRouter from "./modules/stats/stats.routes";
 import { apiRateLimit, recognitionRateLimit } from "./middlewares/rateLimit.middleware";
 import { responseTimeMiddleware } from "./middlewares/responseTime.middleware";
+import assistantRouter from "./routes/assistant";
 
 const app = express();
 const YAML = require("js-yaml");
@@ -103,6 +104,7 @@ app.use("/api/share", shareRouter);
 app.use("/api/library", libraryRouter);
 app.use("/api/playlists", playlistsRouter);
 app.use("/api/stats", statsRouter);
+app.use("/api/assistant", assistantRouter);
 
 app.use(errorMiddleware);
 

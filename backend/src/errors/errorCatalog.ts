@@ -88,6 +88,11 @@ export const ErrorCatalog = {
     message: "Could not build assistant context",
     httpStatus: 500,
   },
+  AI_SERVICE_UNAVAILABLE: {
+    code: "AI_SERVICE_UNAVAILABLE",
+    message: "AI service is temporarily unavailable",
+    httpStatus: 503,
+  },
 } as const satisfies Record<string, AppError>;
 
 export type ErrorCatalogKey = keyof typeof ErrorCatalog;

@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import * as db from "../../db/authStore";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
+import { invalidateLibraryContextCache } from "../../services/assistant/contextBuilder";
 
 /**
  * Creates a new playlist for the authenticated user.
@@ -28,6 +29,7 @@ export async function createPlaylistController(req: Request, res: Response) {
 
   try {
     const playlist = await db.createPlaylist(userId, name.trim());
+    invalidateLibraryContextCache(userId);
     res.status(201).json(playlist);
   } catch (error) {
     console.error("Create playlist error:", error);
@@ -137,6 +139,7 @@ export async function updatePlaylistNameController(req: Request, res: Response) 
     }
 
     const updated = await db.updatePlaylistName(playlistId, name.trim());
+    invalidateLibraryContextCache(userId);
     res.status(200).json(updated);
   } catch (error) {
     console.error("Update playlist error:", error);
@@ -202,6 +205,7 @@ export async function addSongToPlaylistController(req: Request, res: Response) {
       videoId,
     });
 
+    invalidateLibraryContextCache(userId);
     res.status(200).json(updated);
   } catch (error) {
     console.error("Add song error:", error);
@@ -247,6 +251,7 @@ export async function removeSongFromPlaylistController(req: Request, res: Respon
     }
 
     const updated = await db.removeSongFromPlaylist(playlistId, title, artist);
+    invalidateLibraryContextCache(userId);
     res.status(200).json(updated);
   } catch (error) {
     console.error("Remove song error:", error);
@@ -286,6 +291,7 @@ export async function deletePlaylistController(req: Request, res: Response) {
     }
 
     await db.deletePlaylist(playlistId);
+    invalidateLibraryContextCache(userId);
     res.status(200).json({ ok: true });
   } catch (error) {
     console.error("Delete playlist error:", error);
