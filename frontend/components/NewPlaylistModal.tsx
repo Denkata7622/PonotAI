@@ -16,6 +16,8 @@ type ModalTrack = PlaylistSong & { id: string };
 type NewPlaylistModalProps = {
   onClose: () => void;
   onCreated?: (playlist: Playlist) => void;
+  onSongsAdded?: (playlistId: string, songs: PlaylistSong[]) => void | Promise<void>;
+  onToast?: (kind: "success" | "error", message: string) => void;
   onCreatePlaylist?: (name: string) => Promise<Playlist | null> | Playlist | null;
   existingPlaylistId?: string;
   initialName?: string;
@@ -30,7 +32,15 @@ function parseStorage<T>(key: string, fallback: T): T {
   }
 }
 
-export default function NewPlaylistModal({ onClose, onCreated, onCreatePlaylist, existingPlaylistId, initialName = "" }: NewPlaylistModalProps) {
+export default function NewPlaylistModal({
+  onClose,
+  onCreated,
+  onSongsAdded,
+  onToast,
+  onCreatePlaylist,
+  existingPlaylistId,
+  initialName = "",
+}: NewPlaylistModalProps) {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { createPlaylist, addSongToPlaylist } = useLibrary(profile.id);
@@ -168,14 +178,24 @@ export default function NewPlaylistModal({ onClose, onCreated, onCreatePlaylist,
 
       if (!targetPlaylistId) return;
 
+      const songsToAdd = Array.from(selectedSongs.values()).map((song) => ({
+        title: song.title,
+        artist: song.artist,
+        album: song.album,
+        coverUrl: song.coverUrl,
+        videoId: song.videoId,
+      }));
+
+      let successfulAdds = 0;
       for (const song of selectedSongs.values()) {
-        await addSongToPlaylist(targetPlaylistId, {
+        const added = await addSongToPlaylist(targetPlaylistId, {
           title: song.title,
           artist: song.artist,
           album: song.album,
           coverUrl: song.coverUrl,
           videoId: song.videoId,
         });
+        if (added) successfulAdds += 1;
       }
 
       if (createdPlaylist) {
@@ -183,6 +203,14 @@ export default function NewPlaylistModal({ onClose, onCreated, onCreatePlaylist,
           ...createdPlaylist,
           songs: [...createdPlaylist.songs, ...Array.from(selectedSongs.values())],
         });
+      }
+
+      if (successfulAdds > 0) {
+        await onSongsAdded?.(targetPlaylistId, songsToAdd);
+        onToast?.("success", t("toast_added", language, { count: successfulAdds }));
+      } else if (songsToAdd.length > 0) {
+        onToast?.("error", t("toast_audio_failed", language));
+        return;
       }
 
       onClose();

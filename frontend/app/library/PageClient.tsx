@@ -106,6 +106,7 @@ const [isCreating, setIsCreating] = useState(false);
 const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
 const [showPlaylistDetail, setShowPlaylistDetail] = useState(false);
 const [showUndoToast, setShowUndoToast] = useState(false);
+const [statusToast, setStatusToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 const deletedPlaylistRef = useRef<Playlist | null>(null);
 const deleteTimerRef = useRef<number | null>(null);
 
@@ -337,6 +338,41 @@ setSelectedPlaylist((prev) => (prev ? { ...prev, name: newName } : null));
 }
 }
 
+function showStatusToast(kind: "success" | "error", message: string) {
+  setStatusToast({ kind, message });
+  window.setTimeout(() => setStatusToast(null), 3000);
+}
+
+function handleSongsAddedToPlaylist(playlistId: string, songs: Array<{ title: string; artist: string; album?: string; coverUrl?: string; videoId?: string }>) {
+  if (songs.length === 0) return;
+  setPlaylists((prev) =>
+    prev.map((playlist) => {
+      if (playlist.id !== playlistId) return playlist;
+      const nextSongs = [...playlist.songs];
+      for (const song of songs) {
+        const songKey = normalizeTrackKey(song.title, song.artist);
+        const exists = nextSongs.some((existingSong) => normalizeTrackKey(existingSong.title, existingSong.artist) === songKey);
+        if (!exists) {
+          nextSongs.push(song);
+        }
+      }
+      return { ...playlist, songs: nextSongs };
+    }),
+  );
+  setSelectedPlaylist((prev) => {
+    if (!prev || prev.id !== playlistId) return prev;
+    const nextSongs = [...prev.songs];
+    for (const song of songs) {
+      const songKey = normalizeTrackKey(song.title, song.artist);
+      const exists = nextSongs.some((existingSong) => normalizeTrackKey(existingSong.title, existingSong.artist) === songKey);
+      if (!exists) {
+        nextSongs.push(song);
+      }
+    }
+    return { ...prev, songs: nextSongs };
+  });
+}
+
 
 function handleUndoDeletePlaylist() {
 if (deleteTimerRef.current) {
@@ -396,6 +432,11 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
         <button type="button" className="font-semibold text-[var(--accent)]" onClick={handleUndoDeletePlaylist}>{t("toast_undo", language)}</button>
       </div>
       <div className="absolute bottom-0 left-0 h-[2px] bg-[var(--accent)]" style={{ animation: "shrink 4s linear forwards" }} />
+    </div>
+  )}
+  {statusToast && (
+    <div className={`card p-4 text-sm ${statusToast.kind === "success" ? "border-emerald-300/40 bg-emerald-500/15" : "border-red-300/40 bg-red-500/15"}`}>
+      {statusToast.message}
     </div>
   )}
 
@@ -553,6 +594,8 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
       onClose={handlePlaylistDetailClose}
       onPlaySong={handlePlayPlaylistSong}
       onRemoveSong={(title, artist) => handleRemoveSongFromPlaylist(selectedPlaylist.id, title, artist)}
+      onSongsAdded={handleSongsAddedToPlaylist}
+      onToast={showStatusToast}
       onDeletePlaylist={() => handlePlaylistDetailDelete(selectedPlaylist.id)}
       onRenamePlaylist={(newName) => handlePlaylistRename(selectedPlaylist.id, newName)}
     />
