@@ -16,6 +16,7 @@ import SearchInput from "./SearchInput";
 import SearchResultActions from "./SearchResultActions";
 import { addSongToPlaylist as addSongToPlaylistApi } from "../features/library/api";
 import { formatArtist } from "../lib/formatArtist";
+import SmartDropdown from "../src/components/ui/SmartDropdown";
 
 type HistoryItem = {
   id: string;
@@ -330,46 +331,49 @@ function AppShellContent({ children }: { children: ReactNode }) {
           {!isCollapsed && (
             <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-xs">
               {isAuthenticated && user ? (
-                <div className="relative">
-                  <button
-                    className="flex w-full items-center gap-2 text-left"
-                    onClick={() => setShowUserMenu((v) => !v)}
-                  >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
-                      {initials}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-[var(--text)]">{user.username}</p>
-                      <p className="truncate text-[var(--muted)]">{user.email}</p>
-                    </div>
-                    <ChevronDown className="w-4 h-4 text-[var(--muted)]" />
-                  </button>
-
-                  {showUserMenu && (
-                    <div className="absolute left-0 right-0 top-10 z-20 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2 text-[var(--text)] shadow-2xl [backdrop-filter:none]">
-                      <Link
-                        href="/profile"
-                        className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"
-                        onClick={() => setShowUserMenu(false)}
-                      >
-                        <span className="inline-flex items-center gap-2"><User className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Профил" : "Profile"}</span>
-                      </Link>
-                      <Link
-                        href="/settings"
-                        className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"
-                        onClick={() => setShowUserMenu(false)}
-                      >
-                        <span className="inline-flex items-center gap-2"><Settings className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Настройки" : "Settings"}</span>
-                      </Link>
-                      <button
-                        className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-400 hover:bg-[var(--hover-bg)]"
-                        onClick={handleLogout}
-                      >
-                        <span className="inline-flex items-center gap-2"><LogOut className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Изход" : "Sign out"}</span>
-                      </button>
-                    </div>
+                <SmartDropdown
+                  isOpen={showUserMenu}
+                  onClose={() => setShowUserMenu(false)}
+                  preferredPosition="bottom"
+                  width="anchor"
+                  className="p-2 text-[var(--text)] [backdrop-filter:none]"
+                  trigger={(
+                    <button
+                      className="flex w-full items-center gap-2 text-left"
+                      onClick={() => setShowUserMenu((v) => !v)}
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
+                        {initials}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-[var(--text)]">{user.username}</p>
+                        <p className="truncate text-[var(--muted)]">{user.email}</p>
+                      </div>
+                      <ChevronDown className="w-4 h-4 text-[var(--muted)]" />
+                    </button>
                   )}
-                </div>
+                >
+                  <Link
+                    href="/profile"
+                    className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"
+                    onClick={() => setShowUserMenu(false)}
+                  >
+                    <span className="inline-flex items-center gap-2"><User className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Профил" : "Profile"}</span>
+                  </Link>
+                  <Link
+                    href="/settings"
+                    className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"
+                    onClick={() => setShowUserMenu(false)}
+                  >
+                    <span className="inline-flex items-center gap-2"><Settings className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Настройки" : "Settings"}</span>
+                  </Link>
+                  <button
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-400 hover:bg-[var(--hover-bg)]"
+                    onClick={handleLogout}
+                  >
+                    <span className="inline-flex items-center gap-2"><LogOut className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Изход" : "Sign out"}</span>
+                  </button>
+                </SmartDropdown>
               ) : (
                 <div className="flex flex-col gap-2">
                   <p className="text-[var(--muted)]">
@@ -479,33 +483,42 @@ function AppShellContent({ children }: { children: ReactNode }) {
         <main key={pathname} className="pageTransition flex-1 px-4 pb-[13rem] pt-6 sm:px-8 sm:pb-36 sm:pt-8">
           <div className="mb-4 hidden items-center gap-2 md:flex">
             <div className="relative flex-1 pointer-events-none">
-              <div className="pointer-events-auto">
-                <SearchInput
-                  inputRef={searchInputRef}
-                  value={query}
-                  onChange={(value) => executeSearchQuery(value)}
-                  onClear={() => {
-                    setQuery("");
-                    setSearchResults([]);
-                    setIsSearchUnavailable(false);
-                  }}
-                  placeholder={t("search_placeholder", language)}
-                  onFocus={() => {
-                    if (blurTimeoutRef.current) window.clearTimeout(blurTimeoutRef.current);
-                    setShowSearchDropdown(true);
-                  }}
-                  onBlur={() => {
-                    blurTimeoutRef.current = window.setTimeout(() => {
-                      setShowSearchDropdown(false);
-                      setOpenActionsId(null);
-                    }, 200);
-                  }}
-                  onKeyDown={handleSearchKeyDown}
-                />
-              </div>
-
-              {showSearchDropdown && (
-                <div className="pointer-events-auto absolute z-[9999] mt-2 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-2 shadow-2xl">
+              <SmartDropdown
+                isOpen={showSearchDropdown}
+                onClose={() => {
+                  setShowSearchDropdown(false);
+                  setOpenActionsId(null);
+                }}
+                preferredPosition="bottom"
+                width="anchor"
+                className="pointer-events-auto w-full rounded-2xl bg-[var(--surface-2)] p-2"
+                trigger={(
+                  <div className="pointer-events-auto">
+                    <SearchInput
+                      inputRef={searchInputRef}
+                      value={query}
+                      onChange={(value) => executeSearchQuery(value)}
+                      onClear={() => {
+                        setQuery("");
+                        setSearchResults([]);
+                        setIsSearchUnavailable(false);
+                      }}
+                      placeholder={t("search_placeholder", language)}
+                      onFocus={() => {
+                        if (blurTimeoutRef.current) window.clearTimeout(blurTimeoutRef.current);
+                        setShowSearchDropdown(true);
+                      }}
+                      onBlur={() => {
+                        blurTimeoutRef.current = window.setTimeout(() => {
+                          setShowSearchDropdown(false);
+                          setOpenActionsId(null);
+                        }, 200);
+                      }}
+                      onKeyDown={handleSearchKeyDown}
+                    />
+                  </div>
+                )}
+              >
                   {!query.trim() ? (
                     recentSearches.length > 0 ? (
                       <div>
@@ -596,8 +609,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                       )}
                     </div>
                   )}
-                </div>
-              )}
+              </SmartDropdown>
             </div>
             {mounted && currentTrack && (
               <button

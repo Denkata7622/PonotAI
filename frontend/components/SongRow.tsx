@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { Heart, EllipsisVertical, Music, Play, Trash2, ListPlus } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
@@ -8,6 +8,7 @@ import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { formatArtist } from "../lib/formatArtist";
 import { usePlayer } from "./PlayerProvider";
+import SmartDropdown from "../src/components/ui/SmartDropdown";
 
 type SongRowProps = {
   id: string;
@@ -49,20 +50,6 @@ export default function SongRow({
   const { language } = useLanguage();
   const { addToQueue } = usePlayer();
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    function handleOutsideClick(event: MouseEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-
-    if (menuOpen) {
-      document.addEventListener("mousedown", handleOutsideClick);
-      return () => document.removeEventListener("mousedown", handleOutsideClick);
-    }
-  }, [menuOpen]);
 
   return (
     <article
@@ -88,7 +75,7 @@ export default function SongRow({
         <p className="truncate text-sm text-[var(--muted)]">{formatArtist(artist)}</p>
       </div>
 
-      <div className="relative flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" ref={menuRef}>
+      <div className="relative flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         {onFavorite && (
           <button
             type="button"
@@ -126,59 +113,61 @@ export default function SongRow({
         )}
 
         {showMoreMenu && (
-          <>
+          <SmartDropdown
+            isOpen={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            preferredPosition="bottom"
+            className="min-w-52 p-2"
+            trigger={(
+              <button
+                type="button"
+                onClick={() => setMenuOpen((prev) => !prev)}
+                className="rounded-lg p-2 hover:bg-[var(--hover-bg)]"
+                aria-label={t("track_more_options", language)}
+                title={t("track_more_options", language)}
+              >
+                <EllipsisVertical className="w-4 h-4 text-[var(--muted)]" />
+              </button>
+            )}
+          >
             <button
               type="button"
-              onClick={() => setMenuOpen((prev) => !prev)}
-              className="rounded-lg p-2 hover:bg-[var(--hover-bg)]"
-              aria-label={t("track_more_options", language)}
-              title={t("track_more_options", language)}
+              className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
+              onClick={() => {
+                addToQueue({
+                  id,
+                  title,
+                  artist,
+                  artistId: `artist-${artist}`.toLowerCase().replace(/\s+/g, "-"),
+                  artworkUrl: artworkUrl || "https://picsum.photos/seed/song-row/80",
+                  videoId,
+                  license: "COPYRIGHTED",
+                  query: `${title} ${artist}`,
+                }, "manual");
+                window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: "Added to queue" } }));
+                setMenuOpen(false);
+              }}
             >
-              <EllipsisVertical className="w-4 h-4 text-[var(--muted)]" />
+              <ListPlus className="h-[15px] w-[15px]" /> Add to queue
             </button>
-
-            {menuOpen && (
-              <div className="absolute right-0 top-10 z-20 min-w-52 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2 shadow-2xl">
-                <button
-                  type="button"
-                  className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-                  onClick={() => {
-                    addToQueue({
-                      id,
-                      title,
-                      artist,
-                      artistId: `artist-${artist}`.toLowerCase().replace(/\s+/g, "-"),
-                      artworkUrl: artworkUrl || "https://picsum.photos/seed/song-row/80",
-                      videoId,
-                      license: "COPYRIGHTED",
-                      query: `${title} ${artist}`,
-                    }, "manual");
-                    window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: "Added to queue" } }));
-                    setMenuOpen(false);
-                  }}
-                >
-                  <ListPlus className="h-[15px] w-[15px]" /> Add to queue
-                </button>
-                <p className="px-2 py-1 text-xs text-[var(--muted)]">{t("song_row_add_to_playlist", language)}</p>
-                {playlists.length === 0 && (
-                  <p className="px-2 py-1 text-xs text-[var(--muted)]">{t("no_playlists_created", language)}</p>
-                )}
-                {playlists.map((playlist) => (
-                  <button
-                    key={playlist.id}
-                    type="button"
-                    className="block w-full rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-                    onClick={() => {
-                      onAddToPlaylist?.(playlist.id);
-                      setMenuOpen(false);
-                    }}
-                  >
-                    {playlist.name}
-                  </button>
-                ))}
-              </div>
+            <p className="px-2 py-1 text-xs text-[var(--muted)]">{t("song_row_add_to_playlist", language)}</p>
+            {playlists.length === 0 && (
+              <p className="px-2 py-1 text-xs text-[var(--muted)]">{t("no_playlists_created", language)}</p>
             )}
-          </>
+            {playlists.map((playlist) => (
+              <button
+                key={playlist.id}
+                type="button"
+                className="block w-full rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
+                onClick={() => {
+                  onAddToPlaylist?.(playlist.id);
+                  setMenuOpen(false);
+                }}
+              >
+                {playlist.name}
+              </button>
+            ))}
+          </SmartDropdown>
         )}
       </div>
     </article>
