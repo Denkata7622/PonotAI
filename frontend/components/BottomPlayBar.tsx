@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, ListMusic, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, X } from "lucide-react";
 import QueuePanel from "../src/components/player/QueuePanel";
 import { usePlayer } from "./PlayerProvider";
@@ -20,6 +20,7 @@ export default function BottomPlayBar() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [lastVolume, setLastVolume] = useState(70);
+  const playerBarRef = useRef<HTMLDivElement | null>(null);
 
   const {
     queue,
@@ -46,6 +47,23 @@ export default function BottomPlayBar() {
   const youtubeSearchUrl = currentTrack
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
     : "#";
+
+  useEffect(() => {
+    const updatePlayerBarHeight = () => {
+      const height = playerBarRef.current?.getBoundingClientRect().height ?? 0;
+      document.documentElement.style.setProperty("--player-bar-height", `${Math.round(height)}px`);
+    };
+
+    updatePlayerBarHeight();
+    window.addEventListener("resize", updatePlayerBarHeight);
+    const observer = new ResizeObserver(updatePlayerBarHeight);
+    if (playerBarRef.current) observer.observe(playerBarRef.current);
+
+    return () => {
+      window.removeEventListener("resize", updatePlayerBarHeight);
+      observer.disconnect();
+    };
+  }, []);
 
   function toggleMute() {
     if (volume === 0) {
@@ -89,7 +107,7 @@ export default function BottomPlayBar() {
         </div>
       )}
 
-      <div data-player-bar className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-3 py-3 backdrop-blur-xl sm:px-5 transition-all duration-300 ease-in-out">
+      <div ref={playerBarRef} data-player-bar className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-3 py-3 backdrop-blur-xl sm:px-5 transition-all duration-300 ease-in-out">
         <div className="mx-auto max-w-7xl">
           {!currentTrack || !currentVideoId ? (
             <div className="rounded-2xl border border-dashed border-border bg-[var(--surface-raised)] px-4 py-3 text-sm text-text-muted">
@@ -141,7 +159,7 @@ export default function BottomPlayBar() {
                 <button onClick={togglePlayPause} className="h-10 w-10 rounded-full bg-[var(--surface-raised)] grid place-items-center" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="w-4 h-4 text-[var(--text)]" /> : <Play className="w-4 h-4 text-[var(--text)]" />}</button>
                 <button onClick={skipNext} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Next"><SkipForward className="w-4 h-4 text-[var(--text)]" /></button>
                 <button onClick={toggleMute} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="w-4 h-4 text-[var(--muted)]" /> : <Volume2 className="w-4 h-4 text-[var(--text)]" />}</button>
-                <button onClick={toggleQueuePanel} className="relative h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Queue"><ListMusic className={`w-4 h-4 ${isQueueOpen ? "text-[var(--accent)]" : "text-[var(--text)]"}`} />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
+                <button data-testid="queue-toggle" onClick={toggleQueuePanel} className="relative h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Queue"><ListMusic className={`w-4 h-4 ${isQueueOpen ? "text-[var(--accent)]" : "text-[var(--text)]"}`} />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
                 <button onClick={() => setIsShortcutsOpen(true)} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Keyboard shortcuts"><Keyboard className="w-4 h-4 text-[var(--text)]" /></button>
 
                 <div className="ml-auto min-w-0 flex-1">

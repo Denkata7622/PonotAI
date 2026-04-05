@@ -16,13 +16,6 @@ export interface SmartDropdownProps {
   className?: string;
 }
 
-const TRANSFORM_ORIGIN: Record<Direction, string> = {
-  bottom: "top center",
-  top: "bottom center",
-  left: "center right",
-  right: "center left",
-};
-
 export default function SmartDropdown({
   trigger,
   children,
@@ -36,7 +29,7 @@ export default function SmartDropdown({
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [mounted, setMounted] = useState(false);
 
-  const { style, actualPosition, maxHeight } = useSmartPosition({
+  const style = useSmartPosition({
     anchorRef,
     contentRef,
     preferredPosition,
@@ -95,20 +88,18 @@ export default function SmartDropdown({
             ...style,
             width: dropdownWidth,
             overflowY: "auto",
-            zIndex: 200,
             background: "var(--card)",
             border: "1px solid var(--border)",
             borderRadius: 8,
             boxShadow: "0 4px 20px rgba(0,0,0,0.25)",
             opacity: 1,
             transform: "scaleY(1)",
-            transformOrigin: TRANSFORM_ORIGIN[actualPosition],
+            transformOrigin: "top center",
             animation: "smart-dropdown-in 120ms ease-out",
-            maxHeight,
           }}
           className={className}
           data-smart-dropdown
-          data-position={actualPosition}
+          data-position={preferredPosition}
         >
           {children}
         </div>,

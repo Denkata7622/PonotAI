@@ -39,6 +39,7 @@ body {
   --text: rgba(255, 255, 255, 0.92);
   --muted: rgba(255, 255, 255, 0.62);
   --accent: #7c5cff;
+  --accent-rgb: 124, 92, 255;
   --accent-2: #4cd3ff;
   --free: #2cff9a;
   --warning: #ffcc66;
@@ -60,6 +61,7 @@ body {
   --text: rgba(0, 0, 0, 0.87);
   --muted: rgba(0, 0, 0, 0.62);
   --accent: #6c4dff;
+  --accent-rgb: 108, 77, 255;
   --accent-2: #00a8da;
   --free: #12995f;
   --warning: #b67900;
@@ -669,10 +671,13 @@ body {
 .assistant-action-failed { color: #ef4444; margin-top: 8px; }
 .assistant-action-muted { color: var(--muted); margin-top: 8px; }
 
-.assistant-fab { position: fixed; right: 24px; width: 56px; height: 56px; border-radius: 50%; border: none; z-index: 40; background: var(--accent); color: white; box-shadow: 0 4px 12px rgba(0,0,0,.3); transition: transform .2s ease, filter .2s ease, opacity .25s ease; animation: assistantFabIn .25s ease both; }
+.assistant-fab { position: fixed; right: 24px; width: 56px; height: 56px; border-radius: 50%; border: none; z-index: 50; background: var(--accent); color: white; box-shadow: 0 4px 12px rgba(0,0,0,.3); transition: transform .2s ease, filter .2s ease, opacity .25s ease; animation: assistantFabIn .25s ease both; }
 .assistant-fab:hover { transform: scale(1.1); filter: brightness(1.1); }
 .assistant-fab::before { content: "Music Assistant"; position: fixed; right: 88px; bottom: inherit; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 6px 8px; opacity: 0; pointer-events: none; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease; }
 .assistant-fab:hover::before { opacity: 1; transform: translateY(0); }
-.fab--pulse { animation: assistantFabPulse 2s infinite; }
-@keyframes assistantFabPulse { 0% { transform: scale(1);} 50% { transform: scale(1.15);} 100% { transform: scale(1);} }
+.fab--pulse { animation: fab-pulse 2s ease-in-out infinite; }
+@keyframes fab-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.4); }
+  50% { box-shadow: 0 0 0 12px rgba(var(--accent-rgb), 0); }
+}
 @keyframes assistantFabIn { from { opacity: 0; transform: translateY(12px);} to { opacity: 1; transform: translateY(0);} }

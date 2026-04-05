@@ -1,7 +1,7 @@
 "use client";
 
 import { ListMusic, Music, Trash2, Volume2, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePlayer } from "@/components/PlayerProvider";
 
 export default function QueuePanel() {
@@ -16,15 +16,46 @@ export default function QueuePanel() {
     toggleQueuePanel,
   } = usePlayer();
   const dragIndex = useRef<number | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
 
-  const bottomOffset = "150px";
+  useEffect(() => {
+    if (!isQueueOpen) return;
+
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!panelRef.current?.contains(target)) {
+        toggleQueuePanel();
+      }
+    };
+
+    document.addEventListener("mousedown", onMouseDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [isQueueOpen, toggleQueuePanel]);
 
   return (
-    <aside
-      className={`fixed right-0 z-[35] h-[calc(100vh-${bottomOffset})] w-full max-w-[360px] border-l border-[var(--border)] bg-[var(--surface)] shadow-2xl transition-transform duration-300 ease-out md:right-20 ${isQueueOpen ? "translate-x-0" : "translate-x-full"}`}
-      style={{ bottom: bottomOffset }}
-    >
+    <>
+      {!isQueueOpen && (
+        <button
+          type="button"
+          onClick={toggleQueuePanel}
+          className="fixed right-0 top-1/2 z-[34] -translate-y-1/2 rounded-l-lg border border-r-0 border-[var(--border)] bg-[var(--surface)] px-2 py-5 text-[var(--muted)] hover:text-[var(--text)]"
+          aria-label="Open queue panel"
+        >
+          <ListMusic className="h-4 w-4" />
+        </button>
+      )}
+      <aside
+        ref={panelRef}
+        className={`fixed right-0 top-0 z-[35] w-full max-w-[360px] border-l border-[var(--border)] bg-[var(--surface)] shadow-2xl ${isQueueOpen ? "visible pointer-events-auto opacity-100" : "invisible pointer-events-none opacity-0"}`}
+        style={{
+          bottom: "var(--player-bar-height, 150px)",
+          transform: isQueueOpen ? "translateX(0)" : "translateX(100%)",
+          transition: "transform 250ms cubic-bezier(0.4, 0, 0.2, 1), visibility 250ms, opacity 250ms",
+        }}
+      >
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
           <div className="flex items-center gap-2">
@@ -94,6 +125,7 @@ export default function QueuePanel() {
           </div>
         )}
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

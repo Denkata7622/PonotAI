@@ -10,157 +10,89 @@ export interface SmartPositionOptions {
   boundaryPadding?: number;
 }
 
-export interface SmartPositionResult {
-  top: number;
-  left: number;
-  actualPosition: "bottom" | "top" | "left" | "right";
-  maxHeight: number;
-  style: CSSProperties;
-}
-
-type Direction = "bottom" | "top" | "left" | "right";
-
-const DEFAULT_RESULT: SmartPositionResult = {
-  top: 0,
-  left: 0,
-  actualPosition: "bottom",
-  maxHeight: 0,
-  style: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    maxHeight: 0,
-  },
-};
-
-function getPlayerBarHeight(): number {
-  if (typeof document === "undefined") return 0;
-  const playerBar = document.querySelector<HTMLElement>("[data-player-bar]");
-  return playerBar?.getBoundingClientRect().height ?? 0;
-}
-
 export function useSmartPosition({
   anchorRef,
   contentRef,
-  preferredPosition = "bottom",
   offset = 8,
   boundaryPadding = 12,
-}: SmartPositionOptions): SmartPositionResult {
-  const [result, setResult] = useState<SmartPositionResult>(DEFAULT_RESULT);
+}: SmartPositionOptions): CSSProperties {
+  const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden", position: "fixed" });
 
   const calculate = useCallback(() => {
-    const anchorEl = anchorRef.current;
-    const contentEl = contentRef.current;
-    if (!anchorEl || !contentEl || typeof window === "undefined") return;
+    const anchor = anchorRef.current;
+    const content = contentRef.current;
+    if (!anchor || !content || typeof window === "undefined") return;
 
-    const anchorRect = anchorEl.getBoundingClientRect();
-    const contentRect = contentEl.getBoundingClientRect();
+    const anchorRect = anchor.getBoundingClientRect();
+    const contentRect = content.getBoundingClientRect();
+    const playerBar = document.querySelector("[data-player-bar]");
+    const playerBarHeight = playerBar ? playerBar.getBoundingClientRect().height : 0;
+    const padding = boundaryPadding;
+    const bottomBoundary = window.innerHeight - playerBarHeight - padding;
+    const rightBoundary = window.innerWidth - padding;
 
-    const viewportWidth = window.innerWidth;
-    const visualViewportHeight = window.visualViewport?.height ?? window.innerHeight;
-    const playerBarHeight = getPlayerBarHeight();
-    const effectiveBottom = playerBarHeight > 0
-      ? Math.min(visualViewportHeight, window.innerHeight - playerBarHeight)
-      : visualViewportHeight;
+    const spaceBelow = bottomBoundary - anchorRect.bottom - offset;
+    const spaceAbove = anchorRect.top - padding - offset;
+    const contentH = contentRect.height || 300;
+    const contentW = contentRect.width || 200;
 
-    const contentWidth = contentRect.width || contentEl.offsetWidth || anchorRect.width;
-    const contentHeight = contentRect.height || contentEl.offsetHeight || 240;
-
-    const spaces = {
-      top: anchorRect.top - boundaryPadding,
-      bottom: effectiveBottom - anchorRect.bottom - boundaryPadding,
-      left: anchorRect.left - boundaryPadding,
-      right: viewportWidth - anchorRect.right - boundaryPadding,
-    } as const;
-
-    const preferredFits = spaces[preferredPosition] >= Math.min(contentHeight, 80);
-
-    let actualPosition: Direction = preferredPosition;
-    if (anchorRect.top <= 100) {
-      actualPosition = "bottom";
-    } else if (!preferredFits || spaces[preferredPosition] < 80) {
-      actualPosition = (Object.entries(spaces) as Array<[Direction, number]>).sort((a, b) => b[1] - a[1])[0][0];
+    if (process.env.NODE_ENV === "development") {
+      console.debug("[useSmartPosition] calculate", {
+        anchorBottom: anchorRect.bottom,
+        contentHeight: contentH,
+        offset,
+        bottomBoundary,
+        flipCondition: anchorRect.bottom + contentH + offset > bottomBoundary,
+      });
     }
 
-    let top = 0;
-    let left = 0;
-
-    if (actualPosition === "bottom") {
+    let top: number;
+    let maxHeight: number;
+    if (spaceBelow >= contentH || spaceBelow >= spaceAbove) {
       top = anchorRect.bottom + offset;
-      left = anchorRect.left;
-      if (anchorRect.right + contentWidth > viewportWidth - boundaryPadding) {
-        left = anchorRect.right - contentWidth;
-      }
-    } else if (actualPosition === "top") {
-      top = anchorRect.top - contentHeight - offset;
-      left = anchorRect.left;
-      if (anchorRect.right + contentWidth > viewportWidth - boundaryPadding) {
-        left = anchorRect.right - contentWidth;
-      }
-    } else if (actualPosition === "left") {
-      top = anchorRect.top;
-      left = anchorRect.left - contentWidth - offset;
-      if (anchorRect.bottom + contentHeight > effectiveBottom - boundaryPadding) {
-        top = anchorRect.bottom - contentHeight;
-      }
+      maxHeight = Math.max(80, spaceBelow);
     } else {
-      top = anchorRect.top;
-      left = anchorRect.right + offset;
-      if (anchorRect.bottom + contentHeight > effectiveBottom - boundaryPadding) {
-        top = anchorRect.bottom - contentHeight;
-      }
+      top = Math.max(padding, anchorRect.top - offset - Math.min(contentH, spaceAbove));
+      maxHeight = Math.max(80, spaceAbove);
     }
 
-    top = Math.max(boundaryPadding, Math.min(top, effectiveBottom - contentHeight - boundaryPadding));
-    left = Math.max(boundaryPadding, Math.min(left, viewportWidth - contentWidth - boundaryPadding));
+    let left = anchorRect.left;
+    if (left + contentW > rightBoundary) {
+      left = Math.max(padding, anchorRect.right - contentW);
+    }
 
-    const verticalAvailable = actualPosition === "top"
-      ? anchorRect.top - offset - boundaryPadding
-      : actualPosition === "bottom"
-        ? effectiveBottom - anchorRect.bottom - offset - boundaryPadding
-        : effectiveBottom - boundaryPadding * 2;
-    const maxHeight = Math.max(80, verticalAvailable);
-
-    setResult({
+    setStyle({
+      position: "fixed",
       top,
       left,
-      actualPosition,
       maxHeight,
-      style: {
-        position: "fixed",
-        top,
-        left,
-        maxHeight,
-      },
+      overflowY: "auto",
+      visibility: "visible",
+      zIndex: 9999,
     });
-  }, [anchorRef, boundaryPadding, contentRef, offset, preferredPosition]);
+  }, [anchorRef, boundaryPadding, contentRef, offset]);
 
   useLayoutEffect(() => {
     calculate();
-  }, [calculate]);
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const resizeObserver = new ResizeObserver(() => calculate());
+    window.addEventListener("resize", calculate);
+    window.addEventListener("scroll", calculate, { capture: true, passive: true });
+    const resizeObserver = new ResizeObserver(calculate);
     if (anchorRef.current) resizeObserver.observe(anchorRef.current);
     if (contentRef.current) resizeObserver.observe(contentRef.current);
 
-    const onScroll = () => calculate();
-    const onResize = () => calculate();
-    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
-    window.addEventListener("resize", onResize);
-    window.visualViewport?.addEventListener("resize", onResize);
-
     return () => {
+      window.removeEventListener("resize", calculate);
+      window.removeEventListener("scroll", calculate, true);
       resizeObserver.disconnect();
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", onResize);
-      window.visualViewport?.removeEventListener("resize", onResize);
     };
   }, [anchorRef, calculate, contentRef]);
 
-  return result;
+  return style;
 }
 
 export default useSmartPosition;

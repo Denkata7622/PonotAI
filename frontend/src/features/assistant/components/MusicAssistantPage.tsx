@@ -15,9 +15,12 @@ export default function MusicAssistantPage() {
   const { messages, isLoading, sendMessage, resetConversation, acceptAction, dismissAction, bottomRef } = useMusicAssistant();
   const [input, setInput] = useState("");
   const [mounted, setMounted] = useState(false);
+  const [showInitialSkeleton, setShowInitialSkeleton] = useState(true);
 
   useEffect(() => {
     setMounted(true);
+    const timer = window.setTimeout(() => setShowInitialSkeleton(false), 500);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -26,8 +29,15 @@ export default function MusicAssistantPage() {
     }
   }, [authLoading, isAuthenticated, router]);
 
-  if (!mounted) {
-    return null;
+  if (!mounted || showInitialSkeleton) {
+    return (
+      <section className="assistant-page grid place-items-center">
+        <div className="flex items-center gap-2 text-[var(--muted)]">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]" />
+          Loading assistant...
+        </div>
+      </section>
+    );
   }
 
   async function submitMessage() {

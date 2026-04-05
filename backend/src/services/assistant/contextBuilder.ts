@@ -69,7 +69,7 @@ function buildTracks(history: SearchHistoryRecord[], favorites: FavoriteRecord[]
 
   const playlistSongMap = new Map<string, { album?: string; coverUrl?: string }>();
   for (const playlist of playlists) {
-    for (const song of playlist.songs) {
+    for (const song of (playlist.songs ?? [])) {
       const key = normalizeTrackKey(song.title, song.artist);
       if (!playlistSongMap.has(key)) playlistSongMap.set(key, { album: song.album, coverUrl: song.coverUrl });
     }
@@ -126,7 +126,11 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
   const cached = contextCache.get(cacheKey);
   if (cached && cached.expiresAt > now) return cached.payload;
 
-  const [history, favorites, playlists] = await Promise.all([listUserHistory(userId), listFavorites(userId), getUserPlaylists(userId)]);
+  const [history, favorites, playlists] = await Promise.all([
+    listUserHistory(userId).catch(() => [] as SearchHistoryRecord[]),
+    listFavorites(userId).catch(() => [] as FavoriteRecord[]),
+    getUserPlaylists(userId).catch(() => [] as PlaylistRecord[]),
+  ]);
   const topTracks = buildTracks(history, favorites, playlists);
 
   const recentHistory: LibraryHistoryEntry[] = history.slice(0, 15).map((item) => ({
@@ -138,7 +142,8 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
 
   const tracksById = new Map(topTracks.map((track) => [track.trackId, track]));
   const playlistsSummary = playlists.map((playlist) => {
-    const trackIds = playlist.songs.map((song) => trackIdFrom(song.title, song.artist));
+    const safeSongs = playlist.songs ?? [];
+    const trackIds = safeSongs.map((song) => trackIdFrom(song.title, song.artist));
     const tracks = trackIds.slice(0, 10).map((trackId) => {
       const resolved = tracksById.get(trackId);
       if (resolved) return { trackId, title: resolved.title, artist: resolved.artist };
