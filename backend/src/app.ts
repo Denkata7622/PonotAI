@@ -79,7 +79,15 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Request-ID"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Request-ID",
+      "X-Response-Time",
+      "X-Trackly-Queue",
+      "X-Trackly-Theme",
+      "X-Trackly-Language",
+    ],
     exposedHeaders: ["X-Response-Time", "X-Request-ID"],
   }),
 );

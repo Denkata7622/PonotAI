@@ -179,13 +179,12 @@ const UserContext = createContext<UserContextValue | null>(null);
 
 export function UserProvider({ children }: { children: ReactNode }) {
   // Auth state (server)
-  const initialToken = typeof window === "undefined" ? null : localStorage.getItem(TOKEN_KEY);
   const [authState, setAuthState] = useReducer(
     (
       prev: { user: User | null; token: string | null; isLoading: boolean },
       next: Partial<{ user: User | null; token: string | null; isLoading: boolean }>
     ) => ({ ...prev, ...next }),
-    { user: null, token: initialToken, isLoading: Boolean(initialToken) }
+    { user: null, token: null, isLoading: true }
   );
 
   // Server-fetched data (when authenticated)
@@ -207,6 +206,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     saveGuestState(guest);
   }, [guest]);
+
+  // Hydration-safe token bootstrap
+  useEffect(() => {
+    const storedToken = typeof window === "undefined" ? null : localStorage.getItem(TOKEN_KEY);
+    if (!storedToken) {
+      setAuthState({ isLoading: false });
+      return;
+    }
+    setAuthState({ token: storedToken, isLoading: true });
+  }, []);
 
   // Apply theme
   const activePreferences = guest.preferences;

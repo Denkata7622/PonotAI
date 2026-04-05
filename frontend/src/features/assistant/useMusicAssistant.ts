@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useRef, useState } from "react";
 import { sendAssistantMessage } from "./api";
 import { clearConversation, loadConversation, saveConversation } from "./storage";

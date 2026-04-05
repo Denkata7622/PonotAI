@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -11,22 +11,28 @@ export default function AssistantFAB() {
   const { isAuthenticated } = useUser();
   const [pulse, setPulse] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [bottom, setBottom] = useState("24px");
 
   useEffect(() => {
     setMounted(true);
-    if (typeof window === "undefined") return;
     setPulse(window.localStorage.getItem("ponotai.assistant.seen") === null);
+
+    const updateBottomOffset = () => {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue("--player-bar-height");
+      const playerBarHeight = Number.parseInt(raw || "0", 10);
+      setBottom(playerBarHeight > 0 ? `${playerBarHeight + 16}px` : "24px");
+    };
+
+    updateBottomOffset();
+    window.addEventListener("resize", updateBottomOffset);
+    return () => {
+      window.removeEventListener("resize", updateBottomOffset);
+    };
   }, []);
 
   if (!mounted || !isAuthenticated || pathname === "/assistant") {
     return null;
   }
-
-  const playerBarHeight = typeof window !== "undefined"
-    ? Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue("--player-bar-height") || "0", 10)
-    : 0;
-
-  const bottom = playerBarHeight > 0 ? `${playerBarHeight + 16}px` : "24px";
 
   return (
     <button
