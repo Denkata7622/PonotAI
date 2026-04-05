@@ -74,6 +74,13 @@ assistantRouter.post("/", async (req, res) => {
     content: stripActionTags(item.content),
   }));
 
+  if (!process.env.GEMINI_API_KEY?.trim()) {
+    return res.status(503).json({
+      code: "AI_SERVICE_UNAVAILABLE",
+      message: "AI Assistant is not configured. Add GEMINI_API_KEY to environment variables.",
+    });
+  }
+
   try {
     const context = await buildLibraryContext(userId, {
       currentTheme: req.headers["x-trackly-theme"] as "light" | "dark" | "system" | undefined,
@@ -108,17 +115,28 @@ assistantRouter.post("/", async (req, res) => {
       },
     });
   } catch (error) {
-    const messageText = (error as Error).message || "Unknown error";
-    if ((error as { code?: string }).code === "MISSING_API_KEY" || messageText.includes("MISSING_API_KEY")) {
-      res.status(503).json({ code: "ASSISTANT_NOT_CONFIGURED", message: "AI Assistant is not configured. Please contact support." });
-      return;
+    console.error("[assistant] Full error:", error);
+    console.error("[assistant] Error message:", error instanceof Error ? error.message : String(error));
+    console.error("[assistant] Error stack:", error instanceof Error ? error.stack : "no stack");
+
+    if ((error as Error).name === "GeminiError") {
+      return res.status(503).json({
+        code: "AI_SERVICE_UNAVAILABLE",
+        message: `Gemini request failed: ${error instanceof Error ? error.message : String(error)}`,
+      });
     }
-    if ((error as Error).name === "GeminiError" || messageText.includes("Gemini")) {
-      sendError(res, ErrorCatalog.AI_SERVICE_UNAVAILABLE);
+    if ((error as { code?: string }).code === "MISSING_API_KEY") {
+      return res.status(503).json({
+        code: "AI_SERVICE_UNAVAILABLE",
+        message: "AI Assistant is not configured. Add GEMINI_API_KEY to environment variables.",
+      });
+    }
+    if ((error as Error).name === "AssistantContextError") {
+      sendError(res, ErrorCatalog.ASSISTANT_CONTEXT_BUILD_FAILED);
       return;
     }
 
-    sendError(res, ErrorCatalog.ASSISTANT_CONTEXT_BUILD_FAILED);
+    return res.status(503).json({ code: "AI_SERVICE_UNAVAILABLE", message: String(error) });
   }
 });
 

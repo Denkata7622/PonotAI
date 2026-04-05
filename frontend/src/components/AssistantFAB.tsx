@@ -18,19 +18,25 @@ export default function AssistantFAB() {
     setPulse(window.localStorage.getItem("ponotai.assistant.seen") === null);
 
     const updateBottomOffset = () => {
-      const raw = getComputedStyle(document.documentElement).getPropertyValue("--player-bar-height");
-      const playerBarHeight = Number.parseInt(raw || "0", 10);
-      setBottom(playerBarHeight > 0 ? `${playerBarHeight + 16}px` : "24px");
+      const playerBar = document.querySelector<HTMLElement>("[data-player-bar]");
+      const playerBarHeight = playerBar?.getBoundingClientRect().height ?? 0;
+      const bottomOffset = Math.min(playerBarHeight + 16, window.innerHeight * 0.3);
+      setBottom(bottomOffset > 0 ? `${bottomOffset}px` : "24px");
     };
 
     updateBottomOffset();
+    if (process.env.NODE_ENV === "development") {
+      console.debug("[AssistantFAB] pathname", pathname);
+    }
     window.addEventListener("resize", updateBottomOffset);
+    window.addEventListener("scroll", updateBottomOffset, { passive: true, capture: true });
     return () => {
       window.removeEventListener("resize", updateBottomOffset);
+      window.removeEventListener("scroll", updateBottomOffset, true);
     };
-  }, []);
+  }, [pathname]);
 
-  if (!mounted || !isAuthenticated || pathname === "/assistant") {
+  if (!mounted || pathname === "/assistant") {
     return null;
   }
 
@@ -42,6 +48,10 @@ export default function AssistantFAB() {
       onClick={() => {
         window.localStorage.setItem("ponotai.assistant.seen", "1");
         setPulse(false);
+        if (!isAuthenticated) {
+          router.push("/auth");
+          return;
+        }
         router.push("/assistant");
       }}
       aria-label="Music Assistant"
