@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties, type RefObject } from "react";
 

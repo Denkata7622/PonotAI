@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { ListMusic, Music, Trash2, Volume2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -84,9 +84,11 @@ export default function QueuePanel() {
         ) : (
           <div className="flex-1 space-y-1 overflow-y-auto p-2">
             {queue.map((entry, index) => (
-              <button
+              <div
                 key={entry.queueId}
                 draggable
+                role="button"
+                tabIndex={0}
                 onDragStart={() => {
                   dragIndex.current = index;
                 }}
@@ -102,6 +104,12 @@ export default function QueuePanel() {
                   setOverIndex(null);
                 }}
                 onClick={() => playFromQueue(entry.queueId)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    playFromQueue(entry.queueId);
+                  }
+                }}
                 className={`group flex w-full items-center gap-2 rounded-xl border p-2 text-left ${index === currentIndex ? "border-[var(--accent)] border-l-4" : "border-[var(--border)]"} ${overIndex === index ? "bg-[var(--surface-2)]" : "bg-[var(--surface)]"}`}
               >
                 <span className="w-5 text-xs text-[var(--muted)]">{index + 1}</span>
@@ -112,6 +120,7 @@ export default function QueuePanel() {
                 </div>
                 {index === currentIndex ? <Volume2 className="h-[14px] w-[14px] text-[var(--accent)] animate-pulse" /> : null}
                 <button
+                  type="button"
                   onClick={(event) => {
                     event.stopPropagation();
                     removeFromQueue(entry.queueId);
@@ -120,7 +129,7 @@ export default function QueuePanel() {
                 >
                   <X className="h-[14px] w-[14px]" />
                 </button>
-              </button>
+              </div>
             ))}
           </div>
         )}
