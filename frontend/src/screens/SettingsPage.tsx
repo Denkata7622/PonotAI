@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download, FileSpreadsheet, Moon, Sun, Trash2, Upload } from "../../lucide-react";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -25,7 +25,7 @@ function getLibraryData() {
 }
 
 export default function SettingsPage() {
-  const libraryData = getLibraryData();
+  const [libraryData, setLibraryData] = useState(() => ({ favorites: [], history: [], playlists: [] as Playlist[] }));
   const {
     user,
     preferences,
@@ -51,6 +51,10 @@ export default function SettingsPage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setLibraryData(getLibraryData());
+  }, []);
 
   const canDelete = confirmText === (user?.username ?? "");
 
