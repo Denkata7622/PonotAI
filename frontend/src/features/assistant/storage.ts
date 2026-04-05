@@ -1,3 +1,5 @@
+'use client';
+
 import type { ChatMessage } from "./types";
 
 const STORAGE_KEY = "ponotai.assistant.conversation.v1";

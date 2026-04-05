@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { BarChart2, Mic2, Music, Zap } from "lucide-react";
 

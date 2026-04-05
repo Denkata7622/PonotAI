@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -14,12 +14,21 @@ export default function MusicAssistantPage() {
   const { isAuthenticated, isLoading: authLoading } = useUser();
   const { messages, isLoading, sendMessage, resetConversation, acceptAction, dismissAction, bottomRef } = useMusicAssistant();
   const [input, setInput] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       router.replace("/auth");
     }
   }, [authLoading, isAuthenticated, router]);
+
+  if (!mounted) {
+    return null;
+  }
 
   async function submitMessage() {
     if (!input.trim() || isLoading) return;

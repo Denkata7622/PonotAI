@@ -1,3 +1,5 @@
+'use client';
+
 import { getApiBaseUrl } from "@/lib/apiConfig";
 import { getToken } from "@/src/lib/apiFetch";
 import type { AssistantMeta, ChatMessage, ActionIntent } from "./types";
