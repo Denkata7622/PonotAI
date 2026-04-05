@@ -13,6 +13,7 @@ import { useUser } from "../../src/context/UserContext";
 import { useRouter } from "next/navigation";
 import { useRecentSearches } from "../../lib/useRecentSearches";
 import { formatArtist } from "../../lib/formatArtist";
+import SmartDropdown from "../../src/components/ui/SmartDropdown";
 
 type HistoryItem = {
   id: string;
@@ -155,44 +156,49 @@ export default function SearchPage() {
       {activeTab === "discover" ? (
         <div className="mt-4 space-y-4">
           <div className="relative">
-            <SearchInput
-              value={query}
-              onChange={setQuery}
-              onClear={() => setQuery("")}
-              placeholder={t("search_placeholder", language)}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => window.setTimeout(() => setIsFocused(false), 200)}
-            />
-
-            {isFocused && !query.trim() && (
-              <div className="absolute z-[9999] mt-2 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-2 shadow-2xl">
-                {recentSearches.length > 0 ? (
-                  <>
-                    <div className="mb-1 flex items-center justify-between px-2 py-1">
-                      <p className="inline-flex items-center gap-2 text-sm text-[var(--muted)]"><Clock className="w-4 h-4 text-[var(--muted)]" />{t("search_recent", language)}</p>
-                      <button type="button" className="text-xs text-[var(--muted)] hover:text-[var(--text)]" onMouseDown={(event) => event.preventDefault()} onClick={clearRecent}>{t("search_clear_recent", language)}</button>
-                    </div>
-                    <ul className="space-y-1">
-                      {recentSearches.map((item) => (
-                        <li key={item} className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-[var(--hover-bg)]">
-                          <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}><Clock className="w-4 h-4 text-[var(--muted)]" /><span className="truncate text-sm">{item}</span></button>
-                          <button type="button" className="rounded-full p-1 hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => removeRecent(item)}><X className="w-3 h-3 text-[var(--muted)]" /></button>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : (
-                  <>
-                    <p className="mb-2 inline-flex items-center gap-2 px-2 text-sm text-[var(--muted)]"><TrendingUp className="w-4 h-4 text-[var(--muted)]" />{t("search_suggested", language)}</p>
-                    <div className="flex flex-wrap gap-2 px-2 pb-1">
-                      {suggestedQueries.map((item) => (
-                        <button key={item} type="button" className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}>{item}</button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+            <SmartDropdown
+              isOpen={isFocused && !query.trim()}
+              onClose={() => setIsFocused(false)}
+              preferredPosition="bottom"
+              width="anchor"
+              className="w-full rounded-2xl bg-[var(--surface-2)] p-2"
+              trigger={(
+                <SearchInput
+                  value={query}
+                  onChange={setQuery}
+                  onClear={() => setQuery("")}
+                  placeholder={t("search_placeholder", language)}
+                  onFocus={() => setIsFocused(true)}
+                  onBlur={() => window.setTimeout(() => setIsFocused(false), 200)}
+                />
+              )}
+            >
+              {recentSearches.length > 0 ? (
+                <>
+                  <div className="mb-1 flex items-center justify-between px-2 py-1">
+                    <p className="inline-flex items-center gap-2 text-sm text-[var(--muted)]"><Clock className="w-4 h-4 text-[var(--muted)]" />{t("search_recent", language)}</p>
+                    <button type="button" className="text-xs text-[var(--muted)] hover:text-[var(--text)]" onMouseDown={(event) => event.preventDefault()} onClick={clearRecent}>{t("search_clear_recent", language)}</button>
+                  </div>
+                  <ul className="space-y-1">
+                    {recentSearches.map((item) => (
+                      <li key={item} className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-[var(--hover-bg)]">
+                        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}><Clock className="w-4 h-4 text-[var(--muted)]" /><span className="truncate text-sm">{item}</span></button>
+                        <button type="button" className="rounded-full p-1 hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => removeRecent(item)}><X className="w-3 h-3 text-[var(--muted)]" /></button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <p className="mb-2 inline-flex items-center gap-2 px-2 text-sm text-[var(--muted)]"><TrendingUp className="w-4 h-4 text-[var(--muted)]" />{t("search_suggested", language)}</p>
+                  <div className="flex flex-wrap gap-2 px-2 pb-1">
+                    {suggestedQueries.map((item) => (
+                      <button key={item} type="button" className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}>{item}</button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </SmartDropdown>
           </div>
 
           {isUnavailable && <p className="cardText inline-flex items-center gap-2"><WifiOff className="w-4 h-4 text-[var(--muted)]" />{t("search_unavailable", language)}</p>}
