@@ -1,119 +1,132 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-import useSmartPosition from "@/src/hooks/useSmartPosition";
+import {
+  ReactNode,
+  CSSProperties,
+} from 'react';
+import {
+  useFloating,
+  autoUpdate,
+  offset,
+  flip,
+  shift,
+  useClick,
+  useDismiss,
+  useInteractions,
+  FloatingPortal,
+  size,
+  Placement,
+} from '@floating-ui/react';
 
-type Direction = "bottom" | "top" | "left" | "right";
-
-export interface SmartDropdownProps {
+interface SmartDropdownProps {
   trigger: ReactNode;
   children: ReactNode;
   isOpen: boolean;
-  onClose: () => void;
-  preferredPosition?: Direction;
-  width?: number | "anchor";
+  onOpenChange: (open: boolean) => void;
+  placement?: Placement;       // default: 'bottom-start'
+  minWidth?: number;
+  matchTriggerWidth?: boolean; // dropdown same width as trigger
   className?: string;
+  bottomPadding?: number;
 }
 
-export default function SmartDropdown({
+export function SmartDropdown({
   trigger,
   children,
   isOpen,
-  onClose,
-  preferredPosition = "bottom",
-  width,
-  className = "",
+  onOpenChange,
+  placement = 'bottom-start',
+  minWidth,
+  matchTriggerWidth = false,
+  className,
+  bottomPadding,
 }: SmartDropdownProps) {
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const playerBarPadding = typeof window === 'undefined'
+    ? 0
+    : Number.parseInt(window.getComputedStyle(document.documentElement).getPropertyValue('--player-bar-height') || '0', 10) || 0;
+  const viewportPadding = {
+    top: 12,
+    left: 12,
+    right: 12,
+    bottom: (bottomPadding ?? playerBarPadding) + 12,
+  };
 
-  const style = useSmartPosition({
-    anchorRef,
-    contentRef,
-    preferredPosition,
+  const { refs, floatingStyles, context } = useFloating({
+    open: isOpen,
+    onOpenChange,
+    placement,
+    // autoUpdate repositions on scroll, resize, and DOM changes
+    whileElementsMounted: autoUpdate,
+    middleware: [
+      // Gap between trigger and dropdown
+      offset(6),
+      // Flip to opposite side if not enough space
+      flip({
+        fallbackAxisSideDirection: 'start',
+        padding: viewportPadding,
+      }),
+      // Shift along the axis to stay in viewport
+      shift({ padding: viewportPadding }),
+      // Optionally match trigger width or enforce minWidth
+      size({
+        apply({ rects, elements }) {
+          const w = matchTriggerWidth
+            ? rects.reference.width
+            : minWidth
+            ? Math.max(minWidth, rects.floating.width)
+            : undefined;
+          if (w) {
+            Object.assign(elements.floating.style, { width: `${w}px` });
+          }
+        },
+        padding: 12,
+      }),
+    ],
   });
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // floating-ui interaction hooks
+  const click = useClick(context);
+  const dismiss = useDismiss(context, {
+    outsidePressEvent: 'mousedown',
+  });
 
-  useEffect(() => {
-    if (!isOpen) return;
+  const { getReferenceProps, getFloatingProps } = useInteractions([
+    click,
+    dismiss,
+  ]);
 
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    function onMouseDown(event: MouseEvent) {
-      const target = event.target as Node;
-      if (anchorRef.current?.contains(target) || contentRef.current?.contains(target)) return;
-      onClose();
-    }
-
-    function onScroll(event: Event) {
-      const target = event.target as Node;
-      if (contentRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
-      onClose();
-    }
-
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("mousedown", onMouseDown);
-    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
-
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("mousedown", onMouseDown);
-      window.removeEventListener("scroll", onScroll, true);
-    };
-  }, [isOpen, onClose]);
-
-  const dropdownWidth = useMemo(() => {
-    if (width === "anchor") {
-      return anchorRef.current?.offsetWidth;
-    }
-    return width;
-  }, [width, isOpen]);
+  const dropdownStyle: CSSProperties = {
+    ...floatingStyles,
+    zIndex: 9999,
+    background: 'var(--card)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
+    overflowY: 'auto',
+    maxHeight: '80vh',
+  };
 
   return (
     <>
-      <div ref={anchorRef}>{trigger}</div>
-      {mounted && isOpen && createPortal(
-        <div
-          ref={contentRef}
-          style={{
-            ...style,
-            width: dropdownWidth,
-            overflowY: "auto",
-            background: "var(--card)",
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            boxShadow: "0 4px 20px rgba(0,0,0,0.25)",
-            opacity: 1,
-            transform: "scaleY(1)",
-            transformOrigin: "top center",
-            animation: "smart-dropdown-in 120ms ease-out",
-          }}
-          className={className}
-          data-smart-dropdown
-          data-position={preferredPosition}
-        >
-          {children}
-        </div>,
-        document.body,
-      )}
-      {mounted && (
-        <style>
-          {`@keyframes smart-dropdown-in {
-              from { opacity: 0; transform: scaleY(0.95); }
-              to { opacity: 1; transform: scaleY(1); }
-            }
-          `}
-        </style>
+      <div ref={refs.setReference} {...getReferenceProps()} style={{ display: 'contents' }}>
+        {trigger}
+      </div>
+
+      {isOpen && (
+        <FloatingPortal>
+          <div
+            ref={refs.setFloating}
+            style={dropdownStyle}
+            className={className}
+            data-smart-dropdown-floating
+            {...getFloatingProps()}
+          >
+            {children}
+          </div>
+        </FloatingPortal>
       )}
     </>
   );
 }
+
+export default SmartDropdown;

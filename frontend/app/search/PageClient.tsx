@@ -13,7 +13,7 @@ import { useUser } from "../../src/context/UserContext";
 import { useRouter } from "next/navigation";
 import { useRecentSearches } from "../../lib/useRecentSearches";
 import { formatArtist } from "../../lib/formatArtist";
-import SmartDropdown from "../../src/components/ui/SmartDropdown";
+import SmartDropdown from "@/components/ui/SmartDropdown";
 
 type HistoryItem = {
   id: string;
@@ -158,9 +158,9 @@ export default function SearchPage() {
           <div className="relative">
             <SmartDropdown
               isOpen={isFocused && !query.trim()}
-              onClose={() => setIsFocused(false)}
-              preferredPosition="bottom"
-              width="anchor"
+              onOpenChange={setIsFocused}
+              placement="bottom-start"
+              matchTriggerWidth
               className="w-full rounded-2xl bg-[var(--surface-2)] p-2"
               trigger={(
                 <SearchInput
