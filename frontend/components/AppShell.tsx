@@ -16,7 +16,7 @@ import SearchInput from "./SearchInput";
 import SearchResultActions from "./SearchResultActions";
 import { addSongToPlaylist as addSongToPlaylistApi } from "../features/library/api";
 import { formatArtist } from "../lib/formatArtist";
-import SmartDropdown from "../src/components/ui/SmartDropdown";
+import SmartDropdown from "@/components/ui/SmartDropdown";
 
 type HistoryItem = {
   id: string;
@@ -333,14 +333,13 @@ function AppShellContent({ children }: { children: ReactNode }) {
               {isAuthenticated && user ? (
                 <SmartDropdown
                   isOpen={showUserMenu}
-                  onClose={() => setShowUserMenu(false)}
-                  preferredPosition="bottom"
-                  width="anchor"
+                  onOpenChange={setShowUserMenu}
+                  placement="bottom-start"
+                  matchTriggerWidth
                   className="p-2 text-[var(--text)] [backdrop-filter:none]"
                   trigger={(
                     <button
                       className="flex w-full items-center gap-2 text-left"
-                      onClick={() => setShowUserMenu((v) => !v)}
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
                         {initials}
@@ -485,12 +484,12 @@ function AppShellContent({ children }: { children: ReactNode }) {
             <div className="relative flex-1 pointer-events-none">
               <SmartDropdown
                 isOpen={showSearchDropdown}
-                onClose={() => {
-                  setShowSearchDropdown(false);
-                  setOpenActionsId(null);
+                onOpenChange={(open) => {
+                  setShowSearchDropdown(open);
+                  if (!open) setOpenActionsId(null);
                 }}
-                preferredPosition="bottom"
-                width="anchor"
+                placement="bottom-start"
+                matchTriggerWidth
                 className="pointer-events-auto w-full rounded-2xl bg-[var(--surface-2)] p-2"
                 trigger={(
                   <div className="pointer-events-auto">

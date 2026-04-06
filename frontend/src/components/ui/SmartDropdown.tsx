@@ -1,123 +1,129 @@
 'use client';
 
 import {
-  useRef,
-  useEffect,
-  useState,
   ReactNode,
   CSSProperties,
 } from 'react';
-import ReactDOM from 'react-dom';
-import { useSmartPosition } from '@/src/hooks/useSmartPosition';
+import {
+  useFloating,
+  autoUpdate,
+  offset,
+  flip,
+  shift,
+  useClick,
+  useDismiss,
+  useInteractions,
+  FloatingPortal,
+  size,
+  Placement,
+} from '@floating-ui/react';
 
 interface SmartDropdownProps {
   trigger: ReactNode;
   children: ReactNode;
   isOpen: boolean;
-  onClose: () => void;
-  preferredSide?: 'bottom' | 'top';
-  preferredPosition?: 'bottom' | 'top';
+  onOpenChange: (open: boolean) => void;
+  placement?: Placement;       // default: 'bottom-start'
   minWidth?: number;
-  width?: number | 'anchor';
+  matchTriggerWidth?: boolean; // dropdown same width as trigger
   className?: string;
+  bottomPadding?: number;
 }
 
 export function SmartDropdown({
   trigger,
   children,
   isOpen,
-  onClose,
-  preferredSide = 'bottom',
-  preferredPosition,
+  onOpenChange,
+  placement = 'bottom-start',
   minWidth,
-  width,
+  matchTriggerWidth = false,
   className,
+  bottomPadding,
 }: SmartDropdownProps) {
-  /*
-   * ALL hooks at top level — no exceptions.
-   */
+  const playerBarPadding = typeof window === 'undefined'
+    ? 0
+    : Number.parseInt(window.getComputedStyle(document.documentElement).getPropertyValue('--player-bar-height') || '0', 10) || 0;
+  const viewportPadding = {
+    top: 12,
+    left: 12,
+    right: 12,
+    bottom: (bottomPadding ?? playerBarPadding) + 12,
+  };
 
-  // mounted guard — prevents portal from rendering during SSR
-  // This is what fixes React error #418
-  const [mounted, setMounted] = useState(false);
-
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const resolvedSide = preferredPosition ?? preferredSide;
-
-  const positionStyle = useSmartPosition({
-    anchorRef: anchorRef as React.RefObject<HTMLElement>,
-    contentRef: contentRef as React.RefObject<HTMLElement>,
-    isOpen: isOpen && mounted,
-    preferredSide: resolvedSide,
-    offset: 8,
-    boundaryPadding: 12,
+  const { refs, floatingStyles, context } = useFloating({
+    open: isOpen,
+    onOpenChange,
+    placement,
+    // autoUpdate repositions on scroll, resize, and DOM changes
+    whileElementsMounted: autoUpdate,
+    middleware: [
+      // Gap between trigger and dropdown
+      offset(6),
+      // Flip to opposite side if not enough space
+      flip({
+        fallbackAxisSideDirection: 'start',
+        padding: viewportPadding,
+      }),
+      // Shift along the axis to stay in viewport
+      shift({ padding: viewportPadding }),
+      // Optionally match trigger width or enforce minWidth
+      size({
+        apply({ rects, elements }) {
+          const w = matchTriggerWidth
+            ? rects.reference.width
+            : minWidth
+            ? Math.max(minWidth, rects.floating.width)
+            : undefined;
+          if (w) {
+            Object.assign(elements.floating.style, { width: `${w}px` });
+          }
+        },
+        padding: 12,
+      }),
+    ],
   });
 
-  // Set mounted=true after first client render
-  // This is the fix for hydration mismatch #418
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // floating-ui interaction hooks
+  const click = useClick(context);
+  const dismiss = useDismiss(context, {
+    outsidePressEvent: 'mousedown',
+  });
 
-  // Close on Escape key
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [isOpen, onClose]);
+  const { getReferenceProps, getFloatingProps } = useInteractions([
+    click,
+    dismiss,
+  ]);
 
   const dropdownStyle: CSSProperties = {
-    ...positionStyle,
-    minWidth: width === 'anchor'
-      ? (anchorRef.current?.offsetWidth ?? 160)
-      : (width ?? minWidth ?? anchorRef.current?.offsetWidth ?? 160),
+    ...floatingStyles,
+    zIndex: 9999,
     background: 'var(--card)',
     border: '1px solid var(--border)',
     borderRadius: '8px',
     boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
+    overflowY: 'auto',
+    maxHeight: '80vh',
   };
 
   return (
     <>
-      <div ref={anchorRef} style={{ display: 'contents' }}>
+      <div ref={refs.setReference} {...getReferenceProps()} style={{ display: 'contents' }}>
         {trigger}
       </div>
 
-      {/*
-       * Portal only mounts after client hydration (mounted === true).
-       * Before that, nothing is rendered into document.body,
-       * which matches the server-rendered HTML exactly.
-       * This prevents React error #418.
-       */}
-      {mounted && isOpen && ReactDOM.createPortal(
-        <>
-          {/* Invisible backdrop — clicking it closes the dropdown */}
+      {isOpen && (
+        <FloatingPortal>
           <div
-            aria-hidden="true"
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 9998,
-              background: 'transparent',
-            }}
-            onClick={onClose}
-          />
-
-          {/* Dropdown content */}
-          <div
-            ref={contentRef}
-            role="menu"
-            className={className}
+            ref={refs.setFloating}
             style={dropdownStyle}
+            className={className}
+            data-smart-dropdown-floating
+            {...getFloatingProps()}
           >
             {children}
           </div>
-        </>,
-        document.body
+        </FloatingPortal>
       )}
     </>
   );
