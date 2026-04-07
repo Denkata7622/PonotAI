@@ -5,7 +5,7 @@ import { Heart, ListMusic, ListPlus, Play, Plus } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
-import SmartDropdown from "../src/components/ui/SmartDropdown";
+import SmartDropdown from "@/components/ui/SmartDropdown";
 
 type SearchResultActionsProps = {
   resultId: string;
@@ -44,18 +44,21 @@ export default function SearchResultActions({
     <div className="relative" data-result-actions={resultId}>
       <SmartDropdown
         isOpen={isOpen}
-        onClose={() => {
-          setShowPlaylists(false);
-          onClose();
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowPlaylists(false);
+            onClose();
+            return;
+          }
+          onToggle();
         }}
-        preferredPosition="bottom"
+        placement="bottom-start"
         className="min-w-48 p-1"
         trigger={(
           <button
             type="button"
             className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
             onMouseDown={(event) => event.preventDefault()}
-            onClick={onToggle}
             aria-label={t("track_more_options", language)}
           >
             <Plus className="w-4 h-4 text-[var(--text)]" />

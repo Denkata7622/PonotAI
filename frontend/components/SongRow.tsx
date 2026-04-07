@@ -8,7 +8,7 @@ import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { formatArtist } from "../lib/formatArtist";
 import { usePlayer } from "./PlayerProvider";
-import SmartDropdown from "../src/components/ui/SmartDropdown";
+import SmartDropdown from "@/components/ui/SmartDropdown";
 
 type SongRowProps = {
   id: string;
@@ -115,13 +115,12 @@ export default function SongRow({
         {showMoreMenu && (
           <SmartDropdown
             isOpen={menuOpen}
-            onClose={() => setMenuOpen(false)}
-            preferredPosition="bottom"
+            onOpenChange={setMenuOpen}
+            placement="bottom-start"
             className="min-w-52 p-2"
             trigger={(
               <button
                 type="button"
-                onClick={() => setMenuOpen((prev) => !prev)}
                 className="rounded-lg p-2 hover:bg-[var(--hover-bg)]"
                 aria-label={t("track_more_options", language)}
                 title={t("track_more_options", language)}
