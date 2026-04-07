@@ -10,7 +10,6 @@
     "check:i18n": "node scripts/check-i18n-keys.mjs"
   },
   "dependencies": {
-    "@floating-ui/react": "^0.27.16",
     "next": "16.1.6",
     "ponotai": "file:..",
     "react": "19.2.3",
