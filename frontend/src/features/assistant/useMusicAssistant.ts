@@ -58,14 +58,10 @@ export function useMusicAssistant() {
         return updated;
       });
     } catch (error) {
-      const err = error as Error;
-      const message = process.env.NODE_ENV === "development"
-        ? `Error: ${err.message}`
-        : err.message?.includes("not configured")
-          ? "AI Assistant is not configured. Please contact support."
-          : "I ran into an issue. Please try again.";
-      setMessages((prev) => [...prev, createMessage({ role: "system", content: message })]);
-      setError(message);
+      const err = error as Error & { response?: { data?: { message?: string } }; message?: string };
+      const errorText = err?.response?.data?.message || err?.message || "Please try again.";
+      setMessages((prev) => [...prev, createMessage({ role: "system", content: errorText })]);
+      setError(errorText);
     } finally {
       setIsLoading(false);
     }

@@ -7,8 +7,9 @@ import { t } from "../lib/translations";
 import { normalizeTrackKey } from "../lib/dedupe";
 import { useLibrary } from "../features/library/useLibrary";
 import { Button } from "../src/components/ui/Button";
+import Modal from "../src/components/ui/Modal";
 import SongRow from "./SongRow";
-import { Check, Clock, Heart, Plus, Search, X } from "../lucide-react";
+import { Check, Clock, Heart, Plus, Search } from "../lucide-react";
 import type { Playlist, PlaylistSong } from "../features/library/types";
 
 type ModalTrack = PlaylistSong & { id: string };
@@ -132,16 +133,6 @@ export default function NewPlaylistModal({
     };
   }, [debouncedSearchQuery]);
 
-  useEffect(() => {
-    function onEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    document.addEventListener("keydown", onEscape);
-    return () => document.removeEventListener("keydown", onEscape);
-  }, [onClose]);
 
   const tracksByTab = useMemo(() => {
     if (selectedTab === "favorites") return favoriteSongs;
@@ -223,18 +214,9 @@ export default function NewPlaylistModal({
   const isNameValid = existingPlaylistId ? true : name.trim().length > 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div
-        className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="border-b border-[var(--border)] p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-[var(--text)]">{t("playlist_modal_title", language)}</h2>
-            <button type="button" onClick={onClose} className="rounded-lg p-2 hover:bg-[var(--hover-bg)]" aria-label={t("modal_close", language)}>
-              <X className="h-4 w-4 text-[var(--muted)]" />
-            </button>
-          </div>
+    <Modal isOpen onClose={onClose} title={t("playlist_modal_title", language)} maxWidth="960px">
+      <div className="flex max-h-[70vh] w-full flex-col overflow-hidden">
+        <div className="border-b border-[var(--border)] p-1">
           <input
             type="text"
             value={name}
@@ -306,6 +288,6 @@ export default function NewPlaylistModal({
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

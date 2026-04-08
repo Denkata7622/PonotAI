@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Clock, Headphones, Heart, HelpCircle, Info, Library, LogOut, Music, Play, Search, SearchX, Settings, TrendingUp, User, WifiOff, X } from "../lucide-react";
+import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Clock, Headphones, Heart, HelpCircle, Info, Library, LogOut, Music, Play, Search, SearchX, Settings, Sparkles, TrendingUp, User, WifiOff, X } from "../lucide-react";
 import BottomPlayBar from "./BottomPlayBar";
 import { PlayerProvider } from "./PlayerProvider";
 import type { Playlist, StoredFavorite } from "../features/library/types";
@@ -41,6 +41,7 @@ const PRIMARY_NAV = [
   { href: "/", key: "nav_listen", icon: Headphones },
   { href: "/library", key: "nav_library", icon: Library },
   { href: "/search", key: "nav_search", icon: Search },
+  { href: "/assistant", key: "nav_assistant", icon: Sparkles },
   { href: "/profile", key: "nav_profile", icon: User },
   { href: "/settings", key: "nav_settings", icon: Settings },
 ] as const;

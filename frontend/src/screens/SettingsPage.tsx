@@ -5,6 +5,7 @@ import { Download, FileSpreadsheet, Moon, Sun, Trash2, Upload } from "../../luci
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
+import Modal from "../components/ui/Modal";
 import { useUser } from "../context/UserContext";
 import { useTheme } from "../../lib/ThemeContext";
 import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON } from "../lib/libraryExport";
@@ -303,11 +304,8 @@ export default function SettingsPage() {
       </Card>
 
       {showDangerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="bg-surface rounded-2xl shadow-xl border border-border p-6 z-50 max-w-md w-full space-y-4">
-            <h3 className="text-base font-semibold text-text-primary">
-              Type your username to confirm
-            </h3>
+        <Modal isOpen={showDangerModal} onClose={() => setShowDangerModal(false)} title="Type your username to confirm" maxWidth="520px">
+          <div className="space-y-4">
             <Input
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
@@ -320,7 +318,7 @@ export default function SettingsPage() {
               </Button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
