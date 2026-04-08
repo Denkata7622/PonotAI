@@ -108,7 +108,11 @@ export function SmartDropdown({
 
   return (
     <>
-      <div ref={refs.setReference} {...getReferenceProps()} style={{ display: 'contents' }}>
+      <div
+        ref={refs.setReference}
+        {...getReferenceProps()}
+        style={{ display: matchTriggerWidth ? 'block' : 'inline-block', width: matchTriggerWidth ? '100%' : 'auto' }}
+      >
         {trigger}
       </div>
 
