@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Modal from "../src/components/ui/Modal";
 import type { SongMatch } from "../features/recognition/api";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -80,18 +81,8 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
   const selectedCount = editableSongs.filter((s) => s.selected).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <Modal isOpen onClose={onCancel} title={t("modal_review_title", language)} maxWidth="960px">
       <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-2xl font-semibold">{t("modal_review_title", language)}</h2>
-          <button
-            onClick={onCancel}
-            className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-surface-raised"
-          >
-            {t("modal_close", language)}
-          </button>
-        </div>
-
         <p className="mb-6 text-sm text-text-muted">
           {t("modal_selected_count", language, { selected: selectedCount, total: editableSongs.length })}
         </p>
@@ -183,6 +174,6 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

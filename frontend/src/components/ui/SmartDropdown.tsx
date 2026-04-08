@@ -108,13 +108,13 @@ export function SmartDropdown({
 
   return (
     <>
-      <div
+      <span
         ref={refs.setReference}
         {...getReferenceProps()}
-        style={{ display: matchTriggerWidth ? 'block' : 'inline-block', width: matchTriggerWidth ? '100%' : 'auto' }}
+        style={{ display: 'inline-block', width: matchTriggerWidth ? '100%' : 'auto' }}
       >
         {trigger}
-      </div>
+      </span>
 
       {isOpen && (
         <FloatingPortal>

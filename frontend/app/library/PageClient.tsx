@@ -44,7 +44,7 @@ return fallback;
 export default function LibraryPage() {
 const { language } = useLanguage();
 const { addToQueue, addManyToQueue, clearQueue } = usePlayer();
-const { favorites: userFavorites, removeFavorite, isAuthenticated, isLoading } = useUser();
+const { favorites: userFavorites, removeFavorite, deleteHistoryItem, isAuthenticated, isLoading } = useUser();
 const { profile } = useProfile();
 
 const getScoped = (key: string) => (profile?.id ? scopedKey(key, profile.id) : key);
@@ -207,7 +207,10 @@ addToQueue({
 
 }
 
-function handleDeleteHistoryItem(id: string) {
+async function handleDeleteHistoryItem(id: string) {
+if (isAuthenticated) {
+  await deleteHistoryItem(id);
+}
 setHistory((prev) => {
   const updated = prev.filter((entry) => entry.id !== id);
   if (typeof window !== "undefined") {
@@ -512,7 +515,7 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
                 artist={item.artist ?? "-"}
                 artworkUrl={item.coverUrl}
                 onPlay={() => handlePlaySong(item)}
-                onDelete={() => handleDeleteHistoryItem(item.id)}
+                onDelete={() => void handleDeleteHistoryItem(item.id)}
               />
             ))
           )}

@@ -5,6 +5,7 @@ import type { Playlist, PlaylistSong } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { Button } from "../src/components/ui/Button";
+import Modal from "../src/components/ui/Modal";
 import SongRow from "./SongRow";
 import NewPlaylistModal from "./NewPlaylistModal";
 import { ListMusic, Plus, Trash2, X } from "../lucide-react";
@@ -58,8 +59,8 @@ export default function PlaylistDetail({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" onClick={(event) => event.stopPropagation()}>
+    <Modal isOpen onClose={onClose} maxWidth="960px">
+      <div className="max-h-[70vh] w-full overflow-auto">
         <div className="mb-6 flex items-start justify-between">
           <div className="flex-1">
             {isRenaming ? (
@@ -95,6 +96,7 @@ export default function PlaylistDetail({
 
           {!isRenaming && (
             <div className="flex gap-2">
+              <Button onClick={() => setShowAddSongsModal(true)} size="sm" className="flex items-center gap-2"><Plus className="w-4 h-4 text-white" />{t("playlist_add_songs", language)}</Button>
               <Button onClick={() => setIsRenaming(true)} variant="secondary" size="sm">{t("track_create", language)}</Button>
               <Button onClick={onClose} variant="secondary" size="sm">
                 <X className="w-4 h-4 text-[var(--muted)]" />
@@ -109,10 +111,6 @@ export default function PlaylistDetail({
               <ListMusic className="w-10 h-10 text-[var(--muted)]" />
               <h3 className="text-lg font-semibold text-[var(--text)]">{t("playlist_empty_heading", language)}</h3>
               <p className="text-sm text-[var(--muted)]">{t("playlist_empty_hint", language)}</p>
-              <Button onClick={() => setShowAddSongsModal(true)} className="flex items-center gap-2">
-                <Plus className="w-4 h-4 text-[var(--text)]" />
-                {t("playlist_add_songs", language)}
-              </Button>
             </div>
           ) : (
             <div className="grid gap-2">
@@ -160,6 +158,6 @@ export default function PlaylistDetail({
           onCreated={() => setShowAddSongsModal(false)}
         />
       )}
-    </div>
+    </Modal>
   );
 }

@@ -77,7 +77,7 @@ assistantRouter.post("/", async (req, res) => {
   if (!process.env.GEMINI_API_KEY?.trim()) {
     return res.status(503).json({
       code: "AI_SERVICE_UNAVAILABLE",
-      message: "AI Assistant is not configured. Add GEMINI_API_KEY to environment variables.",
+      message: "AI Assistant is not configured. Please add GEMINI_API_KEY to Railway environment variables. Get a free key at https://aistudio.google.com/app/apikey",
     });
   }
 
@@ -128,7 +128,7 @@ assistantRouter.post("/", async (req, res) => {
     if ((error as { code?: string }).code === "MISSING_API_KEY") {
       return res.status(503).json({
         code: "AI_SERVICE_UNAVAILABLE",
-        message: "AI Assistant is not configured. Add GEMINI_API_KEY to environment variables.",
+        message: "AI Assistant is not configured. Please add GEMINI_API_KEY to Railway environment variables. Get a free key at https://aistudio.google.com/app/apikey",
       });
     }
     if ((error as Error).name === "AssistantContextError") {
