@@ -80,7 +80,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = '480px' }: 
               onClick={onClose}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}
             >
-              <X size={18} />
+              <X width={18} height={18} />
             </button>
           </div>
         )}
