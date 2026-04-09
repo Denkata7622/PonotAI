@@ -193,7 +193,7 @@ export async function deleteUserHistoryItem(userId: string, id: string): Promise
   if (!item) return "missing";
   if (item.userId !== userId) return "forbidden";
   db.searchHistory = db.searchHistory.filter((h) => h.id !== id);
-  await writeDb(db);
+  await writeDb(db); // persist delete
   return "ok";
 }
 
@@ -201,7 +201,7 @@ export async function clearUserHistory(userId: string): Promise<number> {
   const db = await readDb();
   const before = db.searchHistory.length;
   db.searchHistory = db.searchHistory.filter((h) => h.userId !== userId);
-  await writeDb(db);
+  await writeDb(db); // persist delete
   return before - db.searchHistory.length;
 }
 
@@ -232,7 +232,7 @@ export async function deleteFavorite(userId: string, id: string): Promise<"ok"|"
   if(!item) return "missing";
   if(item.userId!==userId) return "forbidden";
   db.favorites = db.favorites.filter((f)=>f.id!==id);
-  await writeDb(db);
+  await writeDb(db); // persist delete
   return "ok";
 }
 
@@ -321,7 +321,7 @@ export async function removeSongFromPlaylist(
   
   if (playlist.songs.length < initialLength) {
     playlist.updatedAt = new Date().toISOString();
-    await writeDb(db);
+    await writeDb(db); // persist remove song
   }
   
   return playlist;
@@ -333,7 +333,7 @@ export async function deletePlaylist(playlistId: string): Promise<"ok" | "missin
   if (index < 0) return "missing";
   
   db.playlists.splice(index, 1);
-  await writeDb(db);
+  await writeDb(db); // persist delete
   return "ok";
 }
 

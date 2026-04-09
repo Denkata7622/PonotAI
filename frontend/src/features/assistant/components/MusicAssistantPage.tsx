@@ -29,6 +29,18 @@ export default function MusicAssistantPage() {
     }
   }, [authLoading, isAuthenticated, router]);
 
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const handler = () => {
+      const keyboardHeight = Math.max(0, window.innerHeight - viewport.height);
+      document.documentElement.style.setProperty("--keyboard-height", `${Math.round(keyboardHeight)}px`);
+    };
+    handler();
+    viewport.addEventListener("resize", handler);
+    return () => viewport.removeEventListener("resize", handler);
+  }, []);
+
   if (!mounted || showInitialSkeleton) {
     return (
       <section className="assistant-page grid place-items-center">
@@ -55,13 +67,13 @@ export default function MusicAssistantPage() {
   }
 
   return (
-    <section className="assistant-page">
+    <section className="assistant-page" style={{ height: "calc(100vh - var(--player-bar-height, 80px))" }}>
       <header className="assistant-header">
         <h1><Sparkles width={20} height={20} strokeWidth={1.8} /> PonotAI Assistant</h1>
         <button type="button" onClick={handleNewConversation}><RotateCcw width={15} height={15} strokeWidth={1.8} /> New conversation</button>
       </header>
 
-      <div className="assistant-thread">
+      <div className="assistant-thread" style={{ paddingBottom: "8px" }}>
         {messages.length === 0 ? (
           <div className="assistant-empty"><StarterPrompts onSelect={(prompt) => void sendMessage(prompt)} /></div>
         ) : (
@@ -78,7 +90,7 @@ export default function MusicAssistantPage() {
         <div ref={bottomRef} />
       </div>
 
-      <footer className="assistant-input-wrap">
+      <footer className="assistant-input-wrap" style={{ marginBottom: "var(--keyboard-height, 0px)" }}>
         <textarea
           value={input}
           placeholder="Ask about your music..."

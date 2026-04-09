@@ -1,16 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Modal from "../src/components/ui/Modal";
 import type { SongMatch } from "../features/recognition/api";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
+import { RotateCcw } from "../lucide-react";
+import { getApiBaseUrl } from "../lib/apiConfig";
 
 type EditableSong = SongMatch & {
   selected: boolean;
   editedSongName?: string;
   editedArtist?: string;
   selectedArtIndex: number;
+  coverOptions: string[];
+  loadingCovers: boolean;
 };
 
 type SongReviewModalProps = {
@@ -20,37 +24,77 @@ type SongReviewModalProps = {
 };
 
 export default function SongReviewModal({ songs, onConfirm, onCancel }: SongReviewModalProps) {
+  const apiBaseUrl = getApiBaseUrl();
   const [editableSongs, setEditableSongs] = useState<EditableSong[]>(
     songs.map((song) => ({
       ...song,
       selected: true,
       selectedArtIndex: 0,
-    }))
+      coverOptions: song.albumArtUrl ? [song.albumArtUrl] : [],
+      loadingCovers: false,
+    })),
   );
   const { language } = useLanguage();
 
+  useEffect(() => {
+    songs.forEach((_, index) => {
+      void loadCoverOptions(index, false);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function toggleSelection(index: number) {
     setEditableSongs((prev) =>
-      prev.map((song, i) => (i === index ? { ...song, selected: !song.selected } : song))
+      prev.map((song, i) => (i === index ? { ...song, selected: !song.selected } : song)),
     );
   }
 
   function updateSongName(index: number, value: string) {
     setEditableSongs((prev) =>
-      prev.map((song, i) => (i === index ? { ...song, editedSongName: value } : song))
+      prev.map((song, i) => (i === index ? { ...song, editedSongName: value } : song)),
     );
   }
 
   function updateArtist(index: number, value: string) {
     setEditableSongs((prev) =>
-      prev.map((song, i) => (i === index ? { ...song, editedArtist: value } : song))
+      prev.map((song, i) => (i === index ? { ...song, editedArtist: value } : song)),
     );
   }
 
   function selectArtwork(index: number, artIndex: number) {
     setEditableSongs((prev) =>
-      prev.map((song, i) => (i === index ? { ...song, selectedArtIndex: artIndex } : song))
+      prev.map((song, i) => (i === index ? { ...song, selectedArtIndex: artIndex } : song)),
     );
+  }
+
+  async function loadCoverOptions(index: number, useExclude: boolean) {
+    const target = editableSongs[index];
+    if (!target) return;
+
+    const title = encodeURIComponent(target.editedSongName?.trim() || target.songName);
+    const artist = encodeURIComponent(target.editedArtist?.trim() || target.artist);
+    const excludeQuery = useExclude && target.coverOptions.length > 0
+      ? `&exclude=${encodeURIComponent(target.coverOptions.join(","))}`
+      : "";
+
+    setEditableSongs((prev) => prev.map((song, i) => (i === index ? { ...song, loadingCovers: true } : song)));
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/cover-art?title=${title}&artist=${artist}${excludeQuery}`);
+      if (!response.ok) return;
+      const payload = (await response.json()) as { covers?: Array<{ url: string }> };
+      const coverUrls = (payload.covers ?? []).map((cover) => cover.url).slice(0, 4);
+      if (coverUrls.length === 0) return;
+
+      setEditableSongs((prev) => prev.map((song, i) => (
+        i === index
+          ? { ...song, coverOptions: coverUrls, selectedArtIndex: 0 }
+          : song
+      )));
+    } catch {
+      // Keep existing artwork options if lookup fails.
+    } finally {
+      setEditableSongs((prev) => prev.map((song, i) => (i === index ? { ...song, loadingCovers: false } : song)));
+    }
   }
 
   function handleConfirm() {
@@ -60,22 +104,16 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
         ...song,
         songName: song.editedSongName?.trim() || song.songName,
         artist: song.editedArtist?.trim() || song.artist,
-        albumArtUrl: getArtworkOptions(song)[song.selectedArtIndex],
+        albumArtUrl: getArtworkOptions(song)[song.selectedArtIndex] || song.albumArtUrl,
       }));
     onConfirm(selected);
   }
 
   function getArtworkOptions(song: EditableSong): string[] {
-    const base = song.albumArtUrl;
-    const artist = (song.editedArtist || song.artist).toLowerCase().replace(/\s+/g, "-");
-    const songName = (song.editedSongName || song.songName).toLowerCase().replace(/\s+/g, "-");
-
-    return [
-      base,
-      `https://picsum.photos/seed/${artist}-${songName}-1/300/300`,
-      `https://picsum.photos/seed/${artist}-${songName}-2/300/300`,
-      `https://picsum.photos/seed/${artist}-${songName}-3/300/300`,
-    ];
+    if (song.coverOptions.length > 0) {
+      return song.coverOptions;
+    }
+    return song.albumArtUrl ? [song.albumArtUrl] : [];
   }
 
   const selectedCount = editableSongs.filter((s) => s.selected).length;
@@ -110,21 +148,37 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
 
                   <div>
                     <p className="mb-2 text-xs text-text-muted">{t("modal_choose_cover", language)}</p>
-                    <div className="flex gap-2">
-                      {artworkOptions.map((url, artIndex) => (
-                        <button
-                          key={artIndex}
-                          onClick={() => selectArtwork(index, artIndex)}
-                          className={`h-16 w-16 overflow-hidden rounded-lg border-2 transition ${
-                            song.selectedArtIndex === artIndex
-                              ? "border-violet-400 ring-2 ring-violet-400/50"
-                              : "border-border opacity-60 hover:opacity-100"
-                          }`}
-                        >
-                          <img src={url} alt={`Cover ${artIndex + 1}`} className="h-full w-full object-cover" />
-                        </button>
-                      ))}
+                    <div className="grid grid-cols-2 gap-2">
+                      {song.loadingCovers && artworkOptions.length === 0
+                        ? Array.from({ length: 4 }).map((_, artIndex) => (
+                          <div
+                            key={artIndex}
+                            className="h-16 w-16 animate-pulse rounded-lg border border-border bg-surface-overlay"
+                          />
+                        ))
+                        : artworkOptions.map((url, artIndex) => (
+                          <button
+                            key={url}
+                            onClick={() => selectArtwork(index, artIndex)}
+                            className={`h-16 w-16 overflow-hidden rounded-lg border-2 transition ${
+                              song.selectedArtIndex === artIndex
+                                ? "border-violet-400 ring-2 ring-violet-400/50"
+                                : "border-border opacity-60 hover:opacity-100"
+                            }`}
+                          >
+                            <img src={url} alt={`Cover ${artIndex + 1}`} className="h-full w-full object-cover" />
+                          </button>
+                        ))}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadCoverOptions(index, true)}
+                      disabled={song.loadingCovers}
+                      className="mt-2 inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs hover:bg-surface-raised disabled:opacity-60"
+                    >
+                      <RotateCcw className={`h-3.5 w-3.5 ${song.loadingCovers ? "animate-spin" : ""}`} />
+                      Try different covers
+                    </button>
                   </div>
 
                   <div className="flex-1 space-y-3">
@@ -134,6 +188,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
                         type="text"
                         value={song.editedSongName ?? song.songName}
                         onChange={(e) => updateSongName(index, e.target.value)}
+                        onBlur={() => void loadCoverOptions(index, false)}
                         disabled={!song.selected}
                         className="w-full rounded-lg border border-border bg-surface-overlay px-3 py-2 text-sm disabled:opacity-50"
                       />
@@ -145,6 +200,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
                         type="text"
                         value={song.editedArtist ?? song.artist}
                         onChange={(e) => updateArtist(index, e.target.value)}
+                        onBlur={() => void loadCoverOptions(index, false)}
                         disabled={!song.selected}
                         className="w-full rounded-lg border border-border bg-surface-overlay px-3 py-2 text-sm disabled:opacity-50"
                       />

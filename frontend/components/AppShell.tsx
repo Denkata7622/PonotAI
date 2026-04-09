@@ -12,6 +12,7 @@ import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { useUser } from "../src/context/UserContext";
 import { usePlayer } from "./PlayerProvider";
+import type { QueueTrack } from "../features/player/state";
 import SearchInput from "./SearchInput";
 import SearchResultActions from "./SearchResultActions";
 import { addSongToPlaylist as addSongToPlaylistApi } from "../features/library/api";
@@ -66,7 +67,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [recentHistory, setRecentHistory] = useState<HistoryItem[]>([]);
   const [librarySnapshot, setLibrarySnapshot] = useState<LibrarySnapshot>({ favorites: [], playlists: [] });
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const { addToQueue, currentTrack } = usePlayer();
+  const { addToQueue, playNow, currentTrack } = usePlayer();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -232,8 +233,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
     };
   }, [debouncedQuery]);
 
-  function queueTrack(result: SearchResult, closeDropdown = true) {
-    addToQueue({
+  function queueTrack(result: SearchResult, playImmediately = true, closeDropdown = true) {
+    const trackPayload: Omit<QueueTrack, "id"> & { id?: string } = {
       title: result.title,
       artist: result.artist,
       artistId: result.videoId,
@@ -241,12 +242,17 @@ function AppShellContent({ children }: { children: ReactNode }) {
       videoId: result.videoId,
       query: `${result.title} ${result.artist}`,
       license: "COPYRIGHTED",
-    });
+    };
+    if (playImmediately) {
+      playNow(trackPayload, "manual");
+    } else {
+      addToQueue(trackPayload, "manual");
+    }
     if (closeDropdown) setShowSearchDropdown(false);
   }
 
   function handleSelectSearchResult(result: SearchResult) {
-    queueTrack(result);
+    queueTrack(result, true);
     window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Now playing: ${result.title}` } }));
   }
 
@@ -274,7 +280,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
     if (event.key === "Enter") {
       event.preventDefault();
       const target = highlightedIndex >= 0 ? searchResults[highlightedIndex] : searchResults[0];
-      if (target) queueTrack(target);
+      if (target) queueTrack(target, true);
     }
   }
 
@@ -602,8 +608,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
                               isOpen={openActionsId === result.videoId}
                               onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))}
                               onClose={() => setOpenActionsId(null)}
-                              onPlayNow={() => queueTrack(result)}
-                              onAddToQueue={() => queueTrack(result, false)}
+                              onPlayNow={() => queueTrack(result, true)}
+                              onAddToQueue={() => queueTrack(result, false, false)}
                               onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
                               onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })}
                               playlists={librarySnapshot.playlists}
@@ -638,7 +644,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                   }}
                                   aria-label={t("btn_play", language)}
                                 ><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result)} onAddToQueue={() => queueTrack(result, false)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={librarySnapshot.playlists} onGoToLibrary={() => router.push('/library')} />
+                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={librarySnapshot.playlists} onGoToLibrary={() => router.push('/library')} />
                               </li>
                             ))}
                           </ul>

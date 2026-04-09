@@ -354,7 +354,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   async function deleteHistoryItem(id: string) {
     if (isAuthenticated) {
-      await apiFetch(`/api/history/${id}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/history/${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        throw new Error("DELETE_HISTORY_FAILED");
+      }
       setServerHistory(serverHistory.filter((e) => e.id !== id));
       return;
     }
@@ -363,7 +366,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   async function clearHistory() {
     if (isAuthenticated) {
-      await apiFetch("/api/history", { method: "DELETE" });
+      const response = await apiFetch("/api/history", { method: "DELETE" });
+      if (!response.ok) {
+        throw new Error("CLEAR_HISTORY_FAILED");
+      }
       setServerHistory([]);
       return;
     }

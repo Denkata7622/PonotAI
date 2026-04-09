@@ -15,7 +15,7 @@ type SharedPayload = {
 
 export default function SharedSongClient({ data }: { data: SharedPayload }) {
   const [prefetchedVideoId, setPrefetchedVideoId] = useState<string | null>(null);
-  const { addToQueue } = usePlayer();
+  const { playNow } = usePlayer();
 
   useEffect(() => {
     const query = encodeURIComponent(`${data.title} ${data.artist} official audio`);
@@ -29,7 +29,7 @@ export default function SharedSongClient({ data }: { data: SharedPayload }) {
   }, [data]);
 
   function handlePlay() {
-    addToQueue({
+    playNow({
       id: `shared-${data.title}-${data.artist}`.toLowerCase().replace(/\s+/g, "-"),
       title: data.title,
       artist: data.artist,
@@ -38,7 +38,7 @@ export default function SharedSongClient({ data }: { data: SharedPayload }) {
       license: "COPYRIGHTED",
       query: `${data.title} ${data.artist} official audio`,
       videoId: prefetchedVideoId ?? undefined,
-    });
+    }, "manual");
   }
 
   return (
