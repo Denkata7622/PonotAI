@@ -119,6 +119,15 @@ export function SmartDropdown({
       {isOpen && (
         <FloatingPortal>
           <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 9998,
+              background: 'transparent',
+            }}
+            onMouseDown={() => onOpenChange(false)}
+          />
+          <div
             ref={refs.setFloating}
             style={dropdownStyle}
             className={className}

@@ -245,6 +245,11 @@ function AppShellContent({ children }: { children: ReactNode }) {
     if (closeDropdown) setShowSearchDropdown(false);
   }
 
+  function handleSelectSearchResult(result: SearchResult) {
+    queueTrack(result);
+    window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Now playing: ${result.title}` } }));
+  }
+
   function handleSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       setShowSearchDropdown(false);
@@ -529,7 +534,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                         <ul className="space-y-1">
                           {recentSearches.map((item) => (
                             <li key={item} className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-[var(--hover-bg)]">
-                              <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onMouseDown={(event) => event.preventDefault()} onClick={() => executeSearchQuery(item)}>
+                              <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onMouseDown={(event) => { event.preventDefault(); executeSearchQuery(item); }}>
                                 <Clock className="w-4 h-4 text-[var(--muted)]" />
                                 <span className="truncate text-sm">{item}</span>
                               </button>
@@ -543,7 +548,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                         <p className="mb-2 inline-flex items-center gap-2 px-2 text-sm text-[var(--muted)]"><TrendingUp className="w-4 h-4 text-[var(--muted)]" />{t("search_suggested", language)}</p>
                         <div className="flex flex-wrap gap-2 px-2 pb-1">
                           {suggestedQueries.map((item) => (
-                            <button key={item} type="button" className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => executeSearchQuery(item)}>{item}</button>
+                            <button key={item} type="button" className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm hover:bg-[var(--hover-bg)]" onMouseDown={(event) => { event.preventDefault(); executeSearchQuery(item); }}>{item}</button>
                           ))}
                         </div>
                       </div>
@@ -567,13 +572,29 @@ function AppShellContent({ children }: { children: ReactNode }) {
                       <p className="px-2 text-xs uppercase tracking-wider text-[var(--muted)]">Songs</p>
                       <ul className="space-y-1">
                         {groupedSearchResults.songs.map((result, index) => (
-                          <li key={result.videoId} className={`flex items-center gap-3 rounded-xl px-2 py-2 ${highlightedIndex === index ? "bg-[var(--hover-bg)]" : ""}`}>
+                          <li
+                            key={result.videoId}
+                            className={`flex items-center gap-3 rounded-xl px-2 py-2 ${highlightedIndex === index ? "bg-[var(--hover-bg)]" : ""}`}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              handleSelectSearchResult(result);
+                            }}
+                          >
                             <img src={result.thumbnailUrl} alt={result.title} className="h-10 w-10 rounded-md object-cover" />
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium text-[var(--text)]">{result.title}</p>
                               <p className="truncate text-xs text-[var(--muted)]">{result.artist}</p>
                             </div>
-                            <button type="button" className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => queueTrack(result)} aria-label={t("btn_play", language)}>
+                            <button
+                              type="button"
+                              className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                handleSelectSearchResult(result);
+                              }}
+                              aria-label={t("btn_play", language)}
+                            >
                               <Play className="h-4 w-4 text-[var(--text)]" />
                             </button>
                             <SearchResultActions
@@ -597,10 +618,26 @@ function AppShellContent({ children }: { children: ReactNode }) {
                           <p className="px-2 text-xs uppercase tracking-wider text-[var(--muted)]">Artists & Channels</p>
                           <ul className="space-y-1">
                             {groupedSearchResults.channels.map((result) => (
-                              <li key={result.videoId} className="flex items-center gap-3 rounded-xl px-2 py-2">
+                              <li
+                                key={result.videoId}
+                                className="flex items-center gap-3 rounded-xl px-2 py-2"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  handleSelectSearchResult(result);
+                                }}
+                              >
                                 <img src={result.thumbnailUrl} alt={result.title} className="h-10 w-10 rounded-md object-cover" />
                                 <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-[var(--text)]">{result.title}</p><p className="truncate text-xs text-[var(--muted)]">{result.artist}</p></div>
-                                <button type="button" className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => queueTrack(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
+                                <button
+                                  type="button"
+                                  className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
+                                  onMouseDown={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    handleSelectSearchResult(result);
+                                  }}
+                                  aria-label={t("btn_play", language)}
+                                ><Play className="h-4 w-4 text-[var(--text)]" /></button>
                                 <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result)} onAddToQueue={() => queueTrack(result, false)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={librarySnapshot.playlists} onGoToLibrary={() => router.push('/library')} />
                               </li>
                             ))}

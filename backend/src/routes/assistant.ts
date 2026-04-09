@@ -5,7 +5,7 @@ import { buildLibraryContext } from "../services/assistant/contextBuilder";
 import { buildSystemPrompt } from "../services/assistant/prompt";
 import { generateAssistantReply } from "../services/assistant/geminiClient";
 import { parseActionIntent } from "../services/assistant/actionParser";
-import type { GeminiMessage } from "../types/assistant";
+import type { GeminiHistoryMessage, GeminiMessage } from "../types/assistant";
 
 const assistantRouter = Router();
 
@@ -73,6 +73,10 @@ assistantRouter.post("/", async (req, res) => {
     role: item.role,
     content: stripActionTags(item.content),
   }));
+  const geminiHistory: GeminiHistoryMessage[] = conversation.map((item) => ({
+    role: item.role === "assistant" ? "model" : "user",
+    parts: [{ text: item.content }],
+  }));
 
   if (!process.env.GEMINI_API_KEY?.trim()) {
     return res.status(503).json({
@@ -98,7 +102,7 @@ assistantRouter.post("/", async (req, res) => {
       return;
     }
     const systemPrompt = buildSystemPrompt(context);
-    const result = await generateAssistantReply(systemPrompt, conversation, message);
+    const result = await generateAssistantReply(systemPrompt, geminiHistory, message);
     if (!result.text?.trim()) {
       sendError(res, ErrorCatalog.AI_SERVICE_UNAVAILABLE, { message: "I couldn't generate a response. Please rephrase your question." });
       return;
@@ -109,7 +113,7 @@ assistantRouter.post("/", async (req, res) => {
       reply: parsed.reply,
       actionIntent: parsed.actionIntent,
       meta: {
-        model: "gemini-1.5-flash",
+        model: "gemini-2.0-flash",
         latencyMs: result.latencyMs,
         contextTracksCount: context.topTracks.length,
       },

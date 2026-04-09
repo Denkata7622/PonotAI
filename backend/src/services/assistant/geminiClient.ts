@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
-import type { GeminiMessage, GeminiResponse } from "../../types/assistant";
+import type { GeminiHistoryMessage, GeminiResponse } from "../../types/assistant";
 import { GeminiError } from "../../types/assistant";
 
 let singleton: GoogleGenerativeAI | null = null;
@@ -31,28 +31,18 @@ function shouldRetry(status?: number): boolean {
 
 export async function generateAssistantReply(
   systemPrompt: string,
-  conversation: GeminiMessage[],
+  history: GeminiHistoryMessage[],
   userMessage: string,
 ): Promise<GeminiResponse> {
   const client = getGeminiClient();
   const model = client.getGenerativeModel({
-    model: "gemini-1.5-flash",
+    model: "gemini-2.0-flash",
     safetySettings: [
       { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
       { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
     ],
-    generationConfig: {
-      maxOutputTokens: 400,
-      temperature: 0.3,
-      topP: 0.8,
-    },
     systemInstruction: systemPrompt,
   });
-
-  const history = conversation.map((item) => ({
-    role: item.role === "assistant" ? "model" : "user",
-    parts: [{ text: item.content }],
-  }));
 
   const startedAt = Date.now();
   let attempt = 0;
@@ -61,13 +51,20 @@ export async function generateAssistantReply(
     attempt += 1;
 
     try {
-      const chat = model.startChat({ history });
+      const chat = model.startChat({
+        history,
+        generationConfig: {
+          maxOutputTokens: 400,
+          temperature: 0.3,
+          topP: 0.8,
+        },
+      });
       const result = await chat.sendMessage(userMessage);
       const response = result.response;
       const latencyMs = Date.now() - startedAt;
       const usage = response.usageMetadata;
       console.info("[assistant]", {
-        model: "gemini-1.5-flash",
+        model: "gemini-2.0-flash",
         latencyMs,
         promptTokenCount: usage?.promptTokenCount,
         candidatesTokenCount: usage?.candidatesTokenCount,
@@ -76,7 +73,7 @@ export async function generateAssistantReply(
 
       return {
         text: response.text(),
-        model: "gemini-1.5-flash",
+        model: "gemini-2.0-flash",
         usage,
         latencyMs,
       };

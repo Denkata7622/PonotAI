@@ -132,7 +132,9 @@ export default function SongRow({
             <button
               type="button"
               className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-              onClick={() => {
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
                 addToQueue({
                   id,
                   title,
@@ -158,7 +160,9 @@ export default function SongRow({
                 key={playlist.id}
                 type="button"
                 className="block w-full rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-                onClick={() => {
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
                   onAddToPlaylist?.(playlist.id);
                   setMenuOpen(false);
                 }}
