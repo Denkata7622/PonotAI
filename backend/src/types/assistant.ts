@@ -68,9 +68,14 @@ export interface GeminiMessage {
   content: string;
 }
 
+export interface GeminiHistoryMessage {
+  role: "user" | "model";
+  parts: Array<{ text: string }>;
+}
+
 export interface GeminiResponse {
   text: string;
-  model: "gemini-1.5-flash";
+  model: "gemini-2.0-flash";
   usage?: {
     promptTokenCount?: number;
     candidatesTokenCount?: number;

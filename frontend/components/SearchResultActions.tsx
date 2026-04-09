@@ -68,7 +68,9 @@ export default function SearchResultActions({
         <button
           type="button"
           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--hover-bg)]"
-          onClick={() => {
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
             onPlayNow();
             setShowPlaylists(false);
             onClose();
@@ -80,7 +82,9 @@ export default function SearchResultActions({
         <button
           type="button"
           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--hover-bg)]"
-          onClick={() => {
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
             onAddToQueue();
             setShowPlaylists(false);
             onClose();
@@ -92,7 +96,9 @@ export default function SearchResultActions({
         <button
           type="button"
           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--hover-bg)]"
-          onClick={() => {
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
             onAddToFavorites();
             setJustFavorited(true);
             window.setTimeout(() => setJustFavorited(false), 800);
@@ -104,7 +110,11 @@ export default function SearchResultActions({
         <button
           type="button"
           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--hover-bg)]"
-          onClick={() => setShowPlaylists((prev) => !prev)}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setShowPlaylists((prev) => !prev);
+          }}
         >
           <ListPlus className="w-4 h-4 text-[var(--muted)]" />
           {t("search_add_to_playlist", language)}
@@ -115,7 +125,9 @@ export default function SearchResultActions({
               <button
                 type="button"
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-[var(--muted)] hover:bg-[var(--hover-bg)]"
-                onClick={() => {
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
                   onGoToLibrary();
                   onClose();
                 }}
@@ -129,7 +141,9 @@ export default function SearchResultActions({
                   key={playlist.id}
                   type="button"
                   className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--hover-bg)]"
-                  onClick={() => {
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
                     onAddToPlaylist(playlist.id);
                     setShowPlaylists(false);
                     onClose();
