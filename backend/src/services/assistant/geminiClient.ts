@@ -29,28 +29,56 @@ function shouldRetry(status?: number): boolean {
   return status === 429 || status === 503;
 }
 
+function isRetryableError(error: unknown): boolean {
+  const candidate = error as { status?: number; message?: string };
+  const message = String(candidate?.message ?? "").toLowerCase();
+  return shouldRetry(Number(candidate?.status))
+    || message.includes("unavailable")
+    || message.includes("overloaded");
+}
+
+async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableError(error) || attempt === maxRetries - 1) {
+        throw error;
+      }
+      const delay = Math.pow(2, attempt) * 1000;
+      console.warn(`[assistant] Gemini attempt ${attempt + 1} failed, retrying in ${delay}ms`);
+      await sleep(delay);
+    }
+  }
+  throw lastError;
+}
+
+const MODELS_BY_PRIORITY = [
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-1.5-flash-latest",
+] as const;
+
 export async function generateAssistantReply(
   systemPrompt: string,
   history: GeminiHistoryMessage[],
   userMessage: string,
 ): Promise<GeminiResponse> {
   const client = getGeminiClient();
-  const model = client.getGenerativeModel({
-    model: "gemini-2.0-flash",
-    safetySettings: [
-      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-    ],
-    systemInstruction: systemPrompt,
-  });
-
   const startedAt = Date.now();
-  let attempt = 0;
-
-  while (attempt < 3) {
-    attempt += 1;
-
+  let lastError: unknown = null;
+  for (const modelName of MODELS_BY_PRIORITY) {
     try {
+      const model = client.getGenerativeModel({
+        model: modelName,
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        ],
+        systemInstruction: systemPrompt,
+      });
       const chat = model.startChat({
         history,
         generationConfig: {
@@ -59,12 +87,12 @@ export async function generateAssistantReply(
           topP: 0.8,
         },
       });
-      const result = await chat.sendMessage(userMessage);
+      const result = await callWithRetry(() => chat.sendMessage(userMessage));
       const response = result.response;
       const latencyMs = Date.now() - startedAt;
       const usage = response.usageMetadata;
       console.info("[assistant]", {
-        model: "gemini-2.0-flash",
+        model: modelName,
         latencyMs,
         promptTokenCount: usage?.promptTokenCount,
         candidatesTokenCount: usage?.candidatesTokenCount,
@@ -73,27 +101,25 @@ export async function generateAssistantReply(
 
       return {
         text: response.text(),
-        model: "gemini-2.0-flash",
+        model: modelName,
         usage,
         latencyMs,
       };
     } catch (error) {
-      const status = Number((error as { status?: number }).status);
-      if (shouldRetry(status) && attempt < 3) {
-        await sleep(1000 * 2 ** (attempt - 1));
-        continue;
+      lastError = error;
+      console.error(`[assistant] Model ${modelName} failed:`, (error as Error)?.message ?? String(error));
+      if (modelName !== MODELS_BY_PRIORITY[MODELS_BY_PRIORITY.length - 1]) {
+        console.info("[assistant] Trying next Gemini model...");
       }
-
-      if (shouldRetry(status)) {
-        throw new GeminiError("GEMINI_TEMPORARY_UNAVAILABLE", "Gemini service is temporarily unavailable");
-      }
-
-      throw new GeminiError(
-        `GEMINI_${status || "UNKNOWN"}`,
-        (error as Error)?.message || "Gemini request failed",
-      );
     }
   }
 
-  throw new GeminiError("GEMINI_UNKNOWN", "Gemini request failed");
+  const status = Number((lastError as { status?: number } | null)?.status);
+  if (isRetryableError(lastError)) {
+    throw new GeminiError("GEMINI_TEMPORARY_UNAVAILABLE", "Gemini service is temporarily unavailable");
+  }
+  throw new GeminiError(
+    `GEMINI_${status || "UNKNOWN"}`,
+    (lastError as Error)?.message || "Gemini request failed",
+  );
 }

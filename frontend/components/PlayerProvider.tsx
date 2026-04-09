@@ -33,6 +33,7 @@ type PlayerContextValue = {
   playerError: string | null;
   currentVideoId: string | null;
   addToQueue: (track: Omit<QueueTrack, "id"> & { id?: string }, source?: QueuedTrack["source"]) => void;
+  playNow: (track: Omit<QueueTrack, "id"> & { id?: string }, source?: QueuedTrack["source"]) => void;
   addManyToQueue: (tracks: Array<Omit<QueueTrack, "id"> & { id?: string }>, source?: QueuedTrack["source"]) => void;
   removeFromQueue: (queueId: string) => void;
   clearQueue: () => void;
@@ -282,6 +283,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const playNow = useCallback((track: Omit<QueueTrack, "id"> & { id?: string }, source: QueuedTrack["source"] = "manual") => {
+    const nextEntry: QueuedTrack = { queueId: crypto.randomUUID(), track: normalizeTrack(track), addedAt: new Date().toISOString(), source };
+    setQueue((prev) => {
+      const next = [...prev, nextEntry];
+      setCurrentIndex(next.length - 1);
+      return next;
+    });
+    setIsPlaying(true);
+  }, []);
+
   const addManyToQueue = useCallback((tracks: Array<Omit<QueueTrack, "id"> & { id?: string }>, source: QueuedTrack["source"] = "manual") => {
     if (tracks.length === 0) return;
     const now = new Date().toISOString();
@@ -406,6 +417,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playerError,
     currentVideoId,
     addToQueue,
+    playNow,
     addManyToQueue,
     removeFromQueue,
     clearQueue,
@@ -433,6 +445,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playerError,
     currentVideoId,
     addToQueue,
+    playNow,
     addManyToQueue,
     removeFromQueue,
     clearQueue,

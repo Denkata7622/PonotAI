@@ -11,7 +11,7 @@ import { usePlayer } from "../PlayerProvider";
 
 export default function HomePlaylistsSection({ playlists, language, isAuthenticated, onOpenNewPlaylist, onDeletePlaylist }: { playlists: Playlist[]; language: Language; isAuthenticated: boolean; onOpenNewPlaylist?: () => void; onDeletePlaylist?: (playlistId: string) => void }) {
   const router = useRouter();
-  const { addManyToQueue } = usePlayer();
+  const { addManyToQueue, playNow } = usePlayer();
 
   if (!isAuthenticated) {
     return (
@@ -58,21 +58,35 @@ export default function HomePlaylistsSection({ playlists, language, isAuthentica
             playlist={playlist}
             onClick={() => router.push("/library?tab=playlists")}
             onDelete={onDeletePlaylist}
-            onPlay={(target) =>
-              addManyToQueue(
-                target.songs.map((song) => ({
-                  id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-                  title: song.title,
-                  artist: song.artist,
-                  artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-                  artworkUrl: song.coverUrl || "https://picsum.photos/seed/home-playlist/80",
-                  videoId: song.videoId,
-                  license: "COPYRIGHTED",
-                  query: `${song.title} ${song.artist}`,
-                })),
-                "playlist",
-              )
-            }
+            onPlay={(target) => {
+              const [firstSong, ...rest] = target.songs;
+              if (!firstSong) return;
+              playNow({
+                id: `playlist-${firstSong.title}-${firstSong.artist}`.toLowerCase().replace(/\s+/g, "-"),
+                title: firstSong.title,
+                artist: firstSong.artist,
+                artistId: `artist-${firstSong.artist}`.toLowerCase().replace(/\s+/g, "-"),
+                artworkUrl: firstSong.coverUrl || "https://picsum.photos/seed/home-playlist/80",
+                videoId: firstSong.videoId,
+                license: "COPYRIGHTED",
+                query: `${firstSong.title} ${firstSong.artist}`,
+              }, "playlist");
+              if (rest.length > 0) {
+                addManyToQueue(
+                  rest.map((song) => ({
+                    id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+                    title: song.title,
+                    artist: song.artist,
+                    artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+                    artworkUrl: song.coverUrl || "https://picsum.photos/seed/home-playlist/80",
+                    videoId: song.videoId,
+                    license: "COPYRIGHTED",
+                    query: `${song.title} ${song.artist}`,
+                  })),
+                  "playlist",
+                );
+              }
+            }}
           />
         ))}
       </div>

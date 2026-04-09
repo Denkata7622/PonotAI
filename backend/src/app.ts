@@ -16,6 +16,7 @@ import statsRouter from "./modules/stats/stats.routes";
 import { apiRateLimit, recognitionRateLimit } from "./middlewares/rateLimit.middleware";
 import { responseTimeMiddleware } from "./middlewares/responseTime.middleware";
 import assistantRouter from "./routes/assistant";
+import coverArtRouter from "./routes/coverArt";
 
 const app = express();
 const YAML = require("js-yaml");
@@ -116,6 +117,7 @@ app.use("/api/library", libraryRouter);
 app.use("/api/playlists", playlistsRouter);
 app.use("/api/stats", statsRouter);
 app.use("/api/assistant", assistantRouter);
+app.use("/api/cover-art", coverArtRouter);
 
 app.use(errorMiddleware);
 

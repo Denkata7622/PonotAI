@@ -109,7 +109,7 @@ export function HomeContent() {
   const deletePlaylistTimeoutRef = useRef<number | null>(null);
   const [showPlaylistUndoToast, setShowPlaylistUndoToast] = useState(false);
 
-  const { addToQueue } = usePlayer();
+  const { addToQueue, playNow } = usePlayer();
   const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const { profile } = useProfile();
@@ -262,7 +262,20 @@ export function HomeContent() {
     }
   }, []);
 
-  function handleDeleteHistoryItem(id: string) {
+  async function handleDeleteHistoryItem(id: string) {
+    if (isAuthenticated) {
+      try {
+        const response = await apiFetch(`/api/history/${id}`, { method: "DELETE" });
+        if (!response.ok) {
+          pushToast("error", "Failed to remove song from history.");
+          return;
+        }
+      } catch {
+        pushToast("error", "Failed to remove song from history.");
+        return;
+      }
+    }
+
     setHistory((prev) => {
       const updated = prev.filter((entry) => entry.id !== id);
       if (typeof window !== "undefined") {
@@ -270,10 +283,6 @@ export function HomeContent() {
       }
       return updated;
     });
-
-    if (isAuthenticated) {
-      void apiFetch(`/api/history/${id}`, { method: "DELETE" });
-    }
   }
 
   function handleDemoRecognition() {
@@ -574,7 +583,7 @@ export function HomeContent() {
   }
 
   function playSong(song: SongMatch) {
-    addToQueue({
+    playNow({
       title: song.songName,
       artist: song.artist,
       artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
@@ -582,7 +591,7 @@ export function HomeContent() {
       query: `${song.songName} ${song.artist} official audio`,
       videoId: song.youtubeVideoId ?? song.platformLinks.youtube,
       license: "COPYRIGHTED",
-    });
+    }, "manual");
   }
 
   return (
@@ -716,7 +725,7 @@ export function HomeContent() {
                   onDeletePlaylist={handleDeletePlaylistWithUndo}
                   onRemoveFromPlaylist={handleRemoveSongFromPlaylist}
                   onPlay={(currentTrack) =>
-                    addToQueue({
+                    playNow({
                       title: currentTrack.title,
                       artist: currentTrack.artistName,
                       artistId: currentTrack.artistId,
@@ -724,7 +733,7 @@ export function HomeContent() {
                       query: `${currentTrack.title} ${currentTrack.artistName} official audio`,
                       videoId: currentTrack.youtubeVideoId,
                       license: currentTrack.license,
-                    })
+                    }, "manual")
                   }
                 />
                 );

@@ -43,7 +43,7 @@ return fallback;
 
 export default function LibraryPage() {
 const { language } = useLanguage();
-const { addToQueue, addManyToQueue, clearQueue } = usePlayer();
+const { addToQueue, addManyToQueue, clearQueue, playNow } = usePlayer();
 const { favorites: userFavorites, removeFavorite, deleteHistoryItem, isAuthenticated, isLoading } = useUser();
 const { profile } = useProfile();
 
@@ -263,7 +263,7 @@ deleteTimerRef.current = window.setTimeout(async () => {
 
 function handlePlayPlaylistSong(song: any) {
 if (!song?.title || !song?.artist) return;
-addToQueue({
+playNow({
 id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
 title: song.title,
 artist: song.artist,
@@ -272,36 +272,64 @@ artworkUrl: song.coverUrl || "https://picsum.photos/seed/playlist/80",
 videoId: song.videoId,
 license: "COPYRIGHTED",
 query: `${song.title} ${song.artist} official audio`,
-});
+}, "playlist");
 }
 
 
 function handlePlayPlaylist(playlist: Playlist) {
   if (playlist.songs.length === 0) return;
-  addManyToQueue(playlist.songs.map((song) => ({
-    id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-    title: song.title,
-    artist: song.artist,
-    artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-    artworkUrl: song.coverUrl || "https://picsum.photos/seed/playlist/80",
-    videoId: song.videoId,
+  const [firstSong, ...restSongs] = playlist.songs;
+  if (!firstSong) return;
+  playNow({
+    id: `playlist-${firstSong.title}-${firstSong.artist}`.toLowerCase().replace(/\s+/g, "-"),
+    title: firstSong.title,
+    artist: firstSong.artist,
+    artistId: `artist-${firstSong.artist}`.toLowerCase().replace(/\s+/g, "-"),
+    artworkUrl: firstSong.coverUrl || "https://picsum.photos/seed/playlist/80",
+    videoId: firstSong.videoId,
     license: "COPYRIGHTED",
-    query: `${song.title} ${song.artist} official audio`,
-  })), "playlist");
+    query: `${firstSong.title} ${firstSong.artist} official audio`,
+  }, "playlist");
+  if (restSongs.length > 0) {
+    addManyToQueue(restSongs.map((song) => ({
+      id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+      title: song.title,
+      artist: song.artist,
+      artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+      artworkUrl: song.coverUrl || "https://picsum.photos/seed/playlist/80",
+      videoId: song.videoId,
+      license: "COPYRIGHTED",
+      query: `${song.title} ${song.artist} official audio`,
+    })), "playlist");
+  }
 }
 
 function handlePlayAllFromDetail(songs: Array<{ title: string; artist: string; coverUrl?: string; videoId?: string }>) {
   clearQueue();
-  addManyToQueue(songs.map((song) => ({
-    id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-    title: song.title,
-    artist: song.artist,
-    artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-    artworkUrl: song.coverUrl || "https://picsum.photos/seed/playlist/80",
-    videoId: song.videoId,
+  const [firstSong, ...restSongs] = songs;
+  if (!firstSong) return;
+  playNow({
+    id: `playlist-${firstSong.title}-${firstSong.artist}`.toLowerCase().replace(/\s+/g, "-"),
+    title: firstSong.title,
+    artist: firstSong.artist,
+    artistId: `artist-${firstSong.artist}`.toLowerCase().replace(/\s+/g, "-"),
+    artworkUrl: firstSong.coverUrl || "https://picsum.photos/seed/playlist/80",
+    videoId: firstSong.videoId,
     license: "COPYRIGHTED",
-    query: `${song.title} ${song.artist} official audio`,
-  })), "playlist");
+    query: `${firstSong.title} ${firstSong.artist} official audio`,
+  }, "playlist");
+  if (restSongs.length > 0) {
+    addManyToQueue(restSongs.map((song) => ({
+      id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+      title: song.title,
+      artist: song.artist,
+      artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
+      artworkUrl: song.coverUrl || "https://picsum.photos/seed/playlist/80",
+      videoId: song.videoId,
+      license: "COPYRIGHTED",
+      query: `${song.title} ${song.artist} official audio`,
+    })), "playlist");
+  }
 }
 async function handleRemoveSongFromPlaylist(playlistId: string, title: string, artist: string) {
 try {

@@ -75,7 +75,7 @@ export interface GeminiHistoryMessage {
 
 export interface GeminiResponse {
   text: string;
-  model: "gemini-2.0-flash";
+  model: string;
   usage?: {
     promptTokenCount?: number;
     candidatesTokenCount?: number;

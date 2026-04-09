@@ -87,7 +87,13 @@ export function useLibrary(profileId: string) {
 
   async function removeSongFromPlaylist(playlistId: string, title: string, artist: string) {
     if (isAuthenticated) {
-      await playlistApi.removeSongFromPlaylist(playlistId, title, artist);
+      const updatedRemotePlaylist = await playlistApi.removeSongFromPlaylist(playlistId, title, artist);
+      if (!updatedRemotePlaylist) return;
+      setLibraryState((prev) => ({
+        ...prev,
+        playlists: prev.playlists.map((playlist) => (playlist.id === playlistId ? updatedRemotePlaylist : playlist)),
+      }));
+      return;
     }
     setLibraryState((prev) => ({
       ...prev,

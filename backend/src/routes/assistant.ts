@@ -113,7 +113,7 @@ assistantRouter.post("/", async (req, res) => {
       reply: parsed.reply,
       actionIntent: parsed.actionIntent,
       meta: {
-        model: "gemini-2.0-flash",
+        model: result.model,
         latencyMs: result.latencyMs,
         contextTracksCount: context.topTracks.length,
       },
@@ -123,16 +123,23 @@ assistantRouter.post("/", async (req, res) => {
     console.error("[assistant] Error message:", error instanceof Error ? error.message : String(error));
     console.error("[assistant] Error stack:", error instanceof Error ? error.stack : "no stack");
 
+    const message = String((error as Error)?.message ?? "").toLowerCase();
     if ((error as Error).name === "GeminiError") {
+      if (message.includes("unavailable") || message.includes("overloaded") || message.includes("503")) {
+        return res.status(503).json({
+          code: "AI_SERVICE_UNAVAILABLE",
+          message: "Gemini is temporarily busy. Please try again in a few seconds.",
+        });
+      }
       return res.status(503).json({
         code: "AI_SERVICE_UNAVAILABLE",
-        message: `Gemini request failed: ${error instanceof Error ? error.message : String(error)}`,
+        message: error instanceof Error ? error.message : "Assistant failed. Please try again.",
       });
     }
-    if ((error as { code?: string }).code === "MISSING_API_KEY") {
+    if ((error as { code?: string }).code === "MISSING_API_KEY" || message.includes("api key") || message.includes("403")) {
       return res.status(503).json({
         code: "AI_SERVICE_UNAVAILABLE",
-        message: "AI Assistant is not configured. Please add GEMINI_API_KEY to Railway environment variables. Get a free key at https://aistudio.google.com/app/apikey",
+        message: "AI Assistant is not configured. Add GEMINI_API_KEY to Railway environment variables.",
       });
     }
     if ((error as Error).name === "AssistantContextError") {
@@ -140,7 +147,7 @@ assistantRouter.post("/", async (req, res) => {
       return;
     }
 
-    return res.status(503).json({ code: "AI_SERVICE_UNAVAILABLE", message: String(error) });
+    return res.status(500).json({ code: "INTERNAL_ERROR", message: "Assistant failed. Please try again." });
   }
 });
 
