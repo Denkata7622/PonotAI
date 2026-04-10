@@ -29,6 +29,7 @@ playlistsRouter.put("/:playlistId", updatePlaylistNameController);
 
 // Add a song to playlist
 playlistsRouter.post("/:playlistId/songs", addSongToPlaylistController);
+playlistsRouter.post("/:id/songs", addSongToPlaylistController);
 
 // Remove a song from playlist
 playlistsRouter.delete("/:playlistId/songs", removeSongFromPlaylistController);

@@ -29,7 +29,10 @@ export default function StatsPage() {
   if (!stats) return <section className="card p-6"><div className="h-20 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></section>;
 
   return (
-    <section className="space-y-6">
+    <section
+      className="space-y-6"
+      style={{ paddingBottom: "calc(var(--player-bar-height, 80px) + 32px)" }}
+    >
       <div className="card p-6">
         <h1 className="text-3xl font-bold">{t("nav_stats", language)}</h1>
       </div>

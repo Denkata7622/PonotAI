@@ -98,12 +98,16 @@ export function SmartDropdown({
   const dropdownStyle: CSSProperties = {
     ...floatingStyles,
     zIndex: 9999,
-    background: 'var(--card)',
+    background: 'var(--dropdown-bg, var(--card))',
+    opacity: 1,
     border: '1px solid var(--border)',
     borderRadius: '8px',
-    boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3)',
     overflowY: 'auto',
     maxHeight: '80vh',
+    backdropFilter: 'none',
+    WebkitBackdropFilter: 'none',
+    isolation: 'isolate',
   };
 
   return (

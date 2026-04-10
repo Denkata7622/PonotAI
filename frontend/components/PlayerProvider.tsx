@@ -57,6 +57,7 @@ type YTPlayerLike = {
   seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
   setVolume: (value: number) => void;
   loadVideoById: (videoId: string) => void;
+  destroy?: () => void;
 };
 
 type YouTubeWindow = Window & {
@@ -152,6 +153,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
   const lastVolumeBeforeMuteRef = useRef(initial.volume || 70);
   const playerRef = useRef<YTPlayerLike | null>(null);
+  const isPlayerReadyRef = useRef(false);
+  const pendingVideoIdRef = useRef<string | null>(null);
+
+  const safePlayerCall = useCallback((fn: (player: YTPlayerLike) => void) => {
+    if (!playerRef.current || !isPlayerReadyRef.current) return;
+    try {
+      fn(playerRef.current);
+    } catch {
+      // Player can be destroyed between checks during fast unmount/remount cycles.
+    }
+  }, []);
 
   const currentEntry = queue[currentIndex] ?? null;
   const currentTrack = currentEntry?.track ?? null;
@@ -185,8 +197,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         height: "100%",
         playerVars: { autoplay: 0, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1 },
         events: {
-          onReady: () => {
-            playerRef.current?.setVolume(volume);
+          onReady: (event: { target: YTPlayerLike }) => {
+            playerRef.current = event.target;
+            isPlayerReadyRef.current = true;
+            safePlayerCall((player) => player.setVolume(volume));
+            if (pendingVideoIdRef.current) {
+              const queuedVideoId = pendingVideoIdRef.current;
+              safePlayerCall((player) => player.loadVideoById(queuedVideoId));
+              pendingVideoIdRef.current = null;
+            }
             setIsInitializing(false);
             setPlayerError(null);
           },
@@ -223,8 +242,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (ytWindow.YT?.Player) setupPlayer();
     return () => {
       ytWindow.onYouTubeIframeAPIReady = previousHandler;
+      isPlayerReadyRef.current = false;
+      pendingVideoIdRef.current = null;
+      if (playerRef.current?.destroy) {
+        try {
+          playerRef.current.destroy();
+        } catch {
+          // noop
+        }
+      }
+      playerRef.current = null;
     };
-  }, [playNext, volume]);
+  }, [playNext, safePlayerCall, volume]);
 
   useEffect(() => {
     if (!currentTrack) return;
@@ -259,20 +288,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    if (!playerRef.current) return;
-    playerRef.current.loadVideoById(resolvedVideoId);
-    const startPlayback = window.setTimeout(() => playerRef.current?.playVideo(), 250);
+    if (!isPlayerReadyRef.current) {
+      pendingVideoIdRef.current = resolvedVideoId;
+      return;
+    }
+    safePlayerCall((player) => player.loadVideoById(resolvedVideoId));
+    const startPlayback = window.setTimeout(() => safePlayerCall((player) => player.playVideo()), 250);
     return () => window.clearTimeout(startPlayback);
-  }, [currentIndex, currentTrack]);
+  }, [currentIndex, currentTrack, safePlayerCall]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      if (!playerRef.current) return;
-      setCurrentTime(playerRef.current.getCurrentTime?.() || 0);
-      setDuration(playerRef.current.getDuration?.() || 0);
+      safePlayerCall((player) => {
+        setCurrentTime(player.getCurrentTime?.() || 0);
+        setDuration(player.getDuration?.() || 0);
+      });
     }, 500);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [safePlayerCall]);
 
   const addToQueue = useCallback((track: Omit<QueueTrack, "id"> & { id?: string }, source: QueuedTrack["source"] = "manual") => {
     const nextEntry: QueuedTrack = { queueId: crypto.randomUUID(), track: normalizeTrack(track), addedAt: new Date().toISOString(), source };
@@ -326,7 +359,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setDuration(0);
     setCurrentVideoId(null);
     setIsPlaying(false);
-    playerRef.current?.pauseVideo();
+    safePlayerCall((player) => player.pauseVideo());
   }, []);
 
   const playFromQueue = useCallback((queueId: string) => {
@@ -355,23 +388,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const togglePlayPause = useCallback(() => {
-    if (!playerRef.current || !currentTrack) return;
-    if (isPlaying) playerRef.current.pauseVideo();
-    else playerRef.current.playVideo();
-  }, [currentTrack, isPlaying]);
+    if (!currentTrack) return;
+    if (isPlaying) safePlayerCall((player) => player.pauseVideo());
+    else safePlayerCall((player) => player.playVideo());
+  }, [currentTrack, isPlaying, safePlayerCall]);
 
   const seekToPercent = useCallback((percent: number) => {
-    if (!playerRef.current || !duration) return;
+    if (!duration) return;
     const seconds = (Math.max(0, Math.min(100, percent)) / 100) * duration;
-    playerRef.current.seekTo(seconds, true);
+    safePlayerCall((player) => player.seekTo(seconds, true));
     setCurrentTime(seconds);
-  }, [duration]);
+  }, [duration, safePlayerCall]);
 
   const setVolume = useCallback((nextVolume: number) => {
     const normalized = Math.max(0, Math.min(100, nextVolume));
     setVolumeState(normalized);
-    playerRef.current?.setVolume(normalized);
-  }, []);
+    safePlayerCall((player) => player.setVolume(normalized));
+  }, [safePlayerCall]);
 
   useEffect(() => {
     function isTypingTarget(target: EventTarget | null) {

@@ -85,6 +85,18 @@ export function useLibrary(profileId: string) {
     return true;
   }
 
+  async function addSongsToPlaylist(playlistId: string, songs: PlaylistSong[]): Promise<number> {
+    if (!isAuthenticated || songs.length === 0) return 0;
+    const payload = await playlistApi.addSongsToPlaylist(playlistId, songs);
+    if (!payload) return 0;
+
+    setLibraryState((prev) => ({
+      ...prev,
+      playlists: prev.playlists.map((playlist) => (playlist.id === playlistId ? payload.playlist : playlist)),
+    }));
+    return payload.added;
+  }
+
   async function removeSongFromPlaylist(playlistId: string, title: string, artist: string) {
     if (isAuthenticated) {
       const updatedRemotePlaylist = await playlistApi.removeSongFromPlaylist(playlistId, title, artist);
@@ -112,6 +124,7 @@ export function useLibrary(profileId: string) {
     createPlaylist,
     deletePlaylist,
     addSongToPlaylist,
+    addSongsToPlaylist,
     removeSongFromPlaylist,
   };
 }
