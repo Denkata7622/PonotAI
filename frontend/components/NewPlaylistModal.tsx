@@ -44,10 +44,10 @@ export default function NewPlaylistModal({
 }: NewPlaylistModalProps) {
   const { language } = useLanguage();
   const { profile } = useProfile();
-  const { createPlaylist, addSongToPlaylist } = useLibrary(profile.id);
+  const { createPlaylist, addSongsToPlaylist } = useLibrary(profile.id);
 
   const [name, setName] = useState(initialName);
-  const [isCreating, setIsCreating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTab, setSelectedTab] = useState<"recognized" | "favorites" | "search">("recognized");
   const [historySongs, setHistorySongs] = useState<ModalTrack[]>([]);
   const [favoriteSongs, setFavoriteSongs] = useState<ModalTrack[]>([]);
@@ -154,10 +154,10 @@ export default function NewPlaylistModal({
   }
 
   async function handleSubmit() {
-    if (isCreating) return;
+    if (isSubmitting) return;
     if (!existingPlaylistId && !name.trim()) return;
 
-    setIsCreating(true);
+    setIsSubmitting(true);
     try {
       let createdPlaylist: Playlist | null = null;
       let targetPlaylistId = existingPlaylistId;
@@ -177,17 +177,7 @@ export default function NewPlaylistModal({
         videoId: song.videoId,
       }));
 
-      let successfulAdds = 0;
-      for (const song of selectedSongs.values()) {
-        const added = await addSongToPlaylist(targetPlaylistId, {
-          title: song.title,
-          artist: song.artist,
-          album: song.album,
-          coverUrl: song.coverUrl,
-          videoId: song.videoId,
-        });
-        if (added) successfulAdds += 1;
-      }
+      const successfulAdds = await addSongsToPlaylist(targetPlaylistId, songsToAdd);
 
       if (createdPlaylist) {
         onCreated?.({
@@ -206,7 +196,7 @@ export default function NewPlaylistModal({
 
       onClose();
     } finally {
-      setIsCreating(false);
+      setIsSubmitting(false);
     }
   }
 
@@ -282,7 +272,7 @@ export default function NewPlaylistModal({
           <span className="rounded-full bg-[var(--surface-2)] px-3 py-1 text-xs text-[var(--muted)]">{selectedCountLabel}</span>
           <div className="flex items-center gap-2">
             <Button variant="secondary" onClick={onClose}>{t("modal_cancel", language)}</Button>
-            <Button onClick={() => void handleSubmit()} disabled={!isNameValid || isCreating}>
+            <Button onClick={() => void handleSubmit()} disabled={!isNameValid || isSubmitting}>
               {existingPlaylistId ? t("playlist_add_songs", language) : t("track_create", language)}
             </Button>
           </div>
