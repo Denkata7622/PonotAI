@@ -245,7 +245,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
     apiFetch("/api/auth/me")
       .then(async (res) => {
         if (!res.ok) throw new Error("UNAUTHORIZED");
-        const me = (await res.json()) as User;
+        const payload = (await res.json()) as User | { user?: User };
+        const me = ("user" in payload && payload.user
+          ? payload.user
+          : payload) as User;
         setAuthState({ user: me });
         await fetchServerData();
       })

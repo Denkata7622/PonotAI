@@ -71,6 +71,13 @@ export function validateEnvironment(): void {
     console.warn("WARN: Using default JWT_SECRET — do not use in production");
   }
 
+  const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
+  if (geminiApiKey) {
+    process.env.GEMINI_API_KEY = geminiApiKey;
+  } else if (isProduction) {
+    console.error("[env] GEMINI_API_KEY missing in production. /api/assistant will return AI_SERVICE_UNAVAILABLE until configured.");
+  }
+
   const auddToken = process.env.AUDD_API_TOKEN?.trim() || process.env.AUDD_API_KEY?.trim();
   const youtubeKey = process.env.YOUTUBE_API_KEY?.trim();
   const acrKey = process.env.ACRCLOUD_ACCESS_KEY?.trim();

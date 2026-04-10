@@ -82,23 +82,12 @@ authRouter.post("/login", authSensitiveRateLimit, async (req, res) => {
 authRouter.post("/logout", (_req, res) => res.status(200).json({ ok: true }));
 
 authRouter.get("/me", requireAuth, async (req, res) => {
-  try {
-    const userId = req.userId;
-    if (!userId) {
-      return res.status(401).json({ code: "UNAUTHORIZED", message: "Not authenticated" });
-    }
-
-    const user = await findUserById(userId);
-    if (!user) {
-      return res.status(404).json({ code: "USER_NOT_FOUND", message: "User not found" });
-    }
-
-    const payload = toUserPayload(user);
-    return res.status(200).json({ ...payload, user: payload });
-  } catch (error) {
-    console.error("[auth/me] error:", error);
-    return res.status(500).json({ code: "INTERNAL_ERROR", message: "Failed to fetch user" });
+  const user = await findUserById(req.userId!);
+  if (!user) {
+    return void sendError(res, ErrorCatalog.NOT_FOUND);
   }
+  const payload = toUserPayload(user);
+  res.status(200).json({ user: payload });
 });
 
 authRouter.patch("/me", requireAuth, async (req, res) => {

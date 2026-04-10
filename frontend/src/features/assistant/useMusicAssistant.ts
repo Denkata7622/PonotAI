@@ -6,9 +6,12 @@ import { clearConversation, loadConversation, saveConversation } from "./storage
 import type { ChatMessage } from "./types";
 
 function createMessage(message: Omit<ChatMessage, "id" | "createdAt">): ChatMessage {
+  const messageId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return {
     ...message,
-    id: crypto.randomUUID(),
+    id: messageId,
     createdAt: new Date().toISOString(),
   };
 }
@@ -52,7 +55,7 @@ export function useMusicAssistant() {
     setError(null);
 
     try {
-      const response = await sendAssistantMessage(messages, trimmed);
+      const response = await sendAssistantMessage(nextMessages, trimmed);
       const assistantMessage = createMessage({
         role: "assistant",
         content: response.reply,

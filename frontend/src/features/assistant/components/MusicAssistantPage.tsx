@@ -14,14 +14,6 @@ export default function MusicAssistantPage() {
   const { isAuthenticated, isLoading: authLoading } = useUser();
   const { messages, isLoading, sendMessage, resetConversation, acceptAction, dismissAction, bottomRef } = useMusicAssistant();
   const [input, setInput] = useState("");
-  const [mounted, setMounted] = useState(false);
-  const [showInitialSkeleton, setShowInitialSkeleton] = useState(true);
-
-  useEffect(() => {
-    setMounted(true);
-    const timer = window.setTimeout(() => setShowInitialSkeleton(false), 500);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -38,19 +30,11 @@ export default function MusicAssistantPage() {
     };
     handler();
     viewport.addEventListener("resize", handler);
-    return () => viewport.removeEventListener("resize", handler);
+    return () => {
+      viewport.removeEventListener("resize", handler);
+      document.documentElement.style.removeProperty("--keyboard-height");
+    };
   }, []);
-
-  if (!mounted || showInitialSkeleton) {
-    return (
-      <section className="assistant-page grid place-items-center">
-        <div className="flex items-center gap-2 text-[var(--muted)]">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]" />
-          Loading assistant...
-        </div>
-      </section>
-    );
-  }
 
   async function submitMessage() {
     if (!input.trim() || isLoading) return;
@@ -74,7 +58,7 @@ export default function MusicAssistantPage() {
         flexDirection: "column",
         height: "100vh",
         maxHeight: "100vh",
-        paddingBottom: "var(--player-bar-height, 80px)",
+        paddingBottom: "calc(var(--player-bar-height, 80px) + env(safe-area-inset-bottom, 0px))",
         boxSizing: "border-box",
         overflow: "hidden",
         background: "var(--bg)",
@@ -91,7 +75,7 @@ export default function MusicAssistantPage() {
           flex: 1,
           overflowY: "auto",
           padding: "16px 20px",
-          paddingBottom: "24px",
+          paddingBottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
           display: "flex",
           flexDirection: "column",
           gap: "12px",
@@ -119,7 +103,7 @@ export default function MusicAssistantPage() {
         style={{
           flexShrink: 0,
           padding: "12px 20px",
-          paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))",
+          paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px) + 8px)",
           borderTop: "1px solid var(--border)",
           background: "var(--bg)",
           marginBottom: "var(--keyboard-height, 0px)",
