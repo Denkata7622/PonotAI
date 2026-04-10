@@ -30,6 +30,10 @@ export function useMusicAssistant() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
+  function appendSystemMessage(content: string) {
+    setMessages((prev) => [...prev, createMessage({ role: "system", content })]);
+  }
+
   async function sendMessage(text: string): Promise<void> {
     if (isLoading) return;
     const trimmed = text.trim();
@@ -59,9 +63,11 @@ export function useMusicAssistant() {
       });
     } catch (error) {
       const err = error as Error & { response?: { data?: { message?: string } }; message?: string };
-      const errorText = err?.response?.data?.message || err?.message || "Please try again.";
-      setMessages((prev) => [...prev, createMessage({ role: "system", content: errorText })]);
-      setError(errorText);
+      const apiMessage = err?.response?.data?.message
+        ?? err?.message
+        ?? "AI Assistant is temporarily unavailable. Please try again.";
+      appendSystemMessage(apiMessage);
+      setError(apiMessage);
     } finally {
       setIsLoading(false);
     }

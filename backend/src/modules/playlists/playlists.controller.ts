@@ -164,16 +164,34 @@ export async function addSongToPlaylistController(req: Request, res: Response) {
     return;
   }
 
-  const { playlistId } = req.params;
-  const { title, artist, album, coverUrl, videoId } = req.body as {
-    title: string;
-    artist: string;
+  const playlistId = req.params.playlistId ?? req.params.id;
+  const body = req.body as {
+    title?: string;
+    artist?: string;
     album?: string;
     coverUrl?: string;
     videoId?: string;
+    tracks?: Array<{ title?: string; artist?: string; album?: string; coverUrl?: string; videoId?: string }>;
+    trackIds?: Array<{ title?: string; artist?: string; album?: string; coverUrl?: string; videoId?: string }>;
+    songs?: Array<{ title?: string; artist?: string; album?: string; coverUrl?: string; videoId?: string }>;
   };
+  const incomingTracks = body.tracks ?? body.trackIds ?? body.songs;
+  const songsToAdd = Array.isArray(incomingTracks) && incomingTracks.length > 0
+    ? incomingTracks
+    : [{ title: body.title, artist: body.artist, album: body.album, coverUrl: body.coverUrl, videoId: body.videoId }];
 
-  if (!title || !artist) {
+  const validSongs = songsToAdd
+    .filter((song) => song && song.title && song.artist)
+    .map((song) => ({
+      title: String(song.title).trim(),
+      artist: String(song.artist).trim(),
+      album: song.album,
+      coverUrl: song.coverUrl,
+      videoId: song.videoId,
+    }))
+    .filter((song) => Boolean(song.title) && Boolean(song.artist));
+
+  if (!playlistId || validSongs.length === 0) {
     sendError(res, ErrorCatalog.MISSING_SONG_INFO);
     return;
   }
@@ -182,7 +200,7 @@ export async function addSongToPlaylistController(req: Request, res: Response) {
     userId,
     playlistId,
     hasAuthorizationHeader: Boolean(req.headers.authorization),
-    body: { title, artist, album, coverUrl, videoId },
+    songsCount: validSongs.length,
   });
 
   try {
@@ -197,16 +215,23 @@ export async function addSongToPlaylistController(req: Request, res: Response) {
       return;
     }
 
-    const updated = await db.addSongToPlaylist(playlistId, {
-      title,
-      artist,
-      album,
-      coverUrl,
-      videoId,
-    });
+    let updated = playlist;
+    let added = 0;
+    for (const song of validSongs) {
+      const before = updated.songs.length;
+      const next = await db.addSongToPlaylist(playlistId, song);
+      if (!next) {
+        sendError(res, ErrorCatalog.ADD_SONG_FAILED);
+        return;
+      }
+      updated = next;
+      if (next.songs.length > before) {
+        added += 1;
+      }
+    }
 
     invalidateLibraryContextCache(userId);
-    res.status(200).json(updated);
+    res.status(200).json({ playlist: updated, added });
   } catch (error) {
     console.error("Add song error:", error);
     sendError(res, ErrorCatalog.ADD_SONG_FAILED);

@@ -119,7 +119,37 @@ export async function addSongToPlaylist(
       return null;
     }
     console.debug("[playlist:addSong] success", { playlistId, status: response.status });
-    return (await response.json()) as Playlist;
+    const data = (await response.json()) as Playlist | { playlist: Playlist };
+    return "playlist" in data ? data.playlist : data;
+  } catch {
+    return null;
+  }
+}
+
+export async function addSongsToPlaylist(
+  playlistId: string,
+  tracks: Array<{
+    title: string;
+    artist: string;
+    album?: string;
+    coverUrl?: string;
+    videoId?: string;
+  }>
+): Promise<{ playlist: Playlist; added: number } | null> {
+  const token = getAuthToken();
+  if (!token || tracks.length === 0) return null;
+
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/api/playlists/${playlistId}/songs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ tracks }),
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as { playlist: Playlist; added: number };
   } catch {
     return null;
   }

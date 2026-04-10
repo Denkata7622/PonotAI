@@ -3,6 +3,8 @@
 import {
   ReactNode,
   CSSProperties,
+  useEffect,
+  useState,
 } from 'react';
 import {
   useFloating,
@@ -41,9 +43,16 @@ export function SmartDropdown({
   className,
   bottomPadding,
 }: SmartDropdownProps) {
-  const playerBarPadding = typeof window === 'undefined'
-    ? 0
-    : Number.parseInt(window.getComputedStyle(document.documentElement).getPropertyValue('--player-bar-height') || '0', 10) || 0;
+  const [playerBarPadding, setPlayerBarPadding] = useState(0);
+
+  useEffect(() => {
+    const value = Number.parseInt(
+      window.getComputedStyle(document.documentElement).getPropertyValue('--player-bar-height') || '0',
+      10,
+    ) || 0;
+    setPlayerBarPadding(value);
+  }, []);
+
   const viewportPadding = {
     top: 12,
     left: 12,
@@ -98,12 +107,16 @@ export function SmartDropdown({
   const dropdownStyle: CSSProperties = {
     ...floatingStyles,
     zIndex: 9999,
-    background: 'var(--card)',
+    background: 'var(--dropdown-bg, var(--card))',
+    opacity: 1,
     border: '1px solid var(--border)',
     borderRadius: '8px',
-    boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3)',
     overflowY: 'auto',
     maxHeight: '80vh',
+    backdropFilter: 'none',
+    WebkitBackdropFilter: 'none',
+    isolation: 'isolate',
   };
 
   return (
