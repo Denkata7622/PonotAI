@@ -20,18 +20,21 @@ export function useMusicAssistant() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMessages(loadConversation());
+    setMounted(true);
   }, []);
 
   useEffect(() => {
+    if (!mounted) return;
     if (messages.length > 0) {
       saveConversation(messages);
     }
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages]);
+  }, [messages, mounted]);
 
   function appendSystemMessage(content: string) {
     setMessages((prev) => [...prev, createMessage({ role: "system", content })]);
