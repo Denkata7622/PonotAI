@@ -67,13 +67,37 @@ export default function MusicAssistantPage() {
   }
 
   return (
-    <section className="assistant-page" style={{ height: "calc(100vh - var(--player-bar-height, 80px))" }}>
-      <header className="assistant-header">
+    <section
+      className="assistant-page"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        maxHeight: "100vh",
+        paddingBottom: "var(--player-bar-height, 80px)",
+        boxSizing: "border-box",
+        overflow: "hidden",
+        background: "var(--bg)",
+      }}
+    >
+      <header className="assistant-header" style={{ flexShrink: 0, borderBottom: "1px solid var(--border)", padding: "16px 20px" }}>
         <h1><Sparkles width={20} height={20} strokeWidth={1.8} /> PonotAI Assistant</h1>
         <button type="button" onClick={handleNewConversation}><RotateCcw width={15} height={15} strokeWidth={1.8} /> New conversation</button>
       </header>
 
-      <div className="assistant-thread" style={{ paddingBottom: "8px" }}>
+      <div
+        className="assistant-thread"
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "16px 20px",
+          paddingBottom: "24px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          minHeight: 0,
+        }}
+      >
         {messages.length === 0 ? (
           <div className="assistant-empty"><StarterPrompts onSelect={(prompt) => void sendMessage(prompt)} /></div>
         ) : (
@@ -90,7 +114,17 @@ export default function MusicAssistantPage() {
         <div ref={bottomRef} />
       </div>
 
-      <footer className="assistant-input-wrap" style={{ marginBottom: "var(--keyboard-height, 0px)" }}>
+      <footer
+        className="assistant-input-wrap"
+        style={{
+          flexShrink: 0,
+          padding: "12px 20px",
+          paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))",
+          borderTop: "1px solid var(--border)",
+          background: "var(--bg)",
+          marginBottom: "var(--keyboard-height, 0px)",
+        }}
+      >
         <textarea
           value={input}
           placeholder="Ask about your music..."
