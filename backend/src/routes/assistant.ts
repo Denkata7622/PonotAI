@@ -50,6 +50,13 @@ function validateConversation(payload: unknown): payload is GeminiMessage[] {
 assistantRouter.use(requireAuth);
 
 assistantRouter.post("/", async (req, res) => {
+  if (!process.env.GEMINI_API_KEY?.trim()) {
+    return res.status(503).json({
+      code: "AI_SERVICE_UNAVAILABLE",
+      message: "AI Assistant is not configured. The administrator needs to add GEMINI_API_KEY to the server environment variables. Get a free key at https://aistudio.google.com/app/apikey",
+    });
+  }
+
   const userId = req.userId!;
   if (!enforceUserRateLimit(userId)) {
     sendError(res, ErrorCatalog.RATE_LIMIT_EXCEEDED, { limit: 20, windowSeconds: 60 });
@@ -77,13 +84,6 @@ assistantRouter.post("/", async (req, res) => {
     role: item.role === "assistant" ? "model" : "user",
     parts: [{ text: item.content }],
   }));
-
-  if (!process.env.GEMINI_API_KEY?.trim()) {
-    return res.status(503).json({
-      code: "AI_SERVICE_UNAVAILABLE",
-      message: "AI Assistant is not configured. The administrator needs to add GEMINI_API_KEY to the server environment variables. Get a free key at https://aistudio.google.com/app/apikey",
-    });
-  }
 
   try {
     const context = await buildLibraryContext(userId, {
