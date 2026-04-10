@@ -61,9 +61,10 @@ export function useMusicAssistant() {
         saveConversation(updated);
         return updated;
       });
-    } catch (error) {
-      const err = error as Error & { response?: { data?: { message?: string } }; message?: string };
-      const apiMessage = err?.response?.data?.message
+    } catch (error: unknown) {
+      const err = error as { data?: { message?: string }; response?: { data?: { message?: string } }; message?: string };
+      const apiMessage = err?.data?.message
+        ?? err?.response?.data?.message
         ?? err?.message
         ?? "AI Assistant is temporarily unavailable. Please try again.";
       appendSystemMessage(apiMessage);

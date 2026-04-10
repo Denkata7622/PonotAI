@@ -3,7 +3,6 @@
 import { getApiBaseUrl } from "@/lib/apiConfig";
 import { getToken } from "@/src/lib/apiFetch";
 import type { AssistantMeta, ChatMessage, ActionIntent } from "./types";
-import { AssistantApiError } from "./types";
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -38,10 +37,13 @@ export async function sendAssistantMessage(
     }),
   });
 
-  const data = await response.json();
   if (!response.ok) {
-    throw new AssistantApiError(data.code || "ASSISTANT_REQUEST_FAILED", data.message || "Assistant request failed");
+    const errorData = await response.json().catch(() => ({}));
+    const error = new Error((errorData as { message?: string }).message ?? `HTTP ${response.status}`) as Error & { data?: unknown; status?: number };
+    error.data = errorData;
+    error.status = response.status;
+    throw error;
   }
 
-  return data as { reply: string; actionIntent: ActionIntent | null; meta: AssistantMeta };
+  return response.json() as Promise<{ reply: string; actionIntent: ActionIntent | null; meta: AssistantMeta }>;
 }

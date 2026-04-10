@@ -55,11 +55,7 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T
   throw lastError;
 }
 
-const MODELS_BY_PRIORITY = [
-  "gemini-2.0-flash-exp",
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
-] as const;
+const MODELS_BY_PRIORITY = ["gemini-2.0-flash-exp"] as const;
 
 export async function generateAssistantReply(
   systemPrompt: string,
