@@ -35,6 +35,7 @@ export default function SearchResultActions({
   const { language } = useLanguage();
   const [showPlaylists, setShowPlaylists] = useState(false);
   const [justFavorited, setJustFavorited] = useState(false);
+  const [playlistSubmitId, setPlaylistSubmitId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) setShowPlaylists(false);
@@ -140,11 +141,16 @@ export default function SearchResultActions({
                 <button
                   key={playlist.id}
                   type="button"
+                  disabled={playlistSubmitId === playlist.id}
                   className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--hover-bg)]"
                   onMouseDown={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    onAddToPlaylist(playlist.id);
+                    if (playlistSubmitId) return;
+                    setPlaylistSubmitId(playlist.id);
+                    Promise.resolve(onAddToPlaylist(playlist.id)).finally(() => {
+                      setPlaylistSubmitId(null);
+                    });
                     setShowPlaylists(false);
                     onClose();
                   }}

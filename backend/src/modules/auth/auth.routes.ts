@@ -84,10 +84,10 @@ authRouter.post("/logout", (_req, res) => res.status(200).json({ ok: true }));
 authRouter.get("/me", requireAuth, async (req, res) => {
   const user = await findUserById(req.userId!);
   if (!user) {
-    return res.status(404).json({ code: "USER_NOT_FOUND", message: "User not found" });
+    return void sendError(res, ErrorCatalog.NOT_FOUND);
   }
   const payload = toUserPayload(user);
-  res.status(200).json({ ...payload, user: payload });
+  res.status(200).json({ user: payload });
 });
 
 authRouter.patch("/me", requireAuth, async (req, res) => {

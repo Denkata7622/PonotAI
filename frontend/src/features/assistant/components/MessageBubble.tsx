@@ -21,7 +21,7 @@ export default function MessageBubble({ message, onAccept, onDismiss }: Props) {
   return (
     <div className={`assistant-message-wrap assistant-${message.role}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       <div className="assistant-message-bubble">
-        <p>{message.content}</p>
+        <div>{message.content}</div>
       </div>
       {hovered ? <span className="assistant-time">{time}</span> : null}
       {message.actionIntent && message.actionState === "pending" && onAccept && onDismiss ? (

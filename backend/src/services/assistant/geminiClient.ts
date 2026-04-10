@@ -34,7 +34,8 @@ function isRetryableError(error: unknown): boolean {
   const message = String(candidate?.message ?? "").toLowerCase();
   return shouldRetry(Number(candidate?.status))
     || message.includes("unavailable")
-    || message.includes("overloaded");
+    || message.includes("overloaded")
+    || message.includes("temporarily");
 }
 
 async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
@@ -55,7 +56,18 @@ async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T
   throw lastError;
 }
 
-const MODELS_BY_PRIORITY = ["gemini-2.0-flash-exp"] as const;
+const DEFAULT_MODELS_BY_PRIORITY = [
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+] as const;
+
+function getModelsByPriority(): string[] {
+  const fromEnv = process.env.GEMINI_MODELS?.trim();
+  if (!fromEnv) return [...DEFAULT_MODELS_BY_PRIORITY];
+  const models = fromEnv.split(",").map((model) => model.trim()).filter(Boolean);
+  return models.length > 0 ? models : [...DEFAULT_MODELS_BY_PRIORITY];
+}
 
 export async function generateAssistantReply(
   systemPrompt: string,
@@ -65,7 +77,8 @@ export async function generateAssistantReply(
   const client = getGeminiClient();
   const startedAt = Date.now();
   let lastError: unknown = null;
-  for (const modelName of MODELS_BY_PRIORITY) {
+  const modelsByPriority = getModelsByPriority();
+  for (const modelName of modelsByPriority) {
     try {
       const model = client.getGenerativeModel({
         model: modelName,
@@ -104,7 +117,7 @@ export async function generateAssistantReply(
     } catch (error) {
       lastError = error;
       console.error(`[assistant] Model ${modelName} failed:`, (error as Error)?.message ?? String(error));
-      if (modelName !== MODELS_BY_PRIORITY[MODELS_BY_PRIORITY.length - 1]) {
+      if (modelName !== modelsByPriority[modelsByPriority.length - 1]) {
         console.info("[assistant] Trying next Gemini model...");
       }
     }
@@ -112,7 +125,7 @@ export async function generateAssistantReply(
 
   const status = Number((lastError as { status?: number } | null)?.status);
   if (isRetryableError(lastError)) {
-    throw new GeminiError("GEMINI_TEMPORARY_UNAVAILABLE", "Gemini service is temporarily unavailable");
+    throw new GeminiError("GEMINI_TEMPORARY_UNAVAILABLE", "AI Assistant is temporarily busy. Please try again in a few seconds.");
   }
   throw new GeminiError(
     `GEMINI_${status || "UNKNOWN"}`,

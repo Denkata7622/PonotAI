@@ -31,7 +31,7 @@ export default function StatsPage() {
   return (
     <section
       className="space-y-6"
-      style={{ paddingBottom: "calc(var(--player-bar-height, 80px) + 32px)" }}
+      style={{ paddingBottom: "calc(var(--player-bar-height, 80px) + 32px + env(safe-area-inset-bottom, 0px))" }}
     >
       <div className="card p-6">
         <h1 className="text-3xl font-bold">{t("nav_stats", language)}</h1>
