@@ -105,6 +105,16 @@ export type PlaylistSongRecord = {
   videoId?: string;
 };
 
+export type TrackTagRecord = {
+  id: string;
+  userId: string;
+  trackKey: string;
+  genre: string;
+  mood: string;
+  tempo: string;
+  updatedAt: string;
+};
+
 type AppDb = {
   users: UserRecord[];
   searchHistory: SearchHistoryRecord[];
@@ -115,6 +125,7 @@ type AppDb = {
   sharedRecognitions: SharedRecognitionRecord[];
   achievements: AchievementRecord[];
   apiKeys: ApiKeyRecord[];
+  trackTags: TrackTagRecord[];
 };
 
 function resolveDataDir(): string {
@@ -154,6 +165,7 @@ async function ensureDb() {
       sharedRecognitions: [],
       achievements: [],
       apiKeys: [],
+      trackTags: [],
     };
     await fs.writeFile(dbPath, JSON.stringify(initial, null, 2));
   }
@@ -175,6 +187,7 @@ async function readDb(): Promise<AppDb> {
       sharedRecognitions: parsed.sharedRecognitions ?? [],
       achievements: parsed.achievements ?? [],
       apiKeys: parsed.apiKeys ?? [],
+      trackTags: parsed.trackTags ?? [],
     };
     let hasPlaylistMigration = false;
     db.playlists = db.playlists.map((playlist) => {
@@ -197,6 +210,7 @@ async function readDb(): Promise<AppDb> {
       sharedRecognitions: [],
       achievements: [],
       apiKeys: [],
+      trackTags: [],
     };
     await writeDb(fresh);
     return fresh;
@@ -532,4 +546,29 @@ export async function revokeApiKey(userId: string, id: string): Promise<boolean>
   found.revokedAt = new Date().toISOString();
   await writeDb(db);
   return true;
+}
+
+export async function getTrackTags(userId: string): Promise<TrackTagRecord[]> {
+  return (await readDb()).trackTags.filter((item) => item.userId === userId);
+}
+
+export async function setTrackTags(
+  userId: string,
+  tags: Array<Pick<TrackTagRecord, "trackKey" | "genre" | "mood" | "tempo">>,
+): Promise<TrackTagRecord[]> {
+  const db = await readDb();
+  db.trackTags = (db.trackTags ?? []).filter((item) => item.userId !== userId);
+  const now = new Date().toISOString();
+  const records = tags.map((tag) => ({
+    id: randomUUID(),
+    userId,
+    trackKey: tag.trackKey,
+    genre: tag.genre,
+    mood: tag.mood,
+    tempo: tag.tempo,
+    updatedAt: now,
+  }));
+  db.trackTags.unshift(...records);
+  await writeDb(db);
+  return records;
 }

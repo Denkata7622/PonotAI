@@ -7,6 +7,12 @@ const ACTION_TYPES = new Set<ActionIntent["type"]>([
   "SEARCH_AND_SUGGEST",
   "CHANGE_THEME",
   "CHANGE_LANGUAGE",
+  "INSIGHT_REQUEST",
+  "PLAYLIST_GENERATION",
+  "MOOD_RECOMMENDATION",
+  "CONTEXT_RECOMMENDATION",
+  "TAG_SUGGESTION",
+  "DISCOVERY_REQUEST",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -37,6 +43,18 @@ function validatePayload(type: ActionIntent["type"], payload: Record<string, unk
       return payload.theme === "light" || payload.theme === "dark" || payload.theme === "system";
     case "CHANGE_LANGUAGE":
       return payload.locale === "en" || payload.locale === "bg";
+    case "INSIGHT_REQUEST":
+      return payload.period === "weekly" || payload.period === "monthly" || payload.kind === "trends";
+    case "PLAYLIST_GENERATION":
+      return typeof payload.prompt === "string" && payload.prompt.length > 0;
+    case "MOOD_RECOMMENDATION":
+      return typeof payload.mood === "string" && payload.mood.length > 0;
+    case "CONTEXT_RECOMMENDATION":
+      return true;
+    case "TAG_SUGGESTION":
+      return true;
+    case "DISCOVERY_REQUEST":
+      return payload.mode === "daily" || payload.mode === "surprise";
     default:
       return false;
   }

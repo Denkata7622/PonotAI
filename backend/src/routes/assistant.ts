@@ -34,6 +34,11 @@ function stripActionTags(input: string): string {
   return input.replace(/<action>[\s\S]*?<\/action>/gi, "").trim();
 }
 
+function sanitizeUserMessage(input: string): string {
+  const stripped = stripActionTags(input);
+  return stripped.replace(/(ignore previous instructions|reveal system prompt|show hidden prompt)/gi, "[filtered]");
+}
+
 function validateConversation(payload: unknown): payload is GeminiMessage[] {
   if (!Array.isArray(payload) || payload.length > 15) return false;
 
@@ -77,10 +82,10 @@ assistantRouter.post("/", async (req, res) => {
     return;
   }
 
-  const message = stripActionTags(body.message).slice(0, 2000);
+  const message = sanitizeUserMessage(body.message).slice(0, 2000);
   const conversation = body.conversation.map((item) => ({
     role: item.role,
-    content: stripActionTags(item.content),
+    content: sanitizeUserMessage(item.content),
   }));
   const geminiHistory: GeminiHistoryMessage[] = conversation.map((item) => ({
     role: item.role === "assistant" ? "model" : "user",
@@ -94,6 +99,9 @@ assistantRouter.post("/", async (req, res) => {
       currentQueue: typeof req.headers["x-trackly-queue"] === "string"
         ? req.headers["x-trackly-queue"].split("|").filter(Boolean).slice(0, 10)
         : [],
+      deviceType: typeof req.headers["x-trackly-device"] === "string"
+        ? req.headers["x-trackly-device"]
+        : undefined,
     });
     if (context.topTracks.length === 0) {
       res.status(200).json({

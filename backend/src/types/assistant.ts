@@ -4,7 +4,13 @@ export type AssistantActionType =
   | "FAVORITE_TRACK"
   | "SEARCH_AND_SUGGEST"
   | "CHANGE_THEME"
-  | "CHANGE_LANGUAGE";
+  | "CHANGE_LANGUAGE"
+  | "INSIGHT_REQUEST"
+  | "PLAYLIST_GENERATION"
+  | "MOOD_RECOMMENDATION"
+  | "CONTEXT_RECOMMENDATION"
+  | "TAG_SUGGESTION"
+  | "DISCOVERY_REQUEST";
 
 export interface ActionIntent {
   type: AssistantActionType;
@@ -57,6 +63,11 @@ export interface LibraryContextPayload {
   currentTheme?: "light" | "dark" | "system";
   currentLanguage?: "en" | "bg";
   currentQueue?: string[];
+  context?: {
+    deviceType?: string;
+    dayOfWeek?: string;
+    hourUtc?: number;
+  };
   stats?: {
     topGenres: LibraryStatItem[];
     topArtists: LibraryStatItem[];

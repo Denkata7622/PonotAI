@@ -17,6 +17,7 @@ type ContextHints = {
   currentTheme?: "light" | "dark" | "system";
   currentLanguage?: "en" | "bg";
   currentQueue?: string[];
+  deviceType?: string;
 };
 
 const CACHE_TTL_MS = 90_000;
@@ -168,6 +169,11 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
     currentTheme: hints?.currentTheme,
     currentLanguage: hints?.currentLanguage,
     currentQueue: (hints?.currentQueue ?? []).slice(0, 10),
+    context: {
+      deviceType: hints?.deviceType?.slice(0, 40),
+      dayOfWeek: new Date().toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" }),
+      hourUtc: new Date().getUTCHours(),
+    },
     stats: {
       topGenres: [],
       topArtists: [...artistCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count })),

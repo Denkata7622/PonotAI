@@ -9,6 +9,7 @@ import { useTheme } from "@/lib/ThemeContext";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useProfile } from "@/lib/ProfileContext";
 import { useLibrary } from "@/features/library/useLibrary";
+import { runAssistantAction } from "../api";
 import type { ActionIntent } from "../types";
 
 type Props = {
@@ -24,6 +25,12 @@ function getActionLabel(type: ActionIntent["type"]) {
   if (type === "FAVORITE_TRACK") return { icon: Heart, text: "Favorite" };
   if (type === "CHANGE_THEME") return { icon: Sun, text: "Change Theme" };
   if (type === "CHANGE_LANGUAGE") return { icon: Languages, text: "Change Language" };
+  if (type === "INSIGHT_REQUEST") return { icon: Search, text: "Show Insights" };
+  if (type === "PLAYLIST_GENERATION") return { icon: ListMusic, text: "Generate Playlist" };
+  if (type === "MOOD_RECOMMENDATION") return { icon: Search, text: "Mood Picks" };
+  if (type === "CONTEXT_RECOMMENDATION") return { icon: Search, text: "Context Picks" };
+  if (type === "TAG_SUGGESTION") return { icon: Search, text: "Tag Library" };
+  if (type === "DISCOVERY_REQUEST") return { icon: Search, text: "Discovery" };
   return { icon: Search, text: "Search" };
 }
 
@@ -118,6 +125,19 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
         const locale = intent.payload.locale as "en" | "bg";
         setLocale(locale);
         window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Language changed to ${locale}` } }));
+      }
+
+      if (
+        intent.type === "INSIGHT_REQUEST"
+        || intent.type === "PLAYLIST_GENERATION"
+        || intent.type === "MOOD_RECOMMENDATION"
+        || intent.type === "CONTEXT_RECOMMENDATION"
+        || intent.type === "TAG_SUGGESTION"
+        || intent.type === "DISCOVERY_REQUEST"
+      ) {
+        const result = await runAssistantAction(intent);
+        window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `AI action complete: ${text}` } }));
+        console.info("[assistant action]", result);
       }
 
       window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: "Assistant action completed." } }));

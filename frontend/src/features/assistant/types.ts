@@ -10,7 +10,19 @@ export interface ChatMessage {
 }
 
 export interface ActionIntent {
-  type: 'ADD_TO_QUEUE' | 'CREATE_PLAYLIST' | 'FAVORITE_TRACK' | 'SEARCH_AND_SUGGEST' | 'CHANGE_THEME' | 'CHANGE_LANGUAGE';
+  type:
+    | 'ADD_TO_QUEUE'
+    | 'CREATE_PLAYLIST'
+    | 'FAVORITE_TRACK'
+    | 'SEARCH_AND_SUGGEST'
+    | 'CHANGE_THEME'
+    | 'CHANGE_LANGUAGE'
+    | 'INSIGHT_REQUEST'
+    | 'PLAYLIST_GENERATION'
+    | 'MOOD_RECOMMENDATION'
+    | 'CONTEXT_RECOMMENDATION'
+    | 'TAG_SUGGESTION'
+    | 'DISCOVERY_REQUEST';
   confidence: number;
   payload: Record<string, unknown>;
   requiresConfirmation: boolean;

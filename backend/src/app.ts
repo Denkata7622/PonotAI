@@ -21,6 +21,7 @@ import { apiRateLimit, recognitionRateLimit } from "./middlewares/rateLimit.midd
 import { responseTimeMiddleware } from "./middlewares/responseTime.middleware";
 import assistantRouter from "./routes/assistant";
 import coverArtRouter from "./routes/coverArt";
+import aiRouter from "./modules/ai/ai.routes";
 
 const app = express();
 const YAML = require("js-yaml");
@@ -92,9 +93,11 @@ app.use(
       "X-Trackly-Queue",
       "X-Trackly-Theme",
       "X-Trackly-Language",
+      "X-Trackly-Device",
       "x-trackly-queue",
       "x-trackly-theme",
       "x-trackly-language",
+      "x-trackly-device",
     ],
     exposedHeaders: ["X-Response-Time", "X-Request-ID"],
   }),
@@ -125,6 +128,7 @@ app.use("/api/search", searchRouter);
 app.use("/api/developer", developerRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/assistant", assistantRouter);
+app.use("/api/ai", aiRouter);
 app.use("/api/cover-art", coverArtRouter);
 
 app.use(errorMiddleware);
