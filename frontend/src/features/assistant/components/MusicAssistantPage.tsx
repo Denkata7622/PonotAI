@@ -9,32 +9,15 @@ import MessageBubble from "./MessageBubble";
 import StarterPrompts from "./StarterPrompts";
 import TypingIndicator from "./TypingIndicator";
 
-export default function MusicAssistantPage() {
+export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | "sidebar" }) {
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading } = useUser();
   const { messages, isLoading, sendMessage, resetConversation, acceptAction, dismissAction, bottomRef } = useMusicAssistant();
   const [input, setInput] = useState("");
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.replace("/auth");
-    }
-  }, [authLoading, isAuthenticated, router]);
-
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    if (!viewport) return;
-    const handler = () => {
-      const keyboardHeight = Math.max(0, window.innerHeight - viewport.height);
-      document.documentElement.style.setProperty("--keyboard-height", `${Math.round(keyboardHeight)}px`);
-    };
-    handler();
-    viewport.addEventListener("resize", handler);
-    return () => {
-      viewport.removeEventListener("resize", handler);
-      document.documentElement.style.removeProperty("--keyboard-height");
-    };
-  }, []);
+    if (mode === 'page' && !authLoading && !isAuthenticated) router.replace("/auth");
+  }, [authLoading, isAuthenticated, mode, router]);
 
   async function submitMessage() {
     if (!input.trim() || isLoading) return;
@@ -44,85 +27,36 @@ export default function MusicAssistantPage() {
   }
 
   function handleNewConversation() {
-    if (messages.length > 3 && !window.confirm("Start a new conversation?")) {
-      return;
-    }
+    if (messages.length > 3 && !window.confirm("Start a new conversation?")) return;
     resetConversation();
   }
 
+  if (!isAuthenticated && mode === 'sidebar') {
+    return <div className="grid h-full place-items-center p-6 text-center text-sm text-[var(--muted)]">Sign in to use the AI assistant.</div>;
+  }
+
   return (
-    <section
-      className="assistant-page"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        maxHeight: "100vh",
-        paddingBottom: "calc(var(--player-bar-height, 80px) + env(safe-area-inset-bottom, 0px))",
-        boxSizing: "border-box",
-        overflow: "hidden",
-        background: "var(--bg)",
-      }}
-    >
-      <header className="assistant-header" style={{ flexShrink: 0, borderBottom: "1px solid var(--border)", padding: "16px 20px" }}>
+    <section className={`assistant-page ${mode === 'sidebar' ? 'assistant-page--sidebar' : ''}`}>
+      <header className="assistant-header" style={{ flexShrink: 0, borderBottom: "1px solid var(--border)", padding: mode === 'sidebar' ? '12px 14px' : "16px 20px" }}>
         <h1><Sparkles width={20} height={20} strokeWidth={1.8} /> PonotAI Assistant</h1>
-        <button type="button" onClick={handleNewConversation}><RotateCcw width={15} height={15} strokeWidth={1.8} /> New conversation</button>
+        <button type="button" onClick={handleNewConversation}><RotateCcw width={15} height={15} strokeWidth={1.8} /> New</button>
       </header>
 
-      <div
-        className="assistant-thread"
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "16px 20px",
-          paddingBottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
-          display: "flex",
-          flexDirection: "column",
-          gap: "12px",
-          minHeight: 0,
-        }}
-      >
+      <div className="assistant-thread" style={{ flex: 1, minHeight: 0 }}>
         {messages.length === 0 ? (
           <div className="assistant-empty"><StarterPrompts onSelect={(prompt) => void sendMessage(prompt)} /></div>
         ) : (
           messages.map((message) => (
-            <MessageBubble
-              key={message.id}
-              message={message}
-              onAccept={() => acceptAction(message.id)}
-              onDismiss={() => dismissAction(message.id)}
-            />
+            <MessageBubble key={message.id} message={message} onAccept={() => acceptAction(message.id)} onDismiss={() => dismissAction(message.id)} />
           ))
         )}
         {isLoading ? <TypingIndicator /> : null}
         <div ref={bottomRef} />
       </div>
 
-      <footer
-        className="assistant-input-wrap"
-        style={{
-          flexShrink: 0,
-          padding: "12px 20px",
-          paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px) + 8px)",
-          borderTop: "1px solid var(--border)",
-          background: "var(--bg)",
-          marginBottom: "var(--keyboard-height, 0px)",
-        }}
-      >
-        <textarea
-          value={input}
-          placeholder="Ask about your music..."
-          onChange={(event) => setInput(event.target.value)}
-          rows={1}
-          maxLength={2000}
-          disabled={isLoading}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              void submitMessage();
-            }
-          }}
-        />
+      <footer className="assistant-input-wrap" style={{ marginBottom: mode === 'sidebar' ? 0 : 'var(--keyboard-height, 0px)' }}>
+        <textarea value={input} placeholder="Ask about your music..." onChange={(event) => setInput(event.target.value)} rows={1} maxLength={2000} disabled={isLoading}
+          onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }} />
         <button type="button" onClick={() => void submitMessage()} disabled={!input.trim() || isLoading}><Send width={18} height={18} strokeWidth={1.8} /></button>
       </footer>
       {input.length > 1800 ? <p className="assistant-counter">{input.length}/2000</p> : null}

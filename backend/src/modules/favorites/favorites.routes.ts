@@ -15,12 +15,14 @@ favoritesRouter.get("/", async (req, res) => {
 
 favoritesRouter.post("/", async (req, res) => {
   const { title, artist, album, coverUrl } = req.body as { title?: string; artist?: string; album?: string; coverUrl?: string };
-  if (!title || !artist) return void sendError(res, ErrorCatalog.INVALID_PAYLOAD);
+  const safeTitle = typeof title === "string" ? title.trim().slice(0, 180) : "";
+  const safeArtist = typeof artist === "string" ? artist.trim().slice(0, 180) : "";
+  if (!safeTitle || !safeArtist) return void sendError(res, ErrorCatalog.INVALID_PAYLOAD);
 
-  const dup = await findDuplicateFavorite(req.userId!, title, artist);
+  const dup = await findDuplicateFavorite(req.userId!, safeTitle, safeArtist);
   if (dup) return void res.status(200).json(dup);
 
-  const item = await createFavorite({ userId: req.userId!, title, artist, album, coverUrl });
+  const item = await createFavorite({ userId: req.userId!, title: safeTitle, artist: safeArtist, album, coverUrl });
   invalidateLibraryContextCache(req.userId!);
   res.status(201).json(item);
 });

@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from "react";
+import { scopedKey, useProfile } from "../../lib/ProfileContext";
+import { normalizeTrackKey } from "../../lib/dedupe";
 import { Download, FileSpreadsheet, Moon, Sun, Trash2, Upload } from "../../lucide-react";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -8,25 +10,24 @@ import { Input } from "../components/ui/Input";
 import Modal from "../components/ui/Modal";
 import { useUser } from "../context/UserContext";
 import { useTheme } from "../../lib/ThemeContext";
-import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON } from "../lib/libraryExport";
+import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON, LIBRARY_EXPORT_VERSION } from "../lib/libraryExport";
 import type { Playlist } from "../../features/library/types";
 
-function getLibraryData() {
-  if (typeof window === "undefined") {
-    return { favorites: [], history: [], playlists: [] };
-  }
-  try {
-    const favorites = JSON.parse(window.localStorage.getItem("ponotai.library.favorites") ?? "[]");
-    const playlists = JSON.parse(window.localStorage.getItem("ponotai.library.playlists") ?? "[]");
-    const history = JSON.parse(window.localStorage.getItem("ponotai-history") ?? "[]");
-    return { favorites, history, playlists };
-  } catch {
-    return { favorites: [], history: [], playlists: [] };
-  }
+function dedupeByTrack<T extends { title?: string; artist?: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = normalizeTrackKey(item.title ?? "", item.artist ?? "");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export default function SettingsPage() {
-  const [libraryData, setLibraryData] = useState(() => ({ favorites: [], history: [], playlists: [] as Playlist[] }));
+  const [libraryData, setLibraryData] = useState<{ favorites: unknown[]; history: unknown[]; playlists: Playlist[] }>(() => ({ favorites: [], history: [], playlists: [] }));
+  const [importSummary, setImportSummary] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const { profile } = useProfile();
   const {
     user,
     preferences,
@@ -38,6 +39,7 @@ export default function SettingsPage() {
     favorites,
     history,
     addFavorite,
+    addToHistory,
   } = useUser();
 
   const { theme, toggleTheme } = useTheme();
@@ -50,12 +52,16 @@ export default function SettingsPage() {
   const [showDangerModal, setShowDangerModal] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [importFile, setImportFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setLibraryData(getLibraryData());
-  }, []);
+    try {
+      const playlists = JSON.parse(window.localStorage.getItem(scopedKey("ponotai.library.playlists", profile.id)) ?? "[]") as Playlist[];
+      setLibraryData({ favorites, history, playlists });
+    } catch {
+      setLibraryData({ favorites: [], history: [], playlists: [] });
+    }
+  }, [favorites, history, profile.id]);
 
   const canDelete = confirmText === (user?.username ?? "");
 
@@ -111,17 +117,31 @@ export default function SettingsPage() {
 
   function handleExportJSON() {
     try {
-      exportLibraryAsJSON(
-        favorites,
-        history,
-        libraryData.playlists,
-        user?.username || "library"
-      );
+      const queueState = JSON.parse(window.localStorage.getItem("ponotai.queue.v1") ?? "{}") as { queue?: Array<{ track?: { title?: string; artist?: string; artworkUrl?: string; videoId?: string } }> };
+      const payload = {
+        version: LIBRARY_EXPORT_VERSION,
+        exportedAt: new Date().toISOString(),
+        app: "Trackly" as const,
+        user: user ? { id: user.id, username: user.username, email: user.email } : null,
+        data: {
+          favorites: favorites ?? [],
+          history: history ?? [],
+          playlists: libraryData.playlists ?? [],
+          queue: (queueState.queue ?? []).map((entry) => ({
+            title: entry.track?.title ?? "",
+            artist: entry.track?.artist ?? "",
+            artworkUrl: entry.track?.artworkUrl,
+            videoId: entry.track?.videoId,
+          })).filter((entry) => entry.title && entry.artist),
+          settings: {
+            theme: window.localStorage.getItem("ponotai-theme"),
+            language: window.localStorage.getItem("ponotai-language"),
+          },
+        },
+      };
+      exportLibraryAsJSON(payload, user?.username || "guest");
       alert("Library exported successfully as JSON!");
     } catch (e) {
-      if (process.env.NODE_ENV !== "production") {
-        console.error("Export failed:", e);
-      }
       alert("Export failed: " + (e instanceof Error ? e.message : "Unknown error"));
     }
   }
@@ -143,20 +163,41 @@ export default function SettingsPage() {
   }
 
   async function handleImport(file: File) {
+    setIsImporting(true);
+    setImportSummary(null);
     try {
-      const data = await importLibraryFromJSON(file);
-      // Merge imported data with existing data
-      for (const fav of data.data.favorites) {
-        await addFavorite({
-          title: fav.title,
-          artist: fav.artist,
-          album: fav.album,
-          coverUrl: fav.coverUrl,
-        });
+      const payload = await importLibraryFromJSON(file);
+      const favoritesToImport = dedupeByTrack(payload.data.favorites ?? []);
+      const historyToImport = dedupeByTrack(payload.data.history ?? []);
+      for (const item of historyToImport) {
+        await addToHistory(item);
       }
-      alert("Library imported successfully!");
+      const playlistsToImport = Array.isArray(payload.data.playlists) ? payload.data.playlists : [];
+
+      let importedFavorites = 0;
+      const duplicateFavorites = Math.max(0, (payload.data.favorites ?? []).length - favoritesToImport.length);
+      for (const fav of favoritesToImport) {
+        await addFavorite({ title: fav.title, artist: fav.artist, album: fav.album, coverUrl: fav.coverUrl });
+        importedFavorites += 1;
+      }
+
+      if (!isAuthenticated) {
+        window.localStorage.setItem(scopedKey("ponotai.library.playlists", profile.id), JSON.stringify(playlistsToImport));
+      }
+
+      window.localStorage.setItem("ponotai.queue.v1", JSON.stringify({ queue: (payload.data.queue ?? []).map((entry) => ({ queueId: crypto.randomUUID(), addedAt: new Date().toISOString(), source: 'manual', track: { id: `${entry.title}-${entry.artist}`, title: entry.title, artist: entry.artist, artworkUrl: entry.artworkUrl, videoId: entry.videoId, query: `${entry.title} ${entry.artist}` } })) }));
+
+      const theme = payload.data.settings?.theme;
+      const language = payload.data.settings?.language;
+      if (typeof theme === 'string') window.localStorage.setItem('ponotai-theme', theme);
+      if (typeof language === 'string') window.localStorage.setItem('ponotai-language', language);
+
+      setImportSummary(`Imported favorites: ${importedFavorites} (skipped duplicates: ${duplicateFavorites}), history entries: ${historyToImport.length}, playlists: ${playlistsToImport.length}.`);
+      alert('Library imported successfully!');
     } catch (e) {
       alert(`Import failed: ${(e as Error).message}`);
+    } finally {
+      setIsImporting(false);
     }
   }
 
@@ -279,18 +320,20 @@ export default function SettingsPage() {
                 accept=".json"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file) handleImport(file);
+                  if (file) void handleImport(file);
                 }}
                 className="hidden"
               />
               <Button 
                 variant="secondary"
                 onClick={() => fileInputRef.current?.click()}
+                disabled={isImporting}
                 className="flex-1"
               >
                 <span className="inline-flex items-center gap-2"><Upload className="w-4 h-4 text-[var(--muted)]" />Import from JSON</span>
               </Button>
             </div>
+            {importSummary ? <p className="text-xs text-[var(--muted)] mt-2">{importSummary}</p> : null}
             <p className="text-xs text-text-muted mt-2">
               Statistics: {libraryData.favorites.length} favorites · {libraryData.playlists.length} playlists · {libraryData.history.length} history entries
             </p>

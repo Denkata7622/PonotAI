@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth.middleware";
+import { assistantRateLimit } from "../middlewares/rateLimit.middleware";
 import { ErrorCatalog, sendError } from "../errors/errorCatalog";
 import { buildLibraryContext } from "../services/assistant/contextBuilder";
 import { buildSystemPrompt } from "../services/assistant/prompt";
@@ -47,6 +48,7 @@ function validateConversation(payload: unknown): payload is GeminiMessage[] {
   });
 }
 
+assistantRouter.use(assistantRateLimit);
 assistantRouter.use(requireAuth);
 
 assistantRouter.post("/", async (req, res) => {
@@ -75,7 +77,7 @@ assistantRouter.post("/", async (req, res) => {
     return;
   }
 
-  const message = stripActionTags(body.message);
+  const message = stripActionTags(body.message).slice(0, 2000);
   const conversation = body.conversation.map((item) => ({
     role: item.role,
     content: stripActionTags(item.content),

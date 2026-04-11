@@ -14,6 +14,7 @@ type RateLimitOptions = {
 const recognitionBuckets = new Map<string, ClientBucket>();
 const authBuckets = new Map<string, ClientBucket>();
 const apiBuckets = new Map<string, ClientBucket>();
+const assistantBuckets = new Map<string, ClientBucket>();
 
 function resolveClientKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
@@ -66,5 +67,12 @@ export function apiRateLimit(req: Request, res: Response, next: NextFunction): v
   enforceRateLimit(req, res, next, apiBuckets, {
     windowMs: 60_000,
     maxRequests: 100,
+  });
+}
+
+export function assistantRateLimit(req: Request, res: Response, next: NextFunction): void {
+  enforceRateLimit(req, res, next, assistantBuckets, {
+    windowMs: 60_000,
+    maxRequests: 12,
   });
 }

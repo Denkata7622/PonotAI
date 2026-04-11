@@ -71,6 +71,20 @@ export function validateEnvironment(): void {
     console.warn("WARN: Using default JWT_SECRET — do not use in production");
   }
 
+
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];
+  if (isProduction && allowedOrigins.length === 0) {
+    console.error("FATAL: ALLOWED_ORIGINS is required in production");
+    process.exit(1);
+  }
+
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (databaseUrl) {
+    process.env.DATABASE_URL = databaseUrl;
+  } else if (isProduction) {
+    console.warn('[env] DATABASE_URL missing in production; database-backed features may fail.');
+  }
+
   const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
   if (geminiApiKey) {
     process.env.GEMINI_API_KEY = geminiApiKey;
