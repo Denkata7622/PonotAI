@@ -8,11 +8,17 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     return;
   }
 
+  if (req.userRole === "admin") {
+    next();
+    return;
+  }
+
   const user = await findUserById(req.userId);
   if (!user || user.role !== "admin") {
     sendError(res, ErrorCatalog.FORBIDDEN);
     return;
   }
 
+  req.userRole = "admin";
   next();
 }

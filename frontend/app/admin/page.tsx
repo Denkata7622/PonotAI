@@ -2,12 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/src/lib/apiFetch";
+import { useUser } from "@/src/context/UserContext";
 
 export default function AdminPage() {
+  const { user, isLoading } = useUser();
   const [overview, setOverview] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isLoading) return;
+    if (!user || user.role !== "admin") {
+      setError("Admin access required.");
+      return;
+    }
     apiFetch("/api/admin/overview")
       .then(async (res) => {
         if (!res.ok) {
@@ -17,7 +24,7 @@ export default function AdminPage() {
         setOverview(await res.json());
       })
       .catch(() => setError("Failed to load admin overview."));
-  }, []);
+  }, [isLoading, user]);
 
   async function createDemo(persona: "gym" | "indie" | "nostalgia") {
     const res = await apiFetch("/api/admin/demo-account", { method: "POST", body: JSON.stringify({ persona }) });

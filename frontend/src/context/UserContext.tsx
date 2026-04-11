@@ -18,6 +18,7 @@ export type User = {
   id: string;
   username: string;
   email: string;
+  role: "user" | "admin";
   avatarBase64?: string | null;
   bio?: string | null;
   createdAt: string;
@@ -245,10 +246,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
     apiFetch("/api/auth/me")
       .then(async (res) => {
         if (!res.ok) throw new Error("UNAUTHORIZED");
-        const payload = (await res.json()) as User | { user?: User };
+        const payload = (await res.json()) as User | { user?: User; token?: string };
         const me = ("user" in payload && payload.user
           ? payload.user
           : payload) as User;
+        if ("token" in payload && payload.token && typeof window !== "undefined") {
+          localStorage.setItem(TOKEN_KEY, payload.token);
+        }
         setAuthState({ user: me });
         await fetchServerData();
       })
