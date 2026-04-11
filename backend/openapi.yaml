@@ -950,6 +950,94 @@ paths:
       responses:
         '201': { description: Demo account generated }
 
+  /api/ai/insights/weekly:
+    get:
+      tags: [AI]
+      summary: Weekly listening insights
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Weekly insight summary.
+  /api/ai/insights/monthly:
+    get:
+      tags: [AI]
+      summary: Monthly listening insights
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Monthly insight summary.
+  /api/ai/insights/trends:
+    get:
+      tags: [AI]
+      summary: Listening trends and preference shifts
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Trend analytics.
+  /api/ai/playlists/generate:
+    post:
+      tags: [AI]
+      summary: Generate a smart playlist preview or save it with confirmation
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Playlist preview/save result.
+  /api/ai/playlists/update:
+    post:
+      tags: [AI]
+      summary: Preview adaptive playlist updates
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Playlist update preview.
+  /api/ai/recommendations/mood:
+    get:
+      tags: [AI]
+      summary: Mood-based recommendations
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Mood track suggestions.
+  /api/ai/recommendations/contextual:
+    get:
+      tags: [AI]
+      summary: Context-aware recommendations using time/device/weather
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Contextual recommendation payload.
+  /api/ai/tags/suggest:
+    post:
+      tags: [AI]
+      summary: Suggest AI tags and cleanup opportunities
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Tagging suggestions.
+  /api/ai/tags/apply:
+    post:
+      tags: [AI]
+      summary: Apply approved tags
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Tag apply status.
+  /api/ai/discovery/daily:
+    get:
+      tags: [AI]
+      summary: Daily personalized discovery recommendations
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Cached or fresh daily recommendations.
+  /api/ai/discovery/surprise:
+    get:
+      tags: [AI]
+      summary: Surprise Me recommendation
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Single surprise recommendation.
 components:
   securitySchemes:
     bearerAuth:

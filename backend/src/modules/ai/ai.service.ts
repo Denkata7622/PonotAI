@@ -1,0 +1,407 @@
+import { randomUUID } from "node:crypto";
+import {
+  createPlaylist,
+  getTrackTags,
+  getUserPlaylists,
+  listFavorites,
+  listUserHistory,
+  setTrackTags,
+  type FavoriteRecord,
+  type PlaylistRecord,
+  type SearchHistoryRecord,
+  type TrackTagRecord,
+} from "../../db/authStore";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function normalize(value?: string): string {
+  return (value ?? "").toLowerCase().trim();
+}
+
+function trackKey(title?: string, artist?: string): string {
+  return `${normalize(title)}|||${normalize(artist)}`;
+}
+
+function parseDate(iso?: string): number {
+  if (!iso) return 0;
+  const timestamp = new Date(iso).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function inferGenre(text: string): string {
+  const lowered = normalize(text);
+  if (/(indie|alternative|garage)/.test(lowered)) return "indie rock";
+  if (/(hip hop|rap|trap)/.test(lowered)) return "hip-hop";
+  if (/(edm|house|techno|dance)/.test(lowered)) return "electronic";
+  if (/(r&b|soul)/.test(lowered)) return "r&b";
+  if (/(jazz|blues)/.test(lowered)) return "jazz";
+  if (/(classical|orchestra|piano)/.test(lowered)) return "classical";
+  if (/(rock|metal|punk)/.test(lowered)) return "rock";
+  if (/(pop)/.test(lowered)) return "pop";
+  return "unknown";
+}
+
+function inferMood(text: string): string {
+  const lowered = normalize(text);
+  if (/(sleep|calm|ambient|rain)/.test(lowered)) return "relax";
+  if (/(focus|study|instrumental|lofi)/.test(lowered)) return "focus";
+  if (/(gym|workout|energy|power)/.test(lowered)) return "workout";
+  if (/(party|dance|club)/.test(lowered)) return "party";
+  if (/(sad|blue|melancholy)/.test(lowered)) return "reflective";
+  return "neutral";
+}
+
+function aggregateBase(history: SearchHistoryRecord[], favorites: FavoriteRecord[], playlists: PlaylistRecord[]) {
+  const artistCounts = new Map<string, number>();
+  const genreCounts = new Map<string, number>();
+  const moodCounts = new Map<string, number>();
+  const playsByTrack = new Map<string, number>();
+
+  for (const item of history) {
+    const key = trackKey(item.title, item.artist);
+    playsByTrack.set(key, (playsByTrack.get(key) ?? 0) + 1);
+
+    if (item.artist) artistCounts.set(item.artist, (artistCounts.get(item.artist) ?? 0) + 1);
+
+    const text = `${item.title ?? ""} ${item.artist ?? ""} ${item.album ?? ""}`;
+    const genre = inferGenre(text);
+    const mood = inferMood(text);
+    genreCounts.set(genre, (genreCounts.get(genre) ?? 0) + 1);
+    moodCounts.set(mood, (moodCounts.get(mood) ?? 0) + 1);
+  }
+
+  for (const fav of favorites) {
+    if (fav.artist) artistCounts.set(fav.artist, (artistCounts.get(fav.artist) ?? 0) + 2);
+    const text = `${fav.title} ${fav.artist} ${fav.album ?? ""}`;
+    genreCounts.set(inferGenre(text), (genreCounts.get(inferGenre(text)) ?? 0) + 2);
+    moodCounts.set(inferMood(text), (moodCounts.get(inferMood(text)) ?? 0) + 2);
+  }
+
+  for (const playlist of playlists) {
+    for (const song of playlist.songs ?? []) {
+      const text = `${song.title} ${song.artist} ${song.album ?? ""}`;
+      genreCounts.set(inferGenre(text), (genreCounts.get(inferGenre(text)) ?? 0) + 1);
+      moodCounts.set(inferMood(text), (moodCounts.get(inferMood(text)) ?? 0) + 1);
+    }
+  }
+
+  return {
+    artistCounts,
+    genreCounts,
+    moodCounts,
+    playsByTrack,
+  };
+}
+
+function topCounts(input: Map<string, number>, size = 5): Array<{ name: string; count: number }> {
+  return [...input.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, size)
+    .map(([name, count]) => ({ name, count }));
+}
+
+function summarizeShift(genreCounts: Map<string, number>, recentGenreCounts: Map<string, number>): string {
+  const [recentTop] = topCounts(recentGenreCounts, 1);
+  const [allTimeTop] = topCounts(genreCounts, 1);
+  if (!recentTop || !allTimeTop) return "Not enough data to detect a preference shift yet.";
+  if (recentTop.name !== allTimeTop.name) {
+    return `Your taste is shifting toward ${recentTop.name}.`;
+  }
+  return `Your current listening still centers on ${allTimeTop.name}.`;
+}
+
+function buildTrendPoints(history: SearchHistoryRecord[], days: number) {
+  const now = Date.now();
+  const buckets = new Map<string, number>();
+  for (let i = 0; i < days; i += 1) {
+    const date = new Date(now - i * DAY_MS).toISOString().slice(0, 10);
+    buckets.set(date, 0);
+  }
+
+  for (const item of history) {
+    const timestamp = parseDate(item.createdAt);
+    if (!timestamp || now - timestamp > days * DAY_MS) continue;
+    const date = new Date(timestamp).toISOString().slice(0, 10);
+    buckets.set(date, (buckets.get(date) ?? 0) + 1);
+  }
+
+  return [...buckets.entries()]
+    .map(([date, count]) => ({ date, plays: count }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export async function getListeningInsights(userId: string, period: "weekly" | "monthly") {
+  const [history, favorites, playlists] = await Promise.all([
+    listUserHistory(userId),
+    listFavorites(userId),
+    getUserPlaylists(userId),
+  ]);
+
+  const days = period === "weekly" ? 7 : 30;
+  const now = Date.now();
+  const windowHistory = history.filter((item) => now - parseDate(item.createdAt) <= days * DAY_MS);
+  const recentSlice = history.filter((item) => now - parseDate(item.createdAt) <= 14 * DAY_MS);
+
+  const aggregate = aggregateBase(windowHistory, favorites, playlists);
+  const recentAggregate = aggregateBase(recentSlice, favorites, playlists);
+
+  return {
+    period,
+    generatedAt: new Date().toISOString(),
+    totalPlays: windowHistory.length,
+    uniqueTracks: aggregate.playsByTrack.size,
+    topArtists: topCounts(aggregate.artistCounts),
+    favoriteGenres: topCounts(aggregate.genreCounts),
+    favoriteMoods: topCounts(aggregate.moodCounts),
+    trend: summarizeShift(aggregate.genreCounts, recentAggregate.genreCounts),
+    trendPoints: buildTrendPoints(windowHistory, days),
+    explainability: {
+      dataSources: {
+        historyCount: history.length,
+        favoritesCount: favorites.length,
+        playlistsCount: playlists.length,
+      },
+      basis: "Insights are computed from recognized tracks, favorites, and playlist composition.",
+    },
+  };
+}
+
+export async function getListeningTrends(userId: string) {
+  const history = await listUserHistory(userId);
+  const monthly = buildTrendPoints(history, 30);
+  const weekly = buildTrendPoints(history, 7);
+
+  const morning = history.filter((item) => {
+    const hour = new Date(item.createdAt).getHours();
+    return hour >= 5 && hour < 12;
+  }).length;
+  const afternoon = history.filter((item) => {
+    const hour = new Date(item.createdAt).getHours();
+    return hour >= 12 && hour < 18;
+  }).length;
+  const evening = history.filter((item) => {
+    const hour = new Date(item.createdAt).getHours();
+    return hour >= 18 || hour < 5;
+  }).length;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    weekly,
+    monthly,
+    listeningWindows: { morning, afternoon, evening },
+    emergingPreference: weekly.at(-1)?.plays && weekly.at(-1)!.plays > (weekly.at(-2)?.plays ?? 0)
+      ? "Listening volume is increasing — you may be open to discovery-heavy mixes."
+      : "Listening volume is stable; keep balancing familiar and exploratory tracks.",
+  };
+}
+
+function parseMoodInput(input: string): "relax" | "focus" | "workout" | "party" | "sleep" {
+  const lowered = normalize(input);
+  if (/(sleep|night|bed)/.test(lowered)) return "sleep";
+  if (/(focus|study|work|deep)/.test(lowered)) return "focus";
+  if (/(gym|run|workout|training)/.test(lowered)) return "workout";
+  if (/(party|celebrate|dance)/.test(lowered)) return "party";
+  return "relax";
+}
+
+function rankTrackForMood(track: { title?: string; artist?: string; album?: string }, mood: string): number {
+  const text = `${track.title ?? ""} ${track.artist ?? ""} ${track.album ?? ""}`.toLowerCase();
+  let score = 1;
+  if (mood === inferMood(text)) score += 4;
+  if (mood === "workout" && /(power|fast|run|beat|energy)/.test(text)) score += 2;
+  if (mood === "focus" && /(instrumental|acoustic|study|ambient)/.test(text)) score += 2;
+  if (mood === "sleep" && /(calm|sleep|night|dream)/.test(text)) score += 2;
+  return score;
+}
+
+export async function generateSmartPlaylist(userId: string, prompt: string) {
+  const [favorites, history, playlists] = await Promise.all([
+    listFavorites(userId),
+    listUserHistory(userId),
+    getUserPlaylists(userId),
+  ]);
+  const mood = parseMoodInput(prompt);
+  const seedTracks = [
+    ...favorites.map((f) => ({ title: f.title, artist: f.artist, album: f.album, coverUrl: f.coverUrl })),
+    ...history.map((h) => ({ title: h.title, artist: h.artist, album: h.album, coverUrl: h.coverUrl })),
+  ].filter((item) => item.title && item.artist);
+
+  const deduped = new Map<string, { title?: string; artist?: string; album?: string; coverUrl?: string }>();
+  for (const track of seedTracks) deduped.set(trackKey(track.title, track.artist), track);
+
+  const suggestions = [...deduped.values()]
+    .sort((a, b) => rankTrackForMood(b, mood) - rankTrackForMood(a, mood))
+    .slice(0, 25)
+    .map((track) => ({
+      trackId: trackKey(track.title, track.artist),
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      coverUrl: track.coverUrl,
+    }));
+
+  const existingNames = new Set(playlists.map((item) => item.name.toLowerCase()));
+  const baseName = `AI ${mood[0].toUpperCase()}${mood.slice(1)} Mix`;
+  let name = baseName;
+  let counter = 2;
+  while (existingNames.has(name.toLowerCase())) {
+    name = `${baseName} ${counter}`;
+    counter += 1;
+  }
+
+  return {
+    confirmationRequired: true,
+    playlist: {
+      name,
+      description: `Generated for prompt: ${prompt.slice(0, 120)}`,
+      mood,
+      tracks: suggestions,
+      basedOn: {
+        favorites: favorites.length,
+        recognitionHistory: history.length,
+      },
+    },
+  };
+}
+
+export async function saveGeneratedPlaylist(userId: string, payload: { name: string; tracks: Array<{ title: string; artist: string; album?: string; coverUrl?: string; videoId?: string }> }) {
+  const playlist = await createPlaylist(userId, payload.name, randomUUID(), payload.tracks);
+  return playlist;
+}
+
+async function fetchWeatherContext(latitude: number, longitude: number): Promise<{ temperature: number; weatherCode: number } | null> {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code`;
+  try {
+    const response = await fetch(url, { method: "GET" });
+    if (!response.ok) return null;
+    const data = await response.json() as { current?: { temperature_2m?: number; weather_code?: number } };
+    if (typeof data.current?.temperature_2m !== "number" || typeof data.current?.weather_code !== "number") return null;
+    return { temperature: data.current.temperature_2m, weatherCode: data.current.weather_code };
+  } catch {
+    return null;
+  }
+}
+
+export async function getMoodRecommendations(userId: string, moodInput: string) {
+  const mood = parseMoodInput(moodInput);
+  const [favorites, history] = await Promise.all([listFavorites(userId), listUserHistory(userId)]);
+  const candidates = [...favorites, ...history]
+    .filter((item) => item.title && item.artist)
+    .map((item) => ({ title: item.title!, artist: item.artist!, album: item.album, coverUrl: item.coverUrl }));
+
+  const deduped = new Map<string, { title: string; artist: string; album?: string; coverUrl?: string }>();
+  for (const item of candidates) {
+    deduped.set(trackKey(item.title, item.artist), item);
+  }
+
+  const tracks = [...deduped.values()]
+    .sort((a, b) => rankTrackForMood(b, mood) - rankTrackForMood(a, mood))
+    .slice(0, 20);
+
+  return {
+    mood,
+    presets: ["relax", "focus", "workout", "party", "sleep"],
+    tracks,
+    source: tracks.length > 0 ? "library" : "curated_fallback",
+  };
+}
+
+export async function getContextualRecommendations(userId: string, context: { latitude?: number; longitude?: number; deviceType?: string }) {
+  const now = new Date();
+  const dayOfWeek = now.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+  const hour = now.getUTCHours();
+  const timeSlot = hour < 6 ? "late-night" : hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+  const weather = (typeof context.latitude === "number" && typeof context.longitude === "number")
+    ? await fetchWeatherContext(context.latitude, context.longitude)
+    : null;
+
+  const moodHint = weather && weather.temperature > 28 ? "relax" : timeSlot === "morning" ? "focus" : "party";
+  const recommendations = await getMoodRecommendations(userId, moodHint);
+
+  return {
+    context: {
+      dayOfWeek,
+      timeSlot,
+      deviceType: context.deviceType ?? "unknown",
+      weather,
+    },
+    recommendations,
+  };
+}
+
+export async function suggestTags(userId: string) {
+  const [history, existing] = await Promise.all([listUserHistory(userId), getTrackTags(userId)]);
+  const existingByKey = new Map(existing.map((item) => [item.trackKey, item]));
+  const suggestions = history.slice(0, 100).map((item) => {
+    const key = trackKey(item.title, item.artist);
+    const text = `${item.title ?? ""} ${item.artist ?? ""} ${item.album ?? ""}`;
+    return {
+      trackKey: key,
+      title: item.title,
+      artist: item.artist,
+      genre: inferGenre(text),
+      mood: inferMood(text),
+      tempo: /(fast|run|dance|power)/i.test(text) ? "high" : /(calm|sleep|slow)/i.test(text) ? "low" : "medium",
+      isUpdate: existingByKey.has(key),
+    };
+  });
+
+  const duplicateGroups = new Map<string, number>();
+  for (const entry of history) {
+    const key = trackKey(entry.title, entry.artist);
+    duplicateGroups.set(key, (duplicateGroups.get(key) ?? 0) + 1);
+  }
+
+  return {
+    confirmationRequired: true,
+    suggestions,
+    cleanup: [...duplicateGroups.entries()].filter(([, count]) => count > 1).map(([key, count]) => ({ trackKey: key, count })),
+  };
+}
+
+export async function applyTags(userId: string, tags: Array<Pick<TrackTagRecord, "trackKey" | "genre" | "mood" | "tempo">>, confirmed: boolean) {
+  if (!confirmed) {
+    return { applied: 0, confirmationRequired: true };
+  }
+
+  const sanitized = tags
+    .filter((tag) => tag.trackKey && tag.genre && tag.mood && tag.tempo)
+    .slice(0, 100)
+    .map((tag) => ({
+      trackKey: tag.trackKey.trim().toLowerCase(),
+      genre: tag.genre.trim().toLowerCase(),
+      mood: tag.mood.trim().toLowerCase(),
+      tempo: tag.tempo.trim().toLowerCase(),
+    }));
+
+  await setTrackTags(userId, sanitized);
+  return { applied: sanitized.length, confirmationRequired: false };
+}
+
+const discoveryCache = new Map<string, { date: string; payload: unknown }>();
+
+export async function getDailyDiscovery(userId: string) {
+  const today = new Date().toISOString().slice(0, 10);
+  const cached = discoveryCache.get(userId);
+  if (cached?.date === today) return { ...cached.payload as Record<string, unknown>, cached: true };
+
+  const trends = await getListeningTrends(userId);
+  const recommendations = await getMoodRecommendations(userId, "relax");
+  const payload = {
+    date: today,
+    recommendations: recommendations.tracks.slice(0, 15),
+    rationale: trends.emergingPreference,
+  };
+  discoveryCache.set(userId, { date: today, payload });
+  return { ...payload, cached: false };
+}
+
+export async function getSurpriseDiscovery(userId: string) {
+  const recommendations = await getMoodRecommendations(userId, "party");
+  const pool = recommendations.tracks;
+  if (pool.length === 0) {
+    return { track: null, message: "Add more listening history for better surprise picks." };
+  }
+  const track = pool[Math.floor(Math.random() * pool.length)];
+  return { track, message: "Surprise recommendation selected from your listening profile." };
+}

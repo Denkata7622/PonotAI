@@ -1,5 +1,13 @@
 # AI Music Assistant — Production Implementation Plan
 
+## 0) Advanced Personal Music Intelligence rollout (April 2026)
+
+- Added authenticated `/api/ai/*` routes for insights, smart playlists, mood/context recommendations, AI tagging, and discovery mode.
+- All write-capable AI flows are confirmation-gated (`confirmed: true` required for persistence).
+- Insight generation is grounded in user history, favorites, and playlists (no fabricated tracks).
+- Context-aware recommendation inputs include day/time, optional device hints, and optional weather enrichment (Open-Meteo).
+- Discovery mode includes cached daily suggestions and `surprise` picks.
+
 ## 1) Goals and non-goals
 
 ### Primary goals
@@ -619,4 +627,3 @@ export async function sendAssistantMessage(input: {
 - [ ] Add telemetry events for send/receive/action accept.
 - [ ] Add backend + frontend tests listed above.
 - [ ] Gate with `assistant_v1` feature flag and staged rollout.
-
