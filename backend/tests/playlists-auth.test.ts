@@ -1,69 +1,52 @@
-import app from "../src/app";
+import test from "node:test";
+import assert from "node:assert/strict";
+import { startTestServer, registerUser } from "./helpers/testHarness.ts";
 
-async function createUser(baseUrl: string, name: string) {
-  const email = `${name}-${Date.now()}@test.dev`;
-  const response = await fetch(`${baseUrl}/api/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: `${name}${Date.now().toString().slice(-4)}`, email, password: "password123" }),
-  });
-  const data = (await response.json()) as { token: string };
-  return data.token;
-}
-
-async function run() {
-  const server = app.listen(0);
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Failed to start test server");
-  const baseUrl = `http://127.0.0.1:${address.port}`;
+test("playlist ownership and authorization boundaries", async () => {
+  const running = await startTestServer();
 
   try {
-    const userAToken = await createUser(baseUrl, "playlista");
-    const userBToken = await createUser(baseUrl, "playlistb");
+    const userA = await registerUser(running.baseUrl, "playlista");
+    const userB = await registerUser(running.baseUrl, "playlistb");
 
-    const createRes = await fetch(`${baseUrl}/api/playlists`, {
+    const createRes = await fetch(`${running.baseUrl}/api/playlists`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${userAToken}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${userA.token}` },
       body: JSON.stringify({ name: "Private Mix" }),
     });
+    assert.equal(createRes.status, 201);
     const created = (await createRes.json()) as { id: string };
 
-    const readByB = await fetch(`${baseUrl}/api/playlists/${created.id}`, {
-      headers: { Authorization: `Bearer ${userBToken}` },
+    const readByB = await fetch(`${running.baseUrl}/api/playlists/${created.id}`, {
+      headers: { authorization: `Bearer ${userB.token}` },
     });
-    if (readByB.status !== 404) throw new Error(`Expected 404, got ${readByB.status}`);
+    assert.equal(readByB.status, 404);
 
-    const editByB = await fetch(`${baseUrl}/api/playlists/${created.id}`, {
+    const editByB = await fetch(`${running.baseUrl}/api/playlists/${created.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${userBToken}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${userB.token}` },
       body: JSON.stringify({ name: "Hacked" }),
     });
-    if (editByB.status !== 403) throw new Error(`Expected 403, got ${editByB.status}`);
+    assert.equal(editByB.status, 403);
 
-    const deleteByB = await fetch(`${baseUrl}/api/playlists/${created.id}`, {
+    const deleteByB = await fetch(`${running.baseUrl}/api/playlists/${created.id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${userBToken}` },
+      headers: { authorization: `Bearer ${userB.token}` },
     });
-    if (deleteByB.status !== 403) throw new Error(`Expected 403, got ${deleteByB.status}`);
+    assert.equal(deleteByB.status, 403);
 
-    const unauthStatuses = await Promise.all([
-      fetch(`${baseUrl}/api/playlists`),
-      fetch(`${baseUrl}/api/playlists`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "x" }) }),
-      fetch(`${baseUrl}/api/playlists/${created.id}`),
-      fetch(`${baseUrl}/api/playlists/${created.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "x" }) }),
-      fetch(`${baseUrl}/api/playlists/${created.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "x" }) }),
-      fetch(`${baseUrl}/api/playlists/${created.id}`, { method: "DELETE" }),
-      fetch(`${baseUrl}/api/playlists/${created.id}/songs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "a", artist: "b" }) }),
+    const unauthorizedChecks = await Promise.all([
+      fetch(`${running.baseUrl}/api/playlists`),
+      fetch(`${running.baseUrl}/api/playlists`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x" }) }),
+      fetch(`${running.baseUrl}/api/playlists/${created.id}`),
+      fetch(`${running.baseUrl}/api/playlists/${created.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x" }) }),
+      fetch(`${running.baseUrl}/api/playlists/${created.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x" }) }),
+      fetch(`${running.baseUrl}/api/playlists/${created.id}`, { method: "DELETE" }),
+      fetch(`${running.baseUrl}/api/playlists/${created.id}/songs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "a", artist: "b" }) }),
     ]);
 
-    if (!unauthStatuses.every((res) => res.status === 401)) {
-      throw new Error(`Expected all unauth routes to return 401. Got: ${unauthStatuses.map((res) => res.status).join(", ")}`);
-    }
-
-    console.log("playlists-auth.test.ts passed");
+    assert.ok(unauthorizedChecks.every((response) => response.status === 401));
   } finally {
-    server.close();
+    await running.close();
   }
-}
-
-void run();
+});
