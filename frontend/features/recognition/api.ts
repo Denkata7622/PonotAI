@@ -89,6 +89,21 @@ export async function recognizeFromAudio(audioBlob: Blob): Promise<AudioRecognit
   return { primaryMatch: normalizeSong(primary), alternatives: [] };
 }
 
+export async function recognizeFromHumming(audioBlob: Blob): Promise<AudioRecognitionResult> {
+  const primary = await postMultipart<SongRecognitionResult>("/api/recognition/audio/humming", "audio", audioBlob, "humming.webm");
+  return { primaryMatch: normalizeSong(primary), alternatives: [] };
+}
+
+export async function recognizeFromLiveRecording(audioBlob: Blob): Promise<AudioRecognitionResult> {
+  const primary = await postMultipart<SongRecognitionResult>("/api/recognition/audio/live", "audio", audioBlob, "live.webm");
+  return { primaryMatch: normalizeSong(primary), alternatives: [] };
+}
+
+export async function recognizeFromVideo(videoFile: File): Promise<AudioRecognitionResult> {
+  const primary = await postMultipart<SongRecognitionResult>("/api/recognition/video", "video", videoFile, videoFile.name);
+  return { primaryMatch: normalizeSong(primary), alternatives: [] };
+}
+
 function normalizeSong(result: SongRecognitionResult): SongRecognitionResult {
   return {
     ...result,

@@ -431,6 +431,35 @@ export async function recognizeSongFromAudio(buffer: Buffer, originalName: strin
   throw new NoVerifiedResultError("Recognition failed across all providers and local metadata tags.");
 }
 
+export type RecognitionMode = "standard" | "live" | "humming" | "video";
+
+export async function recognizeSongFromAudioByMode(
+  buffer: Buffer,
+  originalName: string,
+  mode: RecognitionMode = "standard",
+): Promise<SongMetadata> {
+  const normalizedMode = mode || "standard";
+  const metadata = await recognizeSongFromAudio(buffer, originalName);
+
+  if (normalizedMode === "humming") {
+    return {
+      ...metadata,
+      confidenceScore: Math.min(metadata.confidenceScore, 0.79),
+      verificationStatus: metadata.verificationStatus ?? "not_found",
+      source: metadata.source,
+    };
+  }
+
+  if (normalizedMode === "live") {
+    return {
+      ...metadata,
+      confidenceScore: Math.min(1, metadata.confidenceScore + 0.05),
+    };
+  }
+
+  return metadata;
+}
+
 /**
  * Extracts song candidates from image content and verifies each via lookup providers when possible.
  * @param buffer Uploaded image buffer.

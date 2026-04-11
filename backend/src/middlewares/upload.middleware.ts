@@ -26,6 +26,20 @@ export const audioUpload = multer({
   fileFilter: audioFileFilter,
 });
 
+export const videoUpload = multer({
+  storage: memoryStorage,
+  limits: {
+    fileSize: 40 * 1024 * 1024,
+  },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    if (file.mimetype.startsWith("video/")) {
+      cb(null, true);
+      return;
+    }
+    cb(new multer.MulterError("LIMIT_UNEXPECTED_FILE", "video"));
+  },
+});
+
 export const imageUpload = multer({
   storage: memoryStorage,
   limits: {

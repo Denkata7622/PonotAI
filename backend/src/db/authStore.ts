@@ -7,6 +7,8 @@ export type UserRecord = {
   username: string;
   email: string;
   passwordHash: string;
+  role?: "user" | "admin";
+  isDemo?: boolean;
   avatarBase64?: string;
   bio?: string;
   createdAt: string;
@@ -45,6 +47,47 @@ export type SharedSongRecord = {
   createdAt: string;
 };
 
+export type SharedPlaylistRecord = {
+  id: string;
+  shareCode: string;
+  userId: string;
+  playlistId: string;
+  title: string;
+  songCount: number;
+  createdAt: string;
+};
+
+export type SharedRecognitionRecord = {
+  id: string;
+  shareCode: string;
+  userId: string;
+  title: string;
+  artist: string;
+  album?: string;
+  coverUrl?: string;
+  source?: string;
+  createdAt: string;
+};
+
+export type AchievementRecord = {
+  id: string;
+  userId: string;
+  key: string;
+  unlockedAt: string;
+  meta?: Record<string, unknown>;
+};
+
+export type ApiKeyRecord = {
+  id: string;
+  userId: string;
+  label: string;
+  keyPrefix: string;
+  keyHash: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+};
+
 export type PlaylistRecord = {
   id: string;
   userId: string;
@@ -68,6 +111,10 @@ type AppDb = {
   favorites: FavoriteRecord[];
   sharedSongs: SharedSongRecord[];
   playlists: PlaylistRecord[];
+  sharedPlaylists: SharedPlaylistRecord[];
+  sharedRecognitions: SharedRecognitionRecord[];
+  achievements: AchievementRecord[];
+  apiKeys: ApiKeyRecord[];
 };
 
 const DB_PATH = path.join(process.cwd(), "backend", "data", "appdb.json");
@@ -90,7 +137,17 @@ async function ensureDb() {
   try {
     await fs.access(DB_PATH);
   } catch {
-    const initial: AppDb = { users: [], searchHistory: [], favorites: [], sharedSongs: [], playlists: [] };
+    const initial: AppDb = {
+      users: [],
+      searchHistory: [],
+      favorites: [],
+      sharedSongs: [],
+      playlists: [],
+      sharedPlaylists: [],
+      sharedRecognitions: [],
+      achievements: [],
+      apiKeys: [],
+    };
     await fs.writeFile(DB_PATH, JSON.stringify(initial, null, 2));
   }
 }
@@ -107,6 +164,10 @@ async function readDb(): Promise<AppDb> {
       searchHistory: parsed.searchHistory ?? [],
       favorites: parsed.favorites ?? [],
       sharedSongs: parsed.sharedSongs ?? [],
+      sharedPlaylists: parsed.sharedPlaylists ?? [],
+      sharedRecognitions: parsed.sharedRecognitions ?? [],
+      achievements: parsed.achievements ?? [],
+      apiKeys: parsed.apiKeys ?? [],
     };
     let hasPlaylistMigration = false;
     db.playlists = db.playlists.map((playlist) => {
@@ -125,6 +186,10 @@ async function readDb(): Promise<AppDb> {
       searchHistory: [],
       favorites: [],
       sharedSongs: [],
+      sharedPlaylists: [],
+      sharedRecognitions: [],
+      achievements: [],
+      apiKeys: [],
     };
     await writeDb(fresh);
     return fresh;
@@ -244,6 +309,57 @@ export async function createSharedSong(item: Omit<SharedSongRecord, "id" | "crea
   return rec;
 }
 
+export async function createSharedPlaylist(
+  item: Omit<SharedPlaylistRecord, "id" | "createdAt" | "shareCode">,
+): Promise<SharedPlaylistRecord> {
+  const db = await readDb();
+  const rec: SharedPlaylistRecord = {
+    id: randomUUID(),
+    shareCode: randomUUID().replace(/-/g, ""),
+    createdAt: new Date().toISOString(),
+    ...item,
+  };
+  db.sharedPlaylists.unshift(rec);
+  await writeDb(db);
+  return rec;
+}
+
+export async function findSharedPlaylistByCode(shareCode: string): Promise<SharedPlaylistRecord | null> {
+  return (await readDb()).sharedPlaylists.find((s) => s.shareCode === shareCode) || null;
+}
+
+export async function createSharedRecognition(
+  item: Omit<SharedRecognitionRecord, "id" | "createdAt" | "shareCode">,
+): Promise<SharedRecognitionRecord> {
+  const db = await readDb();
+  const rec: SharedRecognitionRecord = {
+    id: randomUUID(),
+    shareCode: randomUUID().replace(/-/g, ""),
+    createdAt: new Date().toISOString(),
+    ...item,
+  };
+  db.sharedRecognitions.unshift(rec);
+  await writeDb(db);
+  return rec;
+}
+
+export async function findSharedRecognitionByCode(shareCode: string): Promise<SharedRecognitionRecord | null> {
+  return (await readDb()).sharedRecognitions.find((s) => s.shareCode === shareCode) || null;
+}
+
+export async function listSharedAssets(limit = 100): Promise<{
+  songs: SharedSongRecord[];
+  playlists: SharedPlaylistRecord[];
+  recognitions: SharedRecognitionRecord[];
+}> {
+  const db = await readDb();
+  return {
+    songs: db.sharedSongs.slice(0, limit),
+    playlists: db.sharedPlaylists.slice(0, limit),
+    recognitions: db.sharedRecognitions.slice(0, limit),
+  };
+}
+
 export async function findSharedSongByCode(shareCode: string): Promise<SharedSongRecord | null> {
   return (await readDb()).sharedSongs.find((s) => s.shareCode === shareCode) || null;
 }
@@ -345,4 +461,65 @@ export async function clearUserPlaylists(userId: string): Promise<void> {
   const db = await readDb();
   db.playlists = (db.playlists ?? []).filter((p) => p.userId !== userId);
   await writeDb(db);
+}
+
+export async function listAchievements(userId: string): Promise<AchievementRecord[]> {
+  return (await readDb()).achievements.filter((a) => a.userId === userId).sort((a, b) => b.unlockedAt.localeCompare(a.unlockedAt));
+}
+
+export async function unlockAchievement(
+  userId: string,
+  key: string,
+  meta?: Record<string, unknown>,
+): Promise<AchievementRecord | null> {
+  const db = await readDb();
+  const existing = db.achievements.find((achievement) => achievement.userId === userId && achievement.key === key);
+  if (existing) return null;
+  const rec: AchievementRecord = {
+    id: randomUUID(),
+    userId,
+    key,
+    unlockedAt: new Date().toISOString(),
+    meta,
+  };
+  db.achievements.unshift(rec);
+  await writeDb(db);
+  return rec;
+}
+
+export async function createApiKey(record: Omit<ApiKeyRecord, "id" | "createdAt" | "lastUsedAt" | "revokedAt">): Promise<ApiKeyRecord> {
+  const db = await readDb();
+  const apiKey: ApiKeyRecord = {
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+    ...record,
+  };
+  db.apiKeys.unshift(apiKey);
+  await writeDb(db);
+  return apiKey;
+}
+
+export async function listApiKeysByUser(userId: string): Promise<ApiKeyRecord[]> {
+  return (await readDb()).apiKeys.filter((key) => key.userId === userId);
+}
+
+export async function findApiKeyByPrefix(prefix: string): Promise<ApiKeyRecord | null> {
+  return (await readDb()).apiKeys.find((key) => key.keyPrefix === prefix && !key.revokedAt) || null;
+}
+
+export async function touchApiKey(id: string): Promise<void> {
+  const db = await readDb();
+  const found = db.apiKeys.find((key) => key.id === id);
+  if (!found) return;
+  found.lastUsedAt = new Date().toISOString();
+  await writeDb(db);
+}
+
+export async function revokeApiKey(userId: string, id: string): Promise<boolean> {
+  const db = await readDb();
+  const found = db.apiKeys.find((key) => key.id === id && key.userId === userId);
+  if (!found || found.revokedAt) return false;
+  found.revokedAt = new Date().toISOString();
+  await writeDb(db);
+  return true;
 }

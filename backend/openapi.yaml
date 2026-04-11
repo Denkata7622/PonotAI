@@ -21,6 +21,7 @@ tags:
 - name: Library
 - name: Playlists
 - name: Stats
+- name: Search
 paths:
   "/health":
     get:
@@ -873,6 +874,82 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/GlobalStats"
+
+  "/api/share/playlist/{playlistId}":
+    post:
+      tags: [Share]
+      summary: Share a playlist via public read-only link
+      parameters:
+      - in: path
+        name: playlistId
+        required: true
+        schema: { type: string }
+      responses:
+        '201':
+          description: Share link created
+  "/api/share/recognition":
+    post:
+      tags: [Share]
+      summary: Share a recognition result
+      responses:
+        '201':
+          description: Recognition share link created
+  "/api/achievements":
+    get:
+      tags: [Stats]
+      summary: Get server-tracked achievements for current user
+      responses:
+        '200': { description: Achievement list }
+  "/api/library/report":
+    get:
+      tags: [Library]
+      summary: Export secure versioned listening report
+      responses:
+        '200': { description: Report payload }
+  "/api/search/fuzzy":
+    get:
+      tags: [Search]
+      summary: Fuzzy and typo-tolerant internal search
+      responses:
+        '200': { description: Fuzzy search results }
+  "/api/developer/keys":
+    get:
+      tags: [Auth]
+      summary: List developer API keys
+      responses:
+        '200': { description: API key list }
+    post:
+      tags: [Auth]
+      summary: Create developer API key
+      responses:
+        '201': { description: API key created }
+  "/api/developer/v1/recognition/audio":
+    post:
+      tags: [Recognition]
+      security: []
+      summary: Developer recognition endpoint (x-api-key)
+      responses:
+        '200': { description: Recognition result }
+  "/api/developer/v1/recommendations":
+    get:
+      tags: [Search]
+      security: []
+      summary: Developer recommendations endpoint (x-api-key)
+      responses:
+        '200': { description: Recommendations }
+  "/api/admin/overview":
+    get:
+      tags: [Auth]
+      summary: Admin overview dashboard data
+      responses:
+        '200': { description: Admin payload }
+  "/api/admin/demo-account":
+    post:
+      tags: [Auth]
+      summary: Generate seeded demo account persona
+      responses:
+        '201': { description: Demo account generated }
+
 components:
   securitySchemes:
     bearerAuth:
