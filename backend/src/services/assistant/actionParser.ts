@@ -46,26 +46,26 @@ function sanitizeReply(rawOutput: string): string {
   return rawOutput.replace(/<action>[\s\S]*?<\/action>/g, "").trim();
 }
 
-export function parseActionIntent(rawOutput: string): { reply: string; actionIntent: ActionIntent | null } {
+export function parseActionIntent(rawOutput: string): { reply: string; actionIntent: ActionIntent | null; parseError: boolean } {
   const reply = sanitizeReply(rawOutput);
   const match = rawOutput.match(/<action>([\s\S]*?)<\/action>/);
 
   if (!match) {
-    return { reply, actionIntent: null };
+    return { reply, actionIntent: null, parseError: false };
   }
 
   try {
     const parsed = JSON.parse(match[1]) as Partial<ActionIntent>;
     if (!parsed.type || !ACTION_TYPES.has(parsed.type)) {
-      return { reply, actionIntent: null };
+      return { reply, actionIntent: null, parseError: true };
     }
 
     if (!isRecord(parsed.payload) || parsed.requiresConfirmation !== true) {
-      return { reply, actionIntent: null };
+      return { reply, actionIntent: null, parseError: true };
     }
 
     if (!validatePayload(parsed.type, parsed.payload)) {
-      return { reply, actionIntent: null };
+      return { reply, actionIntent: null, parseError: true };
     }
 
     return {
@@ -77,8 +77,9 @@ export function parseActionIntent(rawOutput: string): { reply: string; actionInt
         requiresConfirmation: true,
         reason: typeof parsed.reason === "string" ? parsed.reason : undefined,
       },
+      parseError: false,
     };
   } catch {
-    return { reply, actionIntent: null };
+    return { reply, actionIntent: null, parseError: true };
   }
 }

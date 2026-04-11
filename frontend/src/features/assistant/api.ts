@@ -39,9 +39,15 @@ export async function sendAssistantMessage(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    const error = new Error((errorData as { message?: string }).message ?? `HTTP ${response.status}`) as Error & { data?: unknown; status?: number };
+    const serverMessage = (errorData as { message?: string }).message;
+    const error = new Error(serverMessage ?? `Assistant request failed (HTTP ${response.status})`) as Error & {
+      data?: unknown;
+      status?: number;
+      code?: string;
+    };
     error.data = errorData;
     error.status = response.status;
+    error.code = (errorData as { code?: string }).code;
     throw error;
   }
 

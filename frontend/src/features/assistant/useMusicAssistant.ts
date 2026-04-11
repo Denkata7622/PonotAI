@@ -21,6 +21,7 @@ export function useMusicAssistant() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const inFlightRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -33,15 +34,15 @@ export function useMusicAssistant() {
     if (messages.length > 0) {
       saveConversation(messages);
     }
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, mounted]);
+    bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+  }, [messages, mounted, isLoading]);
 
   function appendSystemMessage(content: string) {
     setMessages((prev) => [...prev, createMessage({ role: "system", content })]);
   }
 
   async function sendMessage(text: string): Promise<void> {
-    if (isLoading) return;
+    if (inFlightRef.current || isLoading) return;
     const trimmed = text.trim();
     if (!trimmed || trimmed.length > 2000) {
       setError("Message must be between 1 and 2000 characters.");
@@ -51,6 +52,7 @@ export function useMusicAssistant() {
     const userMessage = createMessage({ role: "user", content: trimmed });
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
+    inFlightRef.current = true;
     setIsLoading(true);
     setError(null);
 
@@ -76,6 +78,7 @@ export function useMusicAssistant() {
       appendSystemMessage(apiMessage);
       setError(apiMessage);
     } finally {
+      inFlightRef.current = false;
       setIsLoading(false);
     }
   }
