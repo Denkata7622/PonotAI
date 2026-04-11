@@ -7,6 +7,9 @@
   --color-text-muted: #64748b;
   --color-text-inverse: #ffffff;
   --color-border: #e2e8f0;
+  --player-bar-height: 88px;
+  --mobile-nav-height: 0px;
+  --layout-bottom-offset: calc(var(--player-bar-height, 88px) + var(--mobile-nav-height, 0px) + env(safe-area-inset-bottom, 0px));
 }
 
 .dark {
@@ -25,6 +28,11 @@ body {
   color: var(--color-text-primary);
   font-family: Inter, system-ui, sans-serif;
   transition: background-color 200ms ease, color 200ms ease;
+}
+
+#__next,
+body {
+  min-height: 100dvh;
 }
 
 @import "tailwindcss";

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Clock, Headphones, Heart, HelpCircle, Info, Library, LogOut, Music, Play, Search, SearchX, Settings, Sparkles, TrendingUp, User, WifiOff, X } from "../lucide-react";
+import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Clock, EllipsisVertical, Headphones, Heart, HelpCircle, Info, Library, LogOut, Music, Play, Search, SearchX, Settings, Sparkles, TrendingUp, User, WifiOff, X } from "../lucide-react";
 import BottomPlayBar from "./BottomPlayBar";
 import DualSidebarHost from "@/src/components/sidebars/DualSidebarHost";
 import { PlayerProvider } from "./PlayerProvider";
@@ -68,6 +68,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [recentHistory, setRecentHistory] = useState<HistoryItem[]>([]);
   const [librarySnapshot, setLibrarySnapshot] = useState<LibrarySnapshot>({ favorites: [], playlists: [] });
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const { addToQueue, playNow, currentTrack } = usePlayer();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -80,11 +81,33 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const blurTimeoutRef = useRef<number | null>(null);
+  const mobileNavRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    setShowMobileMenu(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    const updateMobileNavHeight = () => {
+      const isMobile = window.matchMedia("(max-width: 767px)").matches;
+      const navHeight = isMobile ? (mobileNavRef.current?.getBoundingClientRect().height ?? 0) : 0;
+      document.documentElement.style.setProperty("--mobile-nav-height", `${Math.round(navHeight)}px`);
+    };
+    updateMobileNavHeight();
+    const observer = new ResizeObserver(updateMobileNavHeight);
+    if (mobileNavRef.current) observer.observe(mobileNavRef.current);
+    window.addEventListener("resize", updateMobileNavHeight);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateMobileNavHeight);
+      document.documentElement.style.setProperty("--mobile-nav-height", "0px");
+    };
   }, []);
 
   const isNavItemActive = (href: string) => {
@@ -315,7 +338,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <div className="flex min-h-screen">
+      <div className="flex min-h-[100dvh]">
         {/* Sidebar */}
         <aside
           className={`hidden p-4 backdrop-blur-xl transition-all md:block ${isCollapsed ? "w-20" : "w-72"}`}
@@ -492,7 +515,11 @@ function AppShellContent({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <main key={pathname} className="pageTransition flex-1 px-4 pb-[13rem] pt-6 sm:px-8 sm:pb-36 sm:pt-8">
+        <main
+          key={pathname}
+          className="pageTransition flex min-h-0 min-w-0 flex-1 flex-col px-3 pt-5 sm:px-8 sm:pt-8"
+          style={{ paddingBottom: "calc(var(--layout-bottom-offset, var(--player-bar-height, 88px)) + 24px)" }}
+        >
           <div className="mb-4 hidden items-center gap-2 md:flex">
             <div className="relative flex-1 pointer-events-none">
               <SmartDropdown
@@ -668,17 +695,49 @@ function AppShellContent({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
-      <nav className="fixed bottom-0 left-3 right-3 z-40 grid h-16 grid-cols-5 gap-2 rounded-2xl border border-border bg-surface/95 p-2 backdrop-blur md:hidden">
-        {PRIMARY_NAV.map((item) => (
+      {showMobileMenu ? <button type="button" className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setShowMobileMenu(false)} aria-label="Close mobile menu" /> : null}
+      <nav
+        ref={mobileNavRef}
+        className="fixed bottom-[calc(var(--player-bar-height,88px)+env(safe-area-inset-bottom,0px)+8px)] left-2 right-2 z-[45] rounded-2xl border border-border bg-surface/95 p-2 shadow-xl backdrop-blur md:hidden"
+      >
+        <div className="grid h-14 grid-cols-5 gap-2">
+        {[
+          { href: "/", key: "nav_listen", icon: Headphones },
+          { href: "/search", key: "nav_search", icon: Search },
+          { href: "/library", key: "nav_library", icon: Library },
+          { href: "/assistant", key: "nav_assistant", icon: Sparkles },
+        ].map((item) => (
           <Link
             key={`mobile-${item.href}`}
             href={item.href}
             className={`flex h-full flex-col items-center justify-center px-2 py-1 text-xs ${isNavItemActive(item.href) ? "navItemActive" : "navItem"}`}
-            aria-label={t(item.key, language)}
+            aria-label={t(item.key as Parameters<typeof t>[0], language)}
+            onClick={() => setShowMobileMenu(false)}
           >
             <item.icon className="w-4 h-4 text-[var(--muted)]" />
           </Link>
         ))}
+          <button type="button" className={`flex h-full flex-col items-center justify-center px-2 py-1 text-xs ${showMobileMenu ? "navItemActive" : "navItem"}`} onClick={() => setShowMobileMenu((prev) => !prev)} aria-label="Open menu">
+            <EllipsisVertical className="w-4 h-4 text-[var(--muted)]" />
+          </button>
+        </div>
+        {showMobileMenu ? (
+          <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border pt-2">
+            {[
+              { href: "/profile", label: t("nav_profile", language), icon: User },
+              { href: "/settings", label: t("nav_settings", language), icon: Settings },
+              { href: "/stats", label: t("nav_stats", language), icon: BarChart2 },
+              { href: "/about", label: t("nav_about", language), icon: Info },
+              { href: "/how-to-use", label: t("nav_how_to_use", language), icon: HelpCircle },
+              ...(user?.role === "admin" ? [{ href: "/admin", label: "Admin", icon: Settings }] : []),
+            ].map((item) => (
+                <Link key={`mobile-menu-${item.href}`} href={item.href} className={isNavItemActive(item.href) ? "navItemActive text-xs" : "navItem text-xs"} onClick={() => setShowMobileMenu(false)}>
+                  <item.icon className="h-4 w-4 text-[var(--muted)]" />
+                  <span className="truncate">{item.label}</span>
+                </Link>
+              ))}
+          </div>
+        ) : null}
       </nav>
       <DualSidebarHost />
       <BottomPlayBar />

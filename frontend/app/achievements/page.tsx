@@ -5,6 +5,11 @@ import { apiFetch } from "@/src/lib/apiFetch";
 
 export default function AchievementsPage() {
   const [items, setItems] = useState<Array<{ id: string; key: string; unlockedAt: string }>>([]);
+  const formatUtcDateTime = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toISOString().replace("T", " ").slice(0, 19) + " UTC";
+  };
 
   useEffect(() => {
     apiFetch("/api/achievements").then(async (res) => {
@@ -23,7 +28,7 @@ export default function AchievementsPage() {
         {items.map((item) => (
           <article key={item.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
             <p className="font-medium">{item.key.replace(/_/g, " ")}</p>
-            <p className="text-xs text-[var(--muted)]">Unlocked {new Date(item.unlockedAt).toLocaleString()}</p>
+            <p className="text-xs text-[var(--muted)]">Unlocked {formatUtcDateTime(item.unlockedAt)}</p>
           </article>
         ))}
       </div>

@@ -62,6 +62,7 @@ export default function BottomPlayBar() {
     return () => {
       window.removeEventListener("resize", updatePlayerBarHeight);
       observer.disconnect();
+      document.documentElement.style.setProperty("--player-bar-height", "88px");
     };
   }, []);
 
@@ -106,7 +107,11 @@ export default function BottomPlayBar() {
         </div>
       )}
 
-      <div ref={playerBarRef} data-player-bar className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-3 py-3 backdrop-blur-xl sm:px-5 transition-all duration-300 ease-in-out">
+      <div
+        ref={playerBarRef}
+        data-player-bar
+        className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] pt-3 backdrop-blur-xl transition-all duration-300 ease-in-out sm:px-5"
+      >
         <div className="mx-auto max-w-7xl">
           {!currentTrack || !currentVideoId ? (
             <div className="rounded-2xl border border-dashed border-border bg-[var(--surface-raised)] px-4 py-3 text-sm text-text-muted">

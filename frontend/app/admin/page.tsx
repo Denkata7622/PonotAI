@@ -60,6 +60,11 @@ export default function AdminPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const formatUtcDateTime = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toISOString().replace("T", " ").slice(0, 19) + " UTC";
+  };
 
   useEffect(() => {
     if (isLoading) return;
@@ -107,13 +112,13 @@ export default function AdminPage() {
     setActionMessage(`${label} copied to clipboard.`);
   }
 
-  if (error) return <section className="card p-6">{error}</section>;
-  if (!overview) return <section className="card p-6">Loading admin dashboard...</section>;
+  if (error) return <section className="card p-4 sm:p-6">{error}</section>;
+  if (!overview) return <section className="card p-4 sm:p-6">Loading admin dashboard...</section>;
 
   return (
     <section className="space-y-6 pb-8">
-      <header className="card p-6">
-        <h1 className="text-3xl font-semibold tracking-tight">Admin Dashboard</h1>
+      <header className="card p-4 sm:p-6">
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Admin Dashboard</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">Operational overview, demo account generation, and system status for Trackly admins.</p>
       </header>
 
@@ -178,9 +183,9 @@ export default function AdminPage() {
                 ["Seeded Playlists", String(lastGenerated.seededPlaylists)],
                 ["Seeded Listening Logs", String(lastGenerated.seededListeningLogs)],
               ].map(([label, value]) => (
-                <div key={label} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2">
+                <div key={label} className="flex flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <span className="text-[var(--muted)]">{label}</span>
-                  <code className="max-w-[60%] truncate">{value}</code>
+                  <code className="max-w-full truncate sm:max-w-[60%]">{value}</code>
                 </div>
               ))}
               <div className="flex flex-wrap gap-2">
@@ -208,7 +213,7 @@ export default function AdminPage() {
                     <td className="py-2">{userRow.username}{userRow.isDemo ? " (demo)" : ""}</td>
                     <td>{userRow.email}</td>
                     <td>{userRow.role}</td>
-                    <td>{new Date(userRow.createdAt).toLocaleString()}</td>
+                    <td>{formatUtcDateTime(userRow.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
