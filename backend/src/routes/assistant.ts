@@ -115,6 +115,9 @@ assistantRouter.post("/", async (req, res) => {
       return;
     }
     const parsed = parseActionIntent(result.text);
+    if (parsed.parseError) {
+      console.warn("[assistant] parse failure", { model: result.model });
+    }
 
     res.status(200).json({
       reply: parsed.reply,
@@ -126,27 +129,54 @@ assistantRouter.post("/", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("[assistant] Full error:", error);
-    console.error("[assistant] Error message:", error instanceof Error ? error.message : String(error));
-    console.error("[assistant] Error stack:", error instanceof Error ? error.stack : "no stack");
-
     const message = String((error as Error)?.message ?? "").toLowerCase();
+    const code = (error as { code?: string }).code;
+    if ((error as { code?: string }).code === "MISSING_API_KEY" || message.includes("api key") || message.includes("403")) {
+      return res.status(503).json({
+        code: "AI_SERVICE_UNAVAILABLE",
+        message: "AI Assistant is not configured. Add GEMINI_API_KEY to the backend environment variables.",
+      });
+    }
     if ((error as Error).name === "GeminiError") {
-      if (message.includes("unavailable") || message.includes("overloaded") || message.includes("503")) {
+      if (code === "PROVIDER_TIMEOUT") {
+        console.error("[assistant] provider timeout", { message: (error as Error).message });
+        return res.status(503).json({
+          code: "AI_SERVICE_UNAVAILABLE",
+          message: "AI provider timed out. Please try again.",
+        });
+      }
+      if (code === "GEMINI_TEMPORARY_UNAVAILABLE") {
+        console.error("[assistant] provider 503", { message: (error as Error).message });
         return res.status(503).json({
           code: "AI_SERVICE_UNAVAILABLE",
           message: "AI Assistant is temporarily busy. Please try again in a few seconds.",
         });
       }
+      if (code === "GEMINI_INVALID_MODEL") {
+        console.error("[assistant] invalid model", { message: (error as Error).message });
+        return res.status(502).json({
+          code: "AI_PROVIDER_CONFIG_ERROR",
+          message: "AI model configuration is invalid.",
+        });
+      }
+      if (code === "GEMINI_EMPTY_RESPONSE") {
+        console.error("[assistant] empty candidate text");
+        return res.status(503).json({
+          code: "AI_EMPTY_RESPONSE",
+          message: "AI provider returned an empty response. Please retry.",
+        });
+      }
+      if (code === "GEMINI_429") {
+        console.error("[assistant] provider 429");
+        return res.status(503).json({
+          code: "AI_SERVICE_UNAVAILABLE",
+          message: "AI provider is rate-limited right now. Please retry shortly.",
+        });
+      }
+      console.error("[assistant] provider failure", { code, message: (error as Error).message });
       return res.status(503).json({
         code: "AI_SERVICE_UNAVAILABLE",
         message: error instanceof Error ? error.message : "Assistant failed. Please try again.",
-      });
-    }
-    if ((error as { code?: string }).code === "MISSING_API_KEY" || message.includes("api key") || message.includes("403")) {
-      return res.status(503).json({
-        code: "AI_SERVICE_UNAVAILABLE",
-        message: "AI Assistant is not configured. Add GEMINI_API_KEY to the backend environment variables.",
       });
     }
     if ((error as Error).name === "AssistantContextError") {
@@ -154,6 +184,7 @@ assistantRouter.post("/", async (req, res) => {
       return;
     }
 
+    console.error("[assistant] unexpected error", error);
     return res.status(500).json({ code: "INTERNAL_ERROR", message: "Assistant failed. Please try again." });
   }
 });
