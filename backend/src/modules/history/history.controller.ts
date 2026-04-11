@@ -10,6 +10,7 @@ import {
   listUserHistory,
   type HistoryFilter,
 } from "./history.service";
+import { recalculateAchievementsForUser } from "../achievements/achievements.service";
 
 /**
  * Returns history entries for the current request context.
@@ -81,6 +82,7 @@ export async function createHistoryEntryController(req: Request, res: Response):
       youtubeVideoId,
     });
 
+    await recalculateAchievementsForUser(req.userId);
     invalidateLibraryContextCache(req.userId!);
     res.status(201).json(item);
     return;

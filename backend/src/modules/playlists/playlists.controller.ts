@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import * as db from "../../db/authStore";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 import { invalidateLibraryContextCache } from "../../services/assistant/contextBuilder";
+import { recalculateAchievementsForUser } from "../achievements/achievements.service";
 
 /**
  * Creates a new playlist for the authenticated user.
@@ -29,6 +30,7 @@ export async function createPlaylistController(req: Request, res: Response) {
 
   try {
     const playlist = await db.createPlaylist(userId, name.trim());
+    await recalculateAchievementsForUser(userId);
     invalidateLibraryContextCache(userId);
     res.status(201).json(playlist);
   } catch (error) {

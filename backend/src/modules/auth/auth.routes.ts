@@ -37,6 +37,8 @@ function toUserPayload(user: {
   avatarBase64?: string;
   bio?: string;
   createdAt: string;
+  role?: "user" | "admin";
+  isDemo?: boolean;
 }) {
   return {
     id: user.id,
@@ -45,6 +47,8 @@ function toUserPayload(user: {
     avatarBase64: user.avatarBase64 ?? null,
     bio: user.bio ?? null,
     createdAt: user.createdAt,
+    role: user.role ?? "user",
+    isDemo: Boolean(user.isDemo),
   };
 }
 
@@ -63,8 +67,13 @@ authRouter.post("/register", authSensitiveRateLimit, async (req, res) => {
   if (await findUserByEmail(email)) return void sendError(res, ErrorCatalog.EMAIL_TAKEN);
 
   const user = await createUser({ username, email, passwordHash: hashPassword(password) });
-  const token = signAuthToken(user.id);
-  res.status(201).json({ token, user: toUserPayload(user) });
+  const adminEmails = (process.env.ADMIN_EMAILS ?? "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+  if (adminEmails.includes(email.toLowerCase())) {
+    await updateUser(user.id, { role: "admin" });
+  }
+  const finalUser = (await findUserById(user.id)) ?? user;
+  const token = signAuthToken(finalUser.id);
+  res.status(201).json({ token, user: toUserPayload(finalUser) });
 });
 
 authRouter.post("/login", authSensitiveRateLimit, async (req, res) => {

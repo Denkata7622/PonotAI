@@ -2,14 +2,25 @@ import type { Metadata } from "next";
 import SharedSongClient from "../../../components/SharedSongClient";
 import { getApiBaseUrl } from "@/lib/apiConfig";
 
-type SharedPayload = {
-  title: string;
-  artist: string;
-  album?: string;
-  coverUrl?: string;
-  sharedBy: string;
-  createdAt: string;
-};
+type SharedPayload =
+  | {
+      type: "song" | "recognition";
+      title: string;
+      artist: string;
+      album?: string;
+      coverUrl?: string;
+      sharedBy: string;
+      createdAt: string;
+      source?: string;
+    }
+  | {
+      type: "playlist";
+      title: string;
+      songs: Array<{ title: string; artist: string; album?: string; coverUrl?: string }>;
+      songCount: number;
+      sharedBy: string;
+      createdAt: string;
+    };
 
 async function fetchSharedSong(shareCode: string): Promise<SharedPayload | null> {
   try {
@@ -32,12 +43,12 @@ export async function generateMetadata({ params }: { params: Promise<{ shareCode
   }
 
   return {
-    title: `${data.title} — ${data.artist}`,
-    description: `Listen to ${data.title} by ${data.artist} on Trackly`,
+      title: `${data.title}${data.type === "playlist" ? "" : ` — ${data.artist}`}`,
+    description: `Open shared ${data.type} on Trackly`,
     openGraph: {
-      title: `${data.title} — ${data.artist}`,
-      description: `Listen to ${data.title} by ${data.artist} on Trackly`,
-      images: data.coverUrl ? [{ url: data.coverUrl }] : undefined,
+      title: `${data.title}${data.type === "playlist" ? "" : ` — ${data.artist}`}`,
+      description: `Open shared ${data.type} on Trackly`,
+      images: "coverUrl" in data && data.coverUrl ? [{ url: data.coverUrl }] : undefined,
     },
   };
 }

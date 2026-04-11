@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
-import { addHistoryEntry } from "../history/history.service";
+import { addHistoryEntry, addUserHistoryEntry } from "../history/history.service";
 import { MissingProviderConfigError, NoVerifiedResultError } from "./providers/audd.provider";
-import { recognizeSongFromAudio, recognizeSongFromImage } from "./recognition.service";
+import { recognizeSongFromAudioByMode, recognizeSongFromImage, type RecognitionMode } from "./recognition.service";
+import { recalculateAchievementsForUser } from "../achievements/achievements.service";
 
 function handleRecognitionError(
   res: Response,
@@ -23,16 +24,23 @@ function handleRecognitionError(
   sendError(res, errorKey, process.env.NODE_ENV === "production" ? undefined : { cause: (error as Error).message });
 }
 
-/**
- * Accepts an uploaded audio file and returns normalized recognition metadata.
- * @route POST /api/recognition/audio
- * @auth No authentication required.
- * @example curl -F "audio=@clip.webm" http://localhost:4000/api/recognition/audio
- * @param req Express multipart request with an `audio` file field.
- * @param res Express response returning normalized song metadata.
- * @returns Promise that resolves after sending an HTTP response.
- * @throws Re-throws unexpected provider/storage failures through shared error handler.
- */
+function resolveMode(input: unknown): RecognitionMode {
+  if (input === "live" || input === "humming" || input === "video") return input;
+  return "standard";
+}
+
+async function persistRecognitionForUser(req: Request, metadata: { songName: string; artist: string; album?: string; }): Promise<void> {
+  if (!req.userId) return;
+  await addUserHistoryEntry(req.userId, {
+    method: "recognition",
+    title: metadata.songName,
+    artist: metadata.artist,
+    album: metadata.album,
+    recognized: true,
+  });
+  await recalculateAchievementsForUser(req.userId);
+}
+
 export async function recognizeAudioController(req: Request, res: Response): Promise<void> {
   try {
     if (!req.file) {
@@ -40,28 +48,29 @@ export async function recognizeAudioController(req: Request, res: Response): Pro
       return;
     }
 
-    const metadata = await recognizeSongFromAudio(req.file.buffer, req.file.originalname);
+    const mode = resolveMode(req.body?.mode);
+    const metadata = await recognizeSongFromAudioByMode(req.file.buffer, req.file.originalname, mode);
     await addHistoryEntry({
       songName: metadata.songName,
       artist: metadata.artist,
       youtubeVideoId: metadata.youtubeVideoId,
     });
-    res.status(200).json(metadata);
+    await persistRecognitionForUser(req, metadata);
+
+    res.status(200).json({
+      ...metadata,
+      mode,
+      notes: mode === "humming"
+        ? ["Experimental humming mode: results may be less accurate."]
+        : mode === "video"
+          ? ["Video input recognized via audio track extraction path."]
+          : [],
+    });
   } catch (error) {
     handleRecognitionError(res, error, "AUDIO_RECOGNITION_FAILED");
   }
 }
 
-/**
- * Accepts an uploaded image and returns one or more recognized song candidates.
- * @route POST /api/recognition/image
- * @auth No authentication required.
- * @example curl -F "image=@playlist.png" -F "language=eng" http://localhost:4000/api/recognition/image
- * @param req Express multipart request with an `image` file and optional `language`.
- * @param res Express response returning recognized song candidates.
- * @returns Promise that resolves after sending an HTTP response.
- * @throws Re-throws unexpected provider/storage failures through shared error handler.
- */
 export async function recognizeImageController(req: Request, res: Response): Promise<void> {
   try {
     if (!req.file) {
@@ -70,7 +79,6 @@ export async function recognizeImageController(req: Request, res: Response): Pro
     }
 
     const language = typeof req.body?.language === "string" ? req.body.language : undefined;
-    // maxSongs is accepted for backwards compatibility but not used by the deterministic OCR pipeline.
     void req.body?.maxSongs;
 
     const songs = await recognizeSongFromImage(req.file.buffer, language);
