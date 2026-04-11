@@ -23,7 +23,6 @@ type PlayerContextValue = {
   queue: QueuedTrack[];
   currentIndex: number;
   currentTrack: QueueTrack | null;
-  isQueueOpen: boolean;
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -41,7 +40,6 @@ type PlayerContextValue = {
   playPrevious: () => void;
   playFromQueue: (queueId: string) => void;
   reorderQueue: (fromIndex: number, toIndex: number) => void;
-  toggleQueuePanel: () => void;
   togglePlayPause: () => void;
   skipNext: () => void;
   skipPrevious: () => void;
@@ -142,7 +140,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const initial = readStoredState();
   const [queue, setQueue] = useState<QueuedTrack[]>(initial.queue);
   const [currentIndex, setCurrentIndex] = useState(initial.currentIndex);
-  const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -383,10 +380,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const toggleQueuePanel = useCallback(() => {
-    setIsQueueOpen((prev) => !prev);
-  }, []);
-
   const togglePlayPause = useCallback(() => {
     if (!currentTrack) return;
     if (isPlaying) safePlayerCall((player) => player.pauseVideo());
@@ -440,7 +433,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     queue,
     currentIndex,
     currentTrack,
-    isQueueOpen,
     isPlaying,
     currentTime,
     duration,
@@ -458,7 +450,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playPrevious,
     playFromQueue,
     reorderQueue,
-    toggleQueuePanel,
     togglePlayPause,
     skipNext: playNext,
     skipPrevious: playPrevious,
@@ -468,7 +459,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     queue,
     currentIndex,
     currentTrack,
-    isQueueOpen,
     isPlaying,
     currentTime,
     duration,
@@ -486,7 +476,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playPrevious,
     playFromQueue,
     reorderQueue,
-    toggleQueuePanel,
     togglePlayPause,
     seekToPercent,
     setVolume,

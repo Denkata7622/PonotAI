@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useDualSidebar } from "./sidebars/DualSidebarContext";
 import { Sparkles } from "lucide-react";
 import { useUser } from "@/src/context/UserContext";
 
 export default function AssistantFAB() {
   const pathname = usePathname();
   const router = useRouter();
+  const { openPanel } = useDualSidebar();
   const { isAuthenticated } = useUser();
   const [pulse, setPulse] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -52,7 +54,7 @@ export default function AssistantFAB() {
           router.push("/auth");
           return;
         }
-        router.push("/assistant");
+        openPanel("assistant");
       }}
       aria-label="Music Assistant"
     >

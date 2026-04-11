@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Clock, Headphones, Heart, HelpCircle, Info, Library, LogOut, Music, Play, Search, SearchX, Settings, Sparkles, TrendingUp, User, WifiOff, X } from "../lucide-react";
 import BottomPlayBar from "./BottomPlayBar";
+import DualSidebarHost from "@/src/components/sidebars/DualSidebarHost";
 import { PlayerProvider } from "./PlayerProvider";
 import type { Playlist, StoredFavorite } from "../features/library/types";
 import { scopedKey, useProfile } from "../lib/ProfileContext";
@@ -679,6 +680,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
           </Link>
         ))}
       </nav>
+      <DualSidebarHost />
       <BottomPlayBar />
     </>
   );

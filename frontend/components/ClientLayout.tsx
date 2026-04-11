@@ -7,6 +7,7 @@ import { ThemeProvider } from "../lib/ThemeContext";
 import { ProfileProvider } from "../lib/ProfileContext";
 import { UserProvider } from "../src/context/UserContext";
 import AssistantFAB from "../src/components/AssistantFAB";
+import { DualSidebarProvider } from "../src/components/sidebars/DualSidebarContext";
 
 export default function ClientLayout({ children }: { children: ReactNode }) {
   return (
@@ -14,8 +15,10 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
       <ThemeProvider>
         <LanguageProvider>
           <ProfileProvider>
-            <AppShell><div className="pageTransition">{children}</div></AppShell>
-            <AssistantFAB />
+            <DualSidebarProvider>
+              <AppShell><div className="pageTransition">{children}</div></AppShell>
+              <AssistantFAB />
+            </DualSidebarProvider>
           </ProfileProvider>
         </LanguageProvider>
       </ThemeProvider>

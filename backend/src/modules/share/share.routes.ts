@@ -7,9 +7,11 @@ const shareRouter = Router();
 
 shareRouter.post("/", requireAuth, async (req, res) => {
   const { title, artist, album, coverUrl } = req.body as { title?: string; artist?: string; album?: string; coverUrl?: string };
-  if (!title || !artist) return void sendError(res, ErrorCatalog.INVALID_PAYLOAD);
+  const safeTitle = typeof title === "string" ? title.trim().slice(0, 180) : "";
+  const safeArtist = typeof artist === "string" ? artist.trim().slice(0, 180) : "";
+  if (!safeTitle || !safeArtist) return void sendError(res, ErrorCatalog.INVALID_PAYLOAD);
 
-  const shared = await createSharedSong({ userId: req.userId!, title, artist, album, coverUrl });
+  const shared = await createSharedSong({ userId: req.userId!, title: safeTitle, artist: safeArtist, album, coverUrl });
   const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
   res.status(201).json({ shareCode: shared.shareCode, shareUrl: `${frontendUrl}/shared/${shared.shareCode}` });
 });
