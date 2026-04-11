@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { QueueTrack } from "../features/player/state";
+import { mapYouTubeState, type QueueTrack } from "../features/player/state";
 
 export type QueuedTrack = {
   queueId: string;
@@ -152,6 +152,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playerRef = useRef<YTPlayerLike | null>(null);
   const isPlayerReadyRef = useRef(false);
   const pendingVideoIdRef = useRef<string | null>(null);
+  const requestedPlaybackRef = useRef<"play" | "pause" | null>(null);
+  const trackLoadTokenRef = useRef(0);
 
   const safePlayerCall = useCallback((fn: (player: YTPlayerLike) => void) => {
     if (!playerRef.current || !isPlayerReadyRef.current) return;
@@ -203,6 +205,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               safePlayerCall((player) => player.loadVideoById(queuedVideoId));
               pendingVideoIdRef.current = null;
             }
+            if (requestedPlaybackRef.current === "play") {
+              safePlayerCall((player) => player.playVideo());
+            } else if (requestedPlaybackRef.current === "pause") {
+              safePlayerCall((player) => player.pauseVideo());
+            }
             setIsInitializing(false);
             setPlayerError(null);
           },
@@ -212,11 +219,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           onStateChange: (event: { data: number }) => {
             const state = ytWindow.YT?.PlayerState;
             if (!state) return;
-            if (event.data === state.PLAYING) { setIsPlaying(true); setIsBuffering(false); }
-            if (event.data === state.PAUSED || event.data === state.CUED) { setIsPlaying(false); setIsBuffering(false); }
-            if (event.data === state.BUFFERING) setIsBuffering(true);
-            if (event.data === state.ENDED) {
+            const snapshot = mapYouTubeState(event.data, state);
+            setIsPlaying(snapshot.isPlaying);
+            setIsBuffering(snapshot.isBuffering);
+            if (snapshot.ended) {
               setIsPlaying(false);
+              setCurrentTime(0);
               playNext();
             }
           },
@@ -254,6 +262,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!currentTrack) return;
+    trackLoadTokenRef.current += 1;
+    const loadToken = trackLoadTokenRef.current;
+    const queueId = currentEntry?.queueId;
     const resolvedVideoId = normalizeVideoId(currentTrack.videoId);
     setCurrentVideoId(resolvedVideoId ?? null);
 
@@ -272,8 +283,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             setPlayerError("Could not resolve a playable YouTube video.");
             return;
           }
+          if (loadToken !== trackLoadTokenRef.current) return;
           setCurrentVideoId(fetchedVideoId);
-          setQueue((prev) => prev.map((item, idx) => (idx === currentIndex ? { ...item, track: { ...item.track, videoId: fetchedVideoId } } : item)));
+          setQueue((prev) => prev.map((item) => (item.queueId === queueId ? { ...item, track: { ...item.track, videoId: fetchedVideoId } } : item)));
           setPlayerError(null);
         } catch {
           if (!cancelled) setPlayerError("Could not resolve a playable YouTube video.");
@@ -290,9 +302,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     safePlayerCall((player) => player.loadVideoById(resolvedVideoId));
-    const startPlayback = window.setTimeout(() => safePlayerCall((player) => player.playVideo()), 250);
+    const startPlayback = window.setTimeout(() => {
+      if (loadToken !== trackLoadTokenRef.current) return;
+      if (requestedPlaybackRef.current === "pause") {
+        safePlayerCall((player) => player.pauseVideo());
+        return;
+      }
+      requestedPlaybackRef.current = "play";
+      safePlayerCall((player) => player.playVideo());
+    }, 250);
     return () => window.clearTimeout(startPlayback);
-  }, [currentIndex, currentTrack, safePlayerCall]);
+  }, [currentEntry?.queueId, currentTrack, safePlayerCall]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -320,6 +340,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setCurrentIndex(next.length - 1);
       return next;
     });
+    requestedPlaybackRef.current = "play";
     setIsPlaying(true);
   }, []);
 
@@ -382,8 +403,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const togglePlayPause = useCallback(() => {
     if (!currentTrack) return;
-    if (isPlaying) safePlayerCall((player) => player.pauseVideo());
-    else safePlayerCall((player) => player.playVideo());
+    if (isPlaying) {
+      requestedPlaybackRef.current = "pause";
+      if (!isPlayerReadyRef.current) {
+        setIsPlaying(false);
+        return;
+      }
+      safePlayerCall((player) => player.pauseVideo());
+      return;
+    }
+    requestedPlaybackRef.current = "play";
+    if (!isPlayerReadyRef.current) {
+      setIsPlaying(true);
+      return;
+    }
+    safePlayerCall((player) => player.playVideo());
   }, [currentTrack, isPlaying, safePlayerCall]);
 
   const seekToPercent = useCallback((percent: number) => {

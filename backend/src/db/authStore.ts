@@ -510,6 +510,50 @@ export async function clearUserPlaylists(userId: string): Promise<void> {
   await writeDb(db);
 }
 
+export async function syncUserPlaylists(
+  userId: string,
+  incomingPlaylists: Array<{ id?: string; name: string; songs?: PlaylistSongRecord[] }>,
+  options?: { mode?: "merge" | "replace"; allowEmptyReplace?: boolean },
+): Promise<PlaylistRecord[]> {
+  const db = await readDb();
+  const mode = options?.mode ?? "merge";
+  const existingForUser = db.playlists.filter((item) => item.userId === userId);
+  const hasExistingData = existingForUser.length > 0;
+  const normalized = incomingPlaylists.map((playlist) => ({
+    id: playlist.id?.trim() || randomUUID(),
+    userId,
+    name: playlist.name.trim(),
+    songs: Array.isArray(playlist.songs) ? playlist.songs : [],
+    updatedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+  }));
+
+  if (mode === "replace") {
+    if (normalized.length === 0 && hasExistingData && options?.allowEmptyReplace !== true) {
+      throw new Error("SAFE_GUARD_EMPTY_PLAYLIST_REPLACE");
+    }
+    db.playlists = db.playlists.filter((item) => item.userId !== userId);
+    db.playlists.push(...normalized);
+    await writeDb(db);
+    return db.playlists.filter((item) => item.userId === userId);
+  }
+
+  const existingById = new Map(existingForUser.map((item) => [item.id, item]));
+  for (const playlist of normalized) {
+    const found = existingById.get(playlist.id);
+    if (!found) {
+      db.playlists.push(playlist);
+      continue;
+    }
+    found.name = playlist.name;
+    found.songs = playlist.songs;
+    found.updatedAt = new Date().toISOString();
+  }
+
+  await writeDb(db);
+  return db.playlists.filter((item) => item.userId === userId);
+}
+
 export async function listAchievements(userId: string): Promise<AchievementRecord[]> {
   return (await readDb()).achievements.filter((a) => a.userId === userId).sort((a, b) => b.unlockedAt.localeCompare(a.unlockedAt));
 }
@@ -579,6 +623,9 @@ export async function setTrackTags(
   userId: string,
   tags: Array<Pick<TrackTagRecord, "trackKey" | "genre" | "mood" | "tempo">>,
 ): Promise<TrackTagRecord[]> {
+  if (tags.length === 0) {
+    throw new Error("SAFE_GUARD_EMPTY_TAG_REPLACE");
+  }
   const db = await readDb();
   db.trackTags = (db.trackTags ?? []).filter((item) => item.userId !== userId);
   const now = new Date().toISOString();

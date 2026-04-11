@@ -365,7 +365,12 @@ export async function applyTags(userId: string, tags: Array<Pick<TrackTagRecord,
     return { applied: 0, confirmationRequired: true };
   }
 
+  if (!Array.isArray(tags)) {
+    throw new Error("INVALID_TAG_PAYLOAD");
+  }
+
   const sanitized = tags
+    .filter((tag) => tag && typeof tag.trackKey === "string" && typeof tag.genre === "string" && typeof tag.mood === "string" && typeof tag.tempo === "string")
     .filter((tag) => tag.trackKey && tag.genre && tag.mood && tag.tempo)
     .slice(0, 100)
     .map((tag) => ({
@@ -374,8 +379,12 @@ export async function applyTags(userId: string, tags: Array<Pick<TrackTagRecord,
       mood: tag.mood.trim().toLowerCase(),
       tempo: tag.tempo.trim().toLowerCase(),
     }));
+  if (sanitized.length === 0) {
+    throw new Error("SAFE_GUARD_EMPTY_TAG_REPLACE");
+  }
 
   await setTrackTags(userId, sanitized);
+  console.info("[assistant-safe-write] ai.tags.apply", { userId, count: sanitized.length, confirmed });
   return { applied: sanitized.length, confirmationRequired: false };
 }
 

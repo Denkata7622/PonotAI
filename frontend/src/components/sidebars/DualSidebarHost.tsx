@@ -32,7 +32,6 @@ export default function DualSidebarHost() {
         id="assistant"
         title="AI Assistant"
         icon={<Sparkles className="h-4 w-4" />}
-        side={state.side.assistant}
         open={state.open.assistant}
         active={state.active === 'assistant'}
         stacked={bothOpen && state.active !== 'assistant'}
@@ -44,7 +43,6 @@ export default function DualSidebarHost() {
         id="queue"
         title="Up Next"
         icon={<ListMusic className="h-4 w-4" />}
-        side={state.side.queue}
         open={state.open.queue}
         active={state.active === 'queue'}
         stacked={bothOpen && state.active !== 'queue'}
