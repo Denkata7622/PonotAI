@@ -128,6 +128,29 @@ type AppDb = {
   trackTags: TrackTagRecord[];
 };
 
+export type AdminOverviewSnapshot = {
+  totals: {
+    users: number;
+    playlists: number;
+    sharedSongs: number;
+    sharedPlaylists: number;
+    sharedRecognitions: number;
+    sharesTotal: number;
+    recognitions: number;
+    demoAccounts: number;
+    achievementsAwarded: number;
+    apiKeys: number;
+  };
+  users: UserRecord[];
+  playlists: PlaylistRecord[];
+  searchHistory: SearchHistoryRecord[];
+  sharedSongs: SharedSongRecord[];
+  sharedPlaylists: SharedPlaylistRecord[];
+  sharedRecognitions: SharedRecognitionRecord[];
+  achievements: AchievementRecord[];
+  apiKeys: ApiKeyRecord[];
+};
+
 function resolveDataDir(): string {
   return process.env.PONOTAI_DATA_DIR?.trim() || path.join(process.cwd(), "backend", "data");
 }
@@ -571,4 +594,30 @@ export async function setTrackTags(
   db.trackTags.unshift(...records);
   await writeDb(db);
   return records;
+}
+
+export async function getAdminOverviewSnapshot(): Promise<AdminOverviewSnapshot> {
+  const db = await readDb();
+  return {
+    totals: {
+      users: db.users.length,
+      playlists: db.playlists.length,
+      sharedSongs: db.sharedSongs.length,
+      sharedPlaylists: db.sharedPlaylists.length,
+      sharedRecognitions: db.sharedRecognitions.length,
+      sharesTotal: db.sharedSongs.length + db.sharedPlaylists.length + db.sharedRecognitions.length,
+      recognitions: db.searchHistory.filter((item) => item.recognized).length,
+      demoAccounts: db.users.filter((user) => Boolean(user.isDemo)).length,
+      achievementsAwarded: db.achievements.length,
+      apiKeys: db.apiKeys.length,
+    },
+    users: db.users,
+    playlists: db.playlists,
+    searchHistory: db.searchHistory,
+    sharedSongs: db.sharedSongs,
+    sharedPlaylists: db.sharedPlaylists,
+    sharedRecognitions: db.sharedRecognitions,
+    achievements: db.achievements,
+    apiKeys: db.apiKeys,
+  };
 }

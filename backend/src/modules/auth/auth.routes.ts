@@ -1,5 +1,4 @@
 import { Router } from "express";
-import crypto from "node:crypto";
 import {
   createUser,
   deleteUserCascade,
@@ -12,6 +11,7 @@ import {
 import { requireAuth, signAuthToken } from "../../middlewares/auth.middleware";
 import { authSensitiveRateLimit } from "../../middlewares/rateLimit.middleware";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
+import { hashPassword, verifyPassword } from "./password";
 
 const authRouter = Router();
 
@@ -46,19 +46,6 @@ async function ensureAdminRoleForConfiguredEmail(
     return promoted;
   }
   return user;
-}
-
-function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
-  return `${salt}:${hash}`;
-}
-
-function verifyPassword(password: string, stored: string): boolean {
-  const [salt, hash] = stored.split(":");
-  if (!salt || !hash) return false;
-  const attempt = crypto.scryptSync(password, salt, 64).toString("hex");
-  return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(attempt, "hex"));
 }
 
 function toUserPayload(user: {
