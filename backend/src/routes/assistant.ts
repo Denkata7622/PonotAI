@@ -105,7 +105,7 @@ assistantRouter.post("/", async (req, res) => {
     });
     if (context.topTracks.length === 0) {
       res.status(200).json({
-        reply: "Your library is empty. Recognize and save some songs first, then I can give you personalized recommendations.",
+        reply: "I know your library directly, and I can also suggest new music through discovery. Your library is currently empty, so save or recognize a few songs first for better personalized and cross-artist recommendations.",
         actionIntent: null,
         meta: { model: "fallback", latencyMs: 0, contextTracksCount: 0 },
       });

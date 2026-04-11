@@ -11,6 +11,7 @@ import {
   type SearchHistoryRecord,
   type TrackTagRecord,
 } from "../../db/authStore";
+import { getExternalDiscoveryClient, type ExternalArtistCandidate } from "../../services/assistant/externalDiscovery";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -379,6 +380,158 @@ export async function applyTags(userId: string, tags: Array<Pick<TrackTagRecord,
 }
 
 const discoveryCache = new Map<string, { date: string; payload: unknown }>();
+const crossArtistMemory = new Map<string, { recent: string[] }>();
+
+function normalizeName(value: string): string {
+  return value.toLowerCase().trim();
+}
+
+function buildAnchorProfile(history: SearchHistoryRecord[], favorites: FavoriteRecord[], playlists: PlaylistRecord[]) {
+  const artistCounts = new Map<string, number>();
+  const genreCounts = new Map<string, number>();
+  const moodCounts = new Map<string, number>();
+
+  for (const item of history) {
+    const artist = item.artist?.trim();
+    if (artist) artistCounts.set(artist, (artistCounts.get(artist) ?? 0) + 1);
+    const text = `${item.title ?? ""} ${item.artist ?? ""} ${item.album ?? ""}`;
+    genreCounts.set(inferGenre(text), (genreCounts.get(inferGenre(text)) ?? 0) + 1);
+    moodCounts.set(inferMood(text), (moodCounts.get(inferMood(text)) ?? 0) + 1);
+  }
+
+  for (const item of favorites) {
+    if (item.artist) artistCounts.set(item.artist, (artistCounts.get(item.artist) ?? 0) + 2);
+    const text = `${item.title ?? ""} ${item.artist ?? ""} ${item.album ?? ""}`;
+    genreCounts.set(inferGenre(text), (genreCounts.get(inferGenre(text)) ?? 0) + 2);
+    moodCounts.set(inferMood(text), (moodCounts.get(inferMood(text)) ?? 0) + 2);
+  }
+
+  for (const playlist of playlists) {
+    for (const song of playlist.songs ?? []) {
+      if (song.artist) artistCounts.set(song.artist, (artistCounts.get(song.artist) ?? 0) + 1);
+      const text = `${song.title ?? ""} ${song.artist ?? ""} ${song.album ?? ""}`;
+      genreCounts.set(inferGenre(text), (genreCounts.get(inferGenre(text)) ?? 0) + 1);
+      moodCounts.set(inferMood(text), (moodCounts.get(inferMood(text)) ?? 0) + 1);
+    }
+  }
+
+  return {
+    anchorArtists: [...artistCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5),
+    topGenres: [...genreCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4),
+    topMoods: [...moodCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4),
+    artistCounts,
+  };
+}
+
+export async function getCrossArtistRecommendations(
+  userId: string,
+  options: { differentArtistsOnly?: boolean; limit?: number } = {},
+) {
+  const differentArtistsOnly = options.differentArtistsOnly !== false;
+  const limit = Math.min(Math.max(options.limit ?? 8, 3), 20);
+
+  const [history, favorites, playlists] = await Promise.all([
+    listUserHistory(userId),
+    listFavorites(userId),
+    getUserPlaylists(userId),
+  ]);
+
+  const profile = buildAnchorProfile(history, favorites, playlists);
+  const knownArtists = new Set<string>();
+  for (const [artist] of profile.anchorArtists) knownArtists.add(normalizeName(artist));
+
+  const heavilyPresentArtists = new Set(
+    [...profile.artistCounts.entries()].filter(([, count]) => count >= 2).map(([artist]) => normalizeName(artist)),
+  );
+
+  const memory = crossArtistMemory.get(userId) ?? { recent: [] };
+  const recentlySuggested = new Set(memory.recent);
+  const discoveryClient = getExternalDiscoveryClient();
+
+  let externalAvailable = true;
+  const candidates: ExternalArtistCandidate[] = [];
+  try {
+    for (const [artist] of profile.anchorArtists.slice(0, 3)) {
+      const similar = await discoveryClient.findSimilarArtistsByArtist(artist);
+      candidates.push(...similar);
+    }
+    if (candidates.length < 4) {
+      for (const [genre] of profile.topGenres.slice(0, 2)) {
+        const seeded = await discoveryClient.findArtistsByGenre(genre);
+        candidates.push(...seeded);
+      }
+    }
+  } catch {
+    externalAvailable = false;
+  }
+
+  const fallbackLibrary = [...favorites, ...history].filter((item) => item.artist && item.title).slice(0, limit).map((item, idx) => ({
+    artist: item.artist!,
+    source: "library-fallback" as const,
+    score: Math.max(0.2, 0.55 - idx * 0.03),
+    confidence: Math.max(0.3, 0.7 - idx * 0.04),
+    reasons: ["Based on your existing saved and recognized tracks."],
+    sampleTracks: [{ title: item.title!, artist: item.artist!, album: item.album, previewUrl: undefined }],
+    isInLibrary: true,
+  }));
+
+  const deduped = new Map<string, ExternalArtistCandidate>();
+  for (const candidate of candidates) {
+    const key = normalizeName(candidate.artist);
+    if (!key) continue;
+    if (!deduped.has(key) || (deduped.get(key)?.similarityScore ?? 0) < candidate.similarityScore) deduped.set(key, candidate);
+  }
+
+  const ranked = [...deduped.values()]
+    .filter((item) => item.artist.trim().length > 0)
+    .filter((item) => !differentArtistsOnly || !heavilyPresentArtists.has(normalizeName(item.artist)))
+    .map((item) => {
+      const noveltyPenalty = recentlySuggested.has(normalizeName(item.artist)) ? 0.15 : 0;
+      const diversityBoost = item.source === "genre_seed" ? 0.08 : 0;
+      const similarity = item.similarityScore;
+      const novelty = Math.max(0, 1 - noveltyPenalty);
+      const confidence = Math.max(0.25, Math.min(0.98, (similarity * 0.55) + (novelty * 0.3) + diversityBoost));
+      return {
+        artist: item.artist,
+        source: "external-discovery" as const,
+        score: confidence,
+        confidence,
+        reasons: [
+          item.anchorArtist ? `Similar to ${item.anchorArtist} from your library.` : "Matches your dominant genres.",
+          profile.topGenres[0]?.[0] ? `Aligned with your ${profile.topGenres[0][0]} preference.` : "Aligned with your listening patterns.",
+        ],
+        sampleTracks: item.sampleTracks,
+        isInLibrary: knownArtists.has(normalizeName(item.artist)),
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  const recommendations = ranked.length > 0
+    ? ranked.map((entry) => ({ ...entry, isInLibrary: false }))
+    : fallbackLibrary;
+
+  crossArtistMemory.set(userId, {
+    recent: recommendations
+      .map((item) => normalizeName(item.artist))
+      .filter(Boolean)
+      .slice(0, 30),
+  });
+
+  return {
+    mode: "cross-artist",
+    externalAvailable,
+    message: externalAvailable
+      ? "Recommendations combine your known taste with discovery expansion."
+      : "I can still suggest based on your current library, but external discovery is temporarily unavailable.",
+    anchors: {
+      artistsKnownFromLibrary: profile.anchorArtists.map(([name, count]) => ({ name, weight: count })),
+      genresKnownFromLibrary: profile.topGenres.map(([name, count]) => ({ name, weight: count })),
+      moodsKnownFromLibrary: profile.topMoods.map(([name, count]) => ({ name, weight: count })),
+    },
+    recommendations,
+  };
+}
 
 export async function getDailyDiscovery(userId: string) {
   const today = new Date().toISOString().slice(0, 10);

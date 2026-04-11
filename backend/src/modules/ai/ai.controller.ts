@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 import {
   applyTags,
+  getCrossArtistRecommendations,
   generateSmartPlaylist,
   getContextualRecommendations,
   getDailyDiscovery,
@@ -164,6 +165,21 @@ export async function surpriseDiscoveryController(req: Request, res: Response): 
     res.status(200).json(data);
   } catch (error) {
     console.error("surprise discovery error", error);
+    sendError(res, ErrorCatalog.INTERNAL_ERROR);
+  }
+}
+
+export async function crossArtistRecommendationsController(req: Request, res: Response): Promise<void> {
+  const differentArtistsOnly = req.query.differentArtistsOnly !== "false";
+  const limit = parseNumber(req.query.limit);
+  try {
+    const data = await getCrossArtistRecommendations(req.userId!, {
+      differentArtistsOnly,
+      limit,
+    });
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("cross artist recommendation error", error);
     sendError(res, ErrorCatalog.INTERNAL_ERROR);
   }
 }

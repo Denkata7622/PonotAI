@@ -3,6 +3,7 @@ import { requireAuth } from "../../middlewares/auth.middleware";
 import { assistantRateLimit } from "../../middlewares/rateLimit.middleware";
 import {
   applyTagsController,
+  crossArtistRecommendationsController,
   contextualRecommendationsController,
   dailyDiscoveryController,
   generatePlaylistController,
@@ -29,6 +30,8 @@ router.post("/playlists/update", updatePlaylistController);
 
 router.get("/recommendations/mood", moodRecommendationsController);
 router.get("/recommendations/contextual", contextualRecommendationsController);
+router.get("/recommendations/cross-artist", crossArtistRecommendationsController);
+router.get("/discovery/similar-artists", crossArtistRecommendationsController);
 
 router.post("/tags/suggest", suggestTagsController);
 router.post("/tags/apply", applyTagsController);

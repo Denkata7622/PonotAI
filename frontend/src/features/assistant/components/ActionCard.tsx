@@ -31,6 +31,11 @@ function getActionLabel(type: ActionIntent["type"]) {
   if (type === "CONTEXT_RECOMMENDATION") return { icon: Search, text: "Context Picks" };
   if (type === "TAG_SUGGESTION") return { icon: Search, text: "Tag Library" };
   if (type === "DISCOVERY_REQUEST") return { icon: Search, text: "Discovery" };
+  if (type === "CROSS_ARTIST_DISCOVERY") return { icon: Search, text: "Find New Artists" };
+  if (type === "SHOW_SIMILAR_ARTISTS") return { icon: Search, text: "Show Similar Artists" };
+  if (type === "SEARCH_ARTIST") return { icon: Search, text: "Search Artist" };
+  if (type === "PREVIEW_DISCOVERY_PLAYLIST") return { icon: ListMusic, text: "Preview Discovery Playlist" };
+  if (type === "CREATE_DISCOVERY_PLAYLIST") return { icon: ListPlus, text: "Create Discovery Playlist" };
   return { icon: Search, text: "Search" };
 }
 
@@ -114,6 +119,10 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
         const query = String(intent.payload.query ?? "");
         router.push(`/search?q=${encodeURIComponent(query)}`);
       }
+      if (intent.type === "SEARCH_ARTIST") {
+        const artist = String(intent.payload.artist ?? "");
+        router.push(`/search?q=${encodeURIComponent(artist)}`);
+      }
 
       if (intent.type === "CHANGE_THEME") {
         const theme = intent.payload.theme as "light" | "dark" | "system";
@@ -134,6 +143,10 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
         || intent.type === "CONTEXT_RECOMMENDATION"
         || intent.type === "TAG_SUGGESTION"
         || intent.type === "DISCOVERY_REQUEST"
+        || intent.type === "CROSS_ARTIST_DISCOVERY"
+        || intent.type === "SHOW_SIMILAR_ARTISTS"
+        || intent.type === "PREVIEW_DISCOVERY_PLAYLIST"
+        || intent.type === "CREATE_DISCOVERY_PLAYLIST"
       ) {
         const result = await runAssistantAction(intent);
         window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `AI action complete: ${text}` } }));

@@ -13,6 +13,11 @@ const ACTION_TYPES = new Set<ActionIntent["type"]>([
   "CONTEXT_RECOMMENDATION",
   "TAG_SUGGESTION",
   "DISCOVERY_REQUEST",
+  "CROSS_ARTIST_DISCOVERY",
+  "SHOW_SIMILAR_ARTISTS",
+  "SEARCH_ARTIST",
+  "PREVIEW_DISCOVERY_PLAYLIST",
+  "CREATE_DISCOVERY_PLAYLIST",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -55,6 +60,17 @@ function validatePayload(type: ActionIntent["type"], payload: Record<string, unk
       return true;
     case "DISCOVERY_REQUEST":
       return payload.mode === "daily" || payload.mode === "surprise";
+    case "CROSS_ARTIST_DISCOVERY":
+      return (payload.differentArtistsOnly === undefined || typeof payload.differentArtistsOnly === "boolean")
+        && (payload.limit === undefined || (typeof payload.limit === "number" && payload.limit > 0 && payload.limit <= 20));
+    case "SHOW_SIMILAR_ARTISTS":
+      return typeof payload.anchorArtist === "string" && payload.anchorArtist.length > 0;
+    case "SEARCH_ARTIST":
+      return typeof payload.artist === "string" && payload.artist.length > 0;
+    case "PREVIEW_DISCOVERY_PLAYLIST":
+      return isStringArray(payload.artists);
+    case "CREATE_DISCOVERY_PLAYLIST":
+      return typeof payload.name === "string" && payload.name.length > 0 && isStringArray(payload.artists);
     default:
       return false;
   }
