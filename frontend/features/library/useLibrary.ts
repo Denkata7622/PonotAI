@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { syncLibraryState } from "./api";
 import { loadLibraryState, persistLibraryState } from "./storage";
 import type { LibraryState, Playlist, PlaylistSong, StoredFavorite } from "./types";
 import * as playlistApi from "./api";
@@ -16,10 +15,7 @@ export function useLibrary(profileId: string) {
 
   useEffect(() => {
     persistLibraryState(libraryState, profileId);
-    if (isAuthenticated) {
-      void syncLibraryState(libraryState);
-    }
-  }, [libraryState, profileId, isAuthenticated]);
+  }, [libraryState, profileId]);
 
   useEffect(() => {
     if (!isAuthenticated) {

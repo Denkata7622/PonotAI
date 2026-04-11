@@ -138,12 +138,24 @@ export async function suggestTagsController(req: Request, res: Response): Promis
 }
 
 export async function applyTagsController(req: Request, res: Response): Promise<void> {
-  const tags = Array.isArray(req.body?.tags) ? req.body.tags : [];
+  const tags = Array.isArray(req.body?.tags) ? req.body.tags : null;
   const confirmed = req.body?.confirmed === true;
+  if (tags === null) {
+    sendError(res, ErrorCatalog.VALIDATION_ERROR, { field: "tags" });
+    return;
+  }
   try {
     const result = await applyTags(req.userId!, tags, confirmed);
     res.status(200).json(result);
   } catch (error) {
+    if ((error as Error).message === "INVALID_TAG_PAYLOAD") {
+      sendError(res, ErrorCatalog.VALIDATION_ERROR, { field: "tags", reason: "Malformed tags payload" });
+      return;
+    }
+    if ((error as Error).message === "SAFE_GUARD_EMPTY_TAG_REPLACE") {
+      sendError(res, ErrorCatalog.VALIDATION_ERROR, { field: "tags", reason: "Refusing empty tag overwrite without destructive intent" });
+      return;
+    }
     console.error("tag apply error", error);
     sendError(res, ErrorCatalog.INTERNAL_ERROR);
   }
