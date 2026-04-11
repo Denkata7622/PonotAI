@@ -96,7 +96,7 @@ export function SmartDropdown({
   // floating-ui interaction hooks
   const click = useClick(context);
   const dismiss = useDismiss(context, {
-    outsidePressEvent: 'mousedown',
+    outsidePressEvent: 'pointerdown',
   });
 
   const { getReferenceProps, getFloatingProps } = useInteractions([
@@ -131,15 +131,6 @@ export function SmartDropdown({
 
       {isOpen && (
         <FloatingPortal>
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 9998,
-              background: 'transparent',
-            }}
-            onMouseDown={() => onOpenChange(false)}
-          />
           <div
             ref={refs.setFloating}
             style={dropdownStyle}

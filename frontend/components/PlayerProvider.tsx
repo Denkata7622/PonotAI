@@ -188,7 +188,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (typeof window === "undefined") return;
     const ytWindow = window as YouTubeWindow;
     const setupPlayer = () => {
-      if (!ytWindow.YT || playerRef.current) return;
+      if (!ytWindow.YT?.Player || playerRef.current) return;
       if (!document.getElementById("ponotai-yt-player")) return;
 
       playerRef.current = new ytWindow.YT.Player("ponotai-yt-player", {
@@ -199,16 +199,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           onReady: (event: { target: YTPlayerLike }) => {
             playerRef.current = event.target;
             isPlayerReadyRef.current = true;
-            safePlayerCall((player) => player.setVolume(volume));
+            safePlayerCall((player) => player.setVolume?.(volume));
             if (pendingVideoIdRef.current) {
               const queuedVideoId = pendingVideoIdRef.current;
-              safePlayerCall((player) => player.loadVideoById(queuedVideoId));
+              safePlayerCall((player) => player.loadVideoById?.(queuedVideoId));
               pendingVideoIdRef.current = null;
             }
             if (requestedPlaybackRef.current === "play") {
-              safePlayerCall((player) => player.playVideo());
+              safePlayerCall((player) => player.playVideo?.());
             } else if (requestedPlaybackRef.current === "pause") {
-              safePlayerCall((player) => player.pauseVideo());
+              safePlayerCall((player) => player.pauseVideo?.());
             }
             setIsInitializing(false);
             setPlayerError(null);
@@ -235,6 +235,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
       const script = document.createElement("script");
       script.src = "https://www.youtube.com/iframe_api";
+      script.async = true;
+      script.onerror = () => setPlayerError("YouTube player failed to initialize.");
       document.body.appendChild(script);
     }
 
@@ -258,7 +260,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       playerRef.current = null;
     };
-  }, [playNext, safePlayerCall, volume]);
+  }, [playNext, safePlayerCall]);
+
+  useEffect(() => {
+    safePlayerCall((player) => player.setVolume?.(volume));
+  }, [safePlayerCall, volume]);
 
   useEffect(() => {
     if (!currentTrack) return;
@@ -301,7 +307,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       pendingVideoIdRef.current = resolvedVideoId;
       return;
     }
-    safePlayerCall((player) => player.loadVideoById(resolvedVideoId));
+    safePlayerCall((player) => player.loadVideoById?.(resolvedVideoId));
     const startPlayback = window.setTimeout(() => {
       if (loadToken !== trackLoadTokenRef.current) return;
       if (requestedPlaybackRef.current === "pause") {
@@ -409,7 +415,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setIsPlaying(false);
         return;
       }
-      safePlayerCall((player) => player.pauseVideo());
+      safePlayerCall((player) => player.pauseVideo?.());
       return;
     }
     requestedPlaybackRef.current = "play";
@@ -417,20 +423,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setIsPlaying(true);
       return;
     }
-    safePlayerCall((player) => player.playVideo());
+      safePlayerCall((player) => player.playVideo?.());
   }, [currentTrack, isPlaying, safePlayerCall]);
 
   const seekToPercent = useCallback((percent: number) => {
     if (!duration) return;
     const seconds = (Math.max(0, Math.min(100, percent)) / 100) * duration;
-    safePlayerCall((player) => player.seekTo(seconds, true));
+    safePlayerCall((player) => player.seekTo?.(seconds, true));
     setCurrentTime(seconds);
   }, [duration, safePlayerCall]);
 
   const setVolume = useCallback((nextVolume: number) => {
     const normalized = Math.max(0, Math.min(100, nextVolume));
     setVolumeState(normalized);
-    safePlayerCall((player) => player.setVolume(normalized));
+    safePlayerCall((player) => player.setVolume?.(normalized));
   }, [safePlayerCall]);
 
   useEffect(() => {

@@ -438,31 +438,31 @@ window.clearTimeout(deleteTimerRef.current);
 }, []);
 
 if (isLoading) {
-return <section className="space-y-4"><div className="card p-6"><div className="h-28 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div><div className="card p-6"><div className="h-64 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div></section>;
+return <section className="space-y-4"><div className="card p-4 sm:p-6"><div className="h-28 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div><div className="card p-4 sm:p-6"><div className="h-64 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div></section>;
 }
 
-return ( <section className="space-y-6"> <div className="card p-6"> <h1 className="cardTitle text-3xl font-bold">{t("nav_library", language)}</h1> <p className="cardText mt-2">
+return ( <section className="space-y-5 sm:space-y-6"> <div className="card p-4 sm:p-6"> <h1 className="cardTitle text-2xl font-bold sm:text-3xl">{t("nav_library", language)}</h1> <p className="cardText mt-2">
 {language === "bg"
 ? "Управлявай любимите си песни, плейлистите и историята на едно място."
 : "Manage your favorites, playlists and history in one place."} </p>
 {isAuthenticated && <p className="cardText mt-2 text-xs">Cloud synced</p>} </div>
 
-  <div className="grid gap-4 md:grid-cols-4">
+  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
     <div className="card p-5">
       <p className="cardText text-sm">{t("library_favorites", language)}</p>
-      <p className="cardTitle mt-2 text-3xl font-semibold">{mergedFavorites.length}</p>
+      <p className="cardTitle mt-2 text-2xl font-semibold sm:text-3xl">{mergedFavorites.length}</p>
     </div>
     <div className="card p-5">
       <p className="cardText text-sm">{t("library_playlists", language)}</p>
-      <p className="cardTitle mt-2 text-3xl font-semibold">{playlists.length}</p>
+      <p className="cardTitle mt-2 text-2xl font-semibold sm:text-3xl">{playlists.length}</p>
     </div>
     <div className="card p-5">
       <p className="cardText text-sm">{t("history_title", language)}</p>
-      <p className="cardTitle mt-2 text-3xl font-semibold">{dedupedHistory.length}</p>
+      <p className="cardTitle mt-2 text-2xl font-semibold sm:text-3xl">{dedupedHistory.length}</p>
     </div>
     <div className="card p-5 bg-gradient-to-br from-[var(--accent)]/10 to-[var(--accent-2)]/10">
       <p className="cardText text-sm">Total Collection</p>
-      <p className="cardTitle mt-2 text-3xl font-semibold">
+      <p className="cardTitle mt-2 text-2xl font-semibold sm:text-3xl">
         {mergedFavorites.length + playlists.reduce((sum, p) => sum + p.songs.length, 0) + dedupedHistory.length}
       </p>
     </div>
@@ -486,8 +486,8 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
   )}
 
   {history.length > 0 && (
-    <div className="card p-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="card p-4 sm:p-6">
+      <div className="mb-4 flex items-center justify-between">
         <h2 className="cardTitle text-xl font-semibold flex items-center gap-2"><BarChart2 className="w-5 h-5 text-[var(--muted)]" />Insights</h2>
       </div>
       {mergedFavorites && <p className="cardText">You have {mergedFavorites.length} favorite songs.</p>}
@@ -495,12 +495,12 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
   )}
 
   <div className="card p-0 border-b border-[var(--border)]">
-    <div className="flex gap-0 divide-x divide-[var(--border)]">
+    <div className="flex gap-0 overflow-x-auto divide-x divide-[var(--border)]">
       {(["history", "favorites", "playlists"] as const).map((tab) => (
         <button
           key={tab}
           onClick={() => setSelectedTab(tab)}
-          className={`flex-1 px-4 py-4 text-sm font-medium transition ${
+          className={`flex-1 whitespace-nowrap px-4 py-4 text-sm font-medium transition ${
             selectedTab === tab
               ? "border-b-2 border-[var(--accent)] bg-[var(--active-bg)] text-[var(--text)]"
               : "text-[var(--muted)] hover:text-[var(--text)]"
@@ -516,7 +516,7 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
 
   <div className="min-h-96">
     {selectedTab === "history" && (
-      <section className="card p-6 space-y-4">
+      <section className="card space-y-4 p-4 sm:p-6">
         <div>
           <h2 className="cardTitle text-2xl font-bold">{t("history_title", language)}</h2>
           <p className="cardText mt-1">
@@ -552,7 +552,7 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
     )}
 
     {selectedTab === "favorites" && (
-      <section className="card p-6 space-y-4">
+      <section className="card space-y-4 p-4 sm:p-6">
         <div>
           <h2 className="cardTitle text-2xl font-bold">{t("library_favorites", language)}</h2>
           <p className="cardText mt-1">{language === "bg" ? "Търси в любимите си песни." : "Search your favorite songs."}</p>
@@ -609,7 +609,7 @@ return ( <section className="space-y-6"> <div className="card p-6"> <h1 classNam
         ) : filteredPlaylists.length === 0 ? (
           <div className="col-span-full card p-12 text-center"><div className="flex flex-col items-center gap-2"><ListMusic className="w-10 h-10 text-[var(--muted)]" /><p className="font-semibold">No playlists yet — create your first one</p></div></div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             {filteredPlaylists.map((playlist) => (
               <PlaylistCard
                 key={playlist.id}

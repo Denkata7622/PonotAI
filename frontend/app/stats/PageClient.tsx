@@ -25,26 +25,26 @@ export default function StatsPage() {
       .catch(() => setError("Could not load global stats."));
   }, []);
 
-  if (error) return <section className="card p-6">{error}</section>;
-  if (!stats) return <section className="card p-6"><div className="h-20 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></section>;
+  if (error) return <section className="card p-4 sm:p-6">{error}</section>;
+  if (!stats) return <section className="card p-4 sm:p-6"><div className="h-20 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></section>;
 
   return (
     <section
       className="space-y-6"
       style={{ paddingBottom: "calc(var(--player-bar-height, 80px) + 32px + env(safe-area-inset-bottom, 0px))" }}
     >
-      <div className="card p-6">
-        <h1 className="text-3xl font-bold">{t("nav_stats", language)}</h1>
+      <div className="card p-4 sm:p-6">
+        <h1 className="text-2xl font-bold sm:text-3xl">{t("nav_stats", language)}</h1>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card p-5">
           <p className="cardText inline-flex items-center gap-2"><Music className="w-4 h-4 text-[var(--accent)]" />{t("stats_total_recognitions", language)}</p>
-          <p className="cardTitle mt-2 text-3xl font-semibold">{stats.totalRecognitions}</p>
+          <p className="cardTitle mt-2 text-2xl font-semibold sm:text-3xl">{stats.totalRecognitions}</p>
         </div>
         <div className="card p-5">
           <p className="cardText inline-flex items-center gap-2"><Users className="w-4 h-4 text-[var(--accent)]" />{t("stats_total_users", language)}</p>
-          <p className="cardTitle mt-2 text-3xl font-semibold">{stats.totalUsers}</p>
+          <p className="cardTitle mt-2 text-2xl font-semibold sm:text-3xl">{stats.totalUsers}</p>
         </div>
       </div>
 

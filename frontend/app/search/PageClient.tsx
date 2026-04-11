@@ -145,10 +145,10 @@ export default function SearchPage() {
   }
 
   return (
-    <section className="card p-6">
-      <h1 className="cardTitle text-2xl font-bold">{t("nav_search", language)}</h1>
+    <section className="card p-4 sm:p-6">
+      <h1 className="cardTitle text-xl font-bold sm:text-2xl">{t("nav_search", language)}</h1>
 
-      <div className="mt-4 inline-flex rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1">
+      <div className="mt-4 inline-flex w-full max-w-full overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 sm:w-auto">
         <button className={`rounded-lg px-4 py-2 text-sm ${activeTab === "discover" ? "bg-[var(--active-bg)]" : "text-[var(--muted)]"}`} onClick={() => setActiveTab("discover")}>{t("search_discover", language)}</button>
         <button className={`rounded-lg px-4 py-2 text-sm ${activeTab === "history" ? "bg-[var(--active-bg)]" : "text-[var(--muted)]"}`} onClick={() => setActiveTab("history")}>{t("search_history", language)}</button>
       </div>
@@ -213,7 +213,7 @@ export default function SearchPage() {
           {discoverResults.length > 0 && (
             <div className="space-y-3">
               <p className="text-xs uppercase tracking-wider text-[var(--muted)]">Songs</p>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {groupedResults.songs.map((result) => (
                   <article key={result.videoId} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
                     <img src={result.thumbnailUrl} alt={result.title} className="h-32 w-full rounded-lg object-cover" />
@@ -231,7 +231,7 @@ export default function SearchPage() {
                 <>
                   <hr className="border-[var(--border)]" />
                   <p className="text-xs uppercase tracking-wider text-[var(--muted)]">Artists & Channels</p>
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {groupedResults.channels.map((result) => (
                       <article key={result.videoId} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
                         <img src={result.thumbnailUrl} alt={result.title} className="h-32 w-full rounded-lg object-cover" />

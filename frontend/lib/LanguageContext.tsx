@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Language } from "./translations";
 
 type LanguageContextValue = {
@@ -12,11 +12,14 @@ type LanguageContextValue = {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguage] = useState<Language>(() => {
-    if (typeof window === "undefined") return "bg";
+  const [language, setLanguage] = useState<Language>("bg");
+
+  useEffect(() => {
     const saved = window.localStorage.getItem("ponotai-language");
-    return saved === "en" || saved === "bg" ? saved : "bg";
-  });
+    if (saved === "en" || saved === "bg") {
+      setLanguage(saved);
+    }
+  }, []);
 
   const setLocale = (lang: Language) => {
     setLanguage(lang);
