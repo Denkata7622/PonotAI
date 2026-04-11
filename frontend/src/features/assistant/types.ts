@@ -22,7 +22,12 @@ export interface ActionIntent {
     | 'MOOD_RECOMMENDATION'
     | 'CONTEXT_RECOMMENDATION'
     | 'TAG_SUGGESTION'
-    | 'DISCOVERY_REQUEST';
+    | 'DISCOVERY_REQUEST'
+    | 'CROSS_ARTIST_DISCOVERY'
+    | 'SHOW_SIMILAR_ARTISTS'
+    | 'SEARCH_ARTIST'
+    | 'PREVIEW_DISCOVERY_PLAYLIST'
+    | 'CREATE_DISCOVERY_PLAYLIST';
   confidence: number;
   payload: Record<string, unknown>;
   requiresConfirmation: boolean;

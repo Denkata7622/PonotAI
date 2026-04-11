@@ -80,6 +80,26 @@ export async function runAssistantAction(intent: ActionIntent): Promise<unknown>
       return fetch(`${API_BASE_URL}/api/ai/tags/suggest`, { method: "POST", headers }).then((res) => res.json());
     case "DISCOVERY_REQUEST":
       return fetch(`${API_BASE_URL}/api/ai/discovery/${intent.payload.mode === "surprise" ? "surprise" : "daily"}`, { headers }).then((res) => res.json());
+    case "CROSS_ARTIST_DISCOVERY":
+      return fetch(
+        `${API_BASE_URL}/api/ai/recommendations/cross-artist?differentArtistsOnly=${intent.payload.differentArtistsOnly === false ? "false" : "true"}&limit=${encodeURIComponent(String(intent.payload.limit ?? 8))}`,
+        { headers },
+      ).then((res) => res.json());
+    case "SHOW_SIMILAR_ARTISTS":
+      return fetch(
+        `${API_BASE_URL}/api/ai/recommendations/cross-artist?differentArtistsOnly=true&limit=8&anchor=${encodeURIComponent(String(intent.payload.anchorArtist ?? ""))}`,
+        { headers },
+      ).then((res) => res.json());
+    case "PREVIEW_DISCOVERY_PLAYLIST":
+      return fetch(
+        `${API_BASE_URL}/api/ai/playlists/generate`,
+        { method: "POST", headers, body: JSON.stringify({ prompt: `Discovery playlist: ${(intent.payload.artists as string[] ?? []).join(", ")}` }) },
+      ).then((res) => res.json());
+    case "CREATE_DISCOVERY_PLAYLIST":
+      return fetch(
+        `${API_BASE_URL}/api/ai/playlists/generate`,
+        { method: "POST", headers, body: JSON.stringify({ prompt: `${intent.payload.name}: ${(intent.payload.artists as string[] ?? []).join(", ")}`, confirmed: true }) },
+      ).then((res) => res.json());
     default:
       return null;
   }
