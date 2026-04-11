@@ -2,40 +2,62 @@ import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/ge
 import type { GeminiHistoryMessage, GeminiResponse } from "../../types/assistant";
 import { GeminiError } from "../../types/assistant";
 
+type GeminiModelName = "gemini-2.5-flash" | "gemini-2.0-flash";
+
+const SUPPORTED_MODELS: GeminiModelName[] = ["gemini-2.5-flash", "gemini-2.0-flash"];
+const DEFAULT_MODEL: GeminiModelName = "gemini-2.5-flash";
+const MAX_RETRIES = 2;
+const REQUEST_TIMEOUT_MS = 35_000;
+
 let singleton: GoogleGenerativeAI | null = null;
+let geminiClientFactory: ((apiKey: string) => GoogleGenerativeAI) | null = null;
 
 function getGeminiClient(): GoogleGenerativeAI {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
-
   if (!apiKey) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Missing GEMINI_API_KEY environment variable in production");
-    }
     throw new GeminiError("MISSING_API_KEY", "GEMINI_API_KEY is not configured");
   }
 
   if (!singleton) {
-    singleton = new GoogleGenerativeAI(apiKey);
+    singleton = geminiClientFactory ? geminiClientFactory(apiKey) : new GoogleGenerativeAI(apiKey);
   }
 
   return singleton;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+export function __setGeminiClientFactoryForTests(factory: ((apiKey: string) => GoogleGenerativeAI) | null): void {
+  geminiClientFactory = factory;
+  singleton = null;
+}
+
+export function resolveGeminiModelPlan(): string[] {
+  const configured = process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+  const normalizedConfigured = configured.toLowerCase();
+  const plan = [normalizedConfigured, ...SUPPORTED_MODELS.filter((model) => model !== normalizedConfigured)];
+  const unique = [...new Set(plan)].filter((model) => SUPPORTED_MODELS.includes(model as GeminiModelName));
+
+  if (!SUPPORTED_MODELS.includes(normalizedConfigured as GeminiModelName)) {
+    console.error("[assistant] configured AI model is invalid", {
+      configuredModel: configured,
+      supportedModels: SUPPORTED_MODELS,
+      defaultModel: DEFAULT_MODEL,
+    });
+    throw new GeminiError("GEMINI_INVALID_MODEL", "Configured AI model is invalid. Please contact support.");
+  }
+
+  return unique;
 }
 
 type ProviderFailureKind =
   | "timeout"
-  | "429"
-  | "503"
+  | "quota_exhausted"
+  | "rate_limited"
+  | "overloaded"
   | "invalid_model"
+  | "missing_api_key"
   | "empty_response"
   | "parse_failure"
   | "unknown";
-
-const REQUEST_TIMEOUT_MS = 35_000;
-const MAX_RETRIES = 3;
 
 function getErrorStatus(error: unknown): number | undefined {
   const candidate = error as { status?: unknown; response?: { status?: unknown } };
@@ -43,22 +65,34 @@ function getErrorStatus(error: unknown): number | undefined {
   return Number.isFinite(status) ? status : undefined;
 }
 
+function getErrorMessage(error: unknown): string {
+  return String((error as { message?: string })?.message ?? "").toLowerCase();
+}
+
 function classifyProviderFailure(error: unknown): ProviderFailureKind {
+  if ((error as { code?: string })?.code === "MISSING_API_KEY") return "missing_api_key";
+
   const status = getErrorStatus(error);
-  const candidate = error as { status?: number; message?: string };
-  const message = String(candidate?.message ?? "").toLowerCase();
+  const message = getErrorMessage(error);
 
   if (message.includes("timeout")) return "timeout";
-  if (status === 429 || message.includes("429")) return "429";
-  if (status === 503 || message.includes("503")) return "503";
+  if (status === 404 && message.includes("model")) return "invalid_model";
   if (message.includes("model") && (message.includes("invalid") || message.includes("not found"))) return "invalid_model";
+  if (status === 429 && (message.includes("quota") || message.includes("exhausted") || message.includes("resource_exhausted"))) return "quota_exhausted";
+  if (status === 429) return "rate_limited";
+  if (status === 503) return "overloaded";
+  if (message.includes("api key") || message.includes("permission_denied")) return "missing_api_key";
   if (message.includes("empty response") || message.includes("empty candidate")) return "empty_response";
   if (message.includes("parse")) return "parse_failure";
   return "unknown";
 }
 
 function isRetryableFailure(kind: ProviderFailureKind): boolean {
-  return kind === "timeout" || kind === "429" || kind === "503";
+  return kind === "timeout" || kind === "overloaded" || kind === "rate_limited";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
@@ -75,37 +109,34 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs = REQUEST_TIMEOUT_M
   }
 }
 
-async function callWithRetry<T>(fn: () => Promise<T>, maxRetries = MAX_RETRIES): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+async function sendMessageWithRetry(send: () => Promise<{ response: { text: () => string; usageMetadata?: GeminiResponse["usage"] } }>, model: string) {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
     try {
-      return await fn();
+      const result = await withTimeout(send());
+      console.info("[assistant] provider attempt", { model, statusClass: "success", attempt, retry: false });
+      return result;
     } catch (error) {
       lastError = error;
       const kind = classifyProviderFailure(error);
-      const retryable = isRetryableFailure(kind);
-      if (!retryable || attempt === maxRetries - 1) {
+      const retry = isRetryableFailure(kind) && attempt < MAX_RETRIES;
+      const backoffMs = Math.min(750 * 2 ** (attempt - 1), 2500);
+      console.error("[assistant] provider attempt", {
+        model,
+        statusClass: kind,
+        attempt,
+        retry,
+        status: getErrorStatus(error),
+      });
+      if (!retry) {
         throw error;
       }
-      const delay = Math.min(750 * (2 ** attempt), 4000);
-      console.warn(`[assistant] provider ${kind}`, { attempt: attempt + 1, retryInMs: delay });
-      await sleep(delay);
+      await sleep(backoffMs);
     }
   }
+
   throw lastError;
-}
-
-const DEFAULT_MODELS_BY_PRIORITY = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
-] as const;
-
-function getModelsByPriority(): string[] {
-  const fromEnv = process.env.GEMINI_MODELS?.trim();
-  if (!fromEnv) return [...DEFAULT_MODELS_BY_PRIORITY];
-  const models = fromEnv.split(",").map((model) => model.trim()).filter(Boolean);
-  return models.length > 0 ? models : [...DEFAULT_MODELS_BY_PRIORITY];
 }
 
 export async function generateAssistantReply(
@@ -115,9 +146,15 @@ export async function generateAssistantReply(
 ): Promise<GeminiResponse> {
   const client = getGeminiClient();
   const startedAt = Date.now();
-  let lastError: unknown = null;
-  const modelsByPriority = getModelsByPriority();
+  const modelsByPriority = resolveGeminiModelPlan();
+  const invalidModels = new Set<string>();
+  const failureKinds: ProviderFailureKind[] = [];
+
   for (const modelName of modelsByPriority) {
+    if (invalidModels.has(modelName)) {
+      continue;
+    }
+
     try {
       const model = client.getGenerativeModel({
         model: modelName,
@@ -135,59 +172,52 @@ export async function generateAssistantReply(
           topP: 0.8,
         },
       });
-      const result = await callWithRetry(() => withTimeout(chat.sendMessage(userMessage)));
+      const result = await sendMessageWithRetry(() => chat.sendMessage(userMessage), modelName);
       const response = result.response;
       const text = response.text();
       if (!text?.trim()) {
-        console.error("[assistant] empty candidate text", { model: modelName });
-        throw new GeminiError("EMPTY_RESPONSE", "Provider returned an empty response");
+        throw new GeminiError("GEMINI_EMPTY_RESPONSE", "AI provider returned an empty response.");
       }
-      const latencyMs = Date.now() - startedAt;
-      const usage = response.usageMetadata;
-      console.info("[assistant]", {
-        model: modelName,
-        latencyMs,
-        promptTokenCount: usage?.promptTokenCount,
-        candidatesTokenCount: usage?.candidatesTokenCount,
-        totalTokenCount: usage?.totalTokenCount,
-      });
-
       return {
         text,
         model: modelName,
-        usage,
-        latencyMs,
+        usage: response.usageMetadata,
+        latencyMs: Date.now() - startedAt,
       };
     } catch (error) {
-      lastError = error;
       const kind = classifyProviderFailure(error);
-      const retryable = isRetryableFailure(kind);
-      const status = getErrorStatus(error);
-      console.error(`[assistant] provider ${kind}`, {
-        model: modelName,
-        status,
-        message: (error as Error)?.message ?? String(error),
-      });
-      if (!retryable || modelName === modelsByPriority[modelsByPriority.length - 1]) {
-        break;
+      failureKinds.push(kind);
+
+      if (kind === "invalid_model") {
+        invalidModels.add(modelName);
+        continue;
       }
-      console.info("[assistant] trying fallback Gemini model");
+
+      if (kind === "quota_exhausted") {
+        throw new GeminiError("GEMINI_QUOTA_EXHAUSTED", "AI Assistant quota is currently exhausted. Please try again later.");
+      }
+
+      if (kind === "missing_api_key") {
+        throw new GeminiError("MISSING_API_KEY", "GEMINI_API_KEY is not configured");
+      }
+
+      if (kind === "empty_response") {
+        throw new GeminiError("GEMINI_EMPTY_RESPONSE", "AI provider returned an empty response.");
+      }
+
+      if (kind === "overloaded" || kind === "rate_limited" || kind === "timeout") {
+        continue;
+      }
     }
   }
 
-  const failureKind = classifyProviderFailure(lastError);
-  const status = getErrorStatus(lastError);
-  if (isRetryableFailure(failureKind)) {
-    throw new GeminiError("GEMINI_TEMPORARY_UNAVAILABLE", "AI Assistant is temporarily busy. Please try again in a few seconds.");
-  }
-  if (failureKind === "invalid_model") {
+  if (failureKinds.length > 0 && failureKinds.every((kind) => kind === "invalid_model")) {
     throw new GeminiError("GEMINI_INVALID_MODEL", "Configured AI model is invalid. Please contact support.");
   }
-  if (failureKind === "empty_response") {
-    throw new GeminiError("GEMINI_EMPTY_RESPONSE", "AI provider returned an empty response.");
+
+  if (failureKinds.some((kind) => kind === "overloaded" || kind === "rate_limited" || kind === "timeout")) {
+    throw new GeminiError("GEMINI_TEMPORARY_UNAVAILABLE", "AI Assistant is temporarily busy. Please try again shortly.");
   }
-  throw new GeminiError(
-    `GEMINI_${status || "UNKNOWN"}`,
-    (lastError as Error)?.message || "Gemini request failed",
-  );
+
+  throw new GeminiError("AI_SERVICE_UNAVAILABLE", "AI Assistant is not configured correctly. Please contact support.");
 }

@@ -6,6 +6,7 @@ import {
   findUserByEmail,
   findUserById,
   findUserByUsername,
+  type UserRecord,
   updateUser,
 } from "../../db/authStore";
 import { requireAuth, signAuthToken } from "../../middlewares/auth.middleware";
@@ -16,6 +17,36 @@ const authRouter = Router();
 
 const USERNAME_REGEX = /^\w{3,30}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ADMIN_ROLE = "admin" as const;
+const USER_ROLE = "user" as const;
+
+function getAdminEmailSet(): Set<string> {
+  const configured = [
+    process.env.ADMIN_EMAIL?.trim(),
+    ...(process.env.ADMIN_EMAILS ?? "").split(","),
+  ]
+    .map((item) => item?.trim().toLowerCase())
+    .filter((item): item is string => Boolean(item));
+
+  return new Set(configured);
+}
+
+async function ensureAdminRoleForConfiguredEmail(
+  user: UserRecord,
+  reason: "register" | "login" | "auth_me",
+): Promise<UserRecord> {
+  const adminEmails = getAdminEmailSet();
+  const isConfiguredAdmin = adminEmails.has(user.email.toLowerCase());
+  if (!isConfiguredAdmin || user.role === ADMIN_ROLE) {
+    return user;
+  }
+  const promoted = await updateUser(user.id, { role: ADMIN_ROLE });
+  if (promoted) {
+    console.info("[auth] admin bootstrap promoted user", { userId: user.id, email: user.email, reason });
+    return promoted;
+  }
+  return user;
+}
 
 function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -47,7 +78,7 @@ function toUserPayload(user: {
     avatarBase64: user.avatarBase64 ?? null,
     bio: user.bio ?? null,
     createdAt: user.createdAt,
-    role: user.role ?? "user",
+    role: user.role ?? USER_ROLE,
     isDemo: Boolean(user.isDemo),
   };
 }
@@ -62,30 +93,29 @@ authRouter.post("/register", authSensitiveRateLimit, async (req, res) => {
   if (!username || !USERNAME_REGEX.test(username)) return void sendError(res, ErrorCatalog.INVALID_USERNAME);
   if (!email || !EMAIL_REGEX.test(email)) return void sendError(res, ErrorCatalog.INVALID_EMAIL);
   if (!password || password.length < 8) return void sendError(res, ErrorCatalog.WEAK_PASSWORD);
+  const normalizedEmail = email.toLowerCase();
 
   if (await findUserByUsername(username)) return void sendError(res, ErrorCatalog.USERNAME_TAKEN);
-  if (await findUserByEmail(email)) return void sendError(res, ErrorCatalog.EMAIL_TAKEN);
+  if (await findUserByEmail(normalizedEmail)) return void sendError(res, ErrorCatalog.EMAIL_TAKEN);
 
-  const user = await createUser({ username, email, passwordHash: hashPassword(password) });
-  const adminEmails = (process.env.ADMIN_EMAILS ?? "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
-  if (adminEmails.includes(email.toLowerCase())) {
-    await updateUser(user.id, { role: "admin" });
-  }
-  const finalUser = (await findUserById(user.id)) ?? user;
-  const token = signAuthToken(finalUser.id);
+  const user = await createUser({ username, email: normalizedEmail, passwordHash: hashPassword(password), role: USER_ROLE });
+  const finalUser = await ensureAdminRoleForConfiguredEmail((await findUserById(user.id)) ?? user, "register");
+  const token = signAuthToken(finalUser.id, finalUser.role ?? USER_ROLE);
   res.status(201).json({ token, user: toUserPayload(finalUser) });
 });
 
 authRouter.post("/login", authSensitiveRateLimit, async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
   if (!email || !password) return void sendError(res, ErrorCatalog.INVALID_CREDENTIALS);
+  const normalizedEmail = email.toLowerCase();
 
-  const user = await findUserByEmail(email);
+  const user = await findUserByEmail(normalizedEmail);
   if (!user) return void sendError(res, ErrorCatalog.INVALID_CREDENTIALS);
   if (!verifyPassword(password, user.passwordHash)) return void sendError(res, ErrorCatalog.INVALID_CREDENTIALS);
 
-  const token = signAuthToken(user.id);
-  res.status(200).json({ token, user: toUserPayload(user) });
+  const finalUser = await ensureAdminRoleForConfiguredEmail(user, "login");
+  const token = signAuthToken(finalUser.id, finalUser.role ?? USER_ROLE);
+  res.status(200).json({ token, user: toUserPayload(finalUser) });
 });
 
 authRouter.post("/logout", (_req, res) => res.status(200).json({ ok: true }));
@@ -95,8 +125,10 @@ authRouter.get("/me", requireAuth, async (req, res) => {
   if (!user) {
     return void sendError(res, ErrorCatalog.NOT_FOUND);
   }
-  const payload = toUserPayload(user);
-  res.status(200).json({ user: payload });
+  const finalUser = await ensureAdminRoleForConfiguredEmail(user, "auth_me");
+  const payload = toUserPayload(finalUser);
+  const token = signAuthToken(finalUser.id, finalUser.role ?? USER_ROLE);
+  res.status(200).json({ user: payload, token });
 });
 
 authRouter.patch("/me", requireAuth, async (req, res) => {
@@ -115,13 +147,14 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     if (existing && existing.id !== req.userId) return void sendError(res, ErrorCatalog.USERNAME_TAKEN);
   }
   if (email) {
-    const existing = await findUserByEmail(email);
+    const normalizedEmail = email.toLowerCase();
+    const existing = await findUserByEmail(normalizedEmail);
     if (existing && existing.id !== req.userId) return void sendError(res, ErrorCatalog.EMAIL_TAKEN);
   }
 
   const user = await updateUser(req.userId!, {
     ...(username !== undefined ? { username } : {}),
-    ...(email !== undefined ? { email } : {}),
+    ...(email !== undefined ? { email: email.toLowerCase() } : {}),
     ...(bio !== undefined ? { bio } : {}),
     ...(avatarBase64 !== undefined ? { avatarBase64 } : {}),
   });

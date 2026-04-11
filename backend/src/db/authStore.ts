@@ -236,7 +236,10 @@ export async function deleteUserCascade(id: string): Promise<void> {
   await writeDb(db);
 }
 
-export async function findUserByEmail(email: string) { return (await readDb()).users.find((u) => u.email === email) || null; }
+export async function findUserByEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  return (await readDb()).users.find((u) => u.email.trim().toLowerCase() === normalizedEmail) || null;
+}
 export async function findUserByUsername(username: string) { return (await readDb()).users.find((u) => u.username === username) || null; }
 export async function findUserById(id: string) { return (await readDb()).users.find((u) => u.id === id) || null; }
 

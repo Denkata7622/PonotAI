@@ -53,6 +53,10 @@ Frontend queue -> resolve videoId -> YouTube IFrame API -> visible embed player
 
 ### Backend (`backend/.env` или Railway variables)
 - `PORT` (по избор)
+- `JWT_SECRET` (задължителен в production)
+- `ADMIN_EMAIL` (email на собственика; акаунтът се bootstrap-ва автоматично с `role=admin` при register/login/auth restore)
+- `GEMINI_API_KEY` (ключ за AI Assistant)
+- `GEMINI_MODEL` (по избор; поддържани: `gemini-2.5-flash`, `gemini-2.0-flash`)
 - `YOUTUBE_API_KEY`
 - `ACRCLOUD_API_KEY` *(competition requirement; optional fallback hook)*
 - `AUDD_API_KEY` или `AUDD_API_TOKEN` *(ако е наличен)
@@ -62,6 +66,8 @@ Frontend queue -> resolve videoId -> YouTube IFrame API -> visible embed player
   - `ACRCLOUD_HOST`
 
 > Ако няма нито ACRCloud/AuDD ключ, backend връща graceful mock/fallback вместо hard failure.
+>
+> Ако AI квотата е изчерпана или доставчикът е претоварен, `/api/assistant` връща безопасен `503 AI_SERVICE_UNAVAILABLE` без crash на процеса.
 
 ## Локално пускане
 

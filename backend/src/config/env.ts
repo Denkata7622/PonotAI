@@ -102,6 +102,16 @@ export function validateEnvironment(): void {
     process.env.AUDD_API_TOKEN = auddToken;
   }
 
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  if (adminEmail) {
+    process.env.ADMIN_EMAIL = adminEmail;
+  }
+
+  const geminiModel = process.env.GEMINI_MODEL?.trim();
+  if (geminiModel) {
+    process.env.GEMINI_MODEL = geminiModel;
+  }
+
   const hasAcrCloud = Boolean(acrKey && acrSecret && acrHost);
 
   if (!auddToken && !hasAcrCloud) {

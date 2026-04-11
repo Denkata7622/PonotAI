@@ -14,8 +14,8 @@ export async function startTestServer(): Promise<RunningTestServer> {
   process.env.NODE_ENV = "test";
   process.env.JWT_SECRET = "test-secret";
   process.env.PONOTAI_DATA_DIR = tempDataDir;
-  process.env.GEMINI_API_KEY = "";
-  process.env.SHAZAM_MOCK_RESPONSE = "";
+  process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
+  process.env.SHAZAM_MOCK_RESPONSE = process.env.SHAZAM_MOCK_RESPONSE ?? "";
 
   const { default: app } = await import("../../src/app.ts");
   const server = await new Promise<Server>((resolve) => {
@@ -33,8 +33,8 @@ export async function startTestServer(): Promise<RunningTestServer> {
       });
       await rm(tempDataDir, { recursive: true, force: true });
       delete process.env.PONOTAI_DATA_DIR;
-      delete process.env.GEMINI_API_KEY;
-      delete process.env.SHAZAM_MOCK_RESPONSE;
+      if (process.env.GEMINI_API_KEY === "") delete process.env.GEMINI_API_KEY;
+      if (process.env.SHAZAM_MOCK_RESPONSE === "") delete process.env.SHAZAM_MOCK_RESPONSE;
       delete process.env.JWT_SECRET;
     },
   };
