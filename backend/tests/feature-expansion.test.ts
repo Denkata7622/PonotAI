@@ -1,62 +1,49 @@
-import app from "../src/app";
+import test from "node:test";
+import assert from "node:assert/strict";
+import { startTestServer, registerUser } from "./helpers/testHarness.ts";
 
-async function createUser(baseUrl: string, name: string) {
-  const email = `${name}-${Date.now()}@test.dev`;
-  const response = await fetch(`${baseUrl}/api/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: `${name}${Date.now().toString().slice(-4)}`, email, password: "password123" }),
-  });
-  const data = (await response.json()) as { token: string };
-  return data.token;
-}
-
-async function run() {
-  const server = app.listen(0);
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Failed to start test server");
-  const baseUrl = `http://127.0.0.1:${address.port}`;
+test("feature expansion flow: playlist share + achievements", async () => {
+  const running = await startTestServer();
 
   try {
-    const token = await createUser(baseUrl, "feature");
+    const user = await registerUser(running.baseUrl, "feature");
 
-    const playlistRes = await fetch(`${baseUrl}/api/playlists`, {
+    const playlistRes = await fetch(`${running.baseUrl}/api/playlists`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${user.token}` },
       body: JSON.stringify({ name: "Road Trip" }),
     });
+    assert.equal(playlistRes.status, 201);
     const playlist = (await playlistRes.json()) as { id: string };
 
-    await fetch(`${baseUrl}/api/playlists/${playlist.id}/songs`, {
+    const addSongRes = await fetch(`${running.baseUrl}/api/playlists/${playlist.id}/songs`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${user.token}` },
       body: JSON.stringify({ title: "Numb", artist: "Linkin Park" }),
     });
+    assert.equal(addSongRes.status, 200);
 
-    const shareRes = await fetch(`${baseUrl}/api/share/playlist/${playlist.id}`, {
+    const shareRes = await fetch(`${running.baseUrl}/api/share/playlist/${playlist.id}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { authorization: `Bearer ${user.token}` },
     });
-    if (shareRes.status !== 201) throw new Error(`Expected 201 share playlist, got ${shareRes.status}`);
+    assert.equal(shareRes.status, 201);
     const sharePayload = (await shareRes.json()) as { shareCode: string };
 
-    const sharedRead = await fetch(`${baseUrl}/api/share/${sharePayload.shareCode}`);
+    const sharedRead = await fetch(`${running.baseUrl}/api/share/${sharePayload.shareCode}`);
+    assert.equal(sharedRead.status, 200);
     const sharedBody = (await sharedRead.json()) as { type: string; songs?: unknown[] };
-    if (sharedBody.type !== "playlist") throw new Error("Expected shared playlist payload type");
-    if (!Array.isArray(sharedBody.songs) || sharedBody.songs.length === 0) throw new Error("Expected playlist songs in shared response");
+    assert.equal(sharedBody.type, "playlist");
+    assert.ok(Array.isArray(sharedBody.songs));
+    assert.ok(sharedBody.songs.length > 0);
 
-    const achievementsRes = await fetch(`${baseUrl}/api/achievements`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const achievementsRes = await fetch(`${running.baseUrl}/api/achievements`, {
+      headers: { authorization: `Bearer ${user.token}` },
     });
+    assert.equal(achievementsRes.status, 200);
     const achievementsPayload = (await achievementsRes.json()) as { items: Array<{ key: string }> };
-    if (!achievementsPayload.items.some((item) => item.key === "first_playlist")) {
-      throw new Error("Expected first_playlist achievement");
-    }
-
-    console.log("feature-expansion.test.ts passed");
+    assert.ok(achievementsPayload.items.some((item) => item.key === "first_playlist"));
   } finally {
-    server.close();
+    await running.close();
   }
-}
-
-void run();
+});

@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test tests/*.test.ts tests/**/*.test.ts",
+    "test:smoke": "tsx --test tests/smoke/**/*.test.ts",
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.21.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "helmet": "^8.1.0",
@@ -16,8 +20,7 @@
     "multer": "^1.4.5-lts.1",
     "music-metadata": "^10.6.5",
     "swagger-ui-express": "^5.0.1",
-    "tesseract.js": "^5.1.1",
-    "@google/generative-ai": "^0.21.0"
+    "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

@@ -1,8 +1,6 @@
-import test, { before, after } from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
-import app from "../src/app.ts";
+import { startTestServer } from "./helpers/testHarness.ts";
 
 type StandardError = {
   code: string;
@@ -10,20 +8,6 @@ type StandardError = {
   details?: unknown;
   requestId?: string;
 };
-
-let server: Server;
-let baseUrl = "";
-
-before(async () => {
-  server = app.listen(0);
-  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
-  const address = server.address() as AddressInfo;
-  baseUrl = `http://127.0.0.1:${address.port}`;
-});
-
-after(async () => {
-  await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
-});
 
 function assertStandardErrorShape(body: unknown): asserts body is StandardError {
   assert.equal(typeof body, "object");
@@ -42,81 +26,52 @@ function assertStandardErrorShape(body: unknown): asserts body is StandardError 
   }
 }
 
-test("auth register validation returns standard error shape", async () => {
-  const response = await fetch(`${baseUrl}/api/auth/register`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-request-id": "req-auth-register-1",
-    },
-    body: JSON.stringify({ username: "x", email: "valid@example.com", password: "password123" }),
-  });
+test("API returns standard error shape for common failures", async () => {
+  const running = await startTestServer();
 
-  assert.equal(response.status, 400);
-  const body = (await response.json()) as unknown;
-  assertStandardErrorShape(body);
-  assert.equal(body.code, "INVALID_USERNAME");
-  assert.equal(body.requestId, "req-auth-register-1");
-});
+  try {
+    const cases: Array<{ name: string; run: () => Promise<Response>; status: number; code: string; requestId?: string }> = [
+      {
+        name: "auth register validation",
+        run: () =>
+          fetch(`${running.baseUrl}/api/auth/register`, {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-request-id": "req-auth-register-1" },
+            body: JSON.stringify({ username: "x", email: "valid@example.com", password: "password123" }),
+          }),
+        status: 400,
+        code: "INVALID_USERNAME",
+        requestId: "req-auth-register-1",
+      },
+      { name: "favorites unauthorized", run: () => fetch(`${running.baseUrl}/api/favorites`), status: 401, code: "UNAUTHORIZED" },
+      { name: "share lookup missing", run: () => fetch(`${running.baseUrl}/api/share/not-a-real-code`), status: 404, code: "NOT_FOUND" },
+      {
+        name: "history guest validation",
+        run: () => fetch(`${running.baseUrl}/api/history`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }),
+        status: 400,
+        code: "INVALID_PAYLOAD",
+      },
+      {
+        name: "recognition audio missing file",
+        run: () => fetch(`${running.baseUrl}/api/recognition/audio`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }),
+        status: 400,
+        code: "AUDIO_FILE_REQUIRED",
+      },
+      { name: "playlists unauthorized", run: () => fetch(`${running.baseUrl}/api/playlists`), status: 401, code: "UNAUTHORIZED" },
+      { name: "library unauthorized", run: () => fetch(`${running.baseUrl}/api/library`), status: 401, code: "UNAUTHORIZED" },
+    ];
 
-test("favorites unauthorized returns standard error shape", async () => {
-  const response = await fetch(`${baseUrl}/api/favorites`);
-
-  assert.equal(response.status, 401);
-  const body = (await response.json()) as unknown;
-  assertStandardErrorShape(body);
-  assert.equal(body.code, "UNAUTHORIZED");
-});
-
-test("share lookup missing resource returns standard error shape", async () => {
-  const response = await fetch(`${baseUrl}/api/share/not-a-real-code`);
-
-  assert.equal(response.status, 404);
-  const body = (await response.json()) as unknown;
-  assertStandardErrorShape(body);
-  assert.equal(body.code, "NOT_FOUND");
-});
-
-test("history guest validation returns standard error shape", async () => {
-  const response = await fetch(`${baseUrl}/api/history`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({}),
-  });
-
-  assert.equal(response.status, 400);
-  const body = (await response.json()) as unknown;
-  assertStandardErrorShape(body);
-  assert.equal(body.code, "INVALID_PAYLOAD");
-});
-
-test("recognition audio without multipart file returns standard error shape", async () => {
-  const response = await fetch(`${baseUrl}/api/recognition/audio`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({}),
-  });
-
-  assert.equal(response.status, 400);
-  const body = (await response.json()) as unknown;
-  assertStandardErrorShape(body);
-  assert.equal(body.code, "AUDIO_FILE_REQUIRED");
-});
-
-test("playlists unauthorized returns standard error shape", async () => {
-  const response = await fetch(`${baseUrl}/api/playlists`);
-
-  assert.equal(response.status, 401);
-  const body = (await response.json()) as unknown;
-  assertStandardErrorShape(body);
-  assert.equal(body.code, "UNAUTHORIZED");
-});
-
-test("library unauthorized returns standard error shape", async () => {
-  const response = await fetch(`${baseUrl}/api/library`);
-
-  assert.equal(response.status, 401);
-  const body = (await response.json()) as unknown;
-  assertStandardErrorShape(body);
-  assert.equal(body.code, "UNAUTHORIZED");
+    for (const scenario of cases) {
+      const response = await scenario.run();
+      assert.equal(response.status, scenario.status, `${scenario.name} status mismatch`);
+      const body = (await response.json()) as unknown;
+      assertStandardErrorShape(body);
+      assert.equal(body.code, scenario.code, `${scenario.name} code mismatch`);
+      if (scenario.requestId) {
+        assert.equal(body.requestId, scenario.requestId, `${scenario.name} request id mismatch`);
+      }
+    }
+  } finally {
+    await running.close();
+  }
 });

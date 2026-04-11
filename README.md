@@ -90,6 +90,19 @@ npm run dev
 - `npm run test` — тестове
 - `npm run check:backend` — backend type/test checks
 
+
+## Стабилно тестване (root)
+
+```bash
+npm run test
+npm run test:smoke
+npm run test:backend
+npm run test:frontend
+npm run typecheck
+```
+
+Тестовите инструкции за Codex/CI и изолация на данни са в `docs/testing.md`.
+
 ## API (накратко)
 - `GET /health`
 - `POST /api/recognition/audio` (`multipart/form-data`, поле `audio`)

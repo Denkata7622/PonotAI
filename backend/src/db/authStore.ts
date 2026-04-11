@@ -117,7 +117,13 @@ type AppDb = {
   apiKeys: ApiKeyRecord[];
 };
 
-const DB_PATH = path.join(process.cwd(), "backend", "data", "appdb.json");
+function resolveDataDir(): string {
+  return process.env.PONOTAI_DATA_DIR?.trim() || path.join(process.cwd(), "backend", "data");
+}
+
+function resolveDbPath(): string {
+  return path.join(resolveDataDir(), "appdb.json");
+}
 
 function normalizeTrackKey(title: string, artist: string): string {
   const normalizePart = (value: string) =>
@@ -133,9 +139,10 @@ function normalizeTrackKey(title: string, artist: string): string {
 
 
 async function ensureDb() {
-  await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
+  const dbPath = resolveDbPath();
+  await fs.mkdir(path.dirname(dbPath), { recursive: true });
   try {
-    await fs.access(DB_PATH);
+    await fs.access(dbPath);
   } catch {
     const initial: AppDb = {
       users: [],
@@ -148,14 +155,14 @@ async function ensureDb() {
       achievements: [],
       apiKeys: [],
     };
-    await fs.writeFile(DB_PATH, JSON.stringify(initial, null, 2));
+    await fs.writeFile(dbPath, JSON.stringify(initial, null, 2));
   }
 }
 
 async function readDb(): Promise<AppDb> {
   await ensureDb();
   try {
-    const raw = await fs.readFile(DB_PATH, "utf8");
+    const raw = await fs.readFile(resolveDbPath(), "utf8");
     if (!raw || !raw.trim()) throw new Error("empty");
     const parsed = JSON.parse(raw) as Partial<AppDb>;
     const db: AppDb = {
@@ -197,7 +204,7 @@ async function readDb(): Promise<AppDb> {
 }
 async function writeDb(db: AppDb): Promise<void> {
   await ensureDb();
-  await fs.writeFile(DB_PATH, JSON.stringify(db, null, 2), "utf8");
+  await fs.writeFile(resolveDbPath(), JSON.stringify(db, null, 2), "utf8");
 }
 
 export async function listUsers() { return (await readDb()).users; }
