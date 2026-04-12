@@ -1,6 +1,6 @@
 import type { AccentPreset, DensityMode } from "@/lib/ThemeContext";
 
-const SUPPORTED_ACCENTS: AccentPreset[] = ["violet", "ocean", "sunset", "emerald", "rose"];
+const SUPPORTED_ACCENTS: AccentPreset[] = ["violet", "indigo", "blue", "cyan", "ocean", "teal", "emerald", "lime", "amber", "gold", "orange", "sunset", "coral", "rose", "ruby", "magenta", "plum", "slate", "graphite"];
 const SUPPORTED_DENSITY: DensityMode[] = ["comfortable", "compact"];
 
 export function normalizeThemeActionPayload(payload: Record<string, unknown>): {

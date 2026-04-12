@@ -4,6 +4,7 @@ import { getApiBaseUrl } from "@/lib/apiConfig";
 import { getToken } from "@/src/lib/apiFetch";
 import type { AssistantMeta, ChatMessage, ActionIntent } from "./types";
 import { stripAssistantActionMarkup } from "./responseSanitizer";
+import { readTasteProfile } from "../onboarding/tasteProfile";
 
 const API_BASE_URL = getApiBaseUrl();
 function buildAuthHeaders(): Record<string, string> {
@@ -24,6 +25,7 @@ export async function sendAssistantMessage(
       .join("|");
   const theme = typeof window === "undefined" ? undefined : (window.localStorage.getItem("ponotai-theme") ?? undefined);
   const language = typeof window === "undefined" ? undefined : (window.localStorage.getItem("ponotai-language") ?? undefined);
+  const tasteProfile = typeof window === "undefined" ? null : readTasteProfile();
   const response = await fetch(`${API_BASE_URL}/api/assistant`, {
     method: "POST",
     headers: {
@@ -32,6 +34,12 @@ export async function sendAssistantMessage(
       ...(queueTitles ? { "X-Trackly-Queue": queueTitles } : {}),
       ...(theme ? { "X-Trackly-Theme": theme } : {}),
       ...(language ? { "X-Trackly-Language": language } : {}),
+      ...(tasteProfile ? { "X-Trackly-Preferences": JSON.stringify({
+        genres: tasteProfile.genres,
+        artists: tasteProfile.artists,
+        moods: tasteProfile.moods,
+        goals: tasteProfile.goals,
+      }) } : {}),
       ...(typeof navigator !== "undefined" ? { "X-Trackly-Device": navigator.userAgent.slice(0, 120) } : {}),
     },
     body: JSON.stringify({
