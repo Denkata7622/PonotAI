@@ -20,6 +20,9 @@ const ACTION_TYPES = new Set<ActionIntent["type"]>([
   "CREATE_DISCOVERY_PLAYLIST",
 ]);
 
+const OPEN_ACTION_TAG = /<action>/i;
+const CLOSED_ACTION_BLOCK = /<action>([\s\S]*?)<\/action>/i;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -45,7 +48,11 @@ function validatePayload(type: ActionIntent["type"], payload: Record<string, unk
     case "SEARCH_AND_SUGGEST":
       return typeof payload.query === "string" && payload.query.length > 0 && typeof payload.reason === "string";
     case "CHANGE_THEME":
-      return payload.theme === "light" || payload.theme === "dark" || payload.theme === "system";
+      return (
+        (payload.theme === "light" || payload.theme === "dark" || payload.theme === "system")
+        && (payload.accent === undefined || ["violet", "ocean", "sunset", "emerald", "rose"].includes(String(payload.accent)))
+        && (payload.density === undefined || payload.density === "compact" || payload.density === "comfortable")
+      );
     case "CHANGE_LANGUAGE":
       return payload.locale === "en" || payload.locale === "bg";
     case "INSIGHT_REQUEST":
@@ -77,15 +84,18 @@ function validatePayload(type: ActionIntent["type"], payload: Record<string, unk
 }
 
 function sanitizeReply(rawOutput: string): string {
-  return rawOutput.replace(/<action>[\s\S]*?<\/action>/g, "").trim();
+  const withoutClosedBlocks = rawOutput.replace(/<action>[\s\S]*?<\/action>/gi, "");
+  const openTagIndex = withoutClosedBlocks.search(OPEN_ACTION_TAG);
+  const safe = openTagIndex >= 0 ? withoutClosedBlocks.slice(0, openTagIndex) : withoutClosedBlocks;
+  return safe.trim();
 }
 
 export function parseActionIntent(rawOutput: string): { reply: string; actionIntent: ActionIntent | null; parseError: boolean } {
   const reply = sanitizeReply(rawOutput);
-  const match = rawOutput.match(/<action>([\s\S]*?)<\/action>/);
+  const match = rawOutput.match(CLOSED_ACTION_BLOCK);
 
   if (!match) {
-    return { reply, actionIntent: null, parseError: false };
+    return { reply, actionIntent: null, parseError: rawOutput.search(OPEN_ACTION_TAG) >= 0 };
   }
 
   try {

@@ -30,6 +30,7 @@ interface SmartDropdownProps {
   matchTriggerWidth?: boolean; // dropdown same width as trigger
   className?: string;
   bottomPadding?: number;
+  enableClickTrigger?: boolean;
 }
 
 export function SmartDropdown({
@@ -42,6 +43,7 @@ export function SmartDropdown({
   matchTriggerWidth = false,
   className,
   bottomPadding,
+  enableClickTrigger = true,
 }: SmartDropdownProps) {
   const [playerBarPadding, setPlayerBarPadding] = useState(0);
 
@@ -99,10 +101,8 @@ export function SmartDropdown({
     outsidePressEvent: 'pointerdown',
   });
 
-  const { getReferenceProps, getFloatingProps } = useInteractions([
-    click,
-    dismiss,
-  ]);
+  const interactions = enableClickTrigger ? [click, dismiss] : [dismiss];
+  const { getReferenceProps, getFloatingProps } = useInteractions(interactions);
 
   const dropdownStyle: CSSProperties = {
     ...floatingStyles,

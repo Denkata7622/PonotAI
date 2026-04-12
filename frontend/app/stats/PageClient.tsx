@@ -36,17 +36,17 @@ type ActivitySummary = {
 function ActivityCard({ title, data }: { title: string; data: ActivityPeriod }) {
   const hasData = data.totalPlays > 0;
   return (
-    <article className="card p-5">
+    <article className="card overflow-hidden p-5">
       <h3 className="text-lg font-semibold">{title}</h3>
       {!hasData ? (
         <p className="mt-3 text-sm text-[var(--muted)]">No listening data yet. Play tracks and check back for insights.</p>
       ) : (
-        <div className="mt-3 space-y-3 text-sm">
+        <div className="mt-3 space-y-3 text-sm break-words">
           <p>Plays: <strong>{data.totalPlays}</strong> · Recognized: <strong>{data.tracksRecognized}</strong> · Streak: <strong>{data.streakDays} days</strong></p>
           <p className="text-[var(--muted)]">{data.trend}</p>
           <p>Top genres: {data.favoriteGenres.slice(0, 3).map((item) => item.name).join(", ") || "—"}</p>
-          <p>Top artists: {data.topArtists.slice(0, 3).map((item) => item.name).join(", ") || "—"}</p>
-          <p>Top tracks: {data.topTracks.slice(0, 2).map((item) => `${item.title} — ${item.artist}`).join(" · ") || "—"}</p>
+          <p className="leading-relaxed">Top artists: <span className="inline-flex max-w-full flex-wrap gap-x-1">{data.topArtists.slice(0, 5).map((item) => <span key={item.name} className="max-w-full truncate">{item.name}{", "}</span>)}</span>{data.topArtists.length === 0 ? "—" : null}</p>
+          <p className="leading-relaxed">Top tracks: {data.topTracks.slice(0, 3).map((item) => `${item.title} — ${item.artist}`).join(" · ") || "—"}</p>
         </div>
       )}
     </article>
@@ -88,7 +88,7 @@ export default function StatsPage() {
     >
       <div className="card p-4 sm:p-6">
         <h1 className="text-2xl font-bold sm:text-3xl">{t("nav_stats", language)}</h1>
-        <p className="mt-2 text-sm text-[var(--muted)]">Track your daily, weekly, and monthly listening activity with AI-ready summaries.</p>
+        <p className="mt-2 text-sm text-[var(--muted)]">{t("stats_intro", language)}</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -104,29 +104,31 @@ export default function StatsPage() {
 
       <div className="card p-6">
         <h2 className="text-xl font-semibold">{t("stats_top_artists", language)}</h2>
-        <div className="mt-4 h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={stats.topArtists.slice(0, 5)}>
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="count" fill="var(--accent)" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="mt-4 h-72 overflow-x-auto">
+          <div className="h-full min-w-[360px] sm:min-w-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.topArtists.slice(0, 7)}>
+                <XAxis dataKey="name" interval={0} tickMargin={10} tickFormatter={(value: string) => String(value).length > 12 ? `${String(value).slice(0, 12)}…` : String(value)} />
+                <YAxis width={36} />
+                <Tooltip />
+                <Bar dataKey="count" fill="var(--accent)" radius={[8, 8, 0, 0]} maxBarSize={42} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 
       <section className="space-y-3">
-        <h2 className="inline-flex items-center gap-2 text-xl font-semibold"><BarChart2 className="h-5 w-5 text-[var(--accent)]" /> Your listening activity</h2>
+        <h2 className="inline-flex items-center gap-2 text-xl font-semibold"><BarChart2 className="h-5 w-5 text-[var(--accent)]" /> {t("stats_listening_activity", language)}</h2>
         {!isAuthenticated ? (
-          <div className="card p-5 text-sm text-[var(--muted)]">Sign in to unlock daily, weekly, and monthly activity insights.</div>
+          <div className="card p-5 text-sm text-[var(--muted)]">{t("stats_signin_hint", language)}</div>
         ) : !activity ? (
-          <div className="card p-5 text-sm text-[var(--muted)]">Loading personal activity insights…</div>
+          <div className="card p-5 text-sm text-[var(--muted)]">{t("stats_loading_activity", language)}</div>
         ) : (
           <div className="grid gap-4 lg:grid-cols-3">
-            <ActivityCard title="Daily" data={activity.daily} />
-            <ActivityCard title="Weekly" data={activity.weekly} />
-            <ActivityCard title="Monthly" data={activity.monthly} />
+            <ActivityCard title={t("stats_daily", language)} data={activity.daily} />
+            <ActivityCard title={t("stats_weekly", language)} data={activity.weekly} />
+            <ActivityCard title={t("stats_monthly", language)} data={activity.monthly} />
           </div>
         )}
       </section>
