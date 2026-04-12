@@ -77,6 +77,13 @@ export interface LibraryContextPayload {
     topGenres: LibraryStatItem[];
     topArtists: LibraryStatItem[];
   };
+  statedPreferences?: {
+    genres: string[];
+    artists: string[];
+    moods: string[];
+    goals: string[];
+    source: "onboarding";
+  };
 }
 
 export interface GeminiMessage {

@@ -171,6 +171,9 @@ export default function AdminPage() {
                 <button className="rounded-lg border border-[var(--border)] px-3 py-1.5" onClick={() => copyText(lastGenerated.password, "Password")}>Copy password</button>
                 <button className="rounded-lg border border-[var(--border)] px-3 py-1.5" onClick={() => copyText(`${lastGenerated.email}\n${lastGenerated.password}`, "Credentials")}>Copy credentials</button>
               </div>
+              <p className="rounded-lg border border-[var(--border)] p-2 text-xs text-[var(--muted)]">
+                Persona summary: {lastGenerated.personaDescription}
+              </p>
             </div>
           ) : null}
         </section>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, RotateCcw, Save, Send, Sparkles, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ListPlus, Plus, RotateCcw, Save, Send, Sparkles, Trash2 } from "lucide-react";
 import { useUser } from "@/src/context/UserContext";
 import { useLanguage } from "@/lib/LanguageContext";
 import { t } from "@/lib/translations";
@@ -40,6 +40,7 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
   const [input, setInput] = useState("");
   const [promptSeed, setPromptSeed] = useState(() => `session-${Date.now()}`);
   const [showHints, setShowHints] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(mode === "page");
 
   useEffect(() => {
     if (mode === 'page' && !authLoading && !isAuthenticated) router.replace("/auth");
@@ -48,6 +49,9 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
   useEffect(() => {
     if (typeof window === "undefined") return;
     setShowHints(window.localStorage.getItem("ponotai-assistant-hints") !== "off");
+    if (mode === "sidebar") {
+      setHistoryOpen(window.matchMedia("(min-width: 1024px)").matches);
+    }
   }, []);
 
   async function submitMessage() {
@@ -86,19 +90,25 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
         <button type="button" onClick={handleNewConversation}><Plus width={15} height={15} strokeWidth={1.8} /> {t("assistant_new", language)}</button>
       </header>
 
-      <div className="grid flex-1 min-h-0 md:grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-[var(--border)] p-3 md:block">
+      <div className={`grid flex-1 min-h-0 ${historyOpen ? "md:grid-cols-[220px_minmax(0,1fr)]" : "grid-cols-1"}`}>
+        {historyOpen ? <aside className="hidden border-r border-[var(--border)] p-2 md:block">
           <div className="mb-2 flex items-center justify-between text-xs text-[var(--muted)]">
             <span>{language === "bg" ? "Разговори" : "Conversations"}</span>
           </div>
-          <div className="space-y-2 max-h-[55vh] overflow-auto">{conversationOptions}</div>
-        </aside>
+          <div className="space-y-2 max-h-[45vh] overflow-auto">{conversationOptions}</div>
+        </aside> : null}
 
         <div className="flex min-h-0 flex-col">
-          <div className="border-b border-[var(--border)] px-3 py-2 md:hidden">
-            <select className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" value={activeConversationId ?? ""} onChange={(event) => openConversation(event.target.value)}>
-              {conversations.map((conversation) => <option key={conversation.id} value={conversation.id}>{conversation.title}</option>)}
-            </select>
+          <div className="border-b border-[var(--border)] px-3 py-2">
+            <div className="flex items-center gap-2">
+              <button type="button" className="rounded-lg border border-[var(--border)] px-2 py-1.5 text-xs" onClick={() => setHistoryOpen((prev) => !prev)}>
+                {historyOpen ? <ChevronLeft className="inline h-3.5 w-3.5" /> : <ListPlus className="inline h-3.5 w-3.5" />} {language === "bg" ? "Разговори" : "Conversations"}
+              </button>
+              {!historyOpen ? <select className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" value={activeConversationId ?? ""} onChange={(event) => openConversation(event.target.value)}>
+                {conversations.map((conversation) => <option key={conversation.id} value={conversation.id}>{conversation.title}</option>)}
+              </select> : <span className="text-xs text-[var(--muted)]">{language === "bg" ? "Историята е отворена" : "History expanded"}</span>}
+              {historyOpen ? <button type="button" className="hidden rounded-lg border border-[var(--border)] px-2 py-1.5 text-xs md:inline-flex" onClick={() => setHistoryOpen(false)}><ChevronRight className="h-3.5 w-3.5" /></button> : null}
+            </div>
           </div>
 
           <div className="assistant-thread" style={{ flex: 1, minHeight: 0 }}>

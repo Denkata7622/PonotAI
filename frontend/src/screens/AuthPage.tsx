@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "../context/UserContext";
+import { useLanguage } from "../../lib/LanguageContext";
+import { t } from "../../lib/translations";
+import { writeTasteProfile } from "../features/onboarding/tasteProfile";
 
 const USERNAME_REGEX = /^\w{3,30}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -11,6 +14,7 @@ export default function AuthPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login, register, isAuthenticated } = useUser();
+  const { language } = useLanguage();
 
   const [tab, setTab] = useState<"signin" | "signup">(
     searchParams.get("tab") === "signup" ? "signup" : "signin"
@@ -24,6 +28,11 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [genres, setGenres] = useState("");
+  const [artists, setArtists] = useState("");
+  const [moods, setMoods] = useState("");
+  const [goals, setGoals] = useState("");
 
   // If already logged in, redirect home
   useEffect(() => {
@@ -77,7 +86,7 @@ export default function AuthPage() {
     setLoading(true);
     try {
       await register(username.trim(), email.trim(), password);
-      router.push("/");
+      setShowOnboarding(true);
     } catch (e) {
       const code = (e as Error).message;
       if (code === "USERNAME_TAKEN") setError("That username is already taken");
@@ -86,6 +95,18 @@ export default function AuthPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function finishOnboarding(skip = false) {
+    writeTasteProfile({
+      genres: skip ? [] : genres.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 8),
+      artists: skip ? [] : artists.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 8),
+      moods: skip ? [] : moods.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 8),
+      goals: skip ? [] : goals.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 8),
+      completedAt: new Date().toISOString(),
+      skipped: skip,
+    });
+    router.push("/");
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -298,6 +319,29 @@ export default function AuthPage() {
           )}
         </p>
       </div>
+      {showOnboarding ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+            <h2 className="text-xl font-semibold">{t("onboarding_title", language)}</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">{t("onboarding_desc", language)}</p>
+            {[
+              [t("onboarding_genres", language), genres, setGenres, "rock, pop, jazz"],
+              [t("onboarding_artists", language), artists, setArtists, "Daft Punk, Metallica"],
+              [t("onboarding_moods", language), moods, setMoods, "calm, energetic"],
+              [t("onboarding_goals", language), goals, setGoals, "study, gym, chill, focus"],
+            ].map(([label, value, setter, placeholder]) => (
+              <label key={label as string} className="mt-3 block text-sm">
+                <span className="mb-1 block">{label as string}</span>
+                <input className={inputClass} value={value as string} placeholder={placeholder as string} onChange={(event) => (setter as (v: string) => void)(event.target.value)} />
+              </label>
+            ))}
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm" onClick={() => finishOnboarding(true)}>{t("onboarding_skip", language)}</button>
+              <button className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white" onClick={() => finishOnboarding(false)}>{t("onboarding_save", language)}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

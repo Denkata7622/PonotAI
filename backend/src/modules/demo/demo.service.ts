@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import {
   createFavorite,
   createPlaylist,
@@ -9,107 +11,83 @@ import {
 } from "../../db/authStore";
 import { hashPassword } from "../auth/password";
 
-type PersonaTrack = { title: string; artist: string; album?: string; genre: string };
+type DemoSong = {
+  title: string;
+  artist: string;
+  album?: string;
+  coverUrl: string;
+  genre: string;
+  mood: string;
+  year: number;
+  duration: number;
+  youtubeVideoId: string;
+  persona: string;
+};
 
 type PersonaTemplate = {
+  key: DemoPersona;
   usernamePrefix: string;
   description: string;
   activityBias: "morning" | "afternoon" | "evening";
-  tracks: PersonaTrack[];
+  personaLabel: string;
+  genres: string[];
+  moods: string[];
   playlistNames: string[];
 };
 
-const covers = [
-  "https://picsum.photos/seed/trackly-01/320/320",
-  "https://picsum.photos/seed/trackly-02/320/320",
-  "https://picsum.photos/seed/trackly-03/320/320",
-  "https://picsum.photos/seed/trackly-04/320/320",
-  "https://picsum.photos/seed/trackly-05/320/320",
-  "https://picsum.photos/seed/trackly-06/320/320",
-  "https://picsum.photos/seed/trackly-07/320/320",
-  "https://picsum.photos/seed/trackly-08/320/320",
-];
-
-function buildTracks(seed: Array<{ artist: string; baseTitle: string; genre: string }>): PersonaTrack[] {
-  const result: PersonaTrack[] = [];
-  for (const template of seed) {
-    for (let i = 1; i <= 20; i += 1) {
-      result.push({
-        title: `${template.baseTitle} ${i}`,
-        artist: template.artist,
-        album: `${template.genre.toUpperCase()} Sessions`,
-        genre: template.genre,
-      });
-    }
-  }
-  return result;
-}
+const datasetPath = path.resolve(__dirname, "../../data/demoSongs.json");
+const demoSongs: DemoSong[] = JSON.parse(fs.readFileSync(datasetPath, "utf8")) as DemoSong[];
 
 const personas: Record<string, PersonaTemplate> = {
   gym: {
+    key: "gym",
     usernamePrefix: "GymPulse",
-    description: "High-energy listener with hard-hitting workout cycles and repeat motivation tracks.",
+    description: "High-energy listener built for workout-driven sessions.",
     activityBias: "morning",
-    tracks: buildTracks([
-      { artist: "Iron Drive", baseTitle: "Power Sprint", genre: "rock" },
-      { artist: "Voltage Crew", baseTitle: "Cardio Lift", genre: "hip-hop" },
-      { artist: "Neon Rush", baseTitle: "Final Set", genre: "electronic" },
-      { artist: "Steel Hearts", baseTitle: "Peak Reps", genre: "rock" },
-      { artist: "Runline", baseTitle: "Pace Control", genre: "edm" },
-    ]),
-    playlistNames: ["PR Day", "Morning Warmup", "HIIT Zone", "Leg Day Heat"],
+    personaLabel: "Gym Motivator",
+    genres: ["rock", "metal", "hip-hop", "electronic"],
+    moods: ["gym", "workout", "energetic", "intense"],
+    playlistNames: ["Warmup Run", "PR Session", "Sprint Mode", "Cooldown Drive"],
   },
   indie: {
+    key: "indie",
     usernamePrefix: "IndieExplorer",
-    description: "Discovery-focused listener rotating indie, alt-pop, and low-key hidden gems.",
+    description: "Discovery-focused listener rotating indie, lo-fi, and thoughtful deep cuts.",
     activityBias: "evening",
-    tracks: buildTracks([
-      { artist: "North Arcade", baseTitle: "City Window", genre: "indie" },
-      { artist: "Honey Pines", baseTitle: "Soft Echo", genre: "indie" },
-      { artist: "Moss Avenue", baseTitle: "Late Bus", genre: "alt" },
-      { artist: "Velvet Orbit", baseTitle: "Shimmer Lines", genre: "dream pop" },
-      { artist: "Quiet Cinema", baseTitle: "Storyboard", genre: "indie" },
-    ]),
-    playlistNames: ["Fresh Finds", "Late Night Indie", "Cloud Walk", "Quiet Coffee"],
+    personaLabel: "Indie Explorer",
+    genres: ["indie", "lo-fi", "ambient", "jazz"],
+    moods: ["calm", "moody", "study", "chill"],
+    playlistNames: ["New Finds", "Late Discovery", "Coffee + Vinyl", "Hidden Gems"],
   },
   nostalgia: {
+    key: "nostalgia",
     usernamePrefix: "RetroWave",
-    description: "2000s and throwback pop listener with familiar hooks and singalong-heavy habits.",
+    description: "Throwback-first profile with classic pop and rock replay behavior.",
     activityBias: "afternoon",
-    tracks: buildTracks([
-      { artist: "Pixel Hearts", baseTitle: "Summer Memory", genre: "pop" },
-      { artist: "Cassette Club", baseTitle: "Backseat Anthem", genre: "pop" },
-      { artist: "Millennium Lights", baseTitle: "Phone Flip", genre: "dance" },
-      { artist: "Stereo Diary", baseTitle: "Mall Nights", genre: "pop" },
-      { artist: "Flash FM", baseTitle: "Replay Era", genre: "dance" },
-    ]),
-    playlistNames: ["2000s Flashback", "Drive Home Hits", "Throwback Party", "Nostalgia Core"],
+    personaLabel: "Pop Fan",
+    genres: ["pop", "rock", "R&B", "country"],
+    moods: ["upbeat", "groovy", "chill", "story"],
+    playlistNames: ["Throwback Loop", "Roadtrip Recall", "Classic Pop", "Sing Along"],
   },
   chill: {
+    key: "chill",
     usernamePrefix: "FocusFlow",
-    description: "Calm ambient and focus listener with long sessions and gentle daily routines.",
+    description: "Calm ambient and concentration listener with long sessions.",
     activityBias: "morning",
-    tracks: buildTracks([
-      { artist: "Drift Atlas", baseTitle: "Quiet Desk", genre: "ambient" },
-      { artist: "Mono Lake", baseTitle: "Low Tide", genre: "lofi" },
-      { artist: "Slow Bloom", baseTitle: "Deep Focus", genre: "ambient" },
-      { artist: "Paper Rain", baseTitle: "Study Lamps", genre: "instrumental" },
-      { artist: "Blue Static", baseTitle: "Window Noise", genre: "lofi" },
-    ]),
-    playlistNames: ["Deep Focus", "Reading Rain", "Gentle Mornings", "No-Lyrics Flow"],
+    personaLabel: "Focus Student",
+    genres: ["ambient", "lo-fi", "classical", "jazz"],
+    moods: ["focus", "sleep", "study", "calm"],
+    playlistNames: ["Deep Focus", "Quiet Mornings", "Reading Room", "Night Reset"],
   },
   mainstream: {
+    key: "mainstream",
     usernamePrefix: "DailyMix",
-    description: "Casual mainstream listener mixing chart pop, rap singles, and weekly discoveries.",
+    description: "Mainstream daily listener blending chart hits and gym-ready rotations.",
     activityBias: "evening",
-    tracks: buildTracks([
-      { artist: "Pulse Avenue", baseTitle: "Top 40 Loop", genre: "pop" },
-      { artist: "City Tape", baseTitle: "Hot Take", genre: "hip-hop" },
-      { artist: "Nova FM", baseTitle: "Weekend Spin", genre: "dance" },
-      { artist: "Glass Metro", baseTitle: "Big Hook", genre: "pop" },
-      { artist: "Street Prism", baseTitle: "Night Feed", genre: "rap" },
-    ]),
-    playlistNames: ["Daily Rotation", "Commute Mix", "Weekend Replay", "Trending Now"],
+    personaLabel: "Pop Fan",
+    genres: ["pop", "hip-hop", "electronic", "R&B"],
+    moods: ["party", "upbeat", "energetic", "chill"],
+    playlistNames: ["Daily Rotation", "Commute Mix", "Friday Replay", "Discover Weekly"],
   },
 };
 
@@ -140,22 +118,45 @@ export function listDemoPersonas() {
   }));
 }
 
-function biasedHour(bias: PersonaTemplate["activityBias"]): number {
-  if (bias === "morning") return 7 + Math.floor(Math.random() * 4);
-  if (bias === "afternoon") return 12 + Math.floor(Math.random() * 5);
-  return 18 + Math.floor(Math.random() * 4);
+function createSeededRng(seed: string): () => number {
+  let state = 0;
+  for (let i = 0; i < seed.length; i += 1) state = ((state << 5) - state + seed.charCodeAt(i)) | 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0xffffffff;
+  };
 }
 
-function dateDaysAgo(day: number, hour: number): string {
+function pickPersonaSongs(template: PersonaTemplate): DemoSong[] {
+  const filtered = demoSongs.filter((song) => (
+    template.genres.includes(song.genre)
+    || template.moods.includes(song.mood)
+    || song.persona === template.personaLabel
+  ));
+  const fallback = filtered.length >= 100 ? filtered : demoSongs;
+  const deduped = new Map<string, DemoSong>();
+  for (const song of fallback) {
+    deduped.set(`${song.title}|||${song.artist}`, song);
+  }
+  return [...deduped.values()].slice(0, 140);
+}
+
+function biasedHour(bias: PersonaTemplate["activityBias"], rand: () => number): number {
+  if (bias === "morning") return 6 + Math.floor(rand() * 5);
+  if (bias === "afternoon") return 12 + Math.floor(rand() * 5);
+  return 18 + Math.floor(rand() * 4);
+}
+
+function dateDaysAgo(day: number, hour: number, rand: () => number): string {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - day);
-  date.setUTCHours(hour, Math.floor(Math.random() * 60), Math.floor(Math.random() * 50), 0);
+  date.setUTCHours(hour, Math.floor(rand() * 60), Math.floor(rand() * 60), 0);
   return date.toISOString();
 }
 
 export async function generateDemoAccount(persona: DemoPersona = "gym"): Promise<DemoAccountResponse> {
   const template = personas[persona] ?? personas.gym;
-  const suffix = Math.floor(Math.random() * 10000);
+  const suffix = crypto.randomInt(1000, 9999);
   const username = `${template.usernamePrefix}${suffix}`;
   const email = `${username.toLowerCase()}@demo.trackly.local`;
 
@@ -167,47 +168,50 @@ export async function generateDemoAccount(persona: DemoPersona = "gym"): Promise
   const passwordHash = hashPassword(temporaryPassword);
   const user = await createUser({ username, email, passwordHash, role: "user", isDemo: true });
 
-  const tracks = template.tracks.slice(0, 120);
-  const playlistSize = 24;
+  const rand = createSeededRng(`${user.id}:${persona}`);
+  const tracks = pickPersonaSongs(template).slice(0, 120);
+  const playlistSize = 25;
+
   for (let i = 0; i < template.playlistNames.length; i += 1) {
     const chunk = tracks.slice(i * playlistSize, i * playlistSize + playlistSize);
-    const songs: PlaylistSongRecord[] = chunk.map((track, idx) => ({
+    const songs: PlaylistSongRecord[] = chunk.map((track) => ({
       title: track.title,
       artist: track.artist,
       album: track.album,
-      coverUrl: covers[(idx + i) % covers.length],
+      coverUrl: track.coverUrl,
+      videoId: track.youtubeVideoId,
     }));
     await createPlaylist(user.id, template.playlistNames[i], undefined, songs);
   }
 
-  for (let i = 0; i < 36; i += 1) {
-    const track = tracks[i % tracks.length];
+  const favoriteCandidates = tracks.slice(0, 36);
+  for (const track of favoriteCandidates) {
     await createFavorite({
       userId: user.id,
       title: track.title,
       artist: track.artist,
       album: track.album,
-      coverUrl: covers[i % covers.length],
+      coverUrl: track.coverUrl,
     });
   }
 
   let seededListeningLogs = 0;
-  for (let day = 0; day < 35; day += 1) {
-    const sessions = 2 + Math.floor(Math.random() * 4);
+  for (let day = 0; day < 30; day += 1) {
+    const sessions = 3 + Math.floor(rand() * 4);
     for (let s = 0; s < sessions; s += 1) {
-      const trackIndex = (day * 5 + s * 7 + Math.floor(Math.random() * 6)) % tracks.length;
+      const trackIndex = Math.floor(rand() * tracks.length);
       const track = tracks[trackIndex];
       await createUserHistory(
         {
           userId: user.id,
-          method: day % 5 === 0 ? "image-upload" : "demo-seed",
+          method: day % 4 === 0 ? "image-upload" : "demo-seed",
           title: track.title,
           artist: track.artist,
           album: track.album,
-          coverUrl: covers[(trackIndex + s) % covers.length],
+          coverUrl: track.coverUrl,
           recognized: true,
         },
-        { allowDuplicates: true, createdAt: dateDaysAgo(day, biasedHour(template.activityBias)) },
+        { allowDuplicates: true, createdAt: dateDaysAgo(day, biasedHour(template.activityBias, rand), rand) },
       );
       seededListeningLogs += 1;
     }
@@ -224,10 +228,10 @@ export async function generateDemoAccount(persona: DemoPersona = "gym"): Promise
       personaDescription: template.description,
       createdAt: user.createdAt,
       seededSongs: tracks.length,
-      seededFavorites: 36,
+      seededFavorites: favoriteCandidates.length,
       seededPlaylists: template.playlistNames.length,
       seededListeningLogs,
-      activityWindowDays: 35,
+      activityWindowDays: 30,
     },
   };
 }

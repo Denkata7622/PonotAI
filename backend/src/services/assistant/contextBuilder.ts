@@ -18,6 +18,12 @@ type ContextHints = {
   currentLanguage?: "en" | "bg";
   currentQueue?: string[];
   deviceType?: string;
+  statedPreferences?: {
+    genres?: string[];
+    artists?: string[];
+    moods?: string[];
+    goals?: string[];
+  };
 };
 
 const CACHE_TTL_MS = 90_000;
@@ -122,7 +128,8 @@ export function invalidateLibraryContextCache(userId?: string): void {
 }
 
 export async function buildLibraryContext(userId: string, hints?: ContextHints): Promise<LibraryContextPayload> {
-  const cacheKey = `${userId}:${hints?.currentTheme ?? "na"}:${hints?.currentLanguage ?? "na"}:${(hints?.currentQueue ?? []).join("|")}`;
+  const prefKey = JSON.stringify(hints?.statedPreferences ?? {});
+  const cacheKey = `${userId}:${hints?.currentTheme ?? "na"}:${hints?.currentLanguage ?? "na"}:${(hints?.currentQueue ?? []).join("|")}:${prefKey}`;
   const now = Date.now();
   const cached = contextCache.get(cacheKey);
   if (cached && cached.expiresAt > now) return cached.payload;
@@ -178,6 +185,15 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
       topGenres: [],
       topArtists: [...artistCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count })),
     },
+    statedPreferences: hints?.statedPreferences
+      ? {
+        genres: (hints.statedPreferences.genres ?? []).slice(0, 8),
+        artists: (hints.statedPreferences.artists ?? []).slice(0, 8),
+        moods: (hints.statedPreferences.moods ?? []).slice(0, 8),
+        goals: (hints.statedPreferences.goals ?? []).slice(0, 8),
+        source: "onboarding",
+      }
+      : undefined,
   };
 
   console.info(`[assistant] Context built: ${topTracks.length} tracks, ${playlists.length} playlists, ${favorites.length} favorites`);

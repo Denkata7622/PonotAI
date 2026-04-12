@@ -22,6 +22,7 @@ const ACTION_TYPES = new Set<ActionIntent["type"]>([
 
 const OPEN_ACTION_TAG = /<action>/i;
 const CLOSED_ACTION_BLOCK = /<action>([\s\S]*?)<\/action>/i;
+const SUPPORTED_ACCENTS = ["violet", "indigo", "blue", "cyan", "ocean", "teal", "emerald", "lime", "amber", "gold", "orange", "sunset", "coral", "rose", "ruby", "magenta", "plum", "slate", "graphite"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -50,7 +51,7 @@ function validatePayload(type: ActionIntent["type"], payload: Record<string, unk
     case "CHANGE_THEME":
       return (
         (payload.theme === "light" || payload.theme === "dark" || payload.theme === "system")
-        && (payload.accent === undefined || ["violet", "ocean", "sunset", "emerald", "rose"].includes(String(payload.accent)))
+        && (payload.accent === undefined || SUPPORTED_ACCENTS.includes(String(payload.accent)))
         && (payload.density === undefined || payload.density === "compact" || payload.density === "comfortable")
       );
     case "CHANGE_LANGUAGE":

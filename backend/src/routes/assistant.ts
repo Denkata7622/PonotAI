@@ -93,6 +93,16 @@ assistantRouter.post("/", async (req, res) => {
   }));
 
   try {
+    const statedPreferences = (() => {
+      const raw = req.headers["x-trackly-preferences"];
+      if (typeof raw !== "string" || !raw.trim()) return undefined;
+      try {
+        const parsed = JSON.parse(raw) as { genres?: string[]; artists?: string[]; moods?: string[]; goals?: string[] };
+        return parsed;
+      } catch {
+        return undefined;
+      }
+    })();
     const context = await buildLibraryContext(userId, {
       currentTheme: req.headers["x-trackly-theme"] as "light" | "dark" | "system" | undefined,
       currentLanguage: req.headers["x-trackly-language"] as "en" | "bg" | undefined,
@@ -102,10 +112,22 @@ assistantRouter.post("/", async (req, res) => {
       deviceType: typeof req.headers["x-trackly-device"] === "string"
         ? req.headers["x-trackly-device"]
         : undefined,
+      statedPreferences,
     });
     if (context.topTracks.length === 0) {
+      const hasStatedPreferences = Boolean(
+        context.statedPreferences
+        && (
+          context.statedPreferences.genres.length
+          || context.statedPreferences.artists.length
+          || context.statedPreferences.moods.length
+          || context.statedPreferences.goals.length
+        ),
+      );
       res.status(200).json({
-        reply: "I know your library directly, and I can also suggest new music through discovery. Your library is currently empty, so save or recognize a few songs first for better personalized and cross-artist recommendations.",
+        reply: hasStatedPreferences
+          ? "Based on your stated preferences, I can start with discovery suggestions right away. Once you build listening history, I’ll switch to history-grounded recommendations."
+          : "Your library is empty right now. Tell me your favorite genres, artists, moods, or goals and I’ll personalize recommendations until your listening history grows.",
         actionIntent: null,
         meta: { model: "fallback", latencyMs: 0, contextTracksCount: 0 },
       });
