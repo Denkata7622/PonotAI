@@ -35,8 +35,76 @@ type PersonaTemplate = {
   playlistNames: string[];
 };
 
-const datasetPath = path.resolve(__dirname, "../../data/demoSongs.json");
-const demoSongs: DemoSong[] = JSON.parse(fs.readFileSync(datasetPath, "utf8")) as DemoSong[];
+const DEMO_DATASET_ERROR_CODE = "DEMO_DATA_UNAVAILABLE";
+const DEMO_DATASET_ERROR_MESSAGE = "Demo song dataset is unavailable on the server.";
+
+type DatasetCache = {
+  songs: DemoSong[] | null;
+  resolvedPath: string | null;
+  checkedPaths: string[];
+};
+
+let datasetCache: DatasetCache | null = null;
+
+export class DemoDatasetUnavailableError extends Error {
+  public readonly code = DEMO_DATASET_ERROR_CODE;
+  public readonly checkedPaths: string[];
+
+  constructor(checkedPaths: string[]) {
+    super(DEMO_DATASET_ERROR_MESSAGE);
+    this.name = "DemoDatasetUnavailableError";
+    this.checkedPaths = checkedPaths;
+  }
+}
+
+export function getDemoSongsDatasetPathCandidates(
+  options?: {
+    cwd?: string;
+    moduleDir?: string;
+    overridePaths?: string;
+  },
+): string[] {
+  const cwd = options?.cwd ?? process.cwd();
+  const moduleDir = options?.moduleDir ?? __dirname;
+  const overridePaths = options?.overridePaths ?? process.env.DEMO_SONGS_DATASET_PATHS;
+  if (overridePaths?.trim()) {
+    return overridePaths
+      .split(path.delimiter)
+      .map((candidate) => candidate.trim())
+      .filter(Boolean);
+  }
+
+  return [
+    path.join(moduleDir, "../../data/demoSongs.json"),
+    path.join(moduleDir, "../../../src/data/demoSongs.json"),
+    path.join(cwd, "src/data/demoSongs.json"),
+    path.join(cwd, "dist/data/demoSongs.json"),
+  ];
+}
+
+function loadDemoSongsDataset(): DatasetCache {
+  if (datasetCache) return datasetCache;
+
+  const checkedPaths = getDemoSongsDatasetPathCandidates();
+  for (const candidate of checkedPaths) {
+    try {
+      if (!fs.existsSync(candidate)) continue;
+      const parsed = JSON.parse(fs.readFileSync(candidate, "utf8")) as DemoSong[];
+      datasetCache = { songs: parsed, resolvedPath: candidate, checkedPaths };
+      return datasetCache;
+    } catch (error) {
+      console.warn("[demo] Failed reading demo dataset candidate", { candidate, error });
+    }
+  }
+
+  console.warn("[demo] Demo song dataset is unavailable. Checked paths:", checkedPaths);
+  datasetCache = { songs: null, resolvedPath: null, checkedPaths };
+  return datasetCache;
+}
+
+export function resetDemoSongsDatasetCacheForTests(): void {
+  datasetCache = null;
+}
 
 const personas: Record<string, PersonaTemplate> = {
   gym: {
@@ -127,7 +195,7 @@ function createSeededRng(seed: string): () => number {
   };
 }
 
-function pickPersonaSongs(template: PersonaTemplate): DemoSong[] {
+function pickPersonaSongs(template: PersonaTemplate, demoSongs: DemoSong[]): DemoSong[] {
   const filtered = demoSongs.filter((song) => (
     template.genres.includes(song.genre)
     || template.moods.includes(song.mood)
@@ -155,6 +223,11 @@ function dateDaysAgo(day: number, hour: number, rand: () => number): string {
 }
 
 export async function generateDemoAccount(persona: DemoPersona = "gym"): Promise<DemoAccountResponse> {
+  const { songs: demoSongs, checkedPaths } = loadDemoSongsDataset();
+  if (!demoSongs || demoSongs.length === 0) {
+    throw new DemoDatasetUnavailableError(checkedPaths);
+  }
+
   const template = personas[persona] ?? personas.gym;
   const suffix = crypto.randomInt(1000, 9999);
   const username = `${template.usernamePrefix}${suffix}`;
@@ -169,7 +242,7 @@ export async function generateDemoAccount(persona: DemoPersona = "gym"): Promise
   const user = await createUser({ username, email, passwordHash, role: "user", isDemo: true });
 
   const rand = createSeededRng(`${user.id}:${persona}`);
-  const tracks = pickPersonaSongs(template).slice(0, 120);
+  const tracks = pickPersonaSongs(template, demoSongs).slice(0, 120);
   const playlistSize = 25;
 
   for (let i = 0; i < template.playlistNames.length; i += 1) {

@@ -3,7 +3,12 @@ import { getGlobalStats } from "../stats/stats.service";
 import { getAdminOverviewSnapshot, listApiKeysByUser } from "../../db/authStore";
 import { requireAuth } from "../../middlewares/auth.middleware";
 import { requireAdmin } from "../../middlewares/admin.middleware";
-import { generateDemoAccount, listDemoPersonas, type DemoPersona } from "../demo/demo.service";
+import {
+  DemoDatasetUnavailableError,
+  generateDemoAccount,
+  listDemoPersonas,
+  type DemoPersona,
+} from "../demo/demo.service";
 
 const adminRouter = Router();
 
@@ -134,9 +139,26 @@ adminRouter.get("/developer-keys/:userId", async (req, res) => {
 });
 
 adminRouter.post("/demo-account", async (req, res) => {
-  const persona = req.body?.persona as DemoPersona | undefined;
-  const created = await generateDemoAccount(persona ?? "gym");
-  res.status(201).json(created);
+  try {
+    const persona = req.body?.persona as DemoPersona | undefined;
+    const created = await generateDemoAccount(persona ?? "gym");
+    res.status(201).json(created);
+  } catch (error) {
+    if (error instanceof DemoDatasetUnavailableError) {
+      console.warn("[admin] Demo account generation failed due to missing demo dataset.", {
+        checkedPaths: error.checkedPaths,
+      });
+      return res.status(503).json({
+        code: error.code,
+        message: error.message,
+      });
+    }
+    console.error("[admin] Demo account generation failed unexpectedly.", error);
+    return res.status(500).json({
+      code: "INTERNAL_ERROR",
+      message: "Could not generate demo account.",
+    });
+  }
 });
 
 export default adminRouter;
