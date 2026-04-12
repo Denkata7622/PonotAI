@@ -58,9 +58,10 @@ export default function SidebarShell({ id, title, icon, active, open, stacked, o
       aria-modal={active}
       aria-label={title}
       onMouseDown={() => open && setActive(id)}
-      className="fixed top-0 z-[46] h-full w-full max-w-[390px] rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl backdrop-blur-xl"
+      className="fixed top-[env(safe-area-inset-top,0px)] z-[46] w-full max-w-[390px] rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl backdrop-blur-xl"
       style={{
-        bottom: 'var(--player-bar-height, 90px)',
+        bottom: 'var(--layout-bottom-offset, calc(var(--player-bar-height, 90px) + env(safe-area-inset-bottom, 0px)))',
+        height: 'calc(100dvh - var(--layout-bottom-offset, var(--player-bar-height, 90px)) - env(safe-area-inset-top, 0px))',
         right: 0,
         transform: `translateX(${translate + (open ? stackedTranslate : 0)}%)`,
         transition: 'transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease',
@@ -76,7 +77,7 @@ export default function SidebarShell({ id, title, icon, active, open, stacked, o
             <button aria-label="Close panel" onClick={onClose} className="rounded-md p-2 hover:bg-[var(--surface-2)]"><X className="h-4 w-4"/></button>
           </div>
         </header>
-        <div className="min-h-0 flex-1">{children}</div>
+        <div className="min-h-0 flex-1 [--sidebar-bottom-clearance:var(--layout-bottom-offset)]">{children}</div>
       </div>
     </aside>
   );

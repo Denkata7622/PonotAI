@@ -5,6 +5,8 @@ import {
   applyTagsController,
   crossArtistRecommendationsController,
   contextualRecommendationsController,
+  getActivitySummaryController,
+  getDailyInsightsController,
   dailyDiscoveryController,
   generatePlaylistController,
   getMonthlyInsightsController,
@@ -24,6 +26,8 @@ router.use(assistantRateLimit);
 router.get("/insights/weekly", getWeeklyInsightsController);
 router.get("/insights/monthly", getMonthlyInsightsController);
 router.get("/insights/trends", getTrendsController);
+router.get("/insights/daily", getDailyInsightsController);
+router.get("/insights/activity", getActivitySummaryController);
 
 router.post("/playlists/generate", generatePlaylistController);
 router.post("/playlists/update", updatePlaylistController);

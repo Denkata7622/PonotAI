@@ -49,7 +49,7 @@ function validatePayload(type: ActionIntent["type"], payload: Record<string, unk
     case "CHANGE_LANGUAGE":
       return payload.locale === "en" || payload.locale === "bg";
     case "INSIGHT_REQUEST":
-      return payload.period === "weekly" || payload.period === "monthly" || payload.kind === "trends";
+      return payload.period === "daily" || payload.period === "weekly" || payload.period === "monthly" || payload.kind === "trends";
     case "PLAYLIST_GENERATION":
       return typeof payload.prompt === "string" && payload.prompt.length > 0;
     case "MOOD_RECOMMENDATION":

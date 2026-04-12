@@ -42,7 +42,7 @@ FAVORITE_TRACK: {"trackId":"<trackId>","source":"assistant"}
 SEARCH_AND_SUGGEST: {"query":"<search query>","reason":"<why>"}
 CHANGE_THEME: {"theme":"light"|"dark"|"system"}
 CHANGE_LANGUAGE: {"locale":"en"|"bg"}
-INSIGHT_REQUEST: {"period":"weekly"|"monthly"} OR {"kind":"trends"}
+INSIGHT_REQUEST: {"period":"daily"|"weekly"|"monthly"} OR {"kind":"trends"}
 PLAYLIST_GENERATION: {"prompt":"<natural language request>"}
 MOOD_RECOMMENDATION: {"mood":"relax"|"focus"|"workout"|"party"|"sleep"}
 CONTEXT_RECOMMENDATION: {}

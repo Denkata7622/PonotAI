@@ -22,6 +22,20 @@ adminRouter.get("/overview", async (_req, res) => {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 12);
   const recentApiKeys = [...snapshot.apiKeys].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 10);
+  const recentDemoUsers = [...snapshot.users]
+    .filter((user) => user.isDemo)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 8)
+    .map((user) => ({
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      createdAt: user.createdAt,
+      seededHistory: snapshot.searchHistory.filter((entry) => entry.userId === user.id).length,
+      seededFavorites: snapshot.searchHistory.filter((entry) => entry.userId === user.id && entry.recognized).length,
+      seededPlaylists: snapshot.playlists.filter((playlist) => playlist.userId === user.id).length,
+    }));
+  const assistantRequests = snapshot.searchHistory.filter((item) => item.method === "assistant").length;
 
   res.status(200).json({
     totals: {
@@ -44,6 +58,12 @@ adminRouter.get("/overview", async (_req, res) => {
       })),
     },
     activity: {
+      recentSignups: recentUsers.map((user) => ({
+        id: user.id,
+        username: user.username,
+        role: user.role ?? "user",
+        createdAt: user.createdAt,
+      })),
       recentRecognitions: recentRecognitions.map((item) => ({
         id: item.id,
         userId: item.userId,
@@ -86,6 +106,10 @@ adminRouter.get("/overview", async (_req, res) => {
       assistantAvailable: Boolean(process.env.GEMINI_API_KEY?.trim()),
       mode: process.env.GEMINI_API_KEY?.trim() ? "gemini" : "fallback",
       recentFailures: 0,
+      assistantRequests,
+    },
+    demos: {
+      recentProfiles: recentDemoUsers,
     },
     global: stats,
   });

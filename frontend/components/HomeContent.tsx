@@ -35,7 +35,7 @@ import NewPlaylistModal from "./NewPlaylistModal";
 import { Button } from "../src/components/ui/Button";
 import { Input } from "../src/components/ui/Input";
 import { Card } from "../src/components/ui/Card";
-import { Library, Mic, Music, Play, X } from "../lucide-react";
+import { Library, Mic, Music, Play, Sparkles, X } from "../lucide-react";
 
 type Toast = { id: string; kind: "success" | "error" | "info"; message: string };
 type HistoryEntry = { id: string; source: "audio" | "ocr"; createdAt: string; song: SongMatch };
@@ -98,6 +98,7 @@ export function HomeContent() {
   const [maxSongs, setMaxSongs] = useState(10);
   const [ocrLanguage, setOcrLanguage] = useState("eng");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [showAssistantHints, setShowAssistantHints] = useState(true);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [demoSeen, setDemoSeen] = useState(true);
@@ -117,6 +118,11 @@ export function HomeContent() {
   const profileMaxSongsKey = scopedKey(MAX_SONGS_KEY, profile.id);
   const profileOcrLanguageKey = scopedKey(OCR_LANGUAGE_KEY, profile.id);
   const { playlists, favoritesSet, favoritesList, toggleFavorite, createPlaylist, deletePlaylist, addSongToPlaylist, removeSongFromPlaylist } = useLibrary(profile.id);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setShowAssistantHints(window.localStorage.getItem("ponotai-assistant-hints") !== "off");
+  }, []);
 
   // Adapter functions to convert track data for playlist operations
   const handleAddSongToPlaylist = (trackId: string, playlistId: string, videoId?: string) => {
@@ -626,6 +632,16 @@ export function HomeContent() {
               isLibraryOpen={isLibraryOpen}
               theme={theme}
             />
+
+            {showAssistantHints ? <Card className="rounded-3xl p-5">
+              <h3 className="inline-flex items-center gap-2 text-lg font-semibold"><Sparkles className="h-4 w-4 text-[var(--accent)]" /> AI can do more than chat</h3>
+              <p className="mt-2 text-sm text-[var(--muted)]">Ask Trackly Assistant to generate playlists, summarize your daily/weekly/monthly trends, suggest discovery tracks, and build your queue instantly.</p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                {["Build playlist", "Analyze trends", "Mood recommendations", "Discovery picks", "Queue actions"].map((item) => (
+                  <span key={item} className="rounded-full border border-[var(--border)] px-2 py-1">{item}</span>
+                ))}
+              </div>
+            </Card> : null}
 
             <Card className="rounded-3xl p-5">
               <h3 className="mb-4 text-lg font-semibold">{t("settings_title", language)}</h3>
