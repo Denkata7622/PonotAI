@@ -3,6 +3,7 @@
 import { getApiBaseUrl } from "@/lib/apiConfig";
 import { getToken } from "@/src/lib/apiFetch";
 import type { AssistantMeta, ChatMessage, ActionIntent } from "./types";
+import { stripAssistantActionMarkup } from "./responseSanitizer";
 
 const API_BASE_URL = getApiBaseUrl();
 function buildAuthHeaders(): Record<string, string> {
@@ -55,7 +56,8 @@ export async function sendAssistantMessage(
     throw error;
   }
 
-  return response.json() as Promise<{ reply: string; actionIntent: ActionIntent | null; meta: AssistantMeta }>;
+  const payload = await response.json() as { reply: string; actionIntent: ActionIntent | null; meta: AssistantMeta };
+  return { ...payload, reply: stripAssistantActionMarkup(payload.reply ?? "") };
 }
 
 export async function runAssistantAction(intent: ActionIntent): Promise<unknown> {

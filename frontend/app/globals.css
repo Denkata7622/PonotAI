@@ -10,6 +10,10 @@
   --player-bar-height: 88px;
   --mobile-nav-height: 0px;
   --layout-bottom-offset: calc(var(--player-bar-height, 88px) + var(--mobile-nav-height, 0px) + env(safe-area-inset-bottom, 0px));
+  --density-space-multiplier: 1;
+  --density-card-padding: 1.25rem;
+  --density-control-padding-y: 0.5rem;
+  --density-control-padding-x: 0.75rem;
 }
 
 .dark {
@@ -735,4 +739,43 @@ body {
 
 :root[data-density="compact"] .card {
   padding: 12px !important;
+}
+
+
+:root[data-density="compact"] {
+  --density-space-multiplier: 0.86;
+  --density-card-padding: 0.85rem;
+  --density-control-padding-y: 0.35rem;
+  --density-control-padding-x: 0.6rem;
+}
+
+.card {
+  padding: var(--density-card-padding);
+}
+
+button, input, textarea, select {
+  padding-top: var(--density-control-padding-y);
+  padding-bottom: var(--density-control-padding-y);
+}
+
+:root[data-density="compact"] .assistant-thread,
+:root[data-density="compact"] .space-y-6 {
+  gap: calc(1.5rem * var(--density-space-multiplier));
+}
+
+.assistant-capability-card-button {
+  text-align: left;
+  cursor: pointer;
+  transition: transform .15s ease, border-color .15s ease, background-color .15s ease;
+}
+
+.assistant-capability-card-button:hover,
+.assistant-capability-card-button:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.assistant-capability-card-button:active {
+  transform: translateY(0);
 }

@@ -9,6 +9,8 @@ import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import Modal from "../components/ui/Modal";
 import { useUser } from "../context/UserContext";
+import { useLanguage } from "../../lib/LanguageContext";
+import { t } from "../../lib/translations";
 import { ACCENT_TOKENS, type AccentPreset, useTheme, type DensityMode } from "../../lib/ThemeContext";
 import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON, LIBRARY_EXPORT_VERSION } from "../lib/libraryExport";
 import type { Playlist } from "../../features/library/types";
@@ -30,6 +32,7 @@ export default function SettingsPage() {
   const [assistantHints, setAssistantHints] = useState(true);
   const { profile } = useProfile();
   const { user, preferences, updateProfile, changePassword, setPreferences, deleteAccount, isAuthenticated, favorites, history, addFavorite, addToHistory } = useUser();
+  const { language } = useLanguage();
   const { theme, toggleTheme, accent, setAccent, density, setDensity } = useTheme();
 
   const [displayName, setDisplayName] = useState(user?.username ?? "");
@@ -107,7 +110,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6 pb-[calc(var(--layout-bottom-offset)+24px)]">
-      <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+      <h1 className="text-3xl font-bold tracking-tight">{t("nav_settings", language)}</h1>
 
       <Card className="p-6 space-y-4">
         <h2 className="text-xl font-semibold">Account</h2>
@@ -123,28 +126,28 @@ export default function SettingsPage() {
       </Card>
 
       <Card className="p-6 space-y-4">
-        <h2 className="text-xl font-semibold">Appearance & personalization</h2>
+        <h2 className="text-xl font-semibold">{t("settings_appearance", language)}</h2>
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="secondary" onClick={toggleTheme}>{theme === "dark" ? <span className="inline-flex items-center gap-2"><Sun className="w-4 h-4" />Light mode</span> : <span className="inline-flex items-center gap-2"><Moon className="w-4 h-4" />Dark mode</span>}</Button>
-          <span className="text-sm text-[var(--muted)]">Current theme: {theme}</span>
+          <Button variant="secondary" onClick={toggleTheme}>{theme === "dark" ? <span className="inline-flex items-center gap-2"><Sun className="w-4 h-4" />{t("theme_light", language)}</span> : <span className="inline-flex items-center gap-2"><Moon className="w-4 h-4" />{t("theme_dark", language)}</span>}</Button>
+          <span className="text-sm text-[var(--muted)]">{t("settings_current_theme", language)}: {theme}</span>
         </div>
         <div>
-          <p className="text-sm font-medium">Accent color</p>
+          <p className="text-sm font-medium">{t("settings_accent_color", language)}</p>
           <div className="mt-2 flex flex-wrap gap-2">{(Object.keys(ACCENT_TOKENS) as AccentPreset[]).map((preset) => <button key={preset} onClick={() => setAccent(preset)} className="rounded-full border px-3 py-1.5 text-sm" style={{ borderColor: accent === preset ? "var(--accent)" : "var(--border)" }}>{preset}</button>)}</div>
         </div>
         <div>
-          <p className="text-sm font-medium">Density</p>
-          <div className="mt-2 flex gap-2"><Button variant={density === "comfortable" ? "primary" : "secondary"} onClick={() => setDensity("comfortable" as DensityMode)}>Comfortable</Button><Button variant={density === "compact" ? "primary" : "secondary"} onClick={() => setDensity("compact" as DensityMode)}>Compact</Button></div>
+          <p className="text-sm font-medium">{t("settings_density", language)}</p>
+          <div className="mt-2 flex gap-2"><Button variant={density === "comfortable" ? "primary" : "secondary"} onClick={() => setDensity("comfortable" as DensityMode)}>{t("settings_density_comfortable", language)}</Button><Button variant={density === "compact" ? "primary" : "secondary"} onClick={() => setDensity("compact" as DensityMode)}>{t("settings_density_compact", language)}</Button></div>
         </div>
       </Card>
 
       <Card className="p-6 space-y-4">
-        <h2 className="text-xl font-semibold">Assistant & product behavior</h2>
+        <h2 className="text-xl font-semibold">{t("settings_assistant_behavior", language)}</h2>
         <div className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3">
-          <div><p className="font-medium">Show AI capability hints</p><p className="text-sm text-[var(--muted)]">Promote playlists, insights, discovery, and queue actions across the app.</p></div>
-          <Button variant="secondary" onClick={() => setAssistantHintsPref(!assistantHints)}>{assistantHints ? "On" : "Off"}</Button>
+          <div><p className="font-medium">{t("settings_show_ai_hints", language)}</p><p className="text-sm text-[var(--muted)]">{t("settings_show_ai_hints_desc", language)}</p></div>
+          <Button variant="secondary" onClick={() => setAssistantHintsPref(!assistantHints)}>{assistantHints ? t("settings_on", language) : t("settings_off", language)}</Button>
         </div>
-        <div className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3"><p className="font-medium">Notifications</p><Button variant="secondary" onClick={() => setPreferences({ notifications: !preferences.notifications })}>{preferences.notifications ? "Enabled" : "Disabled"}</Button></div>
+        <div className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3"><p className="font-medium">{t("settings_notifications", language)}</p><Button variant="secondary" onClick={() => setPreferences({ notifications: !preferences.notifications })}>{preferences.notifications ? t("settings_enabled", language) : t("settings_disabled", language)}</Button></div>
       </Card>
 
       <Card className="p-6 space-y-4">

@@ -4,14 +4,24 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RotateCcw, Send, Sparkles } from "lucide-react";
 import { useUser } from "@/src/context/UserContext";
+import { useLanguage } from "@/lib/LanguageContext";
+import { t } from "@/lib/translations";
 import { useMusicAssistant } from "../useMusicAssistant";
 import MessageBubble from "./MessageBubble";
 import StarterPrompts from "./StarterPrompts";
 import TypingIndicator from "./TypingIndicator";
 
+const capabilityPrompts = [
+  { key: "assistant_capability_playlists", prompt: "Build a playlist from my recent favorites for tonight." },
+  { key: "assistant_capability_insights", prompt: "Analyze my listening trends from the last 7 days." },
+  { key: "assistant_capability_discovery", prompt: "Give me discovery picks outside my usual artists." },
+  { key: "assistant_capability_queue", prompt: "Create a focused queue for the next 45 minutes." },
+] as const;
+
 export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | "sidebar" }) {
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading } = useUser();
+  const { language } = useLanguage();
   const { messages, isLoading, sendMessage, resetConversation, acceptAction, dismissAction, bottomRef } = useMusicAssistant();
   const [input, setInput] = useState("");
   const [promptSeed, setPromptSeed] = useState(() => `session-${Date.now()}`);
@@ -40,24 +50,30 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
   }
 
   if (!isAuthenticated && mode === 'sidebar') {
-    return <div className="grid h-full place-items-center p-6 text-center text-sm text-[var(--muted)]">Sign in to use the AI assistant.</div>;
+    return <div className="grid h-full place-items-center p-6 text-center text-sm text-[var(--muted)]">{t("assistant_signin_hint", language)}</div>;
   }
 
   return (
     <section className={`assistant-page ${mode === 'sidebar' ? 'assistant-page--sidebar' : ''}`}>
       <header className="assistant-header" style={{ flexShrink: 0, borderBottom: "1px solid var(--border)", padding: mode === 'sidebar' ? '12px 14px' : "16px 20px" }}>
-        <h1><Sparkles width={20} height={20} strokeWidth={1.8} /> PonotAI Assistant</h1>
-        <button type="button" onClick={handleNewConversation}><RotateCcw width={15} height={15} strokeWidth={1.8} /> New</button>
+        <h1><Sparkles width={20} height={20} strokeWidth={1.8} /> {t("assistant_title", language)}</h1>
+        <button type="button" onClick={handleNewConversation}><RotateCcw width={15} height={15} strokeWidth={1.8} /> {t("assistant_new", language)}</button>
       </header>
 
       <div className="assistant-thread" style={{ flex: 1, minHeight: 0 }}>
         {messages.length === 0 ? (
           <div className="assistant-empty w-full max-w-3xl space-y-4 px-2">
             {showHints ? <div className="assistant-capability-grid">
-              <div className="assistant-capability-card"><strong>Smart playlists</strong>Generate themed sets from favorites and listening habits.</div>
-              <div className="assistant-capability-card"><strong>Daily insights</strong>Ask for today, this week, or monthly listening summaries.</div>
-              <div className="assistant-capability-card"><strong>Discovery mode</strong>Find adjacent artists and tracks outside your usual lane.</div>
-              <div className="assistant-capability-card"><strong>Queue + library help</strong>Build queues, organize tracks, and tune settings.</div>
+              {capabilityPrompts.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className="assistant-capability-card assistant-capability-card-button"
+                  onClick={() => void sendMessage(item.prompt)}
+                >
+                  {t(item.key, language)}
+                </button>
+              ))}
             </div> : null}
             <StarterPrompts seedKey={`${mode}-${promptSeed}`} onSelect={(prompt) => void sendMessage(prompt)} />
           </div>
@@ -71,7 +87,7 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
       </div>
 
       <footer className="assistant-input-wrap" style={{ marginBottom: mode === 'sidebar' ? 0 : 'var(--keyboard-height, 0px)', paddingBottom: mode === "sidebar" ? "12px" : undefined }}>
-        <textarea value={input} placeholder="Ask about your music..." onChange={(event) => setInput(event.target.value)} rows={1} maxLength={2000} disabled={isLoading}
+        <textarea value={input} placeholder={t("assistant_input_placeholder", language)} onChange={(event) => setInput(event.target.value)} rows={1} maxLength={2000} disabled={isLoading}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }} />
         <button type="button" onClick={() => void submitMessage()} disabled={!input.trim() || isLoading}><Send width={18} height={18} strokeWidth={1.8} /></button>
       </footer>

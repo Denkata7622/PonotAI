@@ -162,6 +162,7 @@ export default function SearchPage() {
               placement="bottom-start"
               matchTriggerWidth
               className="w-full rounded-2xl bg-[var(--surface-2)] p-2"
+              enableClickTrigger={false}
               trigger={(
                 <SearchInput
                   value={query}
@@ -212,7 +213,7 @@ export default function SearchPage() {
 
           {discoverResults.length > 0 && (
             <div className="space-y-3">
-              <p className="text-xs uppercase tracking-wider text-[var(--muted)]">Songs</p>
+              <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{t("songs_heading", language)}</p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {groupedResults.songs.map((result) => (
                   <article key={result.videoId} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
@@ -230,7 +231,7 @@ export default function SearchPage() {
               {groupedResults.channels.length > 0 && (
                 <>
                   <hr className="border-[var(--border)]" />
-                  <p className="text-xs uppercase tracking-wider text-[var(--muted)]">Artists & Channels</p>
+                  <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{t("search_artists_channels", language)}</p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {groupedResults.channels.map((result) => (
                       <article key={result.videoId} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">

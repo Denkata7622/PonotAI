@@ -3,13 +3,14 @@
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle, Heart, Languages, ListMusic, ListPlus, Search, Sun, X } from "lucide-react";
 import { usePlayer } from "@/components/PlayerProvider";
-import { createPlaylist } from "@/features/library/api";
 import { useUser } from "@/src/context/UserContext";
 import { useTheme } from "@/lib/ThemeContext";
 import { useLanguage } from "@/lib/LanguageContext";
+import { t } from "@/lib/translations";
 import { useProfile } from "@/lib/ProfileContext";
 import { useLibrary } from "@/features/library/useLibrary";
 import { runAssistantAction } from "../api";
+import { normalizeThemeActionPayload } from "../themeAction";
 import type { ActionIntent } from "../types";
 
 type Props = {
@@ -48,10 +49,10 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
   const router = useRouter();
   const { addManyToQueue } = usePlayer();
   const { addFavorite, favorites } = useUser();
-  const { setTheme } = useTheme();
-  const { setLocale } = useLanguage();
+  const { setTheme, setAccent, setDensity } = useTheme();
+  const { setLocale, language } = useLanguage();
   const { profile } = useProfile();
-  const { playlists } = useLibrary(profile.id);
+  const { playlists, createPlaylist, addSongsToPlaylist } = useLibrary(profile.id);
   const { icon: Icon, text } = getActionLabel(intent.type);
 
   function resolveTrack(trackId: string) {
@@ -102,7 +103,14 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
         }
         const playlist = await createPlaylist(name);
         if (playlist && trackIds.length) {
-          window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Created ${name} with ${trackIds.length} songs.` } }));
+          const songs = trackIds.map(resolveTrack).map((track) => ({
+            title: track.title,
+            artist: track.artist,
+            coverUrl: track.artworkUrl,
+            videoId: track.videoId,
+          }));
+          const added = await addSongsToPlaylist(playlist.id, songs);
+          window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Created ${name} with ${added} songs.` } }));
         }
       }
 
@@ -125,9 +133,12 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
       }
 
       if (intent.type === "CHANGE_THEME") {
-        const theme = intent.payload.theme as "light" | "dark" | "system";
-        setTheme(theme);
-        window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Switched to ${theme} mode` } }));
+        const next = normalizeThemeActionPayload(intent.payload);
+        if (next.theme) setTheme(next.theme);
+        if (next.accent) setAccent(next.accent);
+        if (next.density) setDensity(next.density);
+        const summary = [next.theme, next.accent, next.density].filter(Boolean).join(" / ");
+        window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: summary ? `Applied ${summary}` : "Theme settings updated" } }));
       }
 
       if (intent.type === "CHANGE_LANGUAGE") {
@@ -170,13 +181,13 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
 
       {state === "pending" && (
         <div className="assistant-action-buttons">
-          <button type="button" onClick={handleAccept} className="assistant-action-primary">Accept</button>
-          <button type="button" onClick={onDismiss} className="assistant-action-ghost">Dismiss</button>
+          <button type="button" onClick={handleAccept} className="assistant-action-primary">{t("assistant_accept", language)}</button>
+          <button type="button" onClick={onDismiss} className="assistant-action-ghost">{t("assistant_dismiss", language)}</button>
         </div>
       )}
-      {state === "accepted" && <p className="assistant-action-success"><CheckCircle width={14} height={14} strokeWidth={1.8} /> Done</p>}
-      {state === "dismissed" && <p className="assistant-action-muted"><X width={14} height={14} strokeWidth={1.8} /> Dismissed</p>}
-      {state === "failed" && <p className="assistant-action-failed"><AlertCircle width={14} height={14} strokeWidth={1.8} /> Failed — try again</p>}
+      {state === "accepted" && <p className="assistant-action-success"><CheckCircle width={14} height={14} strokeWidth={1.8} /> {t("assistant_done", language)}</p>}
+      {state === "dismissed" && <p className="assistant-action-muted"><X width={14} height={14} strokeWidth={1.8} /> {t("assistant_dismissed", language)}</p>}
+      {state === "failed" && <p className="assistant-action-failed"><AlertCircle width={14} height={14} strokeWidth={1.8} /> {t("assistant_failed_try", language)}</p>}
     </div>
   );
 }

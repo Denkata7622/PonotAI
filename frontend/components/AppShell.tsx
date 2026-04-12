@@ -520,7 +520,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
           className="pageTransition flex min-h-0 min-w-0 flex-1 flex-col px-3 pt-5 sm:px-8 sm:pt-8"
           style={{ paddingBottom: "calc(var(--layout-bottom-offset, var(--player-bar-height, 88px)) + 24px)" }}
         >
-          <div className="mb-4 hidden items-center gap-2 md:flex">
+          {pathname !== "/search" ? <div className="mb-4 hidden items-center gap-2 md:flex">
             <div className="relative flex-1 pointer-events-none">
               <SmartDropdown
                 isOpen={showSearchDropdown}
@@ -531,6 +531,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                 placement="bottom-start"
                 matchTriggerWidth
                 className="pointer-events-auto w-full rounded-2xl bg-[var(--surface-2)] p-2"
+                enableClickTrigger={false}
                 trigger={(
                   <div className="pointer-events-auto">
                     <SearchInput
@@ -691,7 +692,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                 <span className="inline-flex items-center gap-1"><Music className="w-3 h-3 text-[var(--muted)]" />{t("search_more_like_this", language)}</span>
               </button>
             )}
-          </div>
+          </div> : null}
           {children}
         </main>
       </div>

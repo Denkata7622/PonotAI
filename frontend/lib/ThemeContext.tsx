@@ -28,6 +28,21 @@ export const ACCENT_TOKENS: Record<AccentPreset, { accent: string; accentRgb: st
   rose: { accent: "#e11d48", accentRgb: "225, 29, 72", accent2: "#f59e0b" },
 };
 
+
+
+function resolveTheme(theme: Theme): "light" | "dark" {
+  if (theme !== "system") return theme;
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+
+function applyAccentVariables(accent: AccentPreset): void {
+  const tokens = ACCENT_TOKENS[accent];
+  document.documentElement.setAttribute("data-accent", accent);
+  document.documentElement.style.setProperty("--accent", tokens.accent);
+  document.documentElement.style.setProperty("--accent-rgb", tokens.accentRgb);
+  document.documentElement.style.setProperty("--accent-2", tokens.accent2);
+}
+
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -51,21 +66,29 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    const resolvedTheme = theme === "system"
-      ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
-      : theme;
+    const resolvedTheme = resolveTheme(theme);
     document.documentElement.setAttribute("data-theme", resolvedTheme);
     document.body.setAttribute("data-theme", resolvedTheme);
     document.documentElement.style.colorScheme = resolvedTheme;
     window.localStorage.setItem(THEME_KEY, theme);
+
+    if (theme === "system") {
+      const media = window.matchMedia("(prefers-color-scheme: light)");
+      const listener = () => {
+        const next = media.matches ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        document.body.setAttribute("data-theme", next);
+        document.documentElement.style.colorScheme = next;
+      };
+      media.addEventListener("change", listener);
+      return () => media.removeEventListener("change", listener);
+    }
+
+    return undefined;
   }, [theme]);
 
   useEffect(() => {
-    const tokens = ACCENT_TOKENS[accent];
-    document.documentElement.setAttribute("data-accent", accent);
-    document.documentElement.style.setProperty("--accent", tokens.accent);
-    document.documentElement.style.setProperty("--accent-rgb", tokens.accentRgb);
-    document.documentElement.style.setProperty("--accent-2", tokens.accent2);
+    applyAccentVariables(accent);
     window.localStorage.setItem(ACCENT_KEY, accent);
   }, [accent]);
 
@@ -95,3 +118,7 @@ export function useTheme() {
   if (!context) throw new Error("useTheme must be used within a ThemeProvider");
   return context;
 }
+
+
+export const themeStorageKeys = { THEME_KEY, ACCENT_KEY, DENSITY_KEY };
+export { applyAccentVariables, resolveTheme };

@@ -167,7 +167,7 @@ export async function generateAssistantReply(
       const chat = model.startChat({
         history,
         generationConfig: {
-          maxOutputTokens: 1200,
+          maxOutputTokens: 2200,
           temperature: 0.3,
           topP: 0.8,
         },
