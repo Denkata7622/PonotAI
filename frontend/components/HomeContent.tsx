@@ -657,7 +657,7 @@ export function HomeContent() {
                 </label>
                 <label className="text-sm">
                   <span className="mb-1 block text-text-muted">{t("stats_ocr_language", language)}</span>
-                  <select value={ocrLanguage} onChange={(e) => setOcrLanguage(e.target.value)} className="w-full bg-surface border border-border text-text-primary rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all duration-200">
+                  <select value={ocrLanguage} onChange={(e) => setOcrLanguage(e.target.value)} className="w-full bg-surface border border-border text-text-primary rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent-ring)] focus:border-transparent transition-all duration-200">
                     <option value="bul+eng">{language === "bg" ? "Български + Английски" : "Bulgarian + English"}</option>
                     <option value="eng">{t("ocr_lang_english", language)}</option>
                     <option value="spa">{t("ocr_lang_spanish", language)}</option>
@@ -701,7 +701,7 @@ export function HomeContent() {
             <HomeHistorySection language={language} items={history} onDelete={handleDeleteHistoryItem} onPlay={playSong} favoritesSet={favoritesSet} onFavorite={toggleFavorite} />
 
             {(stats.totalFavorites > 0 || stats.totalPlaylists > 0) && (
-              <Card className="rounded-3xl bg-gradient-to-br from-brand-500/10 to-brand-600/5 border border-brand-300/20 p-6">
+              <Card className="rounded-3xl bg-gradient-to-br from-[var(--accent)]/10 to-[var(--accent-2)]/5 border border-[var(--accent-border)] p-6">
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <Link href="/library?tab=favorites" className="rounded-xl p-2 transition hover:opacity-80">
                     <p className="text-2xl font-bold text-text-primary">{stats.totalFavorites}</p>

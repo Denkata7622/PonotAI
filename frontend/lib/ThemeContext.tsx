@@ -1,29 +1,11 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { ACCENT_TOKENS as THEME_ACCENT_TOKENS, getAccentCssVariables, type AccentPreset, isAccentPreset } from "./themePresets";
 
 type Theme = "dark" | "light" | "system";
-export type AccentPreset =
-  | "violet"
-  | "indigo"
-  | "blue"
-  | "cyan"
-  | "ocean"
-  | "teal"
-  | "emerald"
-  | "lime"
-  | "amber"
-  | "gold"
-  | "orange"
-  | "sunset"
-  | "coral"
-  | "rose"
-  | "ruby"
-  | "magenta"
-  | "plum"
-  | "slate"
-  | "graphite";
 export type DensityMode = "comfortable" | "compact";
+export type { AccentPreset };
 
 type ThemeContextValue = {
   theme: Theme;
@@ -39,27 +21,7 @@ const THEME_KEY = "ponotai-theme";
 const ACCENT_KEY = "ponotai-accent";
 const DENSITY_KEY = "ponotai-density";
 
-export const ACCENT_TOKENS: Record<AccentPreset, { accent: string; accentRgb: string; accent2: string }> = {
-  violet: { accent: "#7c5cff", accentRgb: "124, 92, 255", accent2: "#4cd3ff" },
-  indigo: { accent: "#6366f1", accentRgb: "99, 102, 241", accent2: "#8b5cf6" },
-  blue: { accent: "#3b82f6", accentRgb: "59, 130, 246", accent2: "#2563eb" },
-  cyan: { accent: "#06b6d4", accentRgb: "6, 182, 212", accent2: "#0ea5e9" },
-  ocean: { accent: "#0ea5e9", accentRgb: "14, 165, 233", accent2: "#2563eb" },
-  teal: { accent: "#14b8a6", accentRgb: "20, 184, 166", accent2: "#0d9488" },
-  sunset: { accent: "#f97316", accentRgb: "249, 115, 22", accent2: "#ef4444" },
-  emerald: { accent: "#10b981", accentRgb: "16, 185, 129", accent2: "#06b6d4" },
-  lime: { accent: "#84cc16", accentRgb: "132, 204, 22", accent2: "#65a30d" },
-  amber: { accent: "#f59e0b", accentRgb: "245, 158, 11", accent2: "#d97706" },
-  gold: { accent: "#eab308", accentRgb: "234, 179, 8", accent2: "#f59e0b" },
-  orange: { accent: "#f97316", accentRgb: "249, 115, 22", accent2: "#fb7185" },
-  coral: { accent: "#fb7185", accentRgb: "251, 113, 133", accent2: "#f97316" },
-  rose: { accent: "#e11d48", accentRgb: "225, 29, 72", accent2: "#f59e0b" },
-  ruby: { accent: "#be123c", accentRgb: "190, 18, 60", accent2: "#dc2626" },
-  magenta: { accent: "#d946ef", accentRgb: "217, 70, 239", accent2: "#a855f7" },
-  plum: { accent: "#9333ea", accentRgb: "147, 51, 234", accent2: "#7c3aed" },
-  slate: { accent: "#64748b", accentRgb: "100, 116, 139", accent2: "#475569" },
-  graphite: { accent: "#4b5563", accentRgb: "75, 85, 99", accent2: "#374151" },
-};
+export const ACCENT_TOKENS = THEME_ACCENT_TOKENS;
 
 export const THEME_TEMPLATES = {
   "Night Drive": { theme: "dark" as const, accent: "violet" as const, density: "compact" as const },
@@ -77,11 +39,9 @@ function resolveTheme(theme: Theme): "light" | "dark" {
 }
 
 function applyAccentVariables(accent: AccentPreset): void {
-  const tokens = ACCENT_TOKENS[accent];
   document.documentElement.setAttribute("data-accent", accent);
-  document.documentElement.style.setProperty("--accent", tokens.accent);
-  document.documentElement.style.setProperty("--accent-rgb", tokens.accentRgb);
-  document.documentElement.style.setProperty("--accent-2", tokens.accent2);
+  const variables = getAccentCssVariables(accent);
+  Object.entries(variables).forEach(([key, value]) => document.documentElement.style.setProperty(key, value));
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -97,7 +57,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [accent, setAccent] = useState<AccentPreset>(() => {
     if (typeof window === "undefined") return "violet";
     const savedAccent = window.localStorage.getItem(ACCENT_KEY);
-    if (savedAccent && savedAccent in ACCENT_TOKENS) return savedAccent as AccentPreset;
+    if (isAccentPreset(savedAccent)) return savedAccent;
     return "violet";
   });
 

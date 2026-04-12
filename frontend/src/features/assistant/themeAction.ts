@@ -1,6 +1,6 @@
 import type { AccentPreset, DensityMode } from "@/lib/ThemeContext";
+import { isAccentPreset } from "@/lib/themePresets";
 
-const SUPPORTED_ACCENTS: AccentPreset[] = ["violet", "indigo", "blue", "cyan", "ocean", "teal", "emerald", "lime", "amber", "gold", "orange", "sunset", "coral", "rose", "ruby", "magenta", "plum", "slate", "graphite"];
 const SUPPORTED_DENSITY: DensityMode[] = ["comfortable", "compact"];
 
 export function normalizeThemeActionPayload(payload: Record<string, unknown>): {
@@ -14,7 +14,7 @@ export function normalizeThemeActionPayload(payload: Record<string, unknown>): {
 
   return {
     theme: theme === "light" || theme === "dark" || theme === "system" ? theme : undefined,
-    accent: typeof accent === "string" && SUPPORTED_ACCENTS.includes(accent as AccentPreset) ? accent as AccentPreset : undefined,
+    accent: isAccentPreset(accent) ? accent : undefined,
     density: typeof density === "string" && SUPPORTED_DENSITY.includes(density as DensityMode) ? density as DensityMode : undefined,
   };
 }

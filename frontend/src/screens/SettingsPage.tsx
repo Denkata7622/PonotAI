@@ -12,7 +12,8 @@ import Modal from "../components/ui/Modal";
 import { useUser } from "../context/UserContext";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
-import { ACCENT_TOKENS, type AccentPreset, useTheme, type DensityMode } from "../../lib/ThemeContext";
+import { type AccentPreset, useTheme, type DensityMode } from "../../lib/ThemeContext";
+import { ACCENT_TOKENS, SUPPORTED_ACCENTS } from "../../lib/themePresets";
 import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON, LIBRARY_EXPORT_VERSION } from "../lib/libraryExport";
 import type { Playlist } from "../../features/library/types";
 
@@ -174,7 +175,29 @@ export default function SettingsPage() {
         </div>
         <div>
           <p className="text-sm font-medium">{t("settings_accent_color", language)}</p>
-          <div className="mt-2 flex flex-wrap gap-2">{(Object.keys(ACCENT_TOKENS) as AccentPreset[]).map((preset) => <button key={preset} onClick={() => setAccent(preset)} className="rounded-full border px-3 py-1.5 text-sm" style={{ borderColor: accent === preset ? "var(--accent)" : "var(--border)" }}>{preset}</button>)}</div>
+          <div className="mt-2 flex flex-wrap gap-2">{SUPPORTED_ACCENTS.map((preset) => {
+            const isActive = accent === preset;
+            return (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setAccent(preset)}
+                aria-pressed={isActive}
+                className="rounded-full border px-3 py-1.5 text-sm transition-all"
+                style={{
+                  borderColor: isActive ? "var(--accent-border)" : "var(--border)",
+                  background: isActive ? "var(--accent-soft)" : "transparent",
+                  color: isActive ? "var(--accent)" : "var(--text)",
+                  boxShadow: isActive ? "0 0 0 2px var(--accent-ring)" : "none",
+                }}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: ACCENT_TOKENS[preset].accent }} />
+                  {preset}
+                </span>
+              </button>
+            );
+          })}</div>
         </div>
         <div>
           <p className="text-sm font-medium">{t("settings_density", language)}</p>
