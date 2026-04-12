@@ -10,9 +10,9 @@ type Props = PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>> & {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-brand-500 text-text-inverse hover:bg-brand-700 focus:ring-2 focus:ring-brand-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 rounded-lg font-medium select-none",
+    "bg-[var(--accent)] text-[var(--accent-foreground)] hover:bg-[var(--accent-2)] focus:ring-2 focus:ring-[var(--accent-ring)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 rounded-lg font-medium select-none",
   secondary:
-    "bg-surface border border-border text-text-primary hover:bg-surface-raised focus:ring-2 focus:ring-brand-300 transition-all duration-200 rounded-lg font-medium select-none",
+    "bg-surface border border-border text-text-primary hover:bg-[var(--accent-soft)] focus:ring-2 focus:ring-[var(--accent-ring)] transition-all duration-200 rounded-lg font-medium select-none",
   danger:
     "bg-danger text-text-inverse hover:opacity-90 focus:ring-2 focus:ring-red-300 transition-all duration-200 rounded-lg font-medium select-none",
   ghost: "text-text-muted hover:text-text-primary hover:bg-surface-raised transition-all duration-200 rounded-lg select-none",
