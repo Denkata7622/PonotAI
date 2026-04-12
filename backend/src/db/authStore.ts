@@ -280,16 +280,21 @@ export async function findUserByEmail(email: string) {
 export async function findUserByUsername(username: string) { return (await readDb()).users.find((u) => u.username === username) || null; }
 export async function findUserById(id: string) { return (await readDb()).users.find((u) => u.id === id) || null; }
 
-export async function createUserHistory(item: Omit<SearchHistoryRecord, "id" | "createdAt">): Promise<SearchHistoryRecord> {
+export async function createUserHistory(
+  item: Omit<SearchHistoryRecord, "id" | "createdAt">,
+  options?: { allowDuplicates?: boolean; createdAt?: string },
+): Promise<SearchHistoryRecord> {
   const db = await readDb();
   const targetKey = normalizeTrackKey(item.title ?? "", item.artist ?? "");
-  db.searchHistory = (db.searchHistory ?? []).filter(
-    (entry) =>
-      entry.userId !== item.userId ||
-      normalizeTrackKey(entry.title ?? "", entry.artist ?? "") !== targetKey,
-  );
+  if (!options?.allowDuplicates) {
+    db.searchHistory = (db.searchHistory ?? []).filter(
+      (entry) =>
+        entry.userId !== item.userId ||
+        normalizeTrackKey(entry.title ?? "", entry.artist ?? "") !== targetKey,
+    );
+  }
 
-  const rec: SearchHistoryRecord = { id: randomUUID(), createdAt: new Date().toISOString(), ...item };
+  const rec: SearchHistoryRecord = { id: randomUUID(), createdAt: options?.createdAt ?? new Date().toISOString(), ...item };
   db.searchHistory.unshift(rec);
   await writeDb(db);
   return rec;

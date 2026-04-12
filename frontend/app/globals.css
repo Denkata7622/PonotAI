@@ -705,3 +705,34 @@ body {
   background: transparent;
   padding-bottom: 0 !important;
 }
+
+.assistant-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.assistant-capability-card {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 85%, var(--accent) 15%);
+  border-radius: 12px;
+  padding: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.assistant-capability-card strong {
+  display: block;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+:root[data-density="compact"] .card,
+:root[data-density="compact"] .assistant-message-bubble,
+:root[data-density="compact"] .assistant-chip {
+  border-radius: 12px;
+}
+
+:root[data-density="compact"] .card {
+  padding: 12px !important;
+}

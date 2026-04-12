@@ -7,6 +7,7 @@ import {
   getContextualRecommendations,
   getDailyDiscovery,
   getListeningInsights,
+  getActivitySummaries,
   getListeningTrends,
   getMoodRecommendations,
   getSurpriseDiscovery,
@@ -30,6 +31,16 @@ export async function getWeeklyInsightsController(req: Request, res: Response): 
   }
 }
 
+export async function getDailyInsightsController(req: Request, res: Response): Promise<void> {
+  try {
+    const data = await getListeningInsights(req.userId!, "daily");
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("daily insights error", error);
+    sendError(res, ErrorCatalog.INTERNAL_ERROR);
+  }
+}
+
 export async function getMonthlyInsightsController(req: Request, res: Response): Promise<void> {
   try {
     const data = await getListeningInsights(req.userId!, "monthly");
@@ -46,6 +57,16 @@ export async function getTrendsController(req: Request, res: Response): Promise<
     res.status(200).json(data);
   } catch (error) {
     console.error("trend insights error", error);
+    sendError(res, ErrorCatalog.INTERNAL_ERROR);
+  }
+}
+
+export async function getActivitySummaryController(req: Request, res: Response): Promise<void> {
+  try {
+    const data = await getActivitySummaries(req.userId!);
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("activity summary error", error);
     sendError(res, ErrorCatalog.INTERNAL_ERROR);
   }
 }

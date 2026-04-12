@@ -22,7 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="text-[var(--text)]" suppressHydrationWarning>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var theme=localStorage.getItem("ponotai-theme");document.documentElement.setAttribute("data-theme",theme||"dark");}catch(_){document.documentElement.setAttribute("data-theme","dark");}})();`,
+            __html: `(function(){try{var theme=localStorage.getItem("ponotai-theme")||"dark";var accent=localStorage.getItem("ponotai-accent")||"violet";var density=localStorage.getItem("ponotai-density")||"comfortable";document.documentElement.setAttribute("data-theme",theme);document.documentElement.setAttribute("data-accent",accent);document.documentElement.setAttribute("data-density",density);}catch(_){document.documentElement.setAttribute("data-theme","dark");}})();`,
           }}
         />
         <ClientLayout>{children}</ClientLayout>

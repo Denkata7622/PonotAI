@@ -9,7 +9,7 @@ import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import Modal from "../components/ui/Modal";
 import { useUser } from "../context/UserContext";
-import { useTheme } from "../../lib/ThemeContext";
+import { ACCENT_TOKENS, type AccentPreset, useTheme, type DensityMode } from "../../lib/ThemeContext";
 import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON, LIBRARY_EXPORT_VERSION } from "../lib/libraryExport";
 import type { Playlist } from "../../features/library/types";
 
@@ -27,22 +27,10 @@ export default function SettingsPage() {
   const [libraryData, setLibraryData] = useState<{ favorites: unknown[]; history: unknown[]; playlists: Playlist[] }>(() => ({ favorites: [], history: [], playlists: [] }));
   const [importSummary, setImportSummary] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [assistantHints, setAssistantHints] = useState(true);
   const { profile } = useProfile();
-  const {
-    user,
-    preferences,
-    updateProfile,
-    changePassword,
-    setPreferences,
-    deleteAccount,
-    isAuthenticated,
-    favorites,
-    history,
-    addFavorite,
-    addToHistory,
-  } = useUser();
-
-  const { theme, toggleTheme } = useTheme();
+  const { user, preferences, updateProfile, changePassword, setPreferences, deleteAccount, isAuthenticated, favorites, history, addFavorite, addToHistory } = useUser();
+  const { theme, toggleTheme, accent, setAccent, density, setDensity } = useTheme();
 
   const [displayName, setDisplayName] = useState(user?.username ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -58,6 +46,7 @@ export default function SettingsPage() {
     try {
       const playlists = JSON.parse(window.localStorage.getItem(scopedKey("ponotai.library.playlists", profile.id)) ?? "[]") as Playlist[];
       setLibraryData({ favorites, history, playlists });
+      setAssistantHints(window.localStorage.getItem("ponotai-assistant-hints") !== "off");
     } catch {
       setLibraryData({ favorites: [], history: [], playlists: [] });
     }
@@ -65,304 +54,132 @@ export default function SettingsPage() {
 
   const canDelete = confirmText === (user?.username ?? "");
 
-  async function handleSaveName() {
-    setSaveError(null);
-    try {
-      if (isAuthenticated) {
-        await updateProfile({ username: displayName });
-      }
-    } catch (e) {
-      setSaveError((e as Error).message);
-    }
-  }
-
-  async function handleSaveEmail() {
-    setSaveError(null);
-    try {
-      if (isAuthenticated) {
-        await updateProfile({ email });
-      }
-    } catch (e) {
-      setSaveError((e as Error).message);
-    }
-  }
+  async function handleSaveName() { try { if (isAuthenticated) await updateProfile({ username: displayName }); } catch (e) { setSaveError((e as Error).message); } }
+  async function handleSaveEmail() { try { if (isAuthenticated) await updateProfile({ email }); } catch (e) { setSaveError((e as Error).message); } }
 
   async function handleChangePassword() {
     setPasswordError(null);
-    if (passwords.next !== passwords.confirm) {
-      setPasswordError("Passwords do not match");
-      return;
-    }
-    if (passwords.next.length < 8) {
-      setPasswordError("New password must be at least 8 characters");
-      return;
-    }
-    try {
-      await changePassword(passwords.current, passwords.next);
-      setPasswords({ current: "", next: "", confirm: "" });
-    } catch (e) {
-      setPasswordError((e as Error).message);
-    }
+    if (passwords.next !== passwords.confirm) return setPasswordError("Passwords do not match");
+    if (passwords.next.length < 8) return setPasswordError("New password must be at least 8 characters");
+    try { await changePassword(passwords.current, passwords.next); setPasswords({ current: "", next: "", confirm: "" }); } catch (e) { setPasswordError((e as Error).message); }
   }
 
-  async function handleDeleteAccount() {
-    try {
-      await deleteAccount();
-    } catch (e) {
-      if (process.env.NODE_ENV !== "production") {
-        console.error(e);
-      }
-    }
+  async function handleDeleteAccount() { await deleteAccount(); }
+
+  function setAssistantHintsPref(next: boolean) {
+    setAssistantHints(next);
+    window.localStorage.setItem("ponotai-assistant-hints", next ? "on" : "off");
   }
 
   function handleExportJSON() {
-    try {
-      const queueState = JSON.parse(window.localStorage.getItem("ponotai.queue.v1") ?? "{}") as { queue?: Array<{ track?: { title?: string; artist?: string; artworkUrl?: string; videoId?: string } }> };
-      const payload = {
-        version: LIBRARY_EXPORT_VERSION,
-        exportedAt: new Date().toISOString(),
-        app: "Trackly" as const,
-        user: user ? { id: user.id, username: user.username, email: user.email } : null,
-        data: {
-          favorites: favorites ?? [],
-          history: history ?? [],
-          playlists: libraryData.playlists ?? [],
-          queue: (queueState.queue ?? []).map((entry) => ({
-            title: entry.track?.title ?? "",
-            artist: entry.track?.artist ?? "",
-            artworkUrl: entry.track?.artworkUrl,
-            videoId: entry.track?.videoId,
-          })).filter((entry) => entry.title && entry.artist),
-          settings: {
-            theme: window.localStorage.getItem("ponotai-theme"),
-            language: window.localStorage.getItem("ponotai-language"),
-          },
-        },
-      };
-      exportLibraryAsJSON(payload, user?.username || "guest");
-      alert("Library exported successfully as JSON!");
-    } catch (e) {
-      alert("Export failed: " + (e instanceof Error ? e.message : "Unknown error"));
-    }
+    const queueState = JSON.parse(window.localStorage.getItem("ponotai.queue.v1") ?? "{}") as { queue?: Array<{ track?: { title?: string; artist?: string; artworkUrl?: string; videoId?: string } }> };
+    const payload = {
+      version: LIBRARY_EXPORT_VERSION,
+      exportedAt: new Date().toISOString(),
+      app: "Trackly" as const,
+      user: user ? { id: user.id, username: user.username, email: user.email } : null,
+      data: {
+        favorites: favorites ?? [],
+        history: history ?? [],
+        playlists: libraryData.playlists ?? [],
+        queue: (queueState.queue ?? []).map((entry) => ({ title: entry.track?.title ?? "", artist: entry.track?.artist ?? "", artworkUrl: entry.track?.artworkUrl, videoId: entry.track?.videoId })).filter((entry) => entry.title && entry.artist),
+        settings: { theme: window.localStorage.getItem("ponotai-theme"), language: window.localStorage.getItem("ponotai-language") },
+      },
+    };
+    exportLibraryAsJSON(payload, user?.username || "guest");
   }
 
-  function handleExportCSV() {
-    try {
-      exportLibraryAsCSV(
-        favorites,
-        history,
-        user?.username || "library"
-      );
-      alert("Library exported successfully as CSV!");
-    } catch (e) {
-      if (process.env.NODE_ENV !== "production") {
-        console.error("Export failed:", e);
-      }
-      alert("Export failed: " + (e instanceof Error ? e.message : "Unknown error"));
-    }
-  }
+  function handleExportCSV() { exportLibraryAsCSV(favorites, history, user?.username || "library"); }
 
   async function handleImport(file: File) {
-    setIsImporting(true);
-    setImportSummary(null);
+    setIsImporting(true); setImportSummary(null);
     try {
       const payload = await importLibraryFromJSON(file);
       const favoritesToImport = dedupeByTrack(payload.data.favorites ?? []);
       const historyToImport = dedupeByTrack(payload.data.history ?? []);
-      for (const item of historyToImport) {
-        await addToHistory(item);
-      }
+      for (const item of historyToImport) await addToHistory(item);
+      for (const fav of favoritesToImport) await addFavorite({ title: fav.title, artist: fav.artist, album: fav.album, coverUrl: fav.coverUrl });
       const playlistsToImport = Array.isArray(payload.data.playlists) ? payload.data.playlists : [];
-
-      let importedFavorites = 0;
-      const duplicateFavorites = Math.max(0, (payload.data.favorites ?? []).length - favoritesToImport.length);
-      for (const fav of favoritesToImport) {
-        await addFavorite({ title: fav.title, artist: fav.artist, album: fav.album, coverUrl: fav.coverUrl });
-        importedFavorites += 1;
-      }
-
-      if (!isAuthenticated) {
-        window.localStorage.setItem(scopedKey("ponotai.library.playlists", profile.id), JSON.stringify(playlistsToImport));
-      }
-
-      window.localStorage.setItem("ponotai.queue.v1", JSON.stringify({ queue: (payload.data.queue ?? []).map((entry) => ({ queueId: crypto.randomUUID(), addedAt: new Date().toISOString(), source: 'manual', track: { id: `${entry.title}-${entry.artist}`, title: entry.title, artist: entry.artist, artworkUrl: entry.artworkUrl, videoId: entry.videoId, query: `${entry.title} ${entry.artist}` } })) }));
-
-      const theme = payload.data.settings?.theme;
-      const language = payload.data.settings?.language;
-      if (typeof theme === 'string') window.localStorage.setItem('ponotai-theme', theme);
-      if (typeof language === 'string') window.localStorage.setItem('ponotai-language', language);
-
-      setImportSummary(`Imported favorites: ${importedFavorites} (skipped duplicates: ${duplicateFavorites}), history entries: ${historyToImport.length}, playlists: ${playlistsToImport.length}.`);
-      alert('Library imported successfully!');
-    } catch (e) {
-      alert(`Import failed: ${(e as Error).message}`);
-    } finally {
-      setIsImporting(false);
-    }
+      if (!isAuthenticated) window.localStorage.setItem(scopedKey("ponotai.library.playlists", profile.id), JSON.stringify(playlistsToImport));
+      setImportSummary(`Imported favorites: ${favoritesToImport.length}, history entries: ${historyToImport.length}, playlists: ${playlistsToImport.length}.`);
+    } finally { setIsImporting(false); }
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-      <h1 className="text-3xl font-bold text-text-primary tracking-tight">Settings</h1>
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6 pb-[calc(var(--layout-bottom-offset)+24px)]">
+      <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
 
       <Card className="p-6 space-y-4">
-        <h2 className="text-xl font-semibold text-text-primary">Account</h2>
-        {saveError && <p className="text-sm text-danger">{saveError}</p>}
-        
-        {user && (
-          <div className="mb-4 p-4 rounded-lg bg-surface-raised border border-border">
-            <p className="text-xs text-text-muted mb-1">User ID</p>
-            <p className="text-sm font-mono text-text-primary break-all">{user.id}</p>
-            <p className="text-xs text-text-muted mt-3 mb-1">Email</p>
-            <p className="text-sm text-text-primary">{user.email}</p>
-            <p className="text-xs text-text-muted mt-3 mb-1">Member since</p>
-            <p className="text-sm text-text-primary">{new Date(user.createdAt).toLocaleDateString()}</p>
-            {user.bio && (
-              <>
-                <p className="text-xs text-text-muted mt-3 mb-1">Bio</p>
-                <p className="text-sm text-text-primary">{user.bio}</p>
-              </>
-            )}
-          </div>
-        )}
-        
+        <h2 className="text-xl font-semibold">Account</h2>
+        {saveError ? <p className="text-sm text-danger">{saveError}</p> : null}
         <div>
-          <label className="text-sm font-medium text-text-primary mb-1 block">Display name</label>
-          <div className="flex gap-2">
-            <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-            <Button variant="primary" onClick={handleSaveName}>Save</Button>
-          </div>
+          <label className="text-sm font-medium mb-1 block">Display name</label>
+          <div className="flex flex-col gap-2 sm:flex-row"><Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} /><Button variant="primary" onClick={handleSaveName}>Save</Button></div>
         </div>
         <div>
-          <label className="text-sm font-medium text-text-primary mb-1 block">Email</label>
-          <div className="flex gap-2">
-            <Input value={email} onChange={(e) => setEmail(e.target.value)} />
-            <Button variant="primary" onClick={handleSaveEmail}>Save</Button>
-          </div>
+          <label className="text-sm font-medium mb-1 block">Email</label>
+          <div className="flex flex-col gap-2 sm:flex-row"><Input value={email} onChange={(e) => setEmail(e.target.value)} /><Button variant="primary" onClick={handleSaveEmail}>Save</Button></div>
         </div>
       </Card>
 
       <Card className="p-6 space-y-4">
-        <h2 className="text-xl font-semibold text-text-primary">Security</h2>
-        {!isAuthenticated && (
-          <p className="text-sm text-text-muted">Sign in to change your password.</p>
-        )}
-        {passwordError && <p className="text-sm text-danger">{passwordError}</p>}
+        <h2 className="text-xl font-semibold">Appearance & personalization</h2>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="secondary" onClick={toggleTheme}>{theme === "dark" ? <span className="inline-flex items-center gap-2"><Sun className="w-4 h-4" />Light mode</span> : <span className="inline-flex items-center gap-2"><Moon className="w-4 h-4" />Dark mode</span>}</Button>
+          <span className="text-sm text-[var(--muted)]">Current theme: {theme}</span>
+        </div>
+        <div>
+          <p className="text-sm font-medium">Accent color</p>
+          <div className="mt-2 flex flex-wrap gap-2">{(Object.keys(ACCENT_TOKENS) as AccentPreset[]).map((preset) => <button key={preset} onClick={() => setAccent(preset)} className="rounded-full border px-3 py-1.5 text-sm" style={{ borderColor: accent === preset ? "var(--accent)" : "var(--border)" }}>{preset}</button>)}</div>
+        </div>
+        <div>
+          <p className="text-sm font-medium">Density</p>
+          <div className="mt-2 flex gap-2"><Button variant={density === "comfortable" ? "primary" : "secondary"} onClick={() => setDensity("comfortable" as DensityMode)}>Comfortable</Button><Button variant={density === "compact" ? "primary" : "secondary"} onClick={() => setDensity("compact" as DensityMode)}>Compact</Button></div>
+        </div>
+      </Card>
+
+      <Card className="p-6 space-y-4">
+        <h2 className="text-xl font-semibold">Assistant & product behavior</h2>
+        <div className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3">
+          <div><p className="font-medium">Show AI capability hints</p><p className="text-sm text-[var(--muted)]">Promote playlists, insights, discovery, and queue actions across the app.</p></div>
+          <Button variant="secondary" onClick={() => setAssistantHintsPref(!assistantHints)}>{assistantHints ? "On" : "Off"}</Button>
+        </div>
+        <div className="flex items-center justify-between rounded-lg border border-[var(--border)] p-3"><p className="font-medium">Notifications</p><Button variant="secondary" onClick={() => setPreferences({ notifications: !preferences.notifications })}>{preferences.notifications ? "Enabled" : "Disabled"}</Button></div>
+      </Card>
+
+      <Card className="p-6 space-y-4">
+        <h2 className="text-xl font-semibold">Security</h2>
+        {passwordError ? <p className="text-sm text-danger">{passwordError}</p> : null}
         {(["current", "next", "confirm"] as const).map((key) => (
-          <div key={key}>
-            <label className="text-sm font-medium text-text-primary mb-1 block capitalize">{key} password</label>
-            <div className="flex gap-2">
-              <Input
-                type={show[key] ? "text" : "password"}
-                value={passwords[key]}
-                disabled={!isAuthenticated}
-                onChange={(e) => setPasswords((p) => ({ ...p, [key]: e.target.value }))}
-              />
-              <Button variant="secondary" onClick={() => setShow((prev) => ({ ...prev, [key]: !prev[key] }))}>
-                {show[key] ? "Hide" : "Show"}
-              </Button>
-            </div>
-          </div>
+          <div key={key}><label className="text-sm font-medium mb-1 block capitalize">{key} password</label><div className="flex gap-2"><Input type={show[key] ? "text" : "password"} value={passwords[key]} disabled={!isAuthenticated} onChange={(e) => setPasswords((p) => ({ ...p, [key]: e.target.value }))} /><Button variant="secondary" onClick={() => setShow((prev) => ({ ...prev, [key]: !prev[key] }))}>{show[key] ? "Hide" : "Show"}</Button></div></div>
         ))}
-        {isAuthenticated && (
-          <Button variant="primary" onClick={handleChangePassword}>Update Password</Button>
-        )}
+        {isAuthenticated ? <Button variant="primary" onClick={handleChangePassword}>Update Password</Button> : null}
       </Card>
 
       <Card className="p-6 space-y-4">
-        <h2 className="text-xl font-semibold text-text-primary">Appearance</h2>
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
-            <p className="text-sm text-text-muted">Current theme: <span className="font-medium text-text-primary capitalize">{theme}</span></p>
-          </div>
-          <Button
-            variant="secondary"
-            onClick={toggleTheme}
-          >
-            {theme === "dark" ? (<span className="inline-flex items-center gap-2"><Sun className="w-4 h-4 text-[var(--muted)]" />Light Mode</span>) : (<span className="inline-flex items-center gap-2"><Moon className="w-4 h-4 text-[var(--muted)]" />Dark Mode</span>)}
-          </Button>
+        <h2 className="text-xl font-semibold">Data Management</h2>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button variant="secondary" onClick={handleExportJSON} className="flex-1"><span className="inline-flex items-center gap-2"><Download className="w-4 h-4" />Export JSON</span></Button>
+          <Button variant="secondary" onClick={handleExportCSV} className="flex-1"><span className="inline-flex items-center gap-2"><FileSpreadsheet className="w-4 h-4" />Export CSV</span></Button>
         </div>
-      </Card>
-
-      <Card className="p-6 space-y-4">
-        <h2 className="text-xl font-semibold text-text-primary">Notifications</h2>
-        <Button
-          variant="secondary"
-          onClick={() => setPreferences({ notifications: !preferences.notifications })}
-        >
-          {preferences.notifications ? "Disable" : "Enable"} notifications
-        </Button>
-      </Card>
-
-      <Card className="p-6 space-y-4">
-        <h2 className="text-xl font-semibold text-text-primary">Data Management</h2>
-        <p className="text-sm text-text-muted mb-4">Export or import your library data for backup or migration.</p>
-        
-        <div className="space-y-3">
-          <div>
-            <label className="text-sm font-medium text-text-primary mb-2 block">Export Library</label>
-            <div className="flex gap-2">
-              <Button variant="secondary" onClick={handleExportJSON} className="flex-1">
-                <span className="inline-flex items-center gap-2"><Download className="w-4 h-4 text-[var(--muted)]" />Export as JSON</span>
-              </Button>
-              <Button variant="secondary" onClick={handleExportCSV} className="flex-1">
-                <span className="inline-flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 text-[var(--muted)]" />Export as CSV</span>
-              </Button>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-text-primary mb-2 block">Import Library</label>
-            <div className="flex gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleImport(file);
-                }}
-                className="hidden"
-              />
-              <Button 
-                variant="secondary"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isImporting}
-                className="flex-1"
-              >
-                <span className="inline-flex items-center gap-2"><Upload className="w-4 h-4 text-[var(--muted)]" />Import from JSON</span>
-              </Button>
-            </div>
-            {importSummary ? <p className="text-xs text-[var(--muted)] mt-2">{importSummary}</p> : null}
-            <p className="text-xs text-text-muted mt-2">
-              Statistics: {libraryData.favorites.length} favorites · {libraryData.playlists.length} playlists · {libraryData.history.length} history entries
-            </p>
-          </div>
-        </div>
+        <input ref={fileInputRef} type="file" accept=".json" onChange={(e) => { const file = e.target.files?.[0]; if (file) void handleImport(file); }} className="hidden" />
+        <Button variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={isImporting}><span className="inline-flex items-center gap-2"><Upload className="w-4 h-4" />Import JSON</span></Button>
+        {importSummary ? <p className="text-xs text-[var(--muted)]">{importSummary}</p> : null}
       </Card>
 
       <Card className="p-6 space-y-4" style={{ borderColor: "var(--color-danger, #ef4444)" }}>
-        <h2 className="text-xl font-semibold text-text-primary">Danger Zone</h2>
+        <h2 className="text-xl font-semibold">Danger Zone</h2>
         <Button variant="danger" onClick={() => setShowDangerModal(true)}><span className="inline-flex items-center gap-2"><Trash2 className="w-4 h-4 text-white" />Delete Account</span></Button>
       </Card>
 
-      {showDangerModal && (
+      {showDangerModal ? (
         <Modal isOpen={showDangerModal} onClose={() => setShowDangerModal(false)} title="Type your username to confirm" maxWidth="520px">
           <div className="space-y-4">
-            <Input
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              placeholder={user?.username ?? "username"}
-            />
-            <div className="flex gap-2 justify-end">
-              <Button variant="ghost" onClick={() => setShowDangerModal(false)}>Cancel</Button>
-              <Button variant="danger" disabled={!canDelete} onClick={handleDeleteAccount}>
-                Confirm delete
-              </Button>
-            </div>
+            <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder={user?.username ?? "username"} />
+            <div className="flex gap-2 justify-end"><Button variant="ghost" onClick={() => setShowDangerModal(false)}>Cancel</Button><Button variant="danger" disabled={!canDelete} onClick={handleDeleteAccount}>Confirm delete</Button></div>
           </div>
         </Modal>
-      )}
+      ) : null}
     </div>
   );
 }

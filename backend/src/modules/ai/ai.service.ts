@@ -131,30 +131,68 @@ function buildTrendPoints(history: SearchHistoryRecord[], days: number) {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export async function getListeningInsights(userId: string, period: "weekly" | "monthly") {
+function getHourBucket(dateValue?: string): "morning" | "afternoon" | "evening" | "night" {
+  const hour = new Date(dateValue ?? "").getHours();
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 17) return "afternoon";
+  if (hour >= 17 && hour < 22) return "evening";
+  return "night";
+}
+
+function calculateStreak(history: SearchHistoryRecord[]): number {
+  const daySet = new Set(history.map((item) => item.createdAt.slice(0, 10)));
+  const now = new Date();
+  let streak = 0;
+  for (let i = 0; i < 90; i += 1) {
+    const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i)).toISOString().slice(0, 10);
+    if (!daySet.has(date)) break;
+    streak += 1;
+  }
+  return streak;
+}
+
+export async function getListeningInsights(userId: string, period: "daily" | "weekly" | "monthly") {
   const [history, favorites, playlists] = await Promise.all([
     listUserHistory(userId),
     listFavorites(userId),
     getUserPlaylists(userId),
   ]);
 
-  const days = period === "weekly" ? 7 : 30;
+  const days = period === "daily" ? 1 : period === "weekly" ? 7 : 30;
   const now = Date.now();
   const windowHistory = history.filter((item) => now - parseDate(item.createdAt) <= days * DAY_MS);
   const recentSlice = history.filter((item) => now - parseDate(item.createdAt) <= 14 * DAY_MS);
 
   const aggregate = aggregateBase(windowHistory, favorites, playlists);
   const recentAggregate = aggregateBase(recentSlice, favorites, playlists);
+  const topTracks = [...aggregate.playsByTrack.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([key, count]) => {
+      const [title, artist] = key.split("|||");
+      return { title: title || "Unknown", artist: artist || "Unknown", count };
+    });
+  const listeningWindows = windowHistory.reduce(
+    (acc, item) => {
+      acc[getHourBucket(item.createdAt)] += 1;
+      return acc;
+    },
+    { morning: 0, afternoon: 0, evening: 0, night: 0 },
+  );
 
   return {
     period,
     generatedAt: new Date().toISOString(),
     totalPlays: windowHistory.length,
     uniqueTracks: aggregate.playsByTrack.size,
+    tracksRecognized: windowHistory.filter((item) => item.recognized).length,
     topArtists: topCounts(aggregate.artistCounts),
+    topTracks,
     favoriteGenres: topCounts(aggregate.genreCounts),
     favoriteMoods: topCounts(aggregate.moodCounts),
     trend: summarizeShift(aggregate.genreCounts, recentAggregate.genreCounts),
+    streakDays: calculateStreak(history),
+    listeningWindows,
     trendPoints: buildTrendPoints(windowHistory, days),
     explainability: {
       dataSources: {
@@ -165,6 +203,15 @@ export async function getListeningInsights(userId: string, period: "weekly" | "m
       basis: "Insights are computed from recognized tracks, favorites, and playlist composition.",
     },
   };
+}
+
+export async function getActivitySummaries(userId: string) {
+  const [daily, weekly, monthly] = await Promise.all([
+    getListeningInsights(userId, "daily"),
+    getListeningInsights(userId, "weekly"),
+    getListeningInsights(userId, "monthly"),
+  ]);
+  return { generatedAt: new Date().toISOString(), daily, weekly, monthly };
 }
 
 export async function getListeningTrends(userId: string) {
