@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RotateCcw, Send, Sparkles } from "lucide-react";
+import { Plus, RotateCcw, Save, Send, Sparkles, Trash2 } from "lucide-react";
 import { useUser } from "@/src/context/UserContext";
 import { useLanguage } from "@/lib/LanguageContext";
 import { t } from "@/lib/translations";
@@ -22,7 +22,21 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading } = useUser();
   const { language } = useLanguage();
-  const { messages, isLoading, sendMessage, resetConversation, acceptAction, dismissAction, bottomRef } = useMusicAssistant();
+  const {
+    messages,
+    conversations,
+    activeConversationId,
+    isLoading,
+    sendMessage,
+    resetConversation,
+    startNewConversation,
+    openConversation,
+    renameConversation,
+    deleteConversation,
+    acceptAction,
+    dismissAction,
+    bottomRef,
+  } = useMusicAssistant();
   const [input, setInput] = useState("");
   const [promptSeed, setPromptSeed] = useState(() => `session-${Date.now()}`);
   const [showHints, setShowHints] = useState(true);
@@ -44,10 +58,22 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
   }
 
   function handleNewConversation() {
-    if (messages.length > 3 && !window.confirm("Start a new conversation?")) return;
-    resetConversation();
+    if (messages.length > 3 && !window.confirm(language === "bg" ? "Да започнем нов разговор?" : "Start a new conversation?")) return;
+    startNewConversation();
     setPromptSeed(`session-${Date.now()}`);
   }
+
+  const conversationOptions = useMemo(() => conversations.map((conversation) => (
+    <button
+      key={conversation.id}
+      type="button"
+      onClick={() => openConversation(conversation.id)}
+      className={`w-full rounded-xl border px-3 py-2 text-left transition ${conversation.id === activeConversationId ? "border-[var(--accent)] bg-[var(--surface-raised)]" : "border-[var(--border)]"}`}
+    >
+      <p className="truncate text-sm font-semibold">{conversation.title}</p>
+      <p className="mt-1 text-xs text-[var(--muted)]">{new Date(conversation.updatedAt).toLocaleString()}</p>
+    </button>
+  )), [activeConversationId, conversations, openConversation]);
 
   if (!isAuthenticated && mode === 'sidebar') {
     return <div className="grid h-full place-items-center p-6 text-center text-sm text-[var(--muted)]">{t("assistant_signin_hint", language)}</div>;
@@ -57,40 +83,73 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
     <section className={`assistant-page ${mode === 'sidebar' ? 'assistant-page--sidebar' : ''}`}>
       <header className="assistant-header" style={{ flexShrink: 0, borderBottom: "1px solid var(--border)", padding: mode === 'sidebar' ? '12px 14px' : "16px 20px" }}>
         <h1><Sparkles width={20} height={20} strokeWidth={1.8} /> {t("assistant_title", language)}</h1>
-        <button type="button" onClick={handleNewConversation}><RotateCcw width={15} height={15} strokeWidth={1.8} /> {t("assistant_new", language)}</button>
+        <button type="button" onClick={handleNewConversation}><Plus width={15} height={15} strokeWidth={1.8} /> {t("assistant_new", language)}</button>
       </header>
 
-      <div className="assistant-thread" style={{ flex: 1, minHeight: 0 }}>
-        {messages.length === 0 ? (
-          <div className="assistant-empty w-full max-w-3xl space-y-4 px-2">
-            {showHints ? <div className="assistant-capability-grid">
-              {capabilityPrompts.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className="assistant-capability-card assistant-capability-card-button"
-                  onClick={() => void sendMessage(item.prompt)}
-                >
-                  {t(item.key, language)}
-                </button>
-              ))}
-            </div> : null}
-            <StarterPrompts seedKey={`${mode}-${promptSeed}`} onSelect={(prompt) => void sendMessage(prompt)} />
+      <div className="grid flex-1 min-h-0 md:grid-cols-[240px_minmax(0,1fr)]">
+        <aside className="hidden border-r border-[var(--border)] p-3 md:block">
+          <div className="mb-2 flex items-center justify-between text-xs text-[var(--muted)]">
+            <span>{language === "bg" ? "Разговори" : "Conversations"}</span>
           </div>
-        ) : (
-          messages.map((message) => (
-            <MessageBubble key={message.id} message={message} onAccept={() => acceptAction(message.id)} onDismiss={() => dismissAction(message.id)} />
-          ))
-        )}
-        {isLoading ? <TypingIndicator /> : null}
-        <div ref={bottomRef} />
+          <div className="space-y-2 max-h-[55vh] overflow-auto">{conversationOptions}</div>
+        </aside>
+
+        <div className="flex min-h-0 flex-col">
+          <div className="border-b border-[var(--border)] px-3 py-2 md:hidden">
+            <select className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" value={activeConversationId ?? ""} onChange={(event) => openConversation(event.target.value)}>
+              {conversations.map((conversation) => <option key={conversation.id} value={conversation.id}>{conversation.title}</option>)}
+            </select>
+          </div>
+
+          <div className="assistant-thread" style={{ flex: 1, minHeight: 0 }}>
+            {messages.length === 0 ? (
+              <div className="assistant-empty w-full max-w-3xl space-y-4 px-2">
+                {showHints ? <div className="assistant-capability-grid">
+                  {capabilityPrompts.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className="assistant-capability-card assistant-capability-card-button"
+                      onClick={() => void sendMessage(item.prompt)}
+                    >
+                      {t(item.key, language)}
+                    </button>
+                  ))}
+                </div> : null}
+                <StarterPrompts seedKey={`${mode}-${promptSeed}`} onSelect={(prompt) => void sendMessage(prompt)} />
+              </div>
+            ) : (
+              messages.map((message) => (
+                <MessageBubble key={message.id} message={message} onAccept={() => acceptAction(message.id)} onDismiss={() => dismissAction(message.id)} />
+              ))
+            )}
+            {isLoading ? <TypingIndicator /> : null}
+            <div ref={bottomRef} />
+          </div>
+
+          <footer className="assistant-input-wrap" style={{ marginBottom: mode === 'sidebar' ? 0 : 'var(--keyboard-height, 0px)', paddingBottom: mode === "sidebar" ? "12px" : undefined }}>
+            <textarea value={input} placeholder={t("assistant_input_placeholder", language)} onChange={(event) => setInput(event.target.value)} rows={1} maxLength={2000} disabled={isLoading}
+              onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }} />
+            <button type="button" onClick={() => void submitMessage()} disabled={!input.trim() || isLoading}><Send width={18} height={18} strokeWidth={1.8} /></button>
+          </footer>
+
+          <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
+            <button type="button" className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs" onClick={() => resetConversation()}><RotateCcw width={12} height={12} className="inline" /> {language === "bg" ? "Изчисти" : "Clear"}</button>
+            <button type="button" className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs" onClick={() => {
+              if (!activeConversationId) return;
+              const next = window.prompt(language === "bg" ? "Ново име" : "Rename conversation", "");
+              if (next !== null) renameConversation(activeConversationId, next);
+            }}><Save width={12} height={12} className="inline" /> {language === "bg" ? "Преименувай" : "Rename"}</button>
+            <button type="button" className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-red-300" onClick={() => {
+              if (!activeConversationId) return;
+              if (window.confirm(language === "bg" ? "Да изтрием този разговор?" : "Delete this conversation?")) {
+                deleteConversation(activeConversationId);
+              }
+            }}><Trash2 width={12} height={12} className="inline" /> {language === "bg" ? "Изтрий" : "Delete"}</button>
+          </div>
+        </div>
       </div>
 
-      <footer className="assistant-input-wrap" style={{ marginBottom: mode === 'sidebar' ? 0 : 'var(--keyboard-height, 0px)', paddingBottom: mode === "sidebar" ? "12px" : undefined }}>
-        <textarea value={input} placeholder={t("assistant_input_placeholder", language)} onChange={(event) => setInput(event.target.value)} rows={1} maxLength={2000} disabled={isLoading}
-          onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }} />
-        <button type="button" onClick={() => void submitMessage()} disabled={!input.trim() || isLoading}><Send width={18} height={18} strokeWidth={1.8} /></button>
-      </footer>
       {input.length > 1800 ? <p className="assistant-counter">{input.length}/2000</p> : null}
     </section>
   );

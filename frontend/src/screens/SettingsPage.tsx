@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { scopedKey, useProfile } from "../../lib/ProfileContext";
 import { normalizeTrackKey } from "../../lib/dedupe";
 import { Download, FileSpreadsheet, Moon, Sun, Trash2, Upload } from "../../lucide-react";
@@ -28,7 +29,10 @@ function dedupeByTrack<T extends { title?: string; artist?: string }>(items: T[]
 export default function SettingsPage() {
   const [libraryData, setLibraryData] = useState<{ favorites: unknown[]; history: unknown[]; playlists: Playlist[] }>(() => ({ favorites: [], history: [], playlists: [] }));
   const [importSummary, setImportSummary] = useState<string | null>(null);
+  const [exportSummary, setExportSummary] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [processingStep, setProcessingStep] = useState<string | null>(null);
   const [assistantHints, setAssistantHints] = useState(true);
   const { profile } = useProfile();
   const { user, preferences, updateProfile, changePassword, setPreferences, deleteAccount, isAuthenticated, favorites, history, addFavorite, addToHistory } = useUser();
@@ -74,11 +78,26 @@ export default function SettingsPage() {
     window.localStorage.setItem("ponotai-assistant-hints", next ? "on" : "off");
   }
 
-  function handleExportJSON() {
+  async function runProgressSteps(steps: string[], minDelay = 130) {
+    for (const step of steps) {
+      setProcessingStep(step);
+      await new Promise((resolve) => window.setTimeout(resolve, minDelay));
+    }
+  }
+
+  async function handleExportJSON() {
+    setIsExporting(true);
+    setExportSummary(null);
+    await runProgressSteps([
+      language === "bg" ? "Подготвям архив..." : "Preparing backup...",
+      language === "bg" ? "Генерирам отчет..." : "Generating report...",
+      language === "bg" ? "Пакетирам данните..." : "Packaging data...",
+    ]);
     const queueState = JSON.parse(window.localStorage.getItem("ponotai.queue.v1") ?? "{}") as { queue?: Array<{ track?: { title?: string; artist?: string; artworkUrl?: string; videoId?: string } }> };
+    const exportedAt = new Date().toISOString();
     const payload = {
       version: LIBRARY_EXPORT_VERSION,
-      exportedAt: new Date().toISOString(),
+      exportedAt,
       app: "Trackly" as const,
       user: user ? { id: user.id, username: user.username, email: user.email } : null,
       data: {
@@ -90,22 +109,44 @@ export default function SettingsPage() {
       },
     };
     exportLibraryAsJSON(payload, user?.username || "guest");
+    setExportSummary(`${language === "bg" ? "Архивът е готов" : "Backup ready"} · v${LIBRARY_EXPORT_VERSION} · ${new Date(exportedAt).toLocaleString()}`);
+    setProcessingStep(language === "bg" ? "Изтеглянето е готово." : "Download is ready.");
+    setIsExporting(false);
+    window.setTimeout(() => setProcessingStep(null), 2600);
   }
 
   function handleExportCSV() { exportLibraryAsCSV(favorites, history, user?.username || "library"); }
 
   async function handleImport(file: File) {
     setIsImporting(true); setImportSummary(null);
+    await runProgressSteps([
+      language === "bg" ? "Чета файла..." : "Reading file...",
+      language === "bg" ? "Валидирам схемата..." : "Checking schema...",
+      language === "bg" ? "Импортирам записи..." : "Importing items...",
+      language === "bg" ? "Премахвам дубликати..." : "Deduplicating...",
+      language === "bg" ? "Финализирам..." : "Finalizing...",
+    ]);
     try {
       const payload = await importLibraryFromJSON(file);
       const favoritesToImport = dedupeByTrack(payload.data.favorites ?? []);
       const historyToImport = dedupeByTrack(payload.data.history ?? []);
+      const favoritesSkipped = Math.max(0, (payload.data.favorites ?? []).length - favoritesToImport.length);
+      const historySkipped = Math.max(0, (payload.data.history ?? []).length - historyToImport.length);
       for (const item of historyToImport) await addToHistory(item);
       for (const fav of favoritesToImport) await addFavorite({ title: fav.title, artist: fav.artist, album: fav.album, coverUrl: fav.coverUrl });
       const playlistsToImport = Array.isArray(payload.data.playlists) ? payload.data.playlists : [];
+      const invalidCount = [payload.data.favorites?.length ?? 0, payload.data.history?.length ?? 0].reduce((sum, current) => sum + current, 0)
+        - (favoritesToImport.length + historyToImport.length);
       if (!isAuthenticated) window.localStorage.setItem(scopedKey("ponotai.library.playlists", profile.id), JSON.stringify(playlistsToImport));
-      setImportSummary(`Imported favorites: ${favoritesToImport.length}, history entries: ${historyToImport.length}, playlists: ${playlistsToImport.length}.`);
-    } finally { setIsImporting(false); }
+      setImportSummary(`${language === "bg" ? "Импортирани" : "Imported"}: ${favoritesToImport.length} favorites, ${historyToImport.length} history, ${playlistsToImport.length} playlists · ${language === "bg" ? "пропуснати/дубликати" : "skipped/duplicates"}: ${favoritesSkipped + historySkipped} · ${language === "bg" ? "невалидни" : "invalid"}: ${Math.max(0, invalidCount)}.`);
+      setProcessingStep(language === "bg" ? "Импортирането завърши успешно." : "Import completed successfully.");
+    } catch (error) {
+      setImportSummary((error as Error).message);
+      setProcessingStep(language === "bg" ? "Импортирането е неуспешно." : "Import failed.");
+    } finally {
+      setIsImporting(false);
+      window.setTimeout(() => setProcessingStep(null), 2600);
+    }
   }
 
   return (
@@ -161,13 +202,16 @@ export default function SettingsPage() {
 
       <Card className="p-6 space-y-4">
         <h2 className="text-xl font-semibold">Data Management</h2>
+        <p className="text-xs text-[var(--muted)]">{language === "bg" ? "Виж документацията за архивиране и възстановяване." : "See docs for backup and restore guidance."} <Link href="/docs" className="underline">{language === "bg" ? "Отвори docs" : "Open docs"}</Link></p>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button variant="secondary" onClick={handleExportJSON} className="flex-1"><span className="inline-flex items-center gap-2"><Download className="w-4 h-4" />Export JSON</span></Button>
-          <Button variant="secondary" onClick={handleExportCSV} className="flex-1"><span className="inline-flex items-center gap-2"><FileSpreadsheet className="w-4 h-4" />Export CSV</span></Button>
+          <Button variant="secondary" onClick={() => void handleExportJSON()} className="flex-1" disabled={isExporting || isImporting}><span className="inline-flex items-center gap-2"><Download className="w-4 h-4" />Export JSON</span></Button>
+          <Button variant="secondary" onClick={handleExportCSV} className="flex-1" disabled={isExporting || isImporting}><span className="inline-flex items-center gap-2"><FileSpreadsheet className="w-4 h-4" />Export CSV</span></Button>
         </div>
         <input ref={fileInputRef} type="file" accept=".json" onChange={(e) => { const file = e.target.files?.[0]; if (file) void handleImport(file); }} className="hidden" />
-        <Button variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={isImporting}><span className="inline-flex items-center gap-2"><Upload className="w-4 h-4" />Import JSON</span></Button>
+        <Button variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={isImporting || isExporting}><span className="inline-flex items-center gap-2"><Upload className="w-4 h-4" />Import JSON</span></Button>
+        {(isImporting || isExporting || processingStep) ? <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-3 text-sm">{processingStep ?? (language === "bg" ? "Обработка..." : "Processing...")}</div> : null}
         {importSummary ? <p className="text-xs text-[var(--muted)]">{importSummary}</p> : null}
+        {exportSummary ? <p className="text-xs text-[var(--muted)]">{exportSummary}</p> : null}
       </Card>
 
       <Card className="p-6 space-y-4" style={{ borderColor: "var(--color-danger, #ef4444)" }}>

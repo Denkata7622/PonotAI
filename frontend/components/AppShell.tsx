@@ -49,6 +49,7 @@ const PRIMARY_NAV = [
 ] as const;
 
 const SECONDARY_NAV = [
+  { href: "/docs", key: "nav_docs", icon: HelpCircle },
   { href: "/about", key: "nav_about", icon: Info },
   { href: "/how-to-use", key: "nav_how_to_use", icon: HelpCircle },
   { href: "/concept", key: "nav_concept", icon: Info },
