@@ -404,6 +404,11 @@ export function HomeContent() {
       await runRecognitionCountdown();
       setIsRecording(true);
       const audioBlob = await recordAudioClip(8_000);
+      if (audioBlob.size < 8_000) {
+        throw new Error(language === "bg"
+          ? "Записът е твърде кратък или тих. Приближи се до източника на звук и опитай отново."
+          : "The recording is too short or quiet. Move closer to the audio source and try again.");
+      }
       setIsRecording(false);
       const recognized = await recognizeFromAudio(audioBlob);
       setAudioResult(recognized);
@@ -653,6 +658,7 @@ export function HomeContent() {
                 <label className="text-sm">
                   <span className="mb-1 block text-text-muted">{t("stats_ocr_language", language)}</span>
                   <select value={ocrLanguage} onChange={(e) => setOcrLanguage(e.target.value)} className="w-full bg-surface border border-border text-text-primary rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all duration-200">
+                    <option value="bul+eng">{language === "bg" ? "Български + Английски" : "Bulgarian + English"}</option>
                     <option value="eng">{t("ocr_lang_english", language)}</option>
                     <option value="spa">{t("ocr_lang_spanish", language)}</option>
                     <option value="fra">{t("ocr_lang_french", language)}</option>

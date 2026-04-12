@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useProfile } from "@/lib/ProfileContext";
 import { sendAssistantMessage } from "./api";
-import { clearConversation, loadConversation, saveConversation } from "./storage";
-import type { ChatMessage } from "./types";
+import { createAssistantConversation, deriveAssistantConversationTitle, loadAssistantStore, persistAssistantStore } from "./storage";
+import type { AssistantConversation, ChatMessage } from "./types";
 
 function createMessage(message: Omit<ChatMessage, "id" | "createdAt">): ChatMessage {
   const messageId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -16,33 +17,59 @@ function createMessage(message: Omit<ChatMessage, "id" | "createdAt">): ChatMess
   };
 }
 
+function updateConversation(conversation: AssistantConversation, updater: (messages: ChatMessage[]) => ChatMessage[]): AssistantConversation {
+  const nextMessages = updater(conversation.messages);
+  return {
+    ...conversation,
+    messages: nextMessages,
+    title: conversation.customTitle?.trim() || deriveAssistantConversationTitle(nextMessages),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function useMusicAssistant() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { profile } = useProfile();
+  const [conversations, setConversations] = useState<AssistantConversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const inFlightRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    setMessages(loadConversation());
-    setMounted(true);
-  }, []);
+  const activeConversation = useMemo(
+    () => conversations.find((conversation) => conversation.id === activeConversationId) ?? conversations[0] ?? null,
+    [activeConversationId, conversations],
+  );
+  const messages = activeConversation?.messages ?? [];
 
   useEffect(() => {
-    if (!mounted) return;
-    if (messages.length > 0) {
-      saveConversation(messages);
-    }
+    const store = loadAssistantStore(profile.id);
+    setConversations(store.conversations);
+    setActiveConversationId(store.activeConversationId);
+    setMounted(true);
+  }, [profile.id]);
+
+  useEffect(() => {
+    if (!mounted || conversations.length === 0) return;
+    persistAssistantStore(profile.id, { conversations, activeConversationId: activeConversation?.id ?? conversations[0]?.id ?? null });
     bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-  }, [messages, mounted, isLoading]);
+  }, [conversations, activeConversation, mounted, profile.id, isLoading]);
+
+  function replaceConversation(nextConversation: AssistantConversation) {
+    setConversations((previous) => {
+      const withoutActive = previous.filter((conversation) => conversation.id !== nextConversation.id);
+      return [nextConversation, ...withoutActive];
+    });
+  }
 
   function appendSystemMessage(content: string) {
-    setMessages((prev) => [...prev, createMessage({ role: "system", content })]);
+    if (!activeConversation) return;
+    replaceConversation(updateConversation(activeConversation, (prev) => [...prev, createMessage({ role: "system", content })]));
   }
 
   async function sendMessage(text: string): Promise<void> {
-    if (inFlightRef.current || isLoading) return;
+    if (!activeConversation || inFlightRef.current || isLoading) return;
     const trimmed = text.trim();
     if (!trimmed || trimmed.length > 2000) {
       setError("Message must be between 1 and 2000 characters.");
@@ -50,8 +77,8 @@ export function useMusicAssistant() {
     }
 
     const userMessage = createMessage({ role: "user", content: trimmed });
-    const nextMessages = [...messages, userMessage];
-    setMessages(nextMessages);
+    const nextMessages = [...activeConversation.messages, userMessage];
+    replaceConversation(updateConversation(activeConversation, () => nextMessages));
     inFlightRef.current = true;
     setIsLoading(true);
     setError(null);
@@ -64,13 +91,10 @@ export function useMusicAssistant() {
         actionIntent: response.actionIntent,
         actionState: response.actionIntent ? "pending" : undefined,
       });
-      setMessages((prev) => {
-        const updated = [...prev, assistantMessage];
-        saveConversation(updated);
-        return updated;
-      });
-    } catch (error: unknown) {
-      const err = error as { data?: { message?: string }; response?: { data?: { message?: string } }; message?: string };
+
+      replaceConversation(updateConversation({ ...activeConversation, messages: nextMessages }, (previous) => [...previous, assistantMessage]));
+    } catch (caught) {
+      const err = caught as { data?: { message?: string }; response?: { data?: { message?: string } }; message?: string };
       const apiMessage = err?.data?.message
         ?? err?.response?.data?.message
         ?? err?.message
@@ -83,22 +107,87 @@ export function useMusicAssistant() {
     }
   }
 
+  function startNewConversation(): AssistantConversation {
+    const conversation = createAssistantConversation();
+    setConversations((previous) => [conversation, ...previous]);
+    setActiveConversationId(conversation.id);
+    setError(null);
+    return conversation;
+  }
+
   function resetConversation(): void {
-    setMessages([]);
-    clearConversation();
+    if (!activeConversation) return;
+    replaceConversation({ ...activeConversation, messages: [], updatedAt: new Date().toISOString(), title: "New conversation", customTitle: undefined });
+  }
+
+  function openConversation(conversationId: string): void {
+    setActiveConversationId(conversationId);
+    setError(null);
+  }
+
+  function renameConversation(conversationId: string, title: string): void {
+    const trimmed = title.trim();
+    setConversations((previous) => previous.map((conversation) => {
+      if (conversation.id !== conversationId) return conversation;
+      return {
+        ...conversation,
+        customTitle: trimmed.length > 0 ? trimmed : undefined,
+        title: trimmed.length > 0 ? trimmed : deriveAssistantConversationTitle(conversation.messages),
+        updatedAt: new Date().toISOString(),
+      };
+    }));
+  }
+
+  function deleteConversation(conversationId: string): void {
+    setConversations((previous) => {
+      const filtered = previous.filter((conversation) => conversation.id !== conversationId);
+      if (filtered.length > 0) {
+        if (activeConversationId === conversationId) {
+          setActiveConversationId(filtered[0].id);
+        }
+        return filtered;
+      }
+
+      const created = createAssistantConversation();
+      setActiveConversationId(created.id);
+      return [created];
+    });
+  }
+
+  function setActionState(messageId: string, actionState: ChatMessage["actionState"]) {
+    if (!activeConversation) return;
+    replaceConversation(updateConversation(activeConversation, (previous) => previous.map((message) => (
+      message.id === messageId ? { ...message, actionState } : message
+    ))));
   }
 
   function acceptAction(messageId: string): void {
-    setMessages((prev) => prev.map((message) => (message.id === messageId ? { ...message, actionState: "accepted" } : message)));
+    setActionState(messageId, "accepted");
   }
 
   function dismissAction(messageId: string): void {
-    setMessages((prev) => prev.map((message) => (message.id === messageId ? { ...message, actionState: "dismissed" } : message)));
+    setActionState(messageId, "dismissed");
   }
 
   function failAction(messageId: string): void {
-    setMessages((prev) => prev.map((message) => (message.id === messageId ? { ...message, actionState: "failed" } : message)));
+    setActionState(messageId, "failed");
   }
 
-  return { messages, isLoading, error, sendMessage, resetConversation, acceptAction, dismissAction, failAction, bottomRef };
+  return {
+    messages,
+    conversations,
+    activeConversationId: activeConversation?.id ?? null,
+    isLoading,
+    error,
+    sendMessage,
+    resetConversation,
+    startNewConversation,
+    openConversation,
+    renameConversation,
+    deleteConversation,
+    acceptAction,
+    dismissAction,
+    failAction,
+    bottomRef,
+  };
 }

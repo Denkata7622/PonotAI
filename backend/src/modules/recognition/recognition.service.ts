@@ -46,6 +46,13 @@ const OCR_CHAR_WHITELIST =
 
 
 const MIN_PROVIDER_CONFIDENCE = 0.7;
+const OCR_LANGUAGE_MAP: Record<string, string> = {
+  eng: "eng",
+  bul: "bul",
+  "bul+eng": "bul+eng",
+  "bg+en": "bul+eng",
+  bg: "bul",
+};
 
 function hasConfiguredAudioProvider(): boolean {
   const hasAudd = Boolean(process.env.AUDD_API_TOKEN || process.env.AUDD_API_KEY);
@@ -334,7 +341,8 @@ async function extractMetadataWithHuggingFaceVision(buffer: Buffer): Promise<Ocr
 }
 
 async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise<OcrCandidateMetadata> {
-  const worker = await Tesseract.createWorker(language);
+  const normalizedLanguage = OCR_LANGUAGE_MAP[language] ?? "eng";
+  const worker = await Tesseract.createWorker(normalizedLanguage);
 
   await worker.setParameters({
     tessedit_char_whitelist: OCR_CHAR_WHITELIST,
@@ -346,7 +354,7 @@ async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise
     const words = ((ocrResult.data as { words?: TesseractWord[] }).words ?? []) as TesseractWord[];
     const interpreted = interpretOcr(toOcrBlocks(words));
 
-    if (interpreted.music?.title) {
+    if (interpreted.music?.title && interpreted.music.confidenceScore >= 0.42) {
       return {
         songName: interpreted.music.title,
         artist: interpreted.music.artist ?? UNKNOWN_METADATA.artist,
@@ -360,9 +368,14 @@ async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise
       throw new NoVerifiedResultError("Could not extract readable song text from the uploaded image.");
     }
 
+    if (normalizedLanguage !== "eng" && fallback.confidenceScore < 0.42) {
+      await worker.terminate();
+      return extractMetadataWithOcr(buffer, "eng");
+    }
+
     return fallback;
   } finally {
-    await worker.terminate();
+    await worker.terminate().catch(() => undefined);
   }
 }
 

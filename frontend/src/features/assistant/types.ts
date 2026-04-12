@@ -9,6 +9,15 @@ export interface ChatMessage {
   actionState?: 'pending' | 'accepted' | 'dismissed' | 'failed';
 }
 
+export interface AssistantConversation {
+  id: string;
+  title: string;
+  customTitle?: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ChatMessage[];
+}
+
 export interface ActionIntent {
   type:
     | 'ADD_TO_QUEUE'
