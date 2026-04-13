@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Heart, ListMusic, ListPlus, Play, Plus } from "../lucide-react";
+import { Clock, Heart, ListMusic, ListPlus, Play, Plus } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -14,6 +14,7 @@ type SearchResultActionsProps = {
   onClose: () => void;
   onPlayNow: () => void;
   onAddToQueue: () => void;
+  onSaveToRecent: () => void;
   onAddToFavorites: () => void;
   onAddToPlaylist: (playlistId: string) => void;
   playlists: Playlist[];
@@ -27,6 +28,7 @@ export default function SearchResultActions({
   onClose,
   onPlayNow,
   onAddToQueue,
+  onSaveToRecent,
   onAddToFavorites,
   onAddToPlaylist,
   playlists,
@@ -68,7 +70,7 @@ export default function SearchResultActions({
       >
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--hover-bg)]"
+          className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
           onMouseDown={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -82,7 +84,7 @@ export default function SearchResultActions({
         </button>
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--hover-bg)]"
+          className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
           onMouseDown={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -96,7 +98,21 @@ export default function SearchResultActions({
         </button>
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--hover-bg)]"
+          className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onSaveToRecent();
+            setShowPlaylists(false);
+            onClose();
+          }}
+        >
+          <Clock className="w-4 h-4 text-[var(--muted)]" />
+          {t("search_save_to_recent", language)}
+        </button>
+        <button
+          type="button"
+          className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
           onMouseDown={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -110,7 +126,7 @@ export default function SearchResultActions({
         </button>
         <button
           type="button"
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--hover-bg)]"
+          className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
           onMouseDown={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -125,7 +141,7 @@ export default function SearchResultActions({
             {playlists.length === 0 ? (
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-[var(--muted)] hover:bg-[var(--hover-bg)]"
+                className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-[var(--muted)]"
                 onMouseDown={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
@@ -142,7 +158,7 @@ export default function SearchResultActions({
                   key={playlist.id}
                   type="button"
                   disabled={playlistSubmitId === playlist.id}
-                  className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--hover-bg)]"
+                  className="dropdown-item block w-full rounded-lg px-3 py-2 text-left text-sm"
                   onMouseDown={(event) => {
                     event.preventDefault();
                     event.stopPropagation();

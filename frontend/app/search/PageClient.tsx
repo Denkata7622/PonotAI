@@ -42,7 +42,7 @@ export default function SearchPage() {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { addToQueue } = usePlayer();
-  const { addFavorite } = useUser();
+  const { addFavorite, addToHistory } = useUser();
   const { playlists, addSongToPlaylist } = useLibrary(profile.id);
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
@@ -148,6 +148,17 @@ export default function SearchPage() {
     });
   }
 
+  function saveResultToRecent(result: SearchResult) {
+    void addToHistory({
+      title: result.title,
+      artist: result.artist,
+      coverUrl: result.thumbnailUrl,
+      method: "youtube-search",
+      recognized: true,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
   return (
     <section className="card p-4 sm:p-6">
       <h1 className="cardTitle text-xl font-bold sm:text-2xl">{t("nav_search", language)}</h1>
@@ -165,7 +176,7 @@ export default function SearchPage() {
               onOpenChange={setIsFocused}
               placement="bottom-start"
               matchTriggerWidth
-              className="w-full rounded-2xl bg-[var(--surface-2)] p-2"
+              className="w-full rounded-2xl p-2"
               enableClickTrigger={false}
               trigger={(
                 <SearchInput
@@ -186,7 +197,7 @@ export default function SearchPage() {
                   </div>
                   <ul className="space-y-1">
                     {recentSearches.map((item) => (
-                      <li key={item} className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-[var(--hover-bg)]">
+                      <li key={item} className="dropdown-item flex items-center gap-2 rounded-lg px-2 py-2">
                         <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}><Clock className="w-4 h-4 text-[var(--muted)]" /><span className="truncate text-sm">{item}</span></button>
                         <button type="button" className="rounded-full p-1 hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => removeRecent(item)}><X className="w-3 h-3 text-[var(--muted)]" /></button>
                       </li>
@@ -198,7 +209,7 @@ export default function SearchPage() {
                   <p className="mb-2 inline-flex items-center gap-2 px-2 text-sm text-[var(--muted)]"><TrendingUp className="w-4 h-4 text-[var(--muted)]" />{t("search_suggested", language)}</p>
                   <div className="flex flex-wrap gap-2 px-2 pb-1">
                     {suggestedQueries.map((item) => (
-                      <button key={item} type="button" className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}>{item}</button>
+                      <button key={item} type="button" className="dropdown-item rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}>{item}</button>
                     ))}
                   </div>
                 </>
@@ -226,7 +237,7 @@ export default function SearchPage() {
                     <p className="text-xs text-[var(--muted)]">{result.artist}</p>
                     <div className="mt-3 flex items-center gap-2">
                       <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                      <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => prev === result.videoId ? null : result.videoId)} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueResult(result)} onAddToQueue={() => queueResult(result)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
+                      <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => prev === result.videoId ? null : result.videoId)} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueResult(result)} onAddToQueue={() => queueResult(result)} onSaveToRecent={() => saveResultToRecent(result)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
                     </div>
                   </article>
                 ))}
@@ -244,7 +255,7 @@ export default function SearchPage() {
                         <p className="text-xs text-[var(--muted)]">{result.artist}</p>
                         <div className="mt-3 flex items-center gap-2">
                           <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                          <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => prev === result.videoId ? null : result.videoId)} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueResult(result)} onAddToQueue={() => queueResult(result)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
+                          <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => prev === result.videoId ? null : result.videoId)} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueResult(result)} onAddToQueue={() => queueResult(result)} onSaveToRecent={() => saveResultToRecent(result)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
                         </div>
                       </article>
                     ))}

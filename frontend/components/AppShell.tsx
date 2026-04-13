@@ -64,7 +64,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { language } = useLanguage();
   const { profile } = useProfile();
-  const { user, isAuthenticated, logout, addFavorite } = useUser();
+  const { user, isAuthenticated, logout, addFavorite, addToHistory } = useUser();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [recentHistory, setRecentHistory] = useState<HistoryItem[]>([]);
   const [librarySnapshot, setLibrarySnapshot] = useState<LibrarySnapshot>({ favorites: [], playlists: [] });
@@ -281,6 +281,17 @@ function AppShellContent({ children }: { children: ReactNode }) {
     window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Now playing: ${result.title}` } }));
   }
 
+  function saveResultToRecent(result: SearchResult) {
+    void addToHistory({
+      title: result.title,
+      artist: result.artist,
+      coverUrl: result.thumbnailUrl,
+      method: "youtube-search",
+      recognized: true,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
   function handleSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       setShowSearchDropdown(false);
@@ -371,9 +382,9 @@ function AppShellContent({ children }: { children: ReactNode }) {
                 <SmartDropdown
                   isOpen={showUserMenu}
                   onOpenChange={setShowUserMenu}
-                  placement="bottom-start"
-                  matchTriggerWidth
-                  className="p-2 text-[var(--text)] [backdrop-filter:none]"
+                placement="bottom-start"
+                matchTriggerWidth
+                className="p-2 text-[var(--text)] [backdrop-filter:none]"
                   trigger={(
                     <button
                       className="flex w-full items-center gap-2 text-left"
@@ -391,20 +402,20 @@ function AppShellContent({ children }: { children: ReactNode }) {
                 >
                   <Link
                     href="/profile"
-                    className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"
+                    className="dropdown-item block rounded-lg px-3 py-2 text-sm text-[var(--text)]"
                     onClick={() => setShowUserMenu(false)}
                   >
                     <span className="inline-flex items-center gap-2"><User className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Профил" : "Profile"}</span>
                   </Link>
                   <Link
                     href="/settings"
-                    className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"
+                    className="dropdown-item block rounded-lg px-3 py-2 text-sm text-[var(--text)]"
                     onClick={() => setShowUserMenu(false)}
                   >
                     <span className="inline-flex items-center gap-2"><Settings className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Настройки" : "Settings"}</span>
                   </Link>
                   <button
-                    className="w-full rounded-lg px-3 py-2 text-left text-sm status-danger hover:bg-[var(--hover-bg)]"
+                    className="dropdown-item status-danger w-full rounded-lg px-3 py-2 text-left text-sm"
                     onClick={handleLogout}
                   >
                     <span className="inline-flex items-center gap-2"><LogOut className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Изход" : "Sign out"}</span>
@@ -531,7 +542,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                 }}
                 placement="bottom-start"
                 matchTriggerWidth
-                className="pointer-events-auto w-full rounded-2xl bg-[var(--surface-2)] p-2"
+                className="pointer-events-auto w-full rounded-2xl p-2"
                 enableClickTrigger={false}
                 trigger={(
                   <div className="pointer-events-auto">
@@ -569,7 +580,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                         </div>
                         <ul className="space-y-1">
                           {recentSearches.map((item) => (
-                            <li key={item} className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-[var(--hover-bg)]">
+                            <li key={item} className="dropdown-item flex items-center gap-2 rounded-lg px-2 py-2">
                               <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onMouseDown={(event) => { event.preventDefault(); executeSearchQuery(item); }}>
                                 <Clock className="w-4 h-4 text-[var(--muted)]" />
                                 <span className="truncate text-sm">{item}</span>
@@ -584,7 +595,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                         <p className="mb-2 inline-flex items-center gap-2 px-2 text-sm text-[var(--muted)]"><TrendingUp className="w-4 h-4 text-[var(--muted)]" />{t("search_suggested", language)}</p>
                         <div className="flex flex-wrap gap-2 px-2 pb-1">
                           {suggestedQueries.map((item) => (
-                            <button key={item} type="button" className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm hover:bg-[var(--hover-bg)]" onMouseDown={(event) => { event.preventDefault(); executeSearchQuery(item); }}>{item}</button>
+                            <button key={item} type="button" className="dropdown-item rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm" onMouseDown={(event) => { event.preventDefault(); executeSearchQuery(item); }}>{item}</button>
                           ))}
                         </div>
                       </div>
@@ -610,7 +621,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                         {groupedSearchResults.songs.map((result, index) => (
                           <li
                             key={result.videoId}
-                            className={`flex items-center gap-3 rounded-xl px-2 py-2 ${highlightedIndex === index ? "bg-[var(--hover-bg)]" : ""}`}
+                            className={`dropdown-item flex items-center gap-3 rounded-xl px-2 py-2 ${highlightedIndex === index ? "bg-[var(--hover-bg)]" : ""}`}
                             onMouseDown={(event) => {
                               event.preventDefault();
                               handleSelectSearchResult(result);
@@ -640,6 +651,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                               onClose={() => setOpenActionsId(null)}
                               onPlayNow={() => queueTrack(result, true)}
                               onAddToQueue={() => queueTrack(result, false, false)}
+                              onSaveToRecent={() => saveResultToRecent(result)}
                               onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
                               onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })}
                               playlists={librarySnapshot.playlists}
@@ -674,7 +686,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                   }}
                                   aria-label={t("btn_play", language)}
                                 ><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={librarySnapshot.playlists} onGoToLibrary={() => router.push('/library')} />
+                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToRecent={() => saveResultToRecent(result)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={librarySnapshot.playlists} onGoToLibrary={() => router.push('/library')} />
                               </li>
                             ))}
                           </ul>

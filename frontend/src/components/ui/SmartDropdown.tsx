@@ -92,7 +92,7 @@ export function SmartDropdown({
 
   const click = useClick(context);
   const dismiss = useDismiss(context, {
-    outsidePressEvent: 'pointerdown',
+    outsidePressEvent: 'click',
   });
 
   const interactions = enableClickTrigger ? [click, dismiss] : [dismiss];
@@ -128,7 +128,7 @@ export function SmartDropdown({
           <div
             ref={refs.setFloating}
             style={dropdownStyle}
-            className={className}
+            className={`dropdown-surface ${className ?? ""}`}
             data-smart-dropdown-floating
             {...getFloatingProps()}
           >
