@@ -12,7 +12,7 @@ import Modal from "../components/ui/Modal";
 import { useUser } from "../context/UserContext";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
-import { useTheme, UI_PRESETS, type DensityMode, type RadiusMode, type SurfaceStyle, type AccentIntensity, type ChartStyle, type SidebarStyle, type MotionLevel, type CardEmphasis } from "../../lib/ThemeContext";
+import { useTheme, UI_PRESETS, type DensityMode, type RadiusMode, type SurfaceStyle, type AccentIntensity, type ChartStyle, type SidebarStyle, type MotionLevel, type CardEmphasis, type FontFamily, type TextScale } from "../../lib/ThemeContext";
 import { ACCENT_TOKENS, SUPPORTED_ACCENTS } from "../../lib/themePresets";
 import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON, LIBRARY_EXPORT_VERSION } from "../lib/libraryExport";
 import type { Playlist } from "../../features/library/types";
@@ -36,6 +36,8 @@ const CONTROL_GROUPS = {
   sidebarStyle: ["standard", "tinted", "elevated"] as SidebarStyle[],
   motionLevel: ["full", "reduced", "minimal"] as MotionLevel[],
   cardEmphasis: ["standard", "accented", "tinted"] as CardEmphasis[],
+  fontFamily: ["inter", "system", "poppins", "nunito", "ibm-plex-sans"] as FontFamily[],
+  textScale: ["sm", "md", "lg"] as TextScale[],
 } as const;
 
 export default function SettingsPage() {
@@ -49,7 +51,7 @@ export default function SettingsPage() {
   const { profile } = useProfile();
   const { user, preferences, updateProfile, changePassword, setPreferences, deleteAccount, isAuthenticated, favorites, history, addFavorite, addToHistory } = useUser();
   const { language } = useLanguage();
-  const { theme, toggleTheme, accent, setAccent, density, setDensity, intensity, setIntensity, surfaceStyle, setSurfaceStyle, radius, setRadius, chartStyle, setChartStyle, sidebarStyle, setSidebarStyle, motionLevel, setMotionLevel, cardEmphasis, setCardEmphasis, applyPersonalization } = useTheme();
+  const { theme, toggleTheme, accent, setAccent, density, setDensity, intensity, setIntensity, surfaceStyle, setSurfaceStyle, radius, setRadius, chartStyle, setChartStyle, sidebarStyle, setSidebarStyle, motionLevel, setMotionLevel, cardEmphasis, setCardEmphasis, fontFamily, setFontFamily, textScale, setTextScale, applyPersonalization } = useTheme();
 
   const [displayName, setDisplayName] = useState(user?.username ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -183,7 +185,7 @@ export default function SettingsPage() {
               <p className="mb-2 capitalize">{key.replace(/([A-Z])/g, " $1")}</p>
               <div className="flex flex-wrap gap-2">
                 {options.map((option) => {
-                  const active = String({ intensity, surfaceStyle, radius, density, chartStyle, sidebarStyle, motionLevel, cardEmphasis }[key as keyof typeof CONTROL_GROUPS]) === option;
+                  const active = String({ intensity, surfaceStyle, radius, density, chartStyle, sidebarStyle, motionLevel, cardEmphasis, fontFamily, textScale }[key as keyof typeof CONTROL_GROUPS]) === option;
                   const onClick = () => {
                     if (key === "intensity") setIntensity(option as AccentIntensity);
                     if (key === "surfaceStyle") setSurfaceStyle(option as SurfaceStyle);
@@ -193,6 +195,8 @@ export default function SettingsPage() {
                     if (key === "sidebarStyle") setSidebarStyle(option as SidebarStyle);
                     if (key === "motionLevel") setMotionLevel(option as MotionLevel);
                     if (key === "cardEmphasis") setCardEmphasis(option as CardEmphasis);
+                    if (key === "fontFamily") setFontFamily(option as FontFamily);
+                    if (key === "textScale") setTextScale(option as TextScale);
                   };
                   return <button key={option} type="button" onClick={onClick} className={`selectable-card rounded-[var(--radius-sm)] border px-2.5 py-1 text-xs transition ${active ? "themed-selected shadow-[0_0_0_1px_var(--accent-border)]" : "border-[var(--border)]"}`}>{option}</button>;
                 })}
@@ -232,8 +236,8 @@ export default function SettingsPage() {
         {exportSummary ? <p className="text-xs text-[var(--muted)]">{exportSummary}</p> : null}
       </Card>
 
-      <Card variant="settings" className="space-y-4" style={{ borderColor: "var(--status-danger)" }}>
-        <h2 className="text-xl font-semibold">Danger Zone</h2>
+      <Card variant="settings" className="danger-zone-card space-y-4">
+        <h2 className="text-xl font-semibold status-danger">Danger Zone</h2>
         <Button variant="danger" onClick={() => setShowDangerModal(true)}><span className="inline-flex items-center gap-2"><Trash2 className="w-4 h-4 text-white" />Delete Account</span></Button>
       </Card>
 

@@ -343,7 +343,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
         {/* Sidebar */}
         <aside
           className={`hidden p-4 backdrop-blur-xl transition-all md:block ${isCollapsed ? "w-20" : "w-72"}`}
-          style={{ background: "var(--sidebar-bg)", borderRight: "1px solid var(--border)" }}
+          style={{ background: "var(--sidebar-bg)", borderRight: "1px solid var(--sidebar-border)", boxShadow: "var(--sidebar-shadow)" }}
         >
           {/* Logo */}
           <div className="mb-8 mt-2 flex items-center justify-between">

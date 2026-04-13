@@ -55,8 +55,12 @@ export default function SearchPage() {
   const [isUnavailable, setIsUnavailable] = useState(false);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [isFocused, setIsFocused] = useState(false);
-  const history = useMemo(() => readHistory(profile.id), [profile.id]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
 
+
+  useEffect(() => {
+    setHistory(readHistory(profile.id));
+  }, [profile.id]);
   useEffect(() => {
     if (!query.trim()) {
       setDebouncedQuery("");
@@ -148,9 +152,9 @@ export default function SearchPage() {
     <section className="card p-4 sm:p-6">
       <h1 className="cardTitle text-xl font-bold sm:text-2xl">{t("nav_search", language)}</h1>
 
-      <div className="mt-4 inline-flex w-full max-w-full overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 sm:w-auto">
-        <button className={`rounded-lg px-4 py-2 text-sm ${activeTab === "discover" ? "bg-[var(--active-bg)]" : "text-[var(--muted)]"}`} onClick={() => setActiveTab("discover")}>{t("search_discover", language)}</button>
-        <button className={`rounded-lg px-4 py-2 text-sm ${activeTab === "history" ? "bg-[var(--active-bg)]" : "text-[var(--muted)]"}`} onClick={() => setActiveTab("history")}>{t("search_history", language)}</button>
+      <div className="mt-4 app-tabs w-full max-w-full overflow-x-auto sm:w-auto">
+        <button type="button" className={`app-tab ${activeTab === "discover" ? "app-tab-active" : ""}`} onClick={() => setActiveTab("discover")}>{t("search_discover", language)}</button>
+        <button type="button" className={`app-tab ${activeTab === "history" ? "app-tab-active" : ""}`} onClick={() => setActiveTab("history")}>{t("search_history", language)}</button>
       </div>
 
       {activeTab === "discover" ? (

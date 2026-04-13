@@ -58,7 +58,7 @@ export default function SidebarShell({ id, title, icon, active, open, stacked, o
       aria-modal={active}
       aria-label={title}
       onMouseDown={() => open && setActive(id)}
-      className="fixed top-[env(safe-area-inset-top,0px)] z-[46] w-full max-w-[390px] rounded-2xl border border-[var(--border)] bg-[var(--sidebar-bg)] shadow-[var(--shadow-raised)] backdrop-blur-xl"
+      className="fixed top-[env(safe-area-inset-top,0px)] z-[46] w-full max-w-[390px] rounded-2xl border border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] shadow-[var(--sidebar-shadow)] backdrop-blur-xl"
       style={{
         bottom: 'var(--layout-bottom-offset, calc(var(--player-bar-height, 90px) + env(safe-area-inset-bottom, 0px)))',
         height: 'calc(100dvh - var(--layout-bottom-offset, var(--player-bar-height, 90px)) - env(safe-area-inset-top, 0px))',

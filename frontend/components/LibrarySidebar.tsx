@@ -16,7 +16,7 @@ export default function LibrarySidebar({ playlists, favoritesSet, onDeletePlayli
   const { language } = useLanguage();
 
   return (
-    <aside className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+    <aside className="rounded-xl border border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] p-4 shadow-[var(--sidebar-shadow)]">
       <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3">
         <div className="flex items-center gap-2">
           <Heart className="w-4 h-4 text-[var(--accent)]" />

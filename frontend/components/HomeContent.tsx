@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import HeroSection from "./HeroSection";
 import ResultCard from "./ResultCard";
 import SongRow from "./SongRow";
 
 import UploadModal from "./UploadModal";
-const LibrarySidebar = lazy(() => import("./LibrarySidebar"));
 import TrackCard from "./TrackCard";
 import SongReviewModal from "./SongReviewModal";
 import { usePlayer } from "./PlayerProvider";
@@ -861,9 +860,49 @@ export function HomeContent() {
           </div>
 
           {isLibraryOpen && (
-            <Suspense fallback={<Card className="p-4"><div className="h-20 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></Card>}>
-              <LibrarySidebar playlists={playlists} favoritesSet={favoritesSet} onDeletePlaylist={handleDeletePlaylistWithUndo} />
-            </Suspense>
+            <aside className="space-y-4">
+              <Card className="space-y-3">
+                <h3 className="text-lg font-semibold">{language === "bg" ? "Бърз преглед" : "Library snapshot"}</h3>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <Link href="/library?tab=history" className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-2">
+                    <p className="text-lg font-semibold">{stats.totalHistory}</p>
+                    <p className="text-xs text-[var(--muted)]">{language === "bg" ? "Последни" : "Recent"}</p>
+                  </Link>
+                  <Link href="/library?tab=favorites" className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-2">
+                    <p className="text-lg font-semibold">{stats.totalFavorites}</p>
+                    <p className="text-xs text-[var(--muted)]">{language === "bg" ? "Любими" : "Favorites"}</p>
+                  </Link>
+                  <Link href="/library?tab=playlists" className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-2">
+                    <p className="text-lg font-semibold">{stats.totalPlaylists}</p>
+                    <p className="text-xs text-[var(--muted)]">{language === "bg" ? "Плейлисти" : "Playlists"}</p>
+                  </Link>
+                </div>
+              </Card>
+              <Card className="space-y-3">
+                <h3 className="text-base font-semibold">{language === "bg" ? "Продължи от последно" : "Continue listening"}</h3>
+                {history.slice(0, 4).map((item) => (
+                  <SongRow
+                    key={item.id}
+                    id={item.id}
+                    title={item.song.songName}
+                    artist={item.song.artist}
+                    artworkUrl={item.song.albumArtUrl}
+                    onPlay={() => playSong(item.song)}
+                    onFavorite={() => toggleFavorite(normalizeTrackKey(item.song.songName, item.song.artist), item.song.songName, item.song.artist, item.song.albumArtUrl, item.song.youtubeVideoId)}
+                    isFavorite={favoritesSet.has(normalizeTrackKey(item.song.songName, item.song.artist))}
+                    showMoreMenu
+                    playlists={playlists}
+                    onAddToPlaylist={(playlistId) => addSongMatchToPlaylist(item.song, playlistId)}
+                  />
+                ))}
+                {history.length === 0 ? <p className="text-sm text-[var(--muted)]">{language === "bg" ? "Няма история още. Пусни демо разпознаване." : "No recent recognitions yet. Run a quick demo."}</p> : null}
+              </Card>
+              <Card className="space-y-2">
+                <h3 className="text-base font-semibold">{language === "bg" ? "Бързи действия" : "Quick next steps"}</h3>
+                <Button variant="secondary" onClick={() => setShowNewPlaylistModal(true)}>{language === "bg" ? "Създай плейлист" : "Create playlist"}</Button>
+                <Link href="/assistant" className="homeQuickLink inline-flex items-center justify-center px-4 py-2 text-sm font-medium transition">{language === "bg" ? "Попитай асистента за идеи" : "Ask assistant for ideas"}</Link>
+              </Card>
+            </aside>
           )}
         </div>
       </div>
