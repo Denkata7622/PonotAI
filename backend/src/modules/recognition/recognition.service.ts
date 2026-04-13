@@ -10,10 +10,29 @@ import {
 import { recognizeWithAcrCloud } from "./providers/acrcloud.provider";
 import { recognizeWithShazam } from "./providers/shazam.provider";
 import { matchBulgarianSong } from "./providers/bulgarian.provider";
+import {
+  beforeProviderCall,
+  buildAttemptContext,
+  classifyProviderError,
+  getCachedAttemptResult,
+  getProviderCachedResult,
+  hashAudioBuffer,
+  isProviderBlocked,
+  markProviderFailure,
+  setCachedAttemptResult,
+  setProviderCachedResult,
+  withAttemptDedupe,
+  type AttemptContext,
+  type ProviderName,
+} from "./recognition.guard";
+import { preprocessAudioForRecognition } from "./audioPreprocess";
 
 export type SongMetadata = ProviderSongMetadata & {
   source: "provider" | "ocr_fallback";
   verificationStatus: "verified" | "not_found";
+  resultState?: "exact_match" | "strong_likely_match" | "possible_matches" | "need_better_sample";
+  alternatives?: Array<Pick<ProviderSongMetadata, "songName" | "artist" | "confidenceScore">>;
+  attemptId?: string;
 };
 
 type OcrCandidateMetadata = {
@@ -26,12 +45,7 @@ type OcrCandidateMetadata = {
 type TesseractWord = {
   text?: string;
   confidence?: number;
-  bbox?: {
-    x0?: number;
-    y0?: number;
-    x1?: number;
-    y1?: number;
-  };
+  bbox?: { x0?: number; y0?: number; x1?: number; y1?: number };
 };
 
 const UNKNOWN_METADATA: OcrCandidateMetadata = {
@@ -41,154 +55,19 @@ const UNKNOWN_METADATA: OcrCandidateMetadata = {
   confidenceScore: 0,
 };
 
-const OCR_CHAR_WHITELIST =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 &-_'\"():,./+!?[]";
+const OCR_CHAR_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 &-_\'\"():,./+!?[]";
+const OCR_LANGUAGE_MAP: Record<string, string> = { eng: "eng", bul: "bul", "bul+eng": "bul+eng", "bg+en": "bul+eng", bg: "bul" };
 
-
-const MIN_PROVIDER_CONFIDENCE = 0.7;
-const OCR_LANGUAGE_MAP: Record<string, string> = {
-  eng: "eng",
-  bul: "bul",
-  "bul+eng": "bul+eng",
-  "bg+en": "bul+eng",
-  bg: "bul",
+const providerStrategy = {
+  primaryProvider: (process.env.RECOGNITION_PRIMARY_PROVIDER as ProviderName | undefined) ?? "audd",
+  allowSecondaryFallback: process.env.RECOGNITION_ALLOW_SECONDARY_FALLBACK !== "false",
+  maxProviderCallsPerAttempt: Number(process.env.RECOGNITION_MAX_PROVIDER_CALLS ?? 2),
+  enableConcertMode: process.env.RECOGNITION_ENABLE_CONCERT_MODE !== "false",
+  enableHummingMode: process.env.RECOGNITION_ENABLE_HUMMING_MODE !== "false",
 };
 
 function hasConfiguredAudioProvider(): boolean {
-  const hasAudd = Boolean(process.env.AUDD_API_TOKEN || process.env.AUDD_API_KEY);
-  const hasAcr = Boolean(process.env.ACRCLOUD_ACCESS_KEY && process.env.ACRCLOUD_ACCESS_SECRET && process.env.ACRCLOUD_HOST) || Boolean(process.env.ACRCLOUD_API_KEY);
-  const hasShazam = Boolean(process.env.SHAZAM_MOCK_RESPONSE);
-  return hasAudd || hasAcr || hasShazam;
-}
-
-function buildMockAudioRecognition(): SongMetadata {
-  return {
-    songName: "Demo Recognition",
-    artist: "PonotAI Sample",
-    album: "Competition Demo",
-    genre: "Unknown Genre",
-    releaseYear: null,
-    confidenceScore: 0.51,
-    youtubeVideoId: undefined,
-    platformLinks: {},
-    source: "ocr_fallback",
-    verificationStatus: "not_found",
-  };
-}
-
-async function ensureYoutubeLink(metadata: ProviderSongMetadata): Promise<ProviderSongMetadata> {
-  if (metadata.youtubeVideoId) {
-    return metadata;
-  }
-
-  const lookedUp = await lookupSongByTitleAndArtist(metadata.songName, metadata.artist);
-  if (!lookedUp?.youtubeVideoId) {
-    return metadata;
-  }
-
-  return {
-    ...metadata,
-    youtubeVideoId: lookedUp.youtubeVideoId,
-    platformLinks: {
-      ...metadata.platformLinks,
-      youtube: lookedUp.platformLinks.youtube,
-    },
-  };
-}
-
-async function extractMetadataFromLocalTags(buffer: Buffer): Promise<ProviderSongMetadata | null> {
-  try {
-    const parsed = await parseBuffer(buffer, { mimeType: "audio/webm" }, { duration: false });
-    const title = parsed.common.title?.trim();
-    const artist = parsed.common.artist?.trim();
-
-    if (!title || !artist) {
-      return null;
-    }
-
-    return {
-      songName: title,
-      artist,
-      album: parsed.common.album?.trim() || "Unknown Album",
-      genre: parsed.common.genre?.[0] || "Unknown Genre",
-      releaseYear: typeof parsed.common.year === "number" ? parsed.common.year : null,
-      confidenceScore: 0.55,
-      youtubeVideoId: undefined,
-      platformLinks: {},
-    };
-  } catch {
-    return null;
-  }
-}
-
-const VISION_SYSTEM_PROMPT = `You are analyzing a music screenshot (Spotify playlist, Apple Music library, YouTube Music queue, now playing screen, etc.).
-
-Extract ALL songs visible in the image. This could be:
-- A single now-playing song
-- A playlist with multiple songs
-- A queue or album tracklist
-- Search results
-
-For EACH song you see, extract the complete song title and complete artist name.
-
-CRITICAL RULES:
-1. Capture ENTIRE multi-word names (e.g., "Mason Jar Moonshine", not "Jar")
-2. Extract every song visible, not just the first one
-3. DO NOT extract UI elements (Play, Pause, timestamps, durations, track numbers)
-4. DO NOT extract playlist names or album titles as songs
-
-Respond with ONLY a JSON array, no other text:
-[
-  {"songName":"complete title","artist":"complete artist","album":""},
-  {"songName":"complete title","artist":"complete artist","album":""},
-  ...
-]
-
-If no songs are visible, respond with an empty array: []`;
-
-function scoreLineForTitle(line: InterpretedLine): number {
-  return (
-    line.features.heightPercentile * 0.45 +
-    line.features.widthPercentile * 0.2 +
-    line.features.letterRatio * 0.2 +
-    (line.avgConfidence / 100) * 0.15
-  );
-}
-
-/**
- * Heuristically derives fallback song metadata from interpreted OCR lines.
- * @param lines Interpreted OCR lines with extracted geometric/text features.
- * @returns Best-effort metadata when a plausible title is found, otherwise `null`.
- * @throws Does not throw intentionally; parsing guards return `null` on low confidence.
- */
-export function deriveBestEffortMetadata(lines: InterpretedLine[]): OcrCandidateMetadata | null {
-  if (lines.length === 0) {
-    return null;
-  }
-
-  const eligible = lines.filter((line) => line.features.letterRatio >= 0.45 && line.features.length >= 2 && line.features.length <= 80);
-  if (eligible.length === 0) {
-    return null;
-  }
-
-  const titleLine = [...eligible].sort((a, b) => scoreLineForTitle(b) - scoreLineForTitle(a))[0];
-  const artistLine = [...eligible]
-    .filter((line) => line !== titleLine && line.bbox.y >= titleLine.bbox.y)
-    .sort((a, b) => {
-      const aDistance = Math.abs(a.bbox.y - (titleLine.bbox.y + titleLine.bbox.height));
-      const bDistance = Math.abs(b.bbox.y - (titleLine.bbox.y + titleLine.bbox.height));
-      if (Math.abs(aDistance - bDistance) > 0.001) {
-        return aDistance - bDistance;
-      }
-      return Math.abs(a.bbox.x - titleLine.bbox.x) - Math.abs(b.bbox.x - titleLine.bbox.x);
-    })[0];
-
-  return {
-    songName: titleLine.text,
-    artist: artistLine?.text ?? UNKNOWN_METADATA.artist,
-    album: UNKNOWN_METADATA.album,
-    confidenceScore: Math.max(0.25, Math.min(0.59, titleLine.avgConfidence / 100)),
-  };
+  return Boolean(process.env.AUDD_API_TOKEN || process.env.AUDD_API_KEY || process.env.ACRCLOUD_ACCESS_KEY || process.env.SHAZAM_MOCK_RESPONSE);
 }
 
 function toProviderResponse(metadata: ProviderSongMetadata): SongMetadata {
@@ -211,313 +90,265 @@ function toFallbackResponse(metadata: OcrCandidateMetadata): SongMetadata {
     confidenceScore: metadata.confidenceScore,
     source: "ocr_fallback",
     verificationStatus: "not_found",
+    resultState: "need_better_sample",
+  };
+}
+
+function classifyResultState(confidence: number): SongMetadata["resultState"] {
+  if (confidence >= 0.9) return "exact_match";
+  if (confidence >= 0.72) return "strong_likely_match";
+  if (confidence >= 0.5) return "possible_matches";
+  return "need_better_sample";
+}
+
+async function extractMetadataFromLocalTags(buffer: Buffer): Promise<ProviderSongMetadata | null> {
+  try {
+    const parsed = await parseBuffer(buffer, { mimeType: "audio/webm" }, { duration: false });
+    const title = parsed.common.title?.trim();
+    const artist = parsed.common.artist?.trim();
+    if (!title || !artist) return null;
+    return {
+      songName: title,
+      artist,
+      album: parsed.common.album?.trim() || "Unknown Album",
+      genre: parsed.common.genre?.[0] || "Unknown Genre",
+      releaseYear: typeof parsed.common.year === "number" ? parsed.common.year : null,
+      confidenceScore: 0.55,
+      youtubeVideoId: undefined,
+      platformLinks: {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function guardedProviderCall(
+  ctx: AttemptContext,
+  provider: ProviderName,
+  run: () => Promise<ProviderSongMetadata | null>,
+  usage: { providerCalls: number; metadataCalls: number },
+): Promise<ProviderSongMetadata | null> {
+  if (usage.providerCalls >= Math.min(ctx.budget.maxProviderCalls, providerStrategy.maxProviderCallsPerAttempt)) {
+    return null;
+  }
+  if (isProviderBlocked(provider)) return null;
+
+  const cached = getProviderCachedResult<ProviderSongMetadata | null>(provider, ctx.audioHash);
+  if (cached) return cached;
+
+  try {
+    usage.providerCalls += 1;
+    await beforeProviderCall(provider);
+    const value = await run();
+    if (value) setProviderCachedResult(provider, ctx.audioHash, value);
+    return value;
+  } catch (error) {
+    markProviderFailure(provider, classifyProviderError(error));
+    return null;
+  }
+}
+
+async function maybeEnrichWithYoutube(
+  metadata: ProviderSongMetadata,
+  usage: { providerCalls: number; metadataCalls: number },
+  metadataCap: number,
+): Promise<ProviderSongMetadata> {
+  if (metadata.youtubeVideoId || usage.metadataCalls >= metadataCap) {
+    return metadata;
+  }
+  usage.metadataCalls += 1;
+  try {
+    const lookedUp = await lookupSongByTitleAndArtist(metadata.songName, metadata.artist);
+    if (!lookedUp?.youtubeVideoId) return metadata;
+    return {
+      ...metadata,
+      youtubeVideoId: lookedUp.youtubeVideoId,
+      platformLinks: { ...metadata.platformLinks, youtube: lookedUp.platformLinks.youtube },
+    };
+  } catch {
+    return metadata;
+  }
+}
+
+function getProviderOrder(mode: RecognitionMode): ProviderName[] {
+  const primary = providerStrategy.primaryProvider;
+  if (mode === "humming") return ["acrcloud", "audd"];
+  const ordered: ProviderName[] = [primary, "acrcloud", "audd", "shazam"].filter((v, i, arr) => arr.indexOf(v as ProviderName) === i) as ProviderName[];
+  return ordered;
+}
+
+async function runAudioPipeline(buffer: Buffer, originalName: string, mode: RecognitionMode, userId?: string, requestedAttemptId?: string): Promise<SongMetadata> {
+  if (!hasConfiguredAudioProvider()) {
+    return {
+      songName: "Demo Recognition",
+      artist: "PonotAI Sample",
+      album: "Competition Demo",
+      genre: "Unknown Genre",
+      releaseYear: null,
+      confidenceScore: 0.51,
+      youtubeVideoId: undefined,
+      platformLinks: {},
+      source: "ocr_fallback",
+      verificationStatus: "not_found",
+      resultState: "need_better_sample",
+    };
+  }
+
+  const preprocessed = preprocessAudioForRecognition(buffer, mode);
+  const audioHash = hashAudioBuffer(preprocessed.processedBuffer);
+  const ctx = buildAttemptContext({ mode, userId, audioHash, requestedAttemptId });
+  const cached = getCachedAttemptResult(ctx);
+  if (cached) return { ...cached, attemptId: ctx.attemptId };
+
+  return withAttemptDedupe(ctx, async () => {
+    const usage = { providerCalls: 0, metadataCalls: 0 };
+    const providers = getProviderOrder(mode);
+    const alternatives: Array<Pick<ProviderSongMetadata, "songName" | "artist" | "confidenceScore">> = [];
+
+    const runForProvider = async (provider: ProviderName, clip: Buffer): Promise<ProviderSongMetadata | null> => {
+      if (provider === "audd") return guardedProviderCall(ctx, provider, () => recognizeAudioWithAudd(clip, originalName, { enableYoutubeLookup: false }), usage);
+      if (provider === "acrcloud") return guardedProviderCall(ctx, provider, () => recognizeWithAcrCloud(clip, originalName), usage);
+      return guardedProviderCall(ctx, provider, () => recognizeWithShazam(clip, originalName), usage);
+    };
+
+    for (const clip of preprocessed.clipVariants) {
+      for (const provider of providers) {
+        if (!providerStrategy.allowSecondaryFallback && provider !== providers[0]) continue;
+
+        const candidate = await runForProvider(provider, clip);
+        if (!candidate) continue;
+
+        alternatives.push({ songName: candidate.songName, artist: candidate.artist, confidenceScore: candidate.confidenceScore });
+        const enriched = await maybeEnrichWithYoutube(candidate, usage, ctx.budget.maxMetadataCalls);
+        const state = classifyResultState(enriched.confidenceScore);
+        if (state === "exact_match" || state === "strong_likely_match") {
+          const done = { ...toProviderResponse(enriched), resultState: state, alternatives: alternatives.slice(1, 4), attemptId: ctx.attemptId };
+          setCachedAttemptResult(ctx, done);
+          return done;
+        }
+      }
+    }
+
+    const bestAlt = alternatives.sort((a, b) => b.confidenceScore - a.confidenceScore)[0];
+    if (bestAlt && bestAlt.confidenceScore >= 0.52) {
+      const response: SongMetadata = {
+        songName: bestAlt.songName,
+        artist: bestAlt.artist,
+        album: "Unknown Album",
+        genre: "Unknown Genre",
+        releaseYear: null,
+        confidenceScore: bestAlt.confidenceScore,
+        youtubeVideoId: undefined,
+        platformLinks: {},
+        source: "provider",
+        verificationStatus: "not_found",
+        resultState: "possible_matches",
+        alternatives: alternatives.slice(0, 4),
+        attemptId: ctx.attemptId,
+      };
+      setCachedAttemptResult(ctx, response);
+      return response;
+    }
+
+    const localTagResult = await extractMetadataFromLocalTags(preprocessed.processedBuffer);
+    if (localTagResult) {
+      const enriched = await maybeEnrichWithYoutube(localTagResult, usage, ctx.budget.maxMetadataCalls);
+      const response = { ...toProviderResponse(enriched), resultState: classifyResultState(enriched.confidenceScore), attemptId: ctx.attemptId };
+      setCachedAttemptResult(ctx, response);
+      return response;
+    }
+
+    throw new NoVerifiedResultError("Low confidence. Please try concert mode or a clearer 6-10 second sample.");
+  });
+}
+
+export type RecognitionMode = "standard" | "live" | "humming" | "video";
+
+export async function recognizeSongFromAudioByMode(buffer: Buffer, originalName: string, mode: RecognitionMode = "standard", userId?: string, attemptId?: string): Promise<SongMetadata> {
+  const normalizedMode = mode || "standard";
+  if (normalizedMode === "humming" && !providerStrategy.enableHummingMode) {
+    throw new NoVerifiedResultError("Humming mode is currently disabled.");
+  }
+  if (normalizedMode === "live" && !providerStrategy.enableConcertMode) {
+    return runAudioPipeline(buffer, originalName, "standard", userId, attemptId);
+  }
+  return runAudioPipeline(buffer, originalName, normalizedMode, userId, attemptId);
+}
+
+function scoreLineForTitle(line: InterpretedLine): number {
+  return line.features.heightPercentile * 0.45 + line.features.widthPercentile * 0.2 + line.features.letterRatio * 0.2 + (line.avgConfidence / 100) * 0.15;
+}
+
+export function deriveBestEffortMetadata(lines: InterpretedLine[]): OcrCandidateMetadata | null {
+  if (lines.length === 0) return null;
+  const eligible = lines.filter((line) => line.features.letterRatio >= 0.45 && line.features.length >= 2 && line.features.length <= 80);
+  if (eligible.length === 0) return null;
+  const titleLine = [...eligible].sort((a, b) => scoreLineForTitle(b) - scoreLineForTitle(a))[0];
+  const artistLine = [...eligible]
+    .filter((line) => line !== titleLine && line.bbox.y >= titleLine.bbox.y)
+    .sort((a, b) => Math.abs(a.bbox.y - (titleLine.bbox.y + titleLine.bbox.height)) - Math.abs(b.bbox.y - (titleLine.bbox.y + titleLine.bbox.height)))[0];
+
+  return {
+    songName: titleLine.text,
+    artist: artistLine?.text ?? UNKNOWN_METADATA.artist,
+    album: UNKNOWN_METADATA.album,
+    confidenceScore: Math.max(0.25, Math.min(0.59, titleLine.avgConfidence / 100)),
   };
 }
 
 function toOcrBlocks(words: TesseractWord[]): OcrBlock[] {
   const blocks: OcrBlock[] = [];
-
   for (const word of words) {
     const text = typeof word.text === "string" ? word.text : "";
     const bbox = word.bbox;
-    if (!bbox) {
-      continue;
-    }
-
+    if (!bbox) continue;
     const x0 = bbox.x0 ?? 0;
     const y0 = bbox.y0 ?? 0;
     const x1 = bbox.x1 ?? x0;
     const y1 = bbox.y1 ?? y0;
-
-    blocks.push({
-      text,
-      confidence: typeof word.confidence === "number" ? word.confidence : 0,
-      bbox: {
-        x: x0,
-        y: y0,
-        width: Math.max(1, x1 - x0),
-        height: Math.max(1, y1 - y0),
-      },
-    });
+    blocks.push({ text, confidence: typeof word.confidence === "number" ? word.confidence : 0, bbox: { x: x0, y: y0, width: Math.max(1, x1 - x0), height: Math.max(1, y1 - y0) } });
   }
-
   return blocks;
-}
-
-function parseVisionArrayResponse(text: string): OcrCandidateMetadata[] {
-  const cleaned = text.trim()
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```$/i, "")
-    .trim();
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    throw new NoVerifiedResultError("Could not parse vision response.");
-  }
-
-  if (!Array.isArray(parsed)) {
-    throw new NoVerifiedResultError("Vision did not return an array of songs.");
-  }
-
-  return parsed
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
-    .filter((item) => typeof item["songName"] === "string" && typeof item["artist"] === "string")
-    .map((item) => {
-      const songName = (item["songName"] as string).trim();
-      const artist = (item["artist"] as string).trim();
-      const album = typeof item["album"] === "string"
-        ? (item["album"] as string).trim() || UNKNOWN_METADATA.album
-        : UNKNOWN_METADATA.album;
-
-      return {
-        songName,
-        artist,
-        album,
-        confidenceScore: 0.75,
-      };
-    })
-    .filter((item) => item.songName.length > 0 && item.artist.length > 0);
-}
-
-async function extractMetadataWithHuggingFaceVision(buffer: Buffer): Promise<OcrCandidateMetadata[]> {
-  const apiKey = process.env.HUGGINGFACE_API_KEY;
-  if (!apiKey) {
-    throw new NoVerifiedResultError("Hugging Face vision is not configured.");
-  }
-
-  const modelUrl = process.env.HUGGINGFACE_VISION_URL ?? "https://router.huggingface.co/v1/chat/completions";
-  const response = await fetch(modelUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: process.env.HUGGINGFACE_VISION_MODEL ?? "Qwen/Qwen2.5-VL-7B-Instruct",
-      messages: [
-        { role: "system", content: VISION_SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "Extract all visible songs from this screenshot.",
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:image/png;base64,${buffer.toString("base64")}`,
-              },
-            },
-          ],
-        },
-      ],
-      temperature: 0,
-      max_tokens: 700,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => "");
-    console.error("[vision] API error body:", errorBody);
-    throw new NoVerifiedResultError(`Vision extraction failed with status ${response.status}.`);
-  }
-  
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new NoVerifiedResultError("Vision extraction returned an empty response.");
-  }
-
-  const extracted = parseVisionArrayResponse(content);
-  console.log("[recognition] Vision extracted JSON array:", extracted);
-
-  return extracted;
 }
 
 async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise<OcrCandidateMetadata> {
   const normalizedLanguage = OCR_LANGUAGE_MAP[language] ?? "eng";
   const worker = await Tesseract.createWorker(normalizedLanguage);
-
-  await worker.setParameters({
-    tessedit_char_whitelist: OCR_CHAR_WHITELIST,
-    preserve_interword_spaces: "1",
-  });
-
+  await worker.setParameters({ tessedit_char_whitelist: OCR_CHAR_WHITELIST, preserve_interword_spaces: "1" });
   try {
     const ocrResult = await worker.recognize(buffer);
     const words = ((ocrResult.data as { words?: TesseractWord[] }).words ?? []) as TesseractWord[];
     const interpreted = interpretOcr(toOcrBlocks(words));
-
     if (interpreted.music?.title && interpreted.music.confidenceScore >= 0.42) {
-      return {
-        songName: interpreted.music.title,
-        artist: interpreted.music.artist ?? UNKNOWN_METADATA.artist,
-        album: UNKNOWN_METADATA.album,
-        confidenceScore: interpreted.music.confidenceScore,
-      };
+      return { songName: interpreted.music.title, artist: interpreted.music.artist ?? UNKNOWN_METADATA.artist, album: UNKNOWN_METADATA.album, confidenceScore: interpreted.music.confidenceScore };
     }
-
     const fallback = deriveBestEffortMetadata(interpreted.lines);
-    if (!fallback) {
-      throw new NoVerifiedResultError("Could not extract readable song text from the uploaded image.");
-    }
-
-    if (normalizedLanguage !== "eng" && fallback.confidenceScore < 0.42) {
-      await worker.terminate();
-      return extractMetadataWithOcr(buffer, "eng");
-    }
-
+    if (!fallback) throw new NoVerifiedResultError("Could not extract readable song text from the uploaded image.");
     return fallback;
   } finally {
     await worker.terminate().catch(() => undefined);
   }
 }
 
-/**
- * Runs provider chain + tag fallback to resolve audio files into normalized song metadata.
- * @param buffer Uploaded audio file buffer.
- * @param originalName Original uploaded filename.
- * @returns Promise resolving to normalized song metadata.
- * @throws NoVerifiedResultError when providers and metadata tag fallback cannot verify a song.
- */
-export async function recognizeSongFromAudio(buffer: Buffer, originalName: string): Promise<SongMetadata> {
-  if (!hasConfiguredAudioProvider()) {
-    return buildMockAudioRecognition();
-  }
-  const providers: Array<{
-    name: string;
-    run: () => Promise<ProviderSongMetadata | null>;
-  }> = [
-    {
-      name: "AuDD",
-      run: () => recognizeAudioWithAudd(buffer, originalName),
-    },
-    {
-      name: "ACRCloud",
-      run: () => recognizeWithAcrCloud(buffer, originalName),
-    },
-    {
-      name: "Shazam",
-      run: () => recognizeWithShazam(buffer, originalName),
-    },
-  ];
-
-  for (const provider of providers) {
-    console.log(`[recognition] Trying ${provider.name}...`);
-
-    try {
-      const candidate = await provider.run();
-      if (!candidate) {
-        console.log(`[recognition] ${provider.name} failed: no match`);
-        continue;
-      }
-
-      const confidence = candidate.confidenceScore ?? 0;
-      if (confidence < MIN_PROVIDER_CONFIDENCE) {
-        console.log(`[recognition] ${provider.name} failed: low confidence (${confidence.toFixed(2)})`);
-        continue;
-      }
-
-      const enriched = await ensureYoutubeLink(candidate);
-      console.log(`[recognition] ✓ ${provider.name} found: "${enriched.songName}" by "${enriched.artist}" (confidence: ${confidence.toFixed(2)})`);
-      return toProviderResponse(enriched);
-    } catch (error) {
-      console.warn(`[recognition] ${provider.name} error:`, (error as Error).message);
-    }
-  }
-
-  console.log("[recognition] Provider chain exhausted, trying local metadata tags...");
-  const localTagResult = await extractMetadataFromLocalTags(buffer);
-
-  if (localTagResult) {
-    const enrichedTags = await ensureYoutubeLink(localTagResult);
-    console.log(`[recognition] ✓ Local tags found: "${enrichedTags.songName}" by "${enrichedTags.artist}"`);
-    return toProviderResponse(enrichedTags);
-  }
-
-  throw new NoVerifiedResultError("Recognition failed across all providers and local metadata tags.");
-}
-
-export type RecognitionMode = "standard" | "live" | "humming" | "video";
-
-export async function recognizeSongFromAudioByMode(
-  buffer: Buffer,
-  originalName: string,
-  mode: RecognitionMode = "standard",
-): Promise<SongMetadata> {
-  const normalizedMode = mode || "standard";
-  const metadata = await recognizeSongFromAudio(buffer, originalName);
-
-  if (normalizedMode === "humming") {
-    return {
-      ...metadata,
-      confidenceScore: Math.min(metadata.confidenceScore, 0.79),
-      verificationStatus: metadata.verificationStatus ?? "not_found",
-      source: metadata.source,
-    };
-  }
-
-  if (normalizedMode === "live") {
-    return {
-      ...metadata,
-      confidenceScore: Math.min(1, metadata.confidenceScore + 0.05),
-    };
-  }
-
-  return metadata;
-}
-
-/**
- * Extracts song candidates from image content and verifies each via lookup providers when possible.
- * @param buffer Uploaded image buffer.
- * @param language OCR language code (defaults to `eng`).
- * @returns Promise resolving to one or more normalized song metadata entries.
- * @throws NoVerifiedResultError when no song candidates can be extracted.
- */
 export async function recognizeSongFromImage(buffer: Buffer, language = "eng"): Promise<SongMetadata[]> {
-  let visionResults: OcrCandidateMetadata[];
-
-  try {
-    visionResults = await extractMetadataWithHuggingFaceVision(buffer);
-  } catch (error) {
-    console.warn("[recognition] Vision extraction unavailable or rejected, falling back to OCR.", error);
-    const fallback = await extractMetadataWithOcr(buffer, language);
-    visionResults = [fallback];
-  }
-
-  if (visionResults.length === 0) {
-    throw new NoVerifiedResultError("No songs detected in image.");
-  }
-
+  const fallback = await extractMetadataWithOcr(buffer, language);
+  const candidates: OcrCandidateMetadata[] = [fallback];
   const songMetadataResults: SongMetadata[] = [];
 
-  for (const candidate of visionResults) {
+  for (const candidate of candidates) {
     try {
       const providerResult = await lookupSongByTitleAndArtist(candidate.songName, candidate.artist);
       if (providerResult) {
-        songMetadataResults.push(toProviderResponse(providerResult));
+        songMetadataResults.push({ ...toProviderResponse(providerResult), resultState: classifyResultState(providerResult.confidenceScore) });
       } else {
         const bulgarianFallback = matchBulgarianSong(`${candidate.songName} ${candidate.artist}`);
-        if (bulgarianFallback) {
-          songMetadataResults.push(toProviderResponse(bulgarianFallback));
-        } else {
-          songMetadataResults.push(toFallbackResponse(candidate));
-        }
+        songMetadataResults.push(bulgarianFallback ? { ...toProviderResponse(bulgarianFallback), resultState: "strong_likely_match" } : toFallbackResponse(candidate));
       }
     } catch {
-      console.warn(`[recognition] Lookup failed for "${candidate.songName}" by "${candidate.artist}"`);
+      songMetadataResults.push(toFallbackResponse(candidate));
     }
   }
 
-  if (songMetadataResults.length === 0) {
-    throw new NoVerifiedResultError("No songs detected in image.");
-  }
-
+  if (songMetadataResults.length === 0) throw new NoVerifiedResultError("No songs detected in image.");
   return songMetadataResults;
 }

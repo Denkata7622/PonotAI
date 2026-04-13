@@ -50,7 +50,8 @@ developerRouter.delete("/keys/:id", requireAuth, async (req, res) => {
 developerRouter.post("/v1/recognition/audio", requireDeveloperApiKey, audioUpload.single("audio"), async (req, res) => {
   if (!req.file) return void sendError(res, ErrorCatalog.AUDIO_FILE_REQUIRED);
   const mode = req.body?.mode === "live" || req.body?.mode === "humming" ? req.body.mode : "standard";
-  const result = await recognizeSongFromAudioByMode(req.file.buffer, req.file.originalname, mode);
+  const attemptId = typeof req.headers["x-recognition-attempt-id"] === "string" ? req.headers["x-recognition-attempt-id"] : undefined;
+  const result = await recognizeSongFromAudioByMode(req.file.buffer, req.file.originalname, mode, req.userId, attemptId);
   res.status(200).json({ data: result, mode });
 });
 

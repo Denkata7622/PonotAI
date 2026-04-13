@@ -86,6 +86,7 @@ export function HomeContent() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [pendingImageResult, setPendingImageResult] = useState<ImageRecognitionResult | null>(null);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  const [recognitionStage, setRecognitionStage] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [microphoneStream, setMicrophoneStream] = useState<MediaStream | null>(null);
@@ -400,9 +401,11 @@ export function HomeContent() {
     if (isLoadingAudio || isLoadingImage) return;
     setErrorMessage(null);
     setIsLoadingAudio(true);
+    setRecognitionStage("listening");
     try {
       await runRecognitionCountdown();
       setIsRecording(true);
+      setRecognitionStage("cleaning audio");
       const audioBlob = await recordAudioClip(8_000);
       if (audioBlob.size < 8_000) {
         throw new Error(language === "bg"
@@ -410,6 +413,7 @@ export function HomeContent() {
           : "The recording is too short or quiet. Move closer to the audio source and try again.");
       }
       setIsRecording(false);
+      setRecognitionStage("checking match");
       const recognized = await recognizeFromAudio(audioBlob);
       setAudioResult(recognized);
       setImageResult(null);
@@ -426,6 +430,9 @@ export function HomeContent() {
         createdAt: new Date().toISOString(),
       });
       pushToast("success", t("toast_recognized", language, { song: recognized.primaryMatch.songName }));
+      if (recognized.primaryMatch.resultState === "possible_matches") setRecognitionStage("possible matches");
+      else if (recognized.primaryMatch.resultState === "need_better_sample") setRecognitionStage("need a clearer sample");
+      else setRecognitionStage("likely match");
       setCanRetryRecognition(false);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(scopedKey(DEMO_SEEN_KEY, profile.id), "true");
@@ -452,6 +459,7 @@ export function HomeContent() {
       setIsRecording(false);
       setMicrophoneStream(null);
       setIsLoadingAudio(false);
+      window.setTimeout(() => setRecognitionStage(null), 2200);
     }
   }
 
@@ -671,6 +679,7 @@ export function HomeContent() {
             </Card>
 
             {countdown && <Card className="rounded-2xl p-4 text-center text-2xl font-bold">{countdown}</Card>}
+            {recognitionStage && <Card className="rounded-2xl p-3 text-center text-sm uppercase tracking-wide">{recognitionStage}</Card>}
 
             {errorMessage && <p className="rounded-2xl border border-danger bg-surface-raised px-4 py-3 text-sm text-danger">{errorMessage}</p>}
             {canRetryRecognition && <Button variant="secondary" onClick={() => void handleRecognizeAudio()}>{language === "bg" ? "Опитай отново" : "Try again"}</Button>}
