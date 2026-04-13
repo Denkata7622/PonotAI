@@ -94,9 +94,9 @@ export async function recognizeImageController(req: Request, res: Response): Pro
     const language = typeof req.body?.language === "string" ? req.body.language : undefined;
     void req.body?.maxSongs;
 
-    const songs = await recognizeSongFromImage(req.file.buffer, language);
+    const result = await recognizeSongFromImage(req.file.buffer, language, req.file.mimetype);
 
-    for (const song of songs) {
+    for (const song of result.songs) {
       await addHistoryEntry({
         songName: song.songName,
         artist: song.artist,
@@ -105,9 +105,11 @@ export async function recognizeImageController(req: Request, res: Response): Pro
     }
 
     res.status(200).json({
-      songs,
-      count: songs.length,
+      songs: result.songs,
+      count: result.songs.length,
       language: language ?? "eng",
+      warnings: result.warnings,
+      ocrPath: result.ocrPath,
     });
   } catch (error) {
     handleRecognitionError(res, error, "IMAGE_RECOGNITION_FAILED");

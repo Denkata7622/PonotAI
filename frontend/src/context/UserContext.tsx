@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useReducer,
+  useState,
   useMemo,
   type ReactNode,
 } from "react";
@@ -110,6 +111,7 @@ function saveGuestState(state: GuestState) {
 }
 
 type GuestAction =
+  | { type: "HYDRATE"; payload: GuestState }
   | { type: "SET_PREFERENCES"; payload: Partial<Preferences> }
   | { type: "ADD_HISTORY"; payload: HistoryItem }
   | { type: "DELETE_HISTORY_ITEM"; payload: string }
@@ -121,6 +123,8 @@ type GuestAction =
 
 function guestReducer(state: GuestState, action: GuestAction): GuestState {
   switch (action.type) {
+    case "HYDRATE":
+      return action.payload;
     case "SET_PREFERENCES":
       return { ...state, preferences: { ...state.preferences, ...action.payload } };
     case "ADD_HISTORY":
@@ -199,14 +203,21 @@ export function UserProvider({ children }: { children: ReactNode }) {
   );
 
   // Guest / offline state
-  const [guest, dispatchGuest] = useReducer(guestReducer, defaultGuestState, loadGuestState);
+  const [guest, dispatchGuest] = useReducer(guestReducer, defaultGuestState);
+  const [guestHydrated, setGuestHydrated] = useState(false);
 
   const isAuthenticated = Boolean(authState.token && authState.user);
 
+  useEffect(() => {
+    dispatchGuest({ type: "HYDRATE", payload: loadGuestState() });
+    setGuestHydrated(true);
+  }, []);
+
   // Persist guest state
   useEffect(() => {
+    if (!guestHydrated) return;
     saveGuestState(guest);
-  }, [guest]);
+  }, [guest, guestHydrated]);
 
   // Hydration-safe token bootstrap
   useEffect(() => {
