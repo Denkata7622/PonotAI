@@ -161,6 +161,10 @@ export function useMusicAssistant() {
     ))));
   }
 
+  function startAction(messageId: string): void {
+    setActionState(messageId, "applying");
+  }
+
   function acceptAction(messageId: string): void {
     setActionState(messageId, "accepted");
   }
@@ -185,6 +189,7 @@ export function useMusicAssistant() {
     openConversation,
     renameConversation,
     deleteConversation,
+    startAction,
     acceptAction,
     dismissAction,
     failAction,

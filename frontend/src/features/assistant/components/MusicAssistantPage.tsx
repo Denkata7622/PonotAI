@@ -33,8 +33,10 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
     openConversation,
     renameConversation,
     deleteConversation,
+    startAction,
     acceptAction,
     dismissAction,
+    failAction,
     bottomRef,
   } = useMusicAssistant();
   const [input, setInput] = useState("");
@@ -130,7 +132,7 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
               </div>
             ) : (
               messages.map((message) => (
-                <MessageBubble key={message.id} message={message} onAccept={() => acceptAction(message.id)} onDismiss={() => dismissAction(message.id)} />
+                <MessageBubble key={message.id} message={message} onApplyStart={() => startAction(message.id)} onApplySuccess={() => acceptAction(message.id)} onDismiss={() => dismissAction(message.id)} onApplyFailure={() => failAction(message.id)} />
               ))
             )}
             {isLoading ? <TypingIndicator /> : null}

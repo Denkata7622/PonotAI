@@ -6,11 +6,13 @@ import ActionCard from "./ActionCard";
 
 type Props = {
   message: ChatMessage;
-  onAccept?: () => void;
+  onApplyStart?: () => void;
+  onApplySuccess?: () => void;
   onDismiss?: () => void;
+  onApplyFailure?: () => void;
 };
 
-export default function MessageBubble({ message, onAccept, onDismiss }: Props) {
+export default function MessageBubble({ message, onApplyStart, onApplySuccess, onDismiss, onApplyFailure }: Props) {
   const [hovered, setHovered] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -32,11 +34,15 @@ export default function MessageBubble({ message, onAccept, onDismiss }: Props) {
         <div className="assistant-message-content">{message.content}</div>
       </div>
       {mounted && hovered ? <span className="assistant-time">{time}</span> : null}
-      {message.actionIntent && message.actionState === "pending" && onAccept && onDismiss ? (
-        <ActionCard intent={message.actionIntent} onAccept={onAccept} onDismiss={onDismiss} state={message.actionState} />
-      ) : null}
-      {message.actionIntent && message.actionState && message.actionState !== "pending" ? (
-        <ActionCard intent={message.actionIntent} onAccept={() => {}} onDismiss={() => {}} state={message.actionState} />
+      {message.actionIntent && message.actionState && onApplyStart && onApplySuccess && onDismiss && onApplyFailure ? (
+        <ActionCard
+          intent={message.actionIntent}
+          onApplyStart={onApplyStart}
+          onApplySuccess={onApplySuccess}
+          onDismiss={onDismiss}
+          onApplyFailure={onApplyFailure}
+          state={message.actionState}
+        />
       ) : null}
     </div>
   );

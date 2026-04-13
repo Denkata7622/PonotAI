@@ -6,7 +6,7 @@ export interface ChatMessage {
   content: string;
   createdAt: string;
   actionIntent?: ActionIntent | null;
-  actionState?: 'pending' | 'accepted' | 'dismissed' | 'failed';
+  actionState?: 'pending' | 'applying' | 'accepted' | 'dismissed' | 'failed';
 }
 
 export interface AssistantConversation {
