@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ChatMessage } from "../types";
 import ActionCard from "./ActionCard";
+import { normalizeVisibleText } from "@/lib/text";
 
 type Props = {
   message: ChatMessage;
@@ -25,13 +26,13 @@ export default function MessageBubble({ message, onApplyStart, onApplySuccess, o
     : "";
 
   if (message.role === "system") {
-    return <div className="assistant-system-message">{message.content}</div>;
+    return <div className="assistant-system-message">{normalizeVisibleText(message.content)}</div>;
   }
 
   return (
     <div className={`assistant-message-wrap assistant-${message.role}`} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       <div className="assistant-message-bubble">
-        <div className="assistant-message-content">{message.content}</div>
+        <div className="assistant-message-content">{normalizeVisibleText(message.content)}</div>
       </div>
       {mounted && hovered ? <span className="assistant-time">{time}</span> : null}
       {message.actionIntent && message.actionState && onApplyStart && onApplySuccess && onDismiss && onApplyFailure ? (

@@ -333,7 +333,8 @@ async function fetchWeatherContext(latitude: number, longitude: number): Promise
 export async function getMoodRecommendations(userId: string, moodInput: string) {
   const mood = parseMoodInput(moodInput);
   const [favorites, history] = await Promise.all([listFavorites(userId), listUserHistory(userId)]);
-  const candidates = [...favorites, ...history]
+  const recentHistory = history.filter((item) => parseDate(item.createdAt) >= Date.now() - 14 * DAY_MS);
+  const candidates = [...favorites, ...recentHistory, ...history]
     .filter((item) => item.title && item.artist)
     .map((item) => ({ title: item.title!, artist: item.artist!, album: item.album, coverUrl: item.coverUrl }));
 
@@ -351,6 +352,13 @@ export async function getMoodRecommendations(userId: string, moodInput: string) 
     presets: ["relax", "focus", "workout", "party", "sleep"],
     tracks,
     source: tracks.length > 0 ? "library" : "curated_fallback",
+    explainability: {
+      basis: tracks.length > 0
+        ? `Ranked from ${recentHistory.length} recent plays plus ${favorites.length} favorites, tuned for mood=${mood}.`
+        : "No substantial history/favorites signal yet; using fallback ordering.",
+      recentEvents: recentHistory.length,
+      favoritesCount: favorites.length,
+    },
   };
 }
 
@@ -365,6 +373,9 @@ export async function getContextualRecommendations(userId: string, context: { la
 
   const moodHint = weather && weather.temperature > 28 ? "relax" : timeSlot === "morning" ? "focus" : "party";
   const recommendations = await getMoodRecommendations(userId, moodHint);
+  const grounding = recommendations.source === "library"
+    ? "history_and_favorites"
+    : "fallback_due_to_sparse_data";
 
   return {
     context: {
@@ -374,6 +385,7 @@ export async function getContextualRecommendations(userId: string, context: { la
       weather,
     },
     recommendations,
+    grounding,
   };
 }
 

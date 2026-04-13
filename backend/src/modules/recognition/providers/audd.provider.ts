@@ -71,14 +71,14 @@ export async function fetchWithRetry(input: URL | string, init: RequestInit, opt
 
 function readArtist(value: string | { name?: string } | undefined): string | null {
   if (!value) return null;
-  if (typeof value === "string") return value.trim() || null;
-  return typeof value.name === "string" ? value.name.trim() || null : null;
+  if (typeof value === "string") return normalizeVisibleText(value) || null;
+  return typeof value.name === "string" ? normalizeVisibleText(value.name) || null : null;
 }
 
 function readAlbum(value: string | { title?: string } | undefined): string | null {
   if (!value) return null;
-  if (typeof value === "string") return value.trim() || null;
-  return typeof value.title === "string" ? value.title.trim() || null : null;
+  if (typeof value === "string") return normalizeVisibleText(value) || null;
+  return typeof value.title === "string" ? normalizeVisibleText(value.title) || null : null;
 }
 
 function getReleaseYear(releaseDate?: string): number | null {
@@ -141,13 +141,14 @@ export async function recognizeAudioWithAudd(
   if (payload.status !== "success" || payload.result === null) return null;
 
   const artist = readArtist(payload.result.artist);
-  if (!payload.result.title || !artist) return null;
+  const normalizedTitle = normalizeVisibleText(payload.result.title);
+  if (!normalizedTitle || !artist) return null;
 
   const shouldLookupYoutube = options?.enableYoutubeLookup === true;
-  const youtubeVideoId = shouldLookupYoutube ? await findYouTubeVideoId(`${payload.result.title} ${artist} official audio`) : null;
+  const youtubeVideoId = shouldLookupYoutube ? await findYouTubeVideoId(`${normalizedTitle} ${artist} official audio`) : null;
 
   return {
-    songName: payload.result.title,
+    songName: normalizedTitle,
     artist,
     album: readAlbum(payload.result.album) || "Unknown Album",
     genre: "Unknown Genre",
@@ -177,3 +178,4 @@ export async function lookupSongByTitleAndArtist(title: string, artist: string):
     platformLinks: { youtube: `https://www.youtube.com/watch?v=${youtubeVideoId}` },
   };
 }
+import { normalizeVisibleText } from "../../../utils/text";

@@ -38,6 +38,7 @@ export type UiPersonalization = {
 };
 
 type ThemeContextValue = UiPersonalization & {
+  updateUiSetting: <K extends keyof UiPersonalization>(key: K, value: UiPersonalization[K]) => void;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
   setAccent: (accent: AccentPreset) => void;
@@ -117,6 +118,7 @@ function applyUiStateToDocument(state: UiPersonalization): void {
   html.setAttribute("data-accent", state.accent);
   html.setAttribute("data-density", state.density);
   html.setAttribute("data-radius", state.radius);
+  html.setAttribute("data-chart-style", state.chartStyle);
   html.setAttribute("data-surface", state.surfaceStyle);
   html.setAttribute("data-sidebar", state.sidebarStyle);
   html.setAttribute("data-motion", state.motionLevel);
@@ -168,6 +170,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return saved;
   });
 
+  function updateUiSetting<K extends keyof UiPersonalization>(key: K, value: UiPersonalization[K]) {
+    setUi((prev) => ({ ...prev, [key]: value }));
+  }
+
   const applyPersonalization = (patch: Partial<UiPersonalization>) => {
     setUi((prev) => ({ ...prev, ...patch }));
   };
@@ -199,19 +205,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       ...ui,
-      setTheme: (theme: Theme) => applyPersonalization({ theme }),
-      toggleTheme: () => applyPersonalization({ theme: resolveTheme(ui.theme) === "dark" ? "light" : "dark" }),
-      setAccent: (accent: AccentPreset) => applyPersonalization({ accent }),
-      setIntensity: (intensity: AccentIntensity) => applyPersonalization({ intensity }),
-      setSurfaceStyle: (surfaceStyle: SurfaceStyle) => applyPersonalization({ surfaceStyle }),
-      setDensity: (density: DensityMode) => applyPersonalization({ density }),
-      setRadius: (radius: RadiusMode) => applyPersonalization({ radius }),
-      setChartStyle: (chartStyle: ChartStyle) => applyPersonalization({ chartStyle }),
-      setSidebarStyle: (sidebarStyle: SidebarStyle) => applyPersonalization({ sidebarStyle }),
-      setMotionLevel: (motionLevel: MotionLevel) => applyPersonalization({ motionLevel }),
-      setCardEmphasis: (cardEmphasis: CardEmphasis) => applyPersonalization({ cardEmphasis }),
-      setFontFamily: (fontFamily: FontFamily) => applyPersonalization({ fontFamily }),
-      setTextScale: (textScale: TextScale) => applyPersonalization({ textScale }),
+      updateUiSetting,
+      setTheme: (theme: Theme) => updateUiSetting("theme", theme),
+      toggleTheme: () => updateUiSetting("theme", resolveTheme(ui.theme) === "dark" ? "light" : "dark"),
+      setAccent: (accent: AccentPreset) => updateUiSetting("accent", accent),
+      setIntensity: (intensity: AccentIntensity) => updateUiSetting("intensity", intensity),
+      setSurfaceStyle: (surfaceStyle: SurfaceStyle) => updateUiSetting("surfaceStyle", surfaceStyle),
+      setDensity: (density: DensityMode) => updateUiSetting("density", density),
+      setRadius: (radius: RadiusMode) => updateUiSetting("radius", radius),
+      setChartStyle: (chartStyle: ChartStyle) => updateUiSetting("chartStyle", chartStyle),
+      setSidebarStyle: (sidebarStyle: SidebarStyle) => updateUiSetting("sidebarStyle", sidebarStyle),
+      setMotionLevel: (motionLevel: MotionLevel) => updateUiSetting("motionLevel", motionLevel),
+      setCardEmphasis: (cardEmphasis: CardEmphasis) => updateUiSetting("cardEmphasis", cardEmphasis),
+      setFontFamily: (fontFamily: FontFamily) => updateUiSetting("fontFamily", fontFamily),
+      setTextScale: (textScale: TextScale) => updateUiSetting("textScale", textScale),
       applyPersonalization,
     }),
     [ui],

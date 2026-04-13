@@ -52,7 +52,7 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
   const router = useRouter();
   const { addManyToQueue } = usePlayer();
   const { addFavorite, favorites } = useUser();
-  const { applyPersonalization } = useTheme();
+  const { updateUiSetting } = useTheme();
   const { setLocale, language } = useLanguage();
   const { profile } = useProfile();
   const { playlists, createPlaylist, addSongsToPlaylist } = useLibrary(profile.id);
@@ -143,7 +143,10 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
         const next = normalizeThemeActionPayload(intent.payload);
         if (!hasApplicableThemeChange(next)) throw new Error("No supported theme changes found in assistant action.");
         const { template: _template, ...patch } = next;
-        applyPersonalization(patch);
+        (Object.entries(patch) as Array<[keyof typeof patch, (typeof patch)[keyof typeof patch]]>)
+          .forEach(([key, value]) => {
+            if (value !== undefined) updateUiSetting(key, value);
+          });
         const summary = Object.values(patch).filter(Boolean).join(" / ");
         window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: summary ? `Applied ${summary}` : "Theme settings updated" } }));
       }

@@ -10,6 +10,7 @@ import { formatArtist } from "../lib/formatArtist";
 import { usePlayer } from "./PlayerProvider";
 import SmartDropdown from "@/components/ui/SmartDropdown";
 import { useUser } from "../src/context/UserContext";
+import { normalizeVisibleText } from "@/lib/text";
 
 type SongRowProps = {
   id: string;
@@ -53,6 +54,8 @@ export default function SongRow({
   const { isAuthenticated, shareSong } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const safeTitle = normalizeVisibleText(title) || title;
+  const safeArtist = normalizeVisibleText(artist) || artist;
 
   return (
     <article
@@ -65,7 +68,7 @@ export default function SongRow({
     >
       <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)]">
         {artworkUrl ? (
-          <img src={artworkUrl} alt={`${title} cover`} className="h-full w-full object-cover" />
+          <img src={artworkUrl} alt={`${safeTitle} cover`} className="h-full w-full object-cover" />
         ) : (
           <div className="grid h-full w-full place-items-center bg-[var(--surface-2)]">
             <Music className="w-6 h-6 text-[var(--muted)]" />
@@ -74,8 +77,8 @@ export default function SongRow({
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium text-[var(--text)]">{title}</p>
-        <p className="truncate text-sm text-[var(--muted)]">{formatArtist(artist)}</p>
+        <p className="truncate font-medium text-[var(--text)]">{safeTitle}</p>
+        <p className="truncate text-sm text-[var(--muted)]">{formatArtist(safeArtist)}</p>
       </div>
 
       <div className="relative flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -154,13 +157,13 @@ export default function SongRow({
                 event.stopPropagation();
                 addToQueue({
                   id,
-                  title,
-                  artist,
-                  artistId: `artist-${artist}`.toLowerCase().replace(/\s+/g, "-"),
+                  title: safeTitle,
+                  artist: safeArtist,
+                  artistId: `artist-${safeArtist}`.toLowerCase().replace(/\s+/g, "-"),
                   artworkUrl: artworkUrl || "https://picsum.photos/seed/song-row/80",
                   videoId,
                   license: "COPYRIGHTED",
-                  query: `${title} ${artist}`,
+                  query: `${safeTitle} ${safeArtist}`,
                 }, "manual");
                 window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: "Added to queue" } }));
                 setMenuOpen(false);
@@ -218,7 +221,7 @@ export default function SongRow({
                 }
                 if (isSharing) return;
                 setIsSharing(true);
-                void shareSong({ title, artist, coverUrl: artworkUrl }).then((url) => {
+                void shareSong({ title: safeTitle, artist: safeArtist, coverUrl: artworkUrl }).then((url) => {
                   if (url) {
                     void navigator.clipboard.writeText(url);
                     window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Линкът е копиран." : "Share link copied." } }));

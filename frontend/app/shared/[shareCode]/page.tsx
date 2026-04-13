@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import SharedSongClient from "../../../components/SharedSongClient";
 import { getApiBaseUrl } from "@/lib/apiConfig";
+import { normalizeVisibleText } from "@/lib/text";
 
 type SharedPayload =
   | {
@@ -43,10 +44,10 @@ export async function generateMetadata({ params }: { params: Promise<{ shareCode
   }
 
   return {
-      title: `${data.title}${data.type === "playlist" ? "" : ` — ${data.artist}`}`,
+      title: `${normalizeVisibleText(data.title)}${data.type === "playlist" ? "" : ` — ${normalizeVisibleText(data.artist)}`}`,
     description: `Open shared ${data.type} on Trackly`,
     openGraph: {
-      title: `${data.title}${data.type === "playlist" ? "" : ` — ${data.artist}`}`,
+      title: `${normalizeVisibleText(data.title)}${data.type === "playlist" ? "" : ` — ${normalizeVisibleText(data.artist)}`}`,
       description: `Open shared ${data.type} on Trackly`,
       images: "coverUrl" in data && data.coverUrl ? [{ url: data.coverUrl }] : undefined,
     },

@@ -20,6 +20,7 @@ export type SongMatch = {
 };
 
 import { getApiBaseUrl } from "@/lib/apiConfig";
+import { normalizeVisibleText } from "@/lib/text";
 
 export type SongRecognitionResult = SongMatch & {
   source?: "provider" | "ocr_fallback" | "audio" | "image";
@@ -91,6 +92,14 @@ async function postMultipart<T>(endpoint: string, fieldName: string, file: Blob,
 function normalizeSong(result: SongRecognitionResult): SongRecognitionResult {
   return {
     ...result,
+    songName: normalizeVisibleText(result.songName) || "Unknown Song",
+    artist: normalizeVisibleText(result.artist) || "Unknown Artist",
+    album: normalizeVisibleText(result.album) || "Unknown Album",
+    alternatives: (result.alternatives ?? []).map((item) => ({
+      ...item,
+      songName: normalizeVisibleText(item.songName) || "Unknown Song",
+      artist: normalizeVisibleText(item.artist) || "Unknown Artist",
+    })),
     albumArtUrl: result.albumArtUrl || "https://picsum.photos/seed/recognized/120",
     confidence: typeof result.confidence === "number" ? result.confidence : 1,
     durationSec: typeof result.durationSec === "number" ? result.durationSec : 0,

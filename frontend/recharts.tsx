@@ -7,6 +7,7 @@ export function ResponsiveContainer({ children }: { children: ReactNode; width?:
 }
 
 export function BarChart({ data, children }: { data: DataItem[]; children?: ReactNode }) {
+  const chartPalette = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
   return (
     <div className="space-y-3">
       {data.map((item, idx) => {
@@ -17,10 +18,10 @@ export function BarChart({ data, children }: { data: DataItem[]; children?: Reac
           <div key={`${name}-${idx}`} className="space-y-1">
             <div className="flex items-center justify-between text-sm">
               <span className="text-[var(--text)]">{name}</span>
-              <span className="text-[var(--muted)]">{value}</span>
+              <span className="text-[var(--chart-label,var(--muted))]">{value}</span>
             </div>
             <div className="h-2 rounded-full bg-[var(--surface-raised)]">
-              <div className="h-2 rounded-full bg-[var(--accent)]" style={{ width: `${(value / max) * 100}%` }} />
+              <div className="h-2 rounded-full" style={{ width: `${(value / max) * 100}%`, background: chartPalette[idx % chartPalette.length] }} />
             </div>
           </div>
         );

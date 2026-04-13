@@ -38,6 +38,10 @@
   --listen-glow-soft: rgba(124, 92, 255, 0.18);
   --listen-core: var(--accent);
   --app-font: Inter, system-ui, sans-serif;
+  --font-inter: Inter, "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-poppins: Poppins, "Avenir Next", "Segoe UI", sans-serif;
+  --font-nunito: Nunito, "Trebuchet MS", "Segoe UI", sans-serif;
+  --font-ibm-plex-sans: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
   --text-scale: 1;
   --sidebar-border: var(--border);
   --sidebar-shadow: var(--shadow-raised);
@@ -145,6 +149,9 @@ body {
     linear-gradient(180deg, var(--bg), var(--bg-2));
   color: var(--text);
   font-family: var(--app-font);
+}
+
+html {
   font-size: calc(16px * var(--text-scale));
 }
 
@@ -161,16 +168,21 @@ body {
   --surface-subtle: color-mix(in srgb, var(--surface) 96%, transparent);
   --surface-tinted: color-mix(in srgb, var(--surface) 93%, var(--accent) 7%);
   --surface-elevated: var(--surface);
+  --shadow-raised: 0 1px 2px rgba(2, 6, 23, 0.1);
+  --card-shadow-soft: 0 1px 2px rgba(2, 6, 23, 0.08);
 }
 :root[data-surface="soft"] {
   --surface-subtle: color-mix(in srgb, var(--surface) 86%, transparent);
   --surface-tinted: color-mix(in srgb, var(--surface) 78%, var(--accent) 22%);
   --surface-elevated: color-mix(in srgb, var(--surface) 88%, white 12%);
+  --shadow-raised: 0 12px 26px rgba(5, 10, 28, 0.16);
+  --card-shadow-soft: 0 10px 22px rgba(5, 10, 28, 0.14);
 }
 :root[data-surface="elevated"] {
   --surface-subtle: color-mix(in srgb, var(--surface) 82%, black 18%);
   --surface-elevated: color-mix(in srgb, var(--surface) 72%, white 28%);
   --shadow-raised: 0 16px 34px rgba(0, 0, 0, 0.26);
+  --card-shadow-soft: 0 18px 38px rgba(0, 0, 0, 0.3);
 }
 
 :root[data-sidebar="standard"] { --sidebar-bg: color-mix(in srgb, var(--surface) 90%, transparent); --sidebar-border: var(--border); --sidebar-shadow: none; }
@@ -194,21 +206,21 @@ body {
   --card-border: color-mix(in srgb, var(--accent-border) 75%, var(--border));
 }
 
-.themed-surface { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
-.themed-surface-subtle { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius-md); }
-.themed-surface-elevated { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.themed-surface { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--card-shadow-soft); }
+.themed-surface-subtle { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: color-mix(in srgb, var(--card-shadow-soft) 45%, transparent); }
+.themed-surface-elevated { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-raised); }
 .themed-selected { background: var(--accent-soft); border-color: var(--accent-border) !important; }
 
 
-:root[data-font="inter"] { --app-font: Inter, system-ui, sans-serif; }
+:root[data-font="inter"] { --app-font: var(--font-inter); }
 :root[data-font="system"] { --app-font: system-ui, -apple-system, "Segoe UI", sans-serif; }
-:root[data-font="poppins"] { --app-font: "Poppins", "Segoe UI", sans-serif; }
-:root[data-font="nunito"] { --app-font: "Nunito", "Segoe UI", sans-serif; }
-:root[data-font="ibm-plex-sans"] { --app-font: "IBM Plex Sans", "Segoe UI", sans-serif; }
+:root[data-font="poppins"] { --app-font: var(--font-poppins); }
+:root[data-font="nunito"] { --app-font: var(--font-nunito); }
+:root[data-font="ibm-plex-sans"] { --app-font: var(--font-ibm-plex-sans); }
 
 :root[data-text-scale="sm"] { --text-scale: 0.94; }
 :root[data-text-scale="md"] { --text-scale: 1; }
-:root[data-text-scale="lg"] { --text-scale: 1.08; }
+:root[data-text-scale="lg"] { --text-scale: 1.12; }
 
 .app-tabs {
   display: inline-flex;

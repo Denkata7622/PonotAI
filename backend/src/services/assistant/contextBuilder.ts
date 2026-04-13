@@ -56,6 +56,13 @@ function computeRecencyBonus(lastPlayedAt?: string): number {
   return 0;
 }
 
+function isWithinDays(value: string | undefined, days: number): boolean {
+  if (!value) return false;
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) return false;
+  return (Date.now() - timestamp) <= days * 24 * 60 * 60 * 1000;
+}
+
 function trimToBudget(payload: LibraryContextPayload): LibraryContextPayload {
   const clone: LibraryContextPayload = JSON.parse(JSON.stringify(payload));
   const exceeds = () => JSON.stringify(clone).length > MAX_CHARS;
@@ -163,6 +170,58 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
 
   const artistCounts = new Map<string, number>();
   for (const track of topTracks) artistCounts.set(track.artist, (artistCounts.get(track.artist) ?? 0) + 1);
+  const recentHistoryWindow = history.filter((entry) => isWithinDays(entry.createdAt, 7));
+  const recentArtistCounts = new Map<string, number>();
+  const repeatedTrackCount = new Map<string, number>();
+  for (const item of recentHistoryWindow) {
+    if (item.artist) recentArtistCounts.set(item.artist, (recentArtistCounts.get(item.artist) ?? 0) + 1);
+    const key = trackIdFrom(item.title, item.artist);
+    repeatedTrackCount.set(key, (repeatedTrackCount.get(key) ?? 0) + 1);
+  }
+  const recurringArtists = [...artistCounts.entries()]
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([name, count]) => ({ name, count }));
+  const recentTopArtists = [...recentArtistCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([name, count]) => ({ name, count }));
+  const knownArtistsBeforeRecent = new Set(
+    history
+      .filter((item) => !isWithinDays(item.createdAt, 7))
+      .map((item) => item.artist?.toLowerCase().trim())
+      .filter(Boolean) as string[],
+  );
+  const newArtistsLast7Days = new Set(
+    recentHistoryWindow
+      .map((item) => item.artist?.toLowerCase().trim())
+      .filter((artist): artist is string => Boolean(artist && !knownArtistsBeforeRecent.has(artist))),
+  ).size;
+  const replayedTracksLast7Days = [...repeatedTrackCount.values()].filter((count) => count >= 2).length;
+  const avgTracksPerPlaylist = playlists.length > 0
+    ? Number((playlists.reduce((sum, playlist) => sum + (playlist.songs?.length ?? 0), 0) / playlists.length).toFixed(1))
+    : 0;
+  const historyEvents = history.length;
+  const favoritesCount = favorites.length;
+  const playlistsCount = playlists.length;
+  const dataRichness: "sparse" | "growing" | "rich" = historyEvents >= 35
+    ? "rich"
+    : historyEvents >= 10 || favoritesCount >= 8
+      ? "growing"
+      : "sparse";
+  const strategyHint = dataRichness === "rich"
+    ? "Prioritize concrete recent behavior and repeated artists before broader discovery."
+    : dataRichness === "growing"
+      ? "Blend known listening signals with stated preferences; keep discovery adjacent."
+      : "Prefer stated onboarding taste profile and explicit goals over generic suggestions.";
+  const [recentTop] = recentTopArtists;
+  const [overallTop] = [...artistCounts.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
+  const recentTrendSummary = recentTop && overallTop
+    ? recentTop.name === overallTop.name
+      ? `Recent listening is still centered on ${recentTop.name}.`
+      : `Recent listens are shifting toward ${recentTop.name} versus all-time ${overallTop.name}.`
+    : "Not enough listening activity to infer a short-term shift yet.";
 
   const payload: LibraryContextPayload = {
     profile: {
@@ -184,6 +243,25 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
     stats: {
       topGenres: [],
       topArtists: [...artistCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count })),
+      recentTopArtists,
+      recurringArtists,
+      recentTrendSummary,
+      novelty: {
+        newArtistsLast7Days,
+        replayedTracksLast7Days,
+      },
+      playlistPatterns: {
+        totalPlaylists: playlists.length,
+        avgTracksPerPlaylist,
+        topPlaylistNames: playlists.slice(0, 5).map((playlist) => playlist.name),
+      },
+    },
+    grounding: {
+      dataRichness,
+      historyEvents,
+      favoritesCount,
+      playlistsCount,
+      strategyHint,
     },
     statedPreferences: hints?.statedPreferences
       ? {
