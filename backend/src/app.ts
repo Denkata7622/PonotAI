@@ -19,6 +19,7 @@ import developerRouter from "./modules/developer/developer.routes";
 import adminRouter from "./modules/admin/admin.routes";
 import { apiRateLimit, recognitionRateLimit } from "./middlewares/rateLimit.middleware";
 import { responseTimeMiddleware } from "./middlewares/responseTime.middleware";
+import { corsOptions } from "./config/cors";
 import assistantRouter from "./routes/assistant";
 import coverArtRouter from "./routes/coverArt";
 import aiRouter from "./modules/ai/ai.routes";
@@ -66,45 +67,10 @@ app.use(
     },
   }),
 );
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  ...(process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
-    : []),
-];
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error(`CORS: origin ${origin} not allowed`));
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Request-ID",
-      "X-Response-Time",
-      "X-Trackly-Queue",
-      "X-Trackly-Theme",
-      "X-Trackly-Language",
-      "X-Trackly-Device",
-      "x-trackly-queue",
-      "x-trackly-theme",
-      "x-trackly-language",
-      "x-trackly-device",
-    ],
-    exposedHeaders: ["X-Response-Time", "X-Request-ID"],
-  }),
-);
+app.use(cors(corsOptions));
 
 // Handle preflight for all routes
-app.options("*", cors());
+app.options("*", cors(corsOptions));
 app.use(express.json());
 app.use(responseTimeMiddleware);
 

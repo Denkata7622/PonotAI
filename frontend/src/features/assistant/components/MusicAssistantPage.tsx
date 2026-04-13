@@ -40,7 +40,7 @@ export default function MusicAssistantPage({ mode = "page", sidebarOpen = false 
     bottomRef,
   } = useMusicAssistant();
   const [input, setInput] = useState("");
-  const [promptSeed, setPromptSeed] = useState(() => `session-${Date.now()}`);
+  const [promptSeed, setPromptSeed] = useState("session-initial");
   const [showHints, setShowHints] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(mode === "page");
 
@@ -51,6 +51,7 @@ export default function MusicAssistantPage({ mode = "page", sidebarOpen = false 
   useEffect(() => {
     if (typeof window === "undefined") return;
     setShowHints(window.localStorage.getItem("ponotai-assistant-hints") !== "off");
+    setPromptSeed(`session-${Date.now()}`);
   }, []);
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export default function MusicAssistantPage({ mode = "page", sidebarOpen = false 
       className={`selectable-card w-full rounded-xl border px-3 py-2 text-left transition ${conversation.id === activeConversationId ? "border-[var(--accent-border)] bg-[var(--surface-tinted)]" : "border-[var(--border)]"}`}
     >
       <p className="truncate text-sm font-semibold">{conversation.title}</p>
-      <p className="mt-1 text-xs text-[var(--muted)]">{new Date(conversation.updatedAt).toLocaleString()}</p>
+      <p className="mt-1 text-xs text-[var(--muted)]">{conversation.updatedAt.replace("T", " ").slice(0, 16)}</p>
     </button>
   )), [activeConversationId, conversations, openConversation]);
 

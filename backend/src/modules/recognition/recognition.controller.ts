@@ -48,6 +48,11 @@ export async function recognizeAudioController(req: Request, res: Response): Pro
       return;
     }
 
+    if (!req.file.buffer?.length || !req.file.mimetype?.startsWith("audio/")) {
+      sendError(res, ErrorCatalog.INVALID_PAYLOAD, { message: "Audio upload must include a non-empty audio/* file" });
+      return;
+    }
+
     const mode = resolveMode(req.body?.mode);
     const attemptId = typeof req.headers["x-recognition-attempt-id"] === "string" ? req.headers["x-recognition-attempt-id"] : undefined;
     const metadata = await recognizeSongFromAudioByMode(req.file.buffer, req.file.originalname, mode, req.userId, attemptId);
@@ -78,6 +83,11 @@ export async function recognizeImageController(req: Request, res: Response): Pro
   try {
     if (!req.file) {
       sendError(res, ErrorCatalog.IMAGE_FILE_REQUIRED);
+      return;
+    }
+
+    if (!req.file.buffer?.length || !req.file.mimetype?.startsWith("image/")) {
+      sendError(res, ErrorCatalog.INVALID_PAYLOAD, { message: "Image upload must include a non-empty image/* file" });
       return;
     }
 
