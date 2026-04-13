@@ -10,7 +10,7 @@ import {
 import { recognizeWithAcrCloud } from "./providers/acrcloud.provider";
 import { recognizeWithShazam } from "./providers/shazam.provider";
 import { matchBulgarianSong } from "./providers/bulgarian.provider";
-import { extractMetadataWithAiOcr } from "./aiImageOcr.service";
+import { cleanupTesseractTextWithGemma, extractMetadataWithAiOcr } from "./aiImageOcr.service";
 import {
   beforeProviderCall,
   buildAttemptContext,
@@ -65,11 +65,21 @@ const OCR_LANGUAGE_MAP: Record<string, string> = { eng: "eng", bul: "bul", "bul+
 const OCR_MIN_CANDIDATE_CONFIDENCE = 0.36;
 const OCR_MIN_VERIFIED_CONFIDENCE = 0.54;
 const OCR_MAX_SURFACED_RESULTS = 6;
+const OCR_MAX_DIRECT_ATTEMPTS = 3;
+const OCR_MAX_GEMMA_CLEANUP_CALLS = 3;
+const OCR_MAX_YOUTUBE_CHECKS = 6;
+const OCR_MAX_STRONG_MATCHES = 3;
+const OCR_ATTEMPT_TTL_MS = 20_000;
+const OCR_YOUTUBE_CACHE_TTL_MS = 120_000;
 const JUNK_EXACT_TOKENS = new Set(["codewars", "python", "tutorial", "settings", "notifications", "battery", "wifi", "next", "back", "home", "share", "playlist", "search", "library"]);
 const JUNK_FRAGMENT_REGEX = /(codewars|tutorial|python|install|download|subscribe|notification|learning|course|button|privacy|settings|wi-?fi|bluetooth)/i;
 let aiOcrExtractor: typeof extractMetadataWithAiOcr = extractMetadataWithAiOcr;
 let tesseractExtractor: typeof extractMetadataWithOcr = extractMetadataWithOcr;
 let lookupSongExtractor: typeof lookupSongByTitleAndArtist = lookupSongByTitleAndArtist;
+let gemmaCleanupExtractor: typeof cleanupTesseractTextWithGemma = cleanupTesseractTextWithGemma;
+const imageAttemptCache = new Map<string, { expiresAt: number; value: ImageRecognitionOutput }>();
+const youtubeQueryCache = new Map<string, { expiresAt: number; value: ProviderSongMetadata | null }>();
+const inFlightImageAttempts = new Map<string, Promise<ImageRecognitionOutput>>();
 
 const providerStrategy = {
   primaryProvider: (process.env.RECOGNITION_PRIMARY_PROVIDER as ProviderName | undefined) ?? "audd",
@@ -339,6 +349,16 @@ function dedupeOcrCandidates(candidates: OcrCandidateMetadata[]): OcrCandidateMe
   return deduped;
 }
 
+function pruneImageCaches(): void {
+  const now = Date.now();
+  for (const [key, value] of imageAttemptCache.entries()) {
+    if (value.expiresAt <= now) imageAttemptCache.delete(key);
+  }
+  for (const [key, value] of youtubeQueryCache.entries()) {
+    if (value.expiresAt <= now) youtubeQueryCache.delete(key);
+  }
+}
+
 function normalizeOcrText(text: string): string {
   return text
     .replace(/[“”„‟"']/g, "")
@@ -436,29 +456,44 @@ export function __setImageOcrExtractorsForTests(overrides: {
   aiExtractor?: typeof extractMetadataWithAiOcr;
   tesseractExtractor?: typeof extractMetadataWithOcr;
   lookupExtractor?: typeof lookupSongByTitleAndArtist;
+  gemmaCleanupExtractor?: typeof cleanupTesseractTextWithGemma;
 } | null): void {
   aiOcrExtractor = overrides?.aiExtractor ?? extractMetadataWithAiOcr;
   tesseractExtractor = overrides?.tesseractExtractor ?? extractMetadataWithOcr;
   lookupSongExtractor = overrides?.lookupExtractor ?? lookupSongByTitleAndArtist;
+  gemmaCleanupExtractor = overrides?.gemmaCleanupExtractor ?? cleanupTesseractTextWithGemma;
 }
 
 export type ImageRecognitionOutput = {
   songs: SongMetadata[];
   warnings: string[];
-  ocrPath: "ai_primary" | "tesseract_only";
+  ocrPath: "ai_primary" | "tesseract_plus_gemma";
 };
 
 export async function recognizeSongFromImage(buffer: Buffer, language = "eng", mimeType = "image/jpeg", maxSongs = 5): Promise<ImageRecognitionOutput> {
+  pruneImageCaches();
+  const imageHash = hashAudioBuffer(buffer);
+  const attemptKey = `${language}:${mimeType}:${imageHash}:${maxSongs}`;
+  const cachedAttempt = imageAttemptCache.get(attemptKey);
+  if (cachedAttempt) return cachedAttempt.value;
+  const inFlight = inFlightImageAttempts.get(attemptKey);
+  if (inFlight) return inFlight;
+
+  const runPipeline = async (): Promise<ImageRecognitionOutput> => {
   const warnings: string[] = [];
   const candidates: OcrCandidateMetadata[] = [];
+  const checkedQueries = new Set<string>();
   const resolvedMaxSongs = Math.max(1, Math.min(20, Number.isFinite(maxSongs) ? Math.trunc(maxSongs) : 5));
+  const usage = { directAttempts: 0, gemmaCalls: 0, youtubeChecks: 0, strongMatches: 0 };
   const aiStart = Date.now();
-  console.info("[recognition:image] primary_ocr_attempt", { provider: "gemini_vision", language });
+  console.info("[recognition:image] primary_ocr_attempt", { provider: "gemini_vision_chain", language });
+  if (usage.directAttempts >= OCR_MAX_DIRECT_ATTEMPTS) throw new NoVerifiedResultError("OCR direct model budget exhausted for this image.");
+  usage.directAttempts += 1;
   const aiResult = await aiOcrExtractor(buffer, mimeType);
 
-  if (aiResult.status === "success") {
+  if (aiResult.status === "success" && aiResult.songs.length > 0) {
     console.info("[recognition:image] primary_ocr_success", {
-      provider: "gemini_vision",
+      provider: aiResult.model,
       candidates: aiResult.songs.length,
       confidence: aiResult.songs[0]?.confidenceScore ?? null,
       latencyMs: Date.now() - aiStart,
@@ -475,21 +510,39 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
   } else {
     console.warn("[recognition:image] primary_ocr_unavailable", {
       provider: "gemini_vision",
-      reason: aiResult.reason,
-      fallback: "tesseract",
+      reason: aiResult.status === "unavailable" ? aiResult.reason : "invalid_payload",
+      fallback: "tesseract_plus_gemma",
       latencyMs: Date.now() - aiStart,
     });
-    warnings.push(`PRIMARY_OCR_UNAVAILABLE:${aiResult.reason}`);
+    warnings.push(`PRIMARY_OCR_UNAVAILABLE:${aiResult.status === "unavailable" ? aiResult.reason : "invalid_payload"}`);
   }
 
   if (candidates.length === 0) {
     const fallback = await tesseractExtractor(buffer, language);
+    const cleanupInput = dedupeOcrCandidates(fallback).map((item) => `${item.songName} - ${item.artist}`).join("\n");
+    if (usage.gemmaCalls < OCR_MAX_GEMMA_CLEANUP_CALLS && cleanupInput.trim()) {
+      usage.gemmaCalls += 1;
+      const cleaned = await gemmaCleanupExtractor(cleanupInput);
+      if (cleaned.status === "success") {
+        candidates.push(
+          ...cleaned.songs.map((song) => ({
+            songName: song.title,
+            artist: song.artist,
+            album: UNKNOWN_METADATA.album,
+            confidenceScore: Math.max(0.35, song.confidenceScore),
+            source: "tesseract" as const,
+          })),
+        );
+      } else {
+        warnings.push(`TEXT_CLEANUP_UNAVAILABLE:${cleaned.reason}`);
+      }
+    }
     console.info("[recognition:image] fallback_ocr_result", {
       provider: "tesseract",
       candidates: fallback.length,
       confidence: fallback[0]?.confidenceScore ?? null,
     });
-    candidates.push(...fallback);
+    candidates.push(...fallback.map((candidate) => ({ ...candidate, confidenceScore: Math.min(0.6, candidate.confidenceScore) })));
     warnings.push("OCR_FALLBACK_USED");
   }
 
@@ -509,10 +562,23 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
   });
 
   for (const candidate of rankedCandidates) {
+    if (usage.youtubeChecks >= OCR_MAX_YOUTUBE_CHECKS || usage.strongMatches >= OCR_MAX_STRONG_MATCHES) break;
+    const lookupKey = `${candidate.songName.toLowerCase()}::${candidate.artist.toLowerCase()}`;
+    if (checkedQueries.has(lookupKey)) continue;
+    checkedQueries.add(lookupKey);
     try {
-      const providerResult = await lookupSongExtractor(candidate.songName, candidate.artist);
+      let providerResult: ProviderSongMetadata | null = null;
+      const cached = youtubeQueryCache.get(lookupKey);
+      if (cached) {
+        providerResult = cached.value;
+      } else {
+        usage.youtubeChecks += 1;
+        providerResult = await lookupSongExtractor(candidate.songName, candidate.artist);
+        youtubeQueryCache.set(lookupKey, { value: providerResult, expiresAt: Date.now() + OCR_YOUTUBE_CACHE_TTL_MS });
+      }
       if (providerResult && providerResult.confidenceScore >= OCR_MIN_VERIFIED_CONFIDENCE) {
         const resultState = classifyResultState(providerResult.confidenceScore);
+        if (resultState === "exact_match" || resultState === "strong_likely_match") usage.strongMatches += 1;
         songMetadataResults.push({
           ...toProviderResponse(providerResult),
           resultState,
@@ -520,7 +586,7 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
           warnings: resultState === "need_better_sample" || resultState === "possible_matches" ? ["LOW_CONFIDENCE_MATCH", ...warnings] : warnings,
         });
       } else {
-        const bulgarianFallback = matchBulgarianSong(`${candidate.songName} ${candidate.artist}`);
+        const bulgarianFallback = usage.youtubeChecks <= OCR_MAX_YOUTUBE_CHECKS ? matchBulgarianSong(`${candidate.songName} ${candidate.artist}`) : null;
         songMetadataResults.push(
           bulgarianFallback
             ? { ...toProviderResponse(bulgarianFallback), resultState: "strong_likely_match", ocrEngine: candidate.source === "tesseract" ? "tesseract" : "gemini_vision", warnings }
@@ -551,5 +617,14 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
   const plausibleResults = songMetadataResults
     .sort((a, b) => b.confidenceScore - a.confidenceScore)
     .slice(0, Math.min(resolvedMaxSongs, OCR_MAX_SURFACED_RESULTS));
-  return { songs: plausibleResults, warnings, ocrPath: warnings.includes("OCR_FALLBACK_USED") ? "tesseract_only" : "ai_primary" };
+    const output: ImageRecognitionOutput = { songs: plausibleResults, warnings, ocrPath: warnings.includes("OCR_FALLBACK_USED") ? "tesseract_plus_gemma" : "ai_primary" };
+    imageAttemptCache.set(attemptKey, { value: output, expiresAt: Date.now() + OCR_ATTEMPT_TTL_MS });
+    return output;
+  };
+
+  const promise = runPipeline().finally(() => {
+    inFlightImageAttempts.delete(attemptKey);
+  });
+  inFlightImageAttempts.set(attemptKey, promise);
+  return promise;
 }
