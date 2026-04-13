@@ -90,3 +90,75 @@ test("image recognition attempts primary AI OCR first and avoids tesseract fallb
     __setImageOcrExtractorsForTests(null);
   }
 });
+
+test("image recognition fills high maxSongs for screenshot-like multi-row OCR input", async () => {
+  __setImageOcrExtractorsForTests({
+    aiExtractor: async () => ({
+      status: "success",
+      songs: Array.from({ length: 14 }, (_, index) => ({
+        title: `Song ${index + 1}`,
+        artist: `Artist ${index + 1}`,
+        confidenceScore: 0.74 - index * 0.01,
+      })),
+    }),
+    tesseractExtractor: async () => [],
+    lookupExtractor: async (songName, artist) => ({
+      songName,
+      artist,
+      album: "Test Album",
+      genre: "Pop",
+      releaseYear: 2024,
+      confidenceScore: 0.87,
+      platformLinks: {},
+      youtubeVideoId: undefined,
+    }),
+  });
+
+  try {
+    const result = await recognizeSongFromImage(SAMPLE, "eng", "image/png", 10);
+    assert.equal(result.songs.length, 10);
+    assert.equal(result.songs[0]?.songName, "Song 1");
+    assert.equal(result.songs[9]?.songName, "Song 10");
+  } finally {
+    __setImageOcrExtractorsForTests(null);
+  }
+});
+
+test("image verification fallback keeps plausible rows instead of collapsing to a few matches", async () => {
+  let lookupCalls = 0;
+  __setImageOcrExtractorsForTests({
+    aiExtractor: async () => ({
+      status: "success",
+      songs: Array.from({ length: 12 }, (_, index) => ({
+        title: `Screenshot Track ${index + 1}`,
+        artist: `Row Artist ${index + 1}`,
+        confidenceScore: 0.72 - index * 0.01,
+      })),
+    }),
+    tesseractExtractor: async () => [],
+    lookupExtractor: async (songName, artist) => {
+      lookupCalls += 1;
+      if (lookupCalls <= 2) {
+        return {
+          songName,
+          artist,
+          album: "Verified",
+          genre: "Pop",
+          releaseYear: 2025,
+          confidenceScore: 0.9,
+          platformLinks: {},
+          youtubeVideoId: "yt1",
+        };
+      }
+      return null;
+    },
+  });
+
+  try {
+    const result = await recognizeSongFromImage(SAMPLE, "eng", "image/png", 8);
+    assert.equal(result.songs.length, 8);
+    assert.ok(lookupCalls >= 8);
+  } finally {
+    __setImageOcrExtractorsForTests(null);
+  }
+});

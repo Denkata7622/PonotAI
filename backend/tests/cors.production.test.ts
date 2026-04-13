@@ -41,3 +41,25 @@ test("CORS preflight returns allow-origin for /api/recognition/image", async () 
     await running.close();
   }
 });
+
+test("CORS preflight allows assistant custom headers", async () => {
+  const running = await startTestServer();
+  try {
+    const response = await fetch(`${running.baseUrl}/api/assistant`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: FRONTEND_ORIGIN,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "authorization,content-type,x-trackly-queue,x-trackly-theme,x-trackly-language,x-trackly-preferences,x-trackly-device",
+      },
+    });
+
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get("access-control-allow-origin"), FRONTEND_ORIGIN);
+    const allowHeaders = response.headers.get("access-control-allow-headers") ?? "";
+    assert.match(allowHeaders.toLowerCase(), /x-trackly-device/);
+    assert.match(allowHeaders.toLowerCase(), /x-trackly-preferences/);
+  } finally {
+    await running.close();
+  }
+});

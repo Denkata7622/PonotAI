@@ -101,3 +101,19 @@ test("splits title and artist from same line with dash", () => {
   assert.equal(result.music?.title, "Numb");
   assert.equal(result.music?.artist, "Linkin Park");
 });
+
+test("keeps compact screenshot rows separated for list-style OCR layouts", () => {
+  const result = interpretOcr([
+    block("Anti-Hero", 88, 120, 220, 24),
+    block("Taylor Swift", 92, 148, 210, 22),
+    block("Flowers", 88, 182, 170, 24),
+    block("Miley Cyrus", 92, 210, 190, 22),
+    block("As It Was", 88, 244, 170, 24),
+    block("Harry Styles", 92, 272, 200, 22),
+  ]);
+
+  assert.ok(result.lines.length >= 6);
+  assert.equal(result.lines.some((line) => line.text === "Anti-Hero"), true);
+  assert.equal(result.lines.some((line) => line.text === "Flowers"), true);
+  assert.equal(result.lines.some((line) => line.text === "As It Was"), true);
+});

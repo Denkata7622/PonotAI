@@ -126,7 +126,7 @@ function reconstructLines(blocks: OcrBlock[]): RawLine[] {
 
   const image = getImageBounds(sorted);
   const averageHeight = sorted.reduce((sum, block) => sum + block.bbox.height, 0) / sorted.length;
-  const yThreshold = Math.max(4, averageHeight * 0.6);
+  const yThreshold = Math.max(2, averageHeight * 0.42);
 
   const grouped: OcrBlock[][] = [];
   for (const block of sorted) {
@@ -162,9 +162,10 @@ function reconstructLines(blocks: OcrBlock[]): RawLine[] {
 
       const gap = part.bbox.x - (last.bbox.x + last.bbox.width);
       const overlap = gap <= 0;
-      const close = gap <= Math.max(2, Math.min(last.bbox.height, part.bbox.height) * 0.4);
+      const close = gap <= Math.max(2, Math.min(last.bbox.height, part.bbox.height) * 0.32);
+      const sameRow = Math.abs((last.bbox.y + last.bbox.height / 2) - (part.bbox.y + part.bbox.height / 2)) <= Math.max(2, Math.min(last.bbox.height, part.bbox.height) * 0.38);
 
-      if (overlap || close) {
+      if (sameRow && (overlap || close)) {
         const newText = `${last.text} ${part.text}`.replace(/\s+/g, " ").trim();
         const left = Math.min(last.bbox.x, part.bbox.x);
         const top = Math.min(last.bbox.y, part.bbox.y);
