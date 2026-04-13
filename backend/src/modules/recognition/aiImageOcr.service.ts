@@ -2,9 +2,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export type AiOcrSuccess = {
   status: "success";
-  title: string;
-  artist: string;
-  confidenceScore: number;
+  songs: Array<{
+    title: string;
+    artist: string;
+    confidenceScore: number;
+  }>;
 };
 
 export type AiOcrUnavailable = {
@@ -19,21 +21,40 @@ function getGeminiApiKey(): string | null {
   return key || null;
 }
 
+function clampConfidence(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0.25, Math.min(0.95, parsed)) : 0.7;
+}
+
 function parseAiJson(rawText: string): AiOcrSuccess | null {
   const cleaned = rawText.trim().replace(/^```json\s*/i, "").replace(/^```/, "").replace(/```$/, "").trim();
-  const parsed = JSON.parse(cleaned) as { title?: unknown; artist?: unknown; confidenceScore?: unknown; confidence?: unknown };
-  const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
-  const artist = typeof parsed.artist === "string" ? parsed.artist.trim() : "";
-  const confidence = Number(parsed.confidenceScore ?? parsed.confidence);
-
-  if (!title) return null;
-
-  return {
-    status: "success",
-    title,
-    artist: artist || "Unknown Artist",
-    confidenceScore: Number.isFinite(confidence) ? Math.max(0.25, Math.min(0.95, confidence)) : 0.7,
+  const parsed = JSON.parse(cleaned) as {
+    title?: unknown;
+    artist?: unknown;
+    confidenceScore?: unknown;
+    confidence?: unknown;
+    songs?: Array<{ title?: unknown; artist?: unknown; confidenceScore?: unknown; confidence?: unknown }>;
   };
+
+  const songsPayload = Array.isArray(parsed.songs)
+    ? parsed.songs
+    : [{ title: parsed.title, artist: parsed.artist, confidenceScore: parsed.confidenceScore ?? parsed.confidence }];
+
+  const songs = songsPayload
+    .map((song) => {
+      const title = typeof song.title === "string" ? song.title.trim() : "";
+      if (!title) return null;
+      const artist = typeof song.artist === "string" ? song.artist.trim() : "";
+      return {
+        title,
+        artist: artist || "Unknown Artist",
+        confidenceScore: clampConfidence(song.confidenceScore ?? song.confidence),
+      };
+    })
+    .filter((song): song is NonNullable<typeof song> => Boolean(song));
+
+  if (songs.length === 0) return null;
+  return { status: "success", songs };
 }
 
 export async function extractMetadataWithAiOcr(buffer: Buffer, mimeType = "image/jpeg"): Promise<AiOcrResult> {
@@ -67,7 +88,7 @@ export async function extractMetadataWithAiOcr(buffer: Buffer, mimeType = "image
           role: "user",
           parts: [
             {
-              text: "Extract song metadata from this image. Return strict JSON with: title (string), artist (string), confidenceScore (0-1). If uncertain, lower confidenceScore.",
+              text: "Extract up to 15 song candidates from this image. Return strict JSON with `songs` array. Each item needs: title (string), artist (string), confidenceScore (0-1). Sort best to worst and exclude duplicates.",
             },
             {
               inlineData: {
