@@ -111,7 +111,7 @@ export default function StatsPage() {
                 <XAxis dataKey="name" interval={0} tickMargin={10} tickFormatter={(value: string) => String(value).length > 12 ? `${String(value).slice(0, 12)}…` : String(value)} />
                 <YAxis width={36} />
                 <Tooltip />
-                <Bar dataKey="count" fill="var(--accent)" radius={[8, 8, 0, 0]} maxBarSize={42} />
+                <Bar dataKey="count" fill="var(--chart-1)" radius={[8, 8, 0, 0]} maxBarSize={42} />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -21,6 +21,8 @@ export const SUPPORTED_ACCENTS = [
 ] as const;
 
 export type AccentPreset = (typeof SUPPORTED_ACCENTS)[number];
+export type AccentIntensity = "subtle" | "balanced" | "vivid";
+export type ChartStyle = "neutral" | "accent-led" | "multicolor";
 
 export type AccentTokenSet = {
   accent: string;
@@ -51,6 +53,12 @@ export const ACCENT_TOKENS: Record<AccentPreset, AccentTokenSet> = {
   graphite: { accent: "#4b5563", accentRgb: "75, 85, 99", accent2: "#374151", accentForeground: "#ffffff" },
 };
 
+const intensityAlpha: Record<AccentIntensity, { soft: number; border: number; ring: number; hover: number; active: number }> = {
+  subtle: { soft: 0.1, border: 0.3, ring: 0.26, hover: 0.15, active: 0.14 },
+  balanced: { soft: 0.18, border: 0.5, ring: 0.35, hover: 0.24, active: 0.2 },
+  vivid: { soft: 0.24, border: 0.66, ring: 0.48, hover: 0.34, active: 0.28 },
+};
+
 export function isAccentPreset(value: unknown): value is AccentPreset {
   return typeof value === "string" && SUPPORTED_ACCENTS.includes(value as AccentPreset);
 }
@@ -59,19 +67,32 @@ export function normalizeAccentPreset(value: unknown, fallback: AccentPreset = "
   return isAccentPreset(value) ? value : fallback;
 }
 
-export function getAccentCssVariables(accent: AccentPreset): Record<string, string> {
+export function getAccentCssVariables(accent: AccentPreset, intensity: AccentIntensity = "balanced", chartStyle: ChartStyle = "accent-led"): Record<string, string> {
   const token = ACCENT_TOKENS[accent];
+  const alpha = intensityAlpha[intensity];
+  const chartTokens =
+    chartStyle === "neutral"
+      ? ["#94a3b8", "#64748b", "#475569", "#334155", "#1e293b"]
+      : chartStyle === "multicolor"
+        ? [token.accent, token.accent2, "#22c55e", "#f59e0b", "#ef4444"]
+        : [token.accent, token.accent2, `rgba(${token.accentRgb}, 0.75)`, `rgba(${token.accentRgb}, 0.58)`, `rgba(${token.accentRgb}, 0.42)`];
+
   return {
     "--accent": token.accent,
     "--accent-rgb": token.accentRgb,
     "--accent-2": token.accent2,
     "--accent-foreground": token.accentForeground,
-    "--accent-soft": `rgba(${token.accentRgb}, 0.18)`,
-    "--accent-border": `rgba(${token.accentRgb}, 0.5)`,
-    "--accent-ring": `rgba(${token.accentRgb}, 0.35)`,
-    "--accent-hover": `rgba(${token.accentRgb}, 0.24)`,
-    "--accent-active-bg": `rgba(${token.accentRgb}, 0.2)`,
+    "--accent-soft": `rgba(${token.accentRgb}, ${alpha.soft})`,
+    "--accent-border": `rgba(${token.accentRgb}, ${alpha.border})`,
+    "--accent-ring": `rgba(${token.accentRgb}, ${alpha.ring})`,
+    "--accent-hover": `rgba(${token.accentRgb}, ${alpha.hover})`,
+    "--accent-active-bg": `rgba(${token.accentRgb}, ${alpha.active})`,
     "--listen-glow": `rgba(${token.accentRgb}, 0.55)`,
-    "--listen-glow-soft": `rgba(${token.accentRgb}, 0.18)`,
+    "--listen-glow-soft": `rgba(${token.accentRgb}, ${Math.max(0.14, alpha.soft)})`,
+    "--chart-1": chartTokens[0],
+    "--chart-2": chartTokens[1],
+    "--chart-3": chartTokens[2],
+    "--chart-4": chartTokens[3],
+    "--chart-5": chartTokens[4],
   };
 }

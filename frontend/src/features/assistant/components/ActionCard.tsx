@@ -49,7 +49,7 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
   const router = useRouter();
   const { addManyToQueue } = usePlayer();
   const { addFavorite, favorites } = useUser();
-  const { setTheme, setAccent, setDensity } = useTheme();
+  const { applyPersonalization } = useTheme();
   const { setLocale, language } = useLanguage();
   const { profile } = useProfile();
   const { playlists, createPlaylist, addSongsToPlaylist } = useLibrary(profile.id);
@@ -134,10 +134,8 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
 
       if (intent.type === "CHANGE_THEME") {
         const next = normalizeThemeActionPayload(intent.payload);
-        if (next.theme) setTheme(next.theme);
-        if (next.accent) setAccent(next.accent);
-        if (next.density) setDensity(next.density);
-        const summary = [next.theme, next.accent, next.density].filter(Boolean).join(" / ");
+        applyPersonalization(next);
+        const summary = Object.values(next).filter(Boolean).join(" / ");
         window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: summary ? `Applied ${summary}` : "Theme settings updated" } }));
       }
 

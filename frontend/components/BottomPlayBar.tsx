@@ -150,7 +150,7 @@ export default function BottomPlayBar() {
                   {isExpanded && (
                     <span
                       aria-label="Collapse player"
-                      className="mt-2 inline-flex rounded-full bg-purple-600 p-2 text-white shadow-md"
+                      className="mt-2 inline-flex rounded-full bg-[var(--accent)] p-2 text-[var(--accent-foreground)] shadow-md"
                     >
                       <span className="text-lg leading-none">↓</span>
                     </span>
@@ -160,7 +160,7 @@ export default function BottomPlayBar() {
 
               <div className="flex items-center gap-2">
                 <button onClick={skipPrevious} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Previous"><SkipBack className="w-4 h-4 text-[var(--text)]" /></button>
-                <button onClick={togglePlayPause} className="h-10 w-10 rounded-full bg-[var(--surface-raised)] grid place-items-center" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="w-4 h-4 text-[var(--text)]" /> : <Play className="w-4 h-4 text-[var(--text)]" />}</button>
+                <button onClick={togglePlayPause} className="h-10 w-10 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] grid place-items-center" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="w-4 h-4 text-[var(--text)]" /> : <Play className="w-4 h-4 text-[var(--text)]" />}</button>
                 <button onClick={skipNext} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Next"><SkipForward className="w-4 h-4 text-[var(--text)]" /></button>
                 <button onClick={toggleMute} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="w-4 h-4 text-[var(--muted)]" /> : <Volume2 className="w-4 h-4 text-[var(--text)]" />}</button>
                 <button data-testid="queue-toggle" onClick={() => togglePanel("queue")} className="relative h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Queue"><ListMusic className={`w-4 h-4 ${isQueueOpen ? "text-[var(--accent)]" : "text-[var(--text)]"}`} />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
@@ -169,10 +169,10 @@ export default function BottomPlayBar() {
                 <div className="ml-auto min-w-0 flex-1">
                   <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2 text-xs text-text-muted">
                     <span>{formatTime(currentTime)}</span>
-                    <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="w-full" aria-label={isBg ? "Прогрес" : "Track progress"} />
+                    <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="w-full themed-progress" aria-label={isBg ? "Прогрес" : "Track progress"} />
                     <span className="text-right">{formatTime(duration)}</span>
                   </div>
-                  <input type="range" min={0} max={100} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="mt-2 w-full" aria-label={isBg ? "Сила на звука" : "Volume"} />
+                  <input type="range" min={0} max={100} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="mt-2 w-full themed-progress" aria-label={isBg ? "Сила на звука" : "Volume"} />
                 </div>
               </div>
 

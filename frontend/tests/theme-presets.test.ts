@@ -8,11 +8,11 @@ test("normalizeAccentPreset falls back for unsupported accent values", () => {
   assert.equal(normalizeAccentPreset("midnight"), "violet");
 });
 
-test("getAccentCssVariables returns accent variables used by UI surfaces", () => {
-  const cssVars = getAccentCssVariables("emerald");
+test("getAccentCssVariables returns expanded UI token variables", () => {
+  const cssVars = getAccentCssVariables("emerald", "vivid", "multicolor");
   assert.equal(cssVars["--accent"], "#10b981");
   assert.ok(cssVars["--accent-ring"].includes("16, 185, 129"));
-  assert.ok(cssVars["--accent-active-bg"].includes("16, 185, 129"));
+  assert.ok(cssVars["--chart-2"]);
 });
 
 test("applyAccentVariables writes accent data and css variables to root", () => {
@@ -25,7 +25,7 @@ test("applyAccentVariables writes accent data and css variables to root", () => 
   };
   Object.defineProperty(globalThis, "document", { value: { documentElement: root }, configurable: true });
 
-  applyAccentVariables("ruby");
+  applyAccentVariables("ruby", "subtle", "neutral");
 
   assert.equal(values.get("data-accent"), "ruby");
   assert.equal(values.get("--accent"), "#be123c");
