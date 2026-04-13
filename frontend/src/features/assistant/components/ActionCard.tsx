@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle, Heart, Languages, ListMusic, ListPlus, Search, Sun, X } from "lucide-react";
 import { usePlayer } from "@/components/PlayerProvider";
@@ -10,14 +11,16 @@ import { t } from "@/lib/translations";
 import { useProfile } from "@/lib/ProfileContext";
 import { useLibrary } from "@/features/library/useLibrary";
 import { runAssistantAction } from "../api";
-import { normalizeThemeActionPayload } from "../themeAction";
+import { hasApplicableThemeChange, normalizeThemeActionPayload } from "../themeAction";
 import type { ActionIntent } from "../types";
 
 type Props = {
   intent: ActionIntent;
-  onAccept: () => void;
+  onApplyStart: () => void;
+  onApplySuccess: () => void;
   onDismiss: () => void;
-  state: "pending" | "accepted" | "dismissed" | "failed";
+  onApplyFailure: () => void;
+  state: "pending" | "applying" | "accepted" | "dismissed" | "failed";
 };
 
 function getActionLabel(type: ActionIntent["type"]) {
@@ -45,7 +48,7 @@ function parseTrackId(trackId: string): { title: string; artist: string } {
   return { title: title || "Unknown Song", artist: artist || "Unknown Artist" };
 }
 
-export default function ActionCard({ intent, onAccept, onDismiss, state }: Props) {
+export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDismiss, onApplyFailure, state }: Props) {
   const router = useRouter();
   const { addManyToQueue } = usePlayer();
   const { addFavorite, favorites } = useUser();
@@ -54,6 +57,7 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
   const { profile } = useProfile();
   const { playlists, createPlaylist, addSongsToPlaylist } = useLibrary(profile.id);
   const { icon: Icon, text } = getActionLabel(intent.type);
+  const [busy, setBusy] = useState(false);
 
   function resolveTrack(trackId: string) {
     const parsed = parseTrackId(trackId);
@@ -85,6 +89,9 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
   }
 
   async function handleAccept() {
+    if (busy || state === "applying") return;
+    setBusy(true);
+    onApplyStart();
     try {
       if (intent.type === "ADD_TO_QUEUE") {
         const trackIds = (intent.payload.trackIds as string[]) ?? [];
@@ -134,8 +141,10 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
 
       if (intent.type === "CHANGE_THEME") {
         const next = normalizeThemeActionPayload(intent.payload);
-        applyPersonalization(next);
-        const summary = Object.values(next).filter(Boolean).join(" / ");
+        if (!hasApplicableThemeChange(next)) throw new Error("No supported theme changes found in assistant action.");
+        const { template: _template, ...patch } = next;
+        applyPersonalization(patch);
+        const summary = Object.values(patch).filter(Boolean).join(" / ");
         window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: summary ? `Applied ${summary}` : "Theme settings updated" } }));
       }
 
@@ -162,10 +171,12 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
         console.info("[assistant action]", result);
       }
 
-      window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: "Assistant action completed." } }));
-      onAccept();
+      onApplySuccess();
     } catch {
       window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: "Assistant action failed." } }));
+      onApplyFailure();
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -179,10 +190,11 @@ export default function ActionCard({ intent, onAccept, onDismiss, state }: Props
 
       {state === "pending" && (
         <div className="assistant-action-buttons">
-          <button type="button" onClick={handleAccept} className="assistant-action-primary">{t("assistant_accept", language)}</button>
-          <button type="button" onClick={onDismiss} className="assistant-action-ghost">{t("assistant_dismiss", language)}</button>
+          <button type="button" onClick={handleAccept} className="assistant-action-primary" disabled={busy}>{t("assistant_accept", language)}</button>
+          <button type="button" onClick={onDismiss} className="assistant-action-ghost" disabled={busy}>{t("assistant_dismiss", language)}</button>
         </div>
       )}
+      {state === "applying" && <p className="assistant-action-muted">Applying…</p>}
       {state === "accepted" && <p className="assistant-action-success"><CheckCircle width={14} height={14} strokeWidth={1.8} /> {t("assistant_done", language)}</p>}
       {state === "dismissed" && <p className="assistant-action-muted"><X width={14} height={14} strokeWidth={1.8} /> {t("assistant_dismissed", language)}</p>}
       {state === "failed" && <p className="assistant-action-failed"><AlertCircle width={14} height={14} strokeWidth={1.8} /> {t("assistant_failed_try", language)}</p>}

@@ -7,6 +7,16 @@ import { stripAssistantActionMarkup } from "./responseSanitizer";
 import { readTasteProfile } from "../onboarding/tasteProfile";
 
 const API_BASE_URL = getApiBaseUrl();
+async function fetchJsonOrThrow(input: string, init: RequestInit): Promise<unknown> {
+  const response = await fetch(input, init);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const message = (body as { message?: string }).message ?? `Assistant action failed (HTTP ${response.status})`;
+    throw new Error(message);
+  }
+  return response.json();
+}
+
 function buildAuthHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -73,43 +83,43 @@ export async function runAssistantAction(intent: ActionIntent): Promise<unknown>
   switch (intent.type) {
     case "INSIGHT_REQUEST":
       if (intent.payload.kind === "trends") {
-        return fetch(`${API_BASE_URL}/api/ai/insights/trends`, { headers }).then((res) => res.json());
+        return fetchJsonOrThrow(`${API_BASE_URL}/api/ai/insights/trends`, { headers });
       }
-      return fetch(`${API_BASE_URL}/api/ai/insights/${intent.payload.period === "monthly" ? "monthly" : "weekly"}`, { headers }).then((res) => res.json());
+      return fetchJsonOrThrow(`${API_BASE_URL}/api/ai/insights/${intent.payload.period === "monthly" ? "monthly" : "weekly"}`, { headers });
     case "PLAYLIST_GENERATION":
-      return fetch(`${API_BASE_URL}/api/ai/playlists/generate`, {
+      return fetchJsonOrThrow(`${API_BASE_URL}/api/ai/playlists/generate`, {
         method: "POST",
         headers,
         body: JSON.stringify({ prompt: intent.payload.prompt, confirmed: true }),
-      }).then((res) => res.json());
+      });
     case "MOOD_RECOMMENDATION":
-      return fetch(`${API_BASE_URL}/api/ai/recommendations/mood?mood=${encodeURIComponent(String(intent.payload.mood ?? "relax"))}`, { headers }).then((res) => res.json());
+      return fetchJsonOrThrow(`${API_BASE_URL}/api/ai/recommendations/mood?mood=${encodeURIComponent(String(intent.payload.mood ?? "relax"))}`, { headers });
     case "CONTEXT_RECOMMENDATION":
-      return fetch(`${API_BASE_URL}/api/ai/recommendations/contextual`, { headers }).then((res) => res.json());
+      return fetchJsonOrThrow(`${API_BASE_URL}/api/ai/recommendations/contextual`, { headers });
     case "TAG_SUGGESTION":
-      return fetch(`${API_BASE_URL}/api/ai/tags/suggest`, { method: "POST", headers }).then((res) => res.json());
+      return fetchJsonOrThrow(`${API_BASE_URL}/api/ai/tags/suggest`, { method: "POST", headers });
     case "DISCOVERY_REQUEST":
-      return fetch(`${API_BASE_URL}/api/ai/discovery/${intent.payload.mode === "surprise" ? "surprise" : "daily"}`, { headers }).then((res) => res.json());
+      return fetchJsonOrThrow(`${API_BASE_URL}/api/ai/discovery/${intent.payload.mode === "surprise" ? "surprise" : "daily"}`, { headers });
     case "CROSS_ARTIST_DISCOVERY":
-      return fetch(
+      return fetchJsonOrThrow(
         `${API_BASE_URL}/api/ai/recommendations/cross-artist?differentArtistsOnly=${intent.payload.differentArtistsOnly === false ? "false" : "true"}&limit=${encodeURIComponent(String(intent.payload.limit ?? 8))}`,
         { headers },
-      ).then((res) => res.json());
+      );
     case "SHOW_SIMILAR_ARTISTS":
-      return fetch(
+      return fetchJsonOrThrow(
         `${API_BASE_URL}/api/ai/recommendations/cross-artist?differentArtistsOnly=true&limit=8&anchor=${encodeURIComponent(String(intent.payload.anchorArtist ?? ""))}`,
         { headers },
-      ).then((res) => res.json());
+      );
     case "PREVIEW_DISCOVERY_PLAYLIST":
-      return fetch(
+      return fetchJsonOrThrow(
         `${API_BASE_URL}/api/ai/playlists/generate`,
         { method: "POST", headers, body: JSON.stringify({ prompt: `Discovery playlist: ${(intent.payload.artists as string[] ?? []).join(", ")}` }) },
-      ).then((res) => res.json());
+      );
     case "CREATE_DISCOVERY_PLAYLIST":
-      return fetch(
+      return fetchJsonOrThrow(
         `${API_BASE_URL}/api/ai/playlists/generate`,
         { method: "POST", headers, body: JSON.stringify({ prompt: `${intent.payload.name}: ${(intent.payload.artists as string[] ?? []).join(", ")}`, confirmed: true }) },
-      ).then((res) => res.json());
+      );
     default:
       return null;
   }

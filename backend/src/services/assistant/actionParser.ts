@@ -1,4 +1,5 @@
 import type { ActionIntent } from "../../types/assistant";
+import { THEME_TEMPLATE_BY_ID, isAccentName, isDensityName, isTemplateId, isThemeMode } from "./themeCatalog";
 
 const ACTION_TYPES = new Set<ActionIntent["type"]>([
   "ADD_TO_QUEUE",
@@ -22,7 +23,6 @@ const ACTION_TYPES = new Set<ActionIntent["type"]>([
 
 const OPEN_ACTION_TAG = /<action>/i;
 const CLOSED_ACTION_BLOCK = /<action>([\s\S]*?)<\/action>/i;
-const SUPPORTED_ACCENTS = ["violet", "indigo", "blue", "cyan", "ocean", "teal", "emerald", "lime", "amber", "gold", "orange", "sunset", "coral", "rose", "ruby", "magenta", "plum", "slate", "graphite"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -32,10 +32,29 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string" && item.length > 0);
 }
 
-function validatePayload(type: ActionIntent["type"], payload: Record<string, unknown>): boolean {
+function normalizeThemePayload(payload: Record<string, unknown>): Record<string, unknown> | null {
+  const template = isTemplateId(payload.template) ? THEME_TEMPLATE_BY_ID.get(payload.template) : null;
+  if (payload.template !== undefined && !template) return null;
+
+  const theme = payload.theme === undefined ? template?.theme : (isThemeMode(payload.theme) ? payload.theme : null);
+  const accent = payload.accent === undefined ? template?.accent : (isAccentName(payload.accent) ? payload.accent : null);
+  const density = payload.density === undefined ? template?.density : (isDensityName(payload.density) ? payload.density : null);
+
+  if (theme === null || accent === null || density === null) return null;
+  if (!theme && !accent && !density && !template) return null;
+
+  return {
+    ...(theme ? { theme } : {}),
+    ...(accent ? { accent } : {}),
+    ...(density ? { density } : {}),
+    ...(template ? { template: template.id } : {}),
+  };
+}
+
+function validatePayload(type: ActionIntent["type"], payload: Record<string, unknown>): Record<string, unknown> | null {
   switch (type) {
     case "ADD_TO_QUEUE":
-      return isStringArray(payload.trackIds) && payload.source === "assistant";
+      return isStringArray(payload.trackIds) && payload.source === "assistant" ? payload : null;
     case "CREATE_PLAYLIST":
       return (
         typeof payload.name === "string"
@@ -43,44 +62,39 @@ function validatePayload(type: ActionIntent["type"], payload: Record<string, unk
         && isStringArray(payload.trackIds)
         && payload.dedupe === true
         && (payload.description === undefined || typeof payload.description === "string")
-      );
+      ) ? payload : null;
     case "FAVORITE_TRACK":
-      return typeof payload.trackId === "string" && payload.trackId.length > 0 && payload.source === "assistant";
+      return typeof payload.trackId === "string" && payload.trackId.length > 0 && payload.source === "assistant" ? payload : null;
     case "SEARCH_AND_SUGGEST":
-      return typeof payload.query === "string" && payload.query.length > 0 && typeof payload.reason === "string";
+      return typeof payload.query === "string" && payload.query.length > 0 && typeof payload.reason === "string" ? payload : null;
     case "CHANGE_THEME":
-      return (
-        (payload.theme === "light" || payload.theme === "dark" || payload.theme === "system")
-        && (payload.accent === undefined || SUPPORTED_ACCENTS.includes(String(payload.accent)))
-        && (payload.density === undefined || payload.density === "compact" || payload.density === "comfortable")
-      );
+      return normalizeThemePayload(payload);
     case "CHANGE_LANGUAGE":
-      return payload.locale === "en" || payload.locale === "bg";
+      return payload.locale === "en" || payload.locale === "bg" ? payload : null;
     case "INSIGHT_REQUEST":
-      return payload.period === "daily" || payload.period === "weekly" || payload.period === "monthly" || payload.kind === "trends";
+      return payload.period === "daily" || payload.period === "weekly" || payload.period === "monthly" || payload.kind === "trends" ? payload : null;
     case "PLAYLIST_GENERATION":
-      return typeof payload.prompt === "string" && payload.prompt.length > 0;
+      return typeof payload.prompt === "string" && payload.prompt.length > 0 ? payload : null;
     case "MOOD_RECOMMENDATION":
-      return typeof payload.mood === "string" && payload.mood.length > 0;
+      return typeof payload.mood === "string" && payload.mood.length > 0 ? payload : null;
     case "CONTEXT_RECOMMENDATION":
-      return true;
     case "TAG_SUGGESTION":
-      return true;
+      return payload;
     case "DISCOVERY_REQUEST":
-      return payload.mode === "daily" || payload.mode === "surprise";
+      return payload.mode === "daily" || payload.mode === "surprise" ? payload : null;
     case "CROSS_ARTIST_DISCOVERY":
       return (payload.differentArtistsOnly === undefined || typeof payload.differentArtistsOnly === "boolean")
-        && (payload.limit === undefined || (typeof payload.limit === "number" && payload.limit > 0 && payload.limit <= 20));
+        && (payload.limit === undefined || (typeof payload.limit === "number" && payload.limit > 0 && payload.limit <= 20)) ? payload : null;
     case "SHOW_SIMILAR_ARTISTS":
-      return typeof payload.anchorArtist === "string" && payload.anchorArtist.length > 0;
+      return typeof payload.anchorArtist === "string" && payload.anchorArtist.length > 0 ? payload : null;
     case "SEARCH_ARTIST":
-      return typeof payload.artist === "string" && payload.artist.length > 0;
+      return typeof payload.artist === "string" && payload.artist.length > 0 ? payload : null;
     case "PREVIEW_DISCOVERY_PLAYLIST":
-      return isStringArray(payload.artists);
+      return isStringArray(payload.artists) ? payload : null;
     case "CREATE_DISCOVERY_PLAYLIST":
-      return typeof payload.name === "string" && payload.name.length > 0 && isStringArray(payload.artists);
+      return typeof payload.name === "string" && payload.name.length > 0 && isStringArray(payload.artists) ? payload : null;
     default:
-      return false;
+      return null;
   }
 }
 
@@ -109,7 +123,8 @@ export function parseActionIntent(rawOutput: string): { reply: string; actionInt
       return { reply, actionIntent: null, parseError: true };
     }
 
-    if (!validatePayload(parsed.type, parsed.payload)) {
+    const normalizedPayload = validatePayload(parsed.type, parsed.payload);
+    if (!normalizedPayload) {
       return { reply, actionIntent: null, parseError: true };
     }
 
@@ -118,7 +133,7 @@ export function parseActionIntent(rawOutput: string): { reply: string; actionInt
       actionIntent: {
         type: parsed.type,
         confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0,
-        payload: parsed.payload,
+        payload: normalizedPayload,
         requiresConfirmation: true,
         reason: typeof parsed.reason === "string" ? parsed.reason : undefined,
       },
