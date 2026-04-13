@@ -7,11 +7,16 @@ function splitCsv(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-const defaultOrigins = ["http://localhost:3000", "http://localhost:3001"];
+const defaultOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "https://ponotai-production.up.railway.app",
+];
 const envOrigins = [
   ...splitCsv(process.env.ALLOWED_ORIGINS),
   ...splitCsv(process.env.CORS_ORIGINS),
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []),
+  ...splitCsv(process.env.FRONTEND_URLS),
 ];
 
 const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
@@ -22,13 +27,15 @@ export const corsOptions: CorsOptions = {
       callback(null, true);
       return;
     }
-    callback(new Error(`CORS: origin ${origin} not allowed`));
+    callback(null, false);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
+    "authorization",
+    "content-type",
     "X-Request-ID",
     "X-Response-Time",
     "X-Trackly-Queue",
@@ -37,6 +44,8 @@ export const corsOptions: CorsOptions = {
     "X-Trackly-Preferences",
     "X-Trackly-Device",
     "x-recognition-attempt-id",
+    "X-Recognition-Attempt-Id",
+    "x-requested-with",
   ],
   exposedHeaders: ["X-Response-Time", "X-Request-ID"],
   optionsSuccessStatus: 204,

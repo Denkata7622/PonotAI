@@ -26,6 +26,10 @@ function clampConfidence(value: unknown): number {
   return Number.isFinite(parsed) ? Math.max(0.25, Math.min(0.95, parsed)) : 0.7;
 }
 
+function normalizeText(value: string): string {
+  return value.replace(/\s+/g, " ").replace(/^[\s\-–—:;,.!?()[\]{}]+|[\s\-–—:;,.!?()[\]{}]+$/g, "").trim();
+}
+
 function parseAiJson(rawText: string): AiOcrSuccess | null {
   const cleaned = rawText.trim().replace(/^```json\s*/i, "").replace(/^```/, "").replace(/```$/, "").trim();
   const parsed = JSON.parse(cleaned) as {
@@ -42,9 +46,9 @@ function parseAiJson(rawText: string): AiOcrSuccess | null {
 
   const songs = songsPayload
     .map((song) => {
-      const title = typeof song.title === "string" ? song.title.trim() : "";
+      const title = typeof song.title === "string" ? normalizeText(song.title) : "";
       if (!title) return null;
-      const artist = typeof song.artist === "string" ? song.artist.trim() : "";
+      const artist = typeof song.artist === "string" ? normalizeText(song.artist) : "";
       return {
         title,
         artist: artist || "Unknown Artist",
@@ -88,7 +92,7 @@ export async function extractMetadataWithAiOcr(buffer: Buffer, mimeType = "image
           role: "user",
           parts: [
             {
-              text: "Extract up to 15 song candidates from this image. Return strict JSON with `songs` array. Each item needs: title (string), artist (string), confidenceScore (0-1). Sort best to worst and exclude duplicates.",
+              text: "Extract up to 12 plausible music track candidates from this image. Return strict JSON with `songs` array only. Each item: title (string), artist (string), confidenceScore (0-1). Exclude UI labels/buttons/tutorial text/app names/random OCR junk. Include only likely real song + artist pairs and sort best to worst without duplicates.",
             },
             {
               inlineData: {
