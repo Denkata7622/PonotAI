@@ -24,7 +24,7 @@ test("admin demo account generation returns one-time credentials with explicit a
     const demoResponse = await fetch(`${running.baseUrl}/api/admin/demo-account`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${registerBody.token}` },
-      body: JSON.stringify({ persona: "gym" }),
+      body: JSON.stringify({ persona: "gym", confirmGeneration: true }),
     });
     assert.equal(demoResponse.status, 201);
     const demoBody = (await demoResponse.json()) as {
@@ -76,7 +76,7 @@ test("non-admin cannot generate demo accounts and cannot access admin overview",
     const demoResponse = await fetch(`${running.baseUrl}/api/admin/demo-account`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${registerBody.token}` },
-      body: JSON.stringify({ persona: "gym" }),
+      body: JSON.stringify({ persona: "gym", confirmGeneration: true }),
     });
     assert.equal(demoResponse.status, 403);
 
@@ -86,5 +86,46 @@ test("non-admin cannot generate demo accounts and cannot access admin overview",
     assert.equal(overviewResponse.status, 403);
   } finally {
     await running.close();
+  }
+});
+
+
+test("admin demo generation supports advanced options and requires explicit confirmation", async () => {
+  process.env.ADMIN_EMAIL = "owner+demo@test.dev";
+  const running = await startTestServer();
+
+  try {
+    const registerResponse = await register(running.baseUrl, "ops_admin", "owner+demo@test.dev");
+    assert.equal(registerResponse.status, 201);
+    const registerBody = (await registerResponse.json()) as { token: string };
+
+    const unconfirmed = await fetch(`${running.baseUrl}/api/admin/demo-account`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${registerBody.token}` },
+      body: JSON.stringify({ persona: "gym" }),
+    });
+    assert.equal(unconfirmed.status, 400);
+
+    const confirmed = await fetch(`${running.baseUrl}/api/admin/demo-account`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${registerBody.token}` },
+      body: JSON.stringify({
+        persona: "indie",
+        confirmGeneration: true,
+        options: { activityWindowDays: 14, playlistCount: 2, playlistSize: 10, favoritesCount: 8, seed: "repeatable-seed" },
+      }),
+    });
+    assert.equal(confirmed.status, 201);
+    const body = (await confirmed.json()) as { account: { activityWindowDays: number; seededPlaylists: number; seededFavorites: number; generationConfig: { playlistCount: number; playlistSize: number; favoritesCount: number; seedApplied: boolean } } };
+    assert.equal(body.account.activityWindowDays, 14);
+    assert.equal(body.account.seededPlaylists, 2);
+    assert.equal(body.account.seededFavorites, 8);
+    assert.equal(body.account.generationConfig.playlistCount, 2);
+    assert.equal(body.account.generationConfig.playlistSize, 10);
+    assert.equal(body.account.generationConfig.favoritesCount, 8);
+    assert.equal(body.account.generationConfig.seedApplied, true);
+  } finally {
+    await running.close();
+    delete process.env.ADMIN_EMAIL;
   }
 });

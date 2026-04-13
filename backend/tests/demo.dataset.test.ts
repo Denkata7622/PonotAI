@@ -62,7 +62,7 @@ test("admin demo generation returns structured error when dataset is unavailable
     const demoResponse = await fetch(`${running.baseUrl}/api/admin/demo-account`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${registerBody.token}` },
-      body: JSON.stringify({ persona: "gym" }),
+      body: JSON.stringify({ persona: "gym", confirmGeneration: true }),
     });
 
     assert.equal(demoResponse.status, 503);
