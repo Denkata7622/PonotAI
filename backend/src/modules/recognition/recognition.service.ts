@@ -43,6 +43,7 @@ type OcrCandidateMetadata = {
   artist: string;
   album: string;
   confidenceScore: number;
+  source?: "ai" | "tesseract";
 };
 
 type TesseractWord = {
@@ -56,10 +57,16 @@ const UNKNOWN_METADATA: OcrCandidateMetadata = {
   artist: "Unknown Artist",
   album: "Unknown Album",
   confidenceScore: 0,
+  source: "tesseract",
 };
 
 const OCR_CHAR_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 &-_\'\"():,./+!?[]";
 const OCR_LANGUAGE_MAP: Record<string, string> = { eng: "eng", bul: "bul", "bul+eng": "bul+eng", "bg+en": "bul+eng", bg: "bul" };
+const OCR_MIN_CANDIDATE_CONFIDENCE = 0.36;
+const OCR_MIN_VERIFIED_CONFIDENCE = 0.54;
+const OCR_MAX_SURFACED_RESULTS = 6;
+const JUNK_EXACT_TOKENS = new Set(["codewars", "python", "tutorial", "settings", "notifications", "battery", "wifi", "next", "back", "home", "share", "playlist", "search", "library"]);
+const JUNK_FRAGMENT_REGEX = /(codewars|tutorial|python|install|download|subscribe|notification|learning|course|button|privacy|settings|wi-?fi|bluetooth)/i;
 let aiOcrExtractor: typeof extractMetadataWithAiOcr = extractMetadataWithAiOcr;
 let tesseractExtractor: typeof extractMetadataWithOcr = extractMetadataWithOcr;
 let lookupSongExtractor: typeof lookupSongByTitleAndArtist = lookupSongByTitleAndArtist;
@@ -301,6 +308,7 @@ export function deriveBestEffortMetadata(lines: InterpretedLine[]): OcrCandidate
     artist: artistLine?.text ?? UNKNOWN_METADATA.artist,
     album: UNKNOWN_METADATA.album,
     confidenceScore: Math.max(0.25, Math.min(0.59, titleLine.avgConfidence / 100)),
+    source: "tesseract",
   };
 }
 
@@ -331,6 +339,43 @@ function dedupeOcrCandidates(candidates: OcrCandidateMetadata[]): OcrCandidateMe
   return deduped;
 }
 
+function normalizeOcrText(text: string): string {
+  return text
+    .replace(/[“”„‟"']/g, "")
+    .replace(/[|`~^_*]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s\-–—:;,.!?()[\]{}]+|[\s\-–—:;,.!?()[\]{}]+$/g, "")
+    .trim();
+}
+
+function looksLikeGarbageMusicText(text: string): boolean {
+  const normalized = normalizeOcrText(text).toLowerCase();
+  if (!normalized) return true;
+  if (JUNK_FRAGMENT_REGEX.test(normalized) || JUNK_EXACT_TOKENS.has(normalized)) return true;
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length === 1 && words[0]!.length <= 3) return true;
+  const letters = normalized.match(/\p{L}/gu)?.length ?? 0;
+  return letters < 2;
+}
+
+function sanitizeCandidate(candidate: OcrCandidateMetadata): OcrCandidateMetadata | null {
+  const songName = normalizeOcrText(candidate.songName);
+  const artist = normalizeOcrText(candidate.artist);
+  if (!songName || songName.length < 2 || songName.length > 80) return null;
+  if (looksLikeGarbageMusicText(songName)) return null;
+  if (artist && artist !== UNKNOWN_METADATA.artist && looksLikeGarbageMusicText(artist)) return null;
+  if (candidate.confidenceScore < OCR_MIN_CANDIDATE_CONFIDENCE) return null;
+  return { ...candidate, songName, artist: artist || UNKNOWN_METADATA.artist, source: candidate.source ?? "tesseract" };
+}
+
+function scoreOcrCandidate(candidate: OcrCandidateMetadata): number {
+  const songWords = candidate.songName.split(/\s+/).filter(Boolean).length;
+  const artistWords = candidate.artist.split(/\s+/).filter(Boolean).length;
+  const pairBonus = candidate.artist !== UNKNOWN_METADATA.artist && artistWords >= 1 ? 0.15 : -0.05;
+  const shapeBonus = songWords >= 2 ? 0.08 : 0;
+  return Math.max(0, Math.min(1, candidate.confidenceScore + pairBonus + shapeBonus));
+}
+
 function deriveCandidateMetadata(lines: InterpretedLine[]): OcrCandidateMetadata[] {
   const eligible = lines.filter((line) => line.features.letterRatio >= 0.45 && line.features.length >= 2 && line.features.length <= 80);
   if (eligible.length === 0) return [];
@@ -339,7 +384,7 @@ function deriveCandidateMetadata(lines: InterpretedLine[]): OcrCandidateMetadata
     .sort((a, b) => scoreLineForTitle(b) - scoreLineForTitle(a))
     .slice(0, 15);
 
-  const candidates = rankedTitles.map((titleLine) => {
+  const candidates: OcrCandidateMetadata[] = rankedTitles.map((titleLine) => {
     const artistLine = eligible
       .filter((line) => line !== titleLine && line.bbox.y >= titleLine.bbox.y - 4)
       .sort((a, b) => Math.abs(a.bbox.y - (titleLine.bbox.y + titleLine.bbox.height)) - Math.abs(b.bbox.y - (titleLine.bbox.y + titleLine.bbox.height)))[0];
@@ -349,6 +394,7 @@ function deriveCandidateMetadata(lines: InterpretedLine[]): OcrCandidateMetadata
       artist: artistLine?.text ?? UNKNOWN_METADATA.artist,
       album: UNKNOWN_METADATA.album,
       confidenceScore: Math.max(0.2, Math.min(0.65, titleLine.avgConfidence / 100)),
+      source: "tesseract",
     };
   });
 
@@ -370,6 +416,7 @@ async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise
         artist: interpreted.music.artist ?? UNKNOWN_METADATA.artist,
         album: UNKNOWN_METADATA.album,
         confidenceScore: interpreted.music.confidenceScore,
+        source: "tesseract",
       });
     }
 
@@ -422,6 +469,7 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
         artist: song.artist,
         album: UNKNOWN_METADATA.album,
         confidenceScore: Math.max(0.5, song.confidenceScore),
+        source: "ai" as const,
       })),
     );
   } else {
@@ -446,24 +494,36 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
   }
 
   const songMetadataResults: SongMetadata[] = [];
-  const rankedCandidates = dedupeOcrCandidates(candidates).sort((a, b) => b.confidenceScore - a.confidenceScore).slice(0, resolvedMaxSongs);
+  const cleanedCandidates = dedupeOcrCandidates(candidates)
+    .map(sanitizeCandidate)
+    .filter((candidate): candidate is OcrCandidateMetadata => Boolean(candidate));
+  const rankedCandidates = cleanedCandidates
+    .sort((a, b) => scoreOcrCandidate(b) - scoreOcrCandidate(a))
+    .slice(0, Math.min(resolvedMaxSongs, OCR_MAX_SURFACED_RESULTS));
+
+  console.info("[recognition:image] candidate_pipeline", {
+    rawCandidates: candidates.length,
+    cleanedCandidates: cleanedCandidates.length,
+    selectedCandidates: rankedCandidates.length,
+    provider: warnings.includes("OCR_FALLBACK_USED") ? "tesseract" : "gemini_vision",
+  });
 
   for (const candidate of rankedCandidates) {
     try {
       const providerResult = await lookupSongExtractor(candidate.songName, candidate.artist);
-      if (providerResult) {
+      if (providerResult && providerResult.confidenceScore >= OCR_MIN_VERIFIED_CONFIDENCE) {
         const resultState = classifyResultState(providerResult.confidenceScore);
         songMetadataResults.push({
           ...toProviderResponse(providerResult),
           resultState,
-          ocrEngine: candidates.length > 0 && warnings.includes("OCR_FALLBACK_USED") ? "tesseract" : "gemini_vision",
+          ocrEngine: candidate.source === "tesseract" ? "tesseract" : "gemini_vision",
           warnings: resultState === "need_better_sample" || resultState === "possible_matches" ? ["LOW_CONFIDENCE_MATCH", ...warnings] : warnings,
         });
       } else {
         const bulgarianFallback = matchBulgarianSong(`${candidate.songName} ${candidate.artist}`);
         songMetadataResults.push(
           bulgarianFallback
-            ? { ...toProviderResponse(bulgarianFallback), resultState: "strong_likely_match", ocrEngine: warnings.includes("OCR_FALLBACK_USED") ? "tesseract" : "gemini_vision", warnings }
+            ? { ...toProviderResponse(bulgarianFallback), resultState: "strong_likely_match", ocrEngine: candidate.source === "tesseract" ? "tesseract" : "gemini_vision", warnings }
             : { ...toFallbackResponse(candidate), warnings: ["LOW_CONFIDENCE_MATCH", ...warnings] },
         );
       }
@@ -472,6 +532,24 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
     }
   }
 
-  if (songMetadataResults.length === 0) throw new NoVerifiedResultError("No songs detected in image.");
-  return { songs: songMetadataResults.slice(0, resolvedMaxSongs), warnings, ocrPath: warnings.includes("OCR_FALLBACK_USED") ? "tesseract_only" : "ai_primary" };
+  if (songMetadataResults.length === 0 && candidates.length > 0) {
+    const fallbackCandidate = {
+      ...candidates[0],
+      songName: normalizeOcrText(candidates[0]!.songName) || UNKNOWN_METADATA.songName,
+      artist: normalizeOcrText(candidates[0]!.artist) || UNKNOWN_METADATA.artist,
+      confidenceScore: Math.min(0.35, candidates[0]!.confidenceScore),
+      source: (candidates[0]!.source ?? "tesseract") as "ai" | "tesseract",
+    } satisfies OcrCandidateMetadata;
+    songMetadataResults.push({
+      ...toFallbackResponse(fallbackCandidate),
+      ocrEngine: fallbackCandidate.source === "ai" ? "gemini_vision" : "tesseract",
+      warnings: ["LOW_CONFIDENCE_MATCH", "OCR_TEXT_TOO_NOISY", ...warnings],
+    });
+  }
+
+  if (songMetadataResults.length === 0) throw new NoVerifiedResultError("No plausible song matches detected from OCR.");
+  const plausibleResults = songMetadataResults
+    .sort((a, b) => b.confidenceScore - a.confidenceScore)
+    .slice(0, Math.min(resolvedMaxSongs, OCR_MAX_SURFACED_RESULTS));
+  return { songs: plausibleResults, warnings, ocrPath: warnings.includes("OCR_FALLBACK_USED") ? "tesseract_only" : "ai_primary" };
 }

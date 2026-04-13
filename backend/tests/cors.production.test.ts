@@ -1,0 +1,43 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { startTestServer } from "./helpers/testHarness.ts";
+
+const FRONTEND_ORIGIN = "https://ponotai-production.up.railway.app";
+
+test("CORS preflight returns allow-origin for /api/history", async () => {
+  const running = await startTestServer();
+  try {
+    const response = await fetch(`${running.baseUrl}/api/history?limit=18`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: FRONTEND_ORIGIN,
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "authorization,content-type,x-recognition-attempt-id",
+      },
+    });
+
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get("access-control-allow-origin"), FRONTEND_ORIGIN);
+  } finally {
+    await running.close();
+  }
+});
+
+test("CORS preflight returns allow-origin for /api/recognition/image", async () => {
+  const running = await startTestServer();
+  try {
+    const response = await fetch(`${running.baseUrl}/api/recognition/image`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: FRONTEND_ORIGIN,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "authorization,content-type,x-recognition-attempt-id",
+      },
+    });
+
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get("access-control-allow-origin"), FRONTEND_ORIGIN);
+  } finally {
+    await running.close();
+  }
+});

@@ -20,7 +20,6 @@ export function getApiBaseUrl(): string {
     if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
       return normalize(DEFAULT_DEV_API_URL);
     }
-
     return normalize(DEFAULT_PRODUCTION_API_URL);
   }
 

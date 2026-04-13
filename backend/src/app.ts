@@ -51,6 +51,9 @@ function registerProcessErrorHandlers(): void {
   });
 }
 
+app.use(cors(corsOptions));
+// Handle preflight for all routes
+app.options("*", cors(corsOptions));
 app.use(
   helmet({
     hsts: true,
@@ -68,10 +71,6 @@ app.use(
     },
   }),
 );
-app.use(cors(corsOptions));
-
-// Handle preflight for all routes
-app.options("*", cors(corsOptions));
 app.use(express.json());
 app.use(responseTimeMiddleware);
 
