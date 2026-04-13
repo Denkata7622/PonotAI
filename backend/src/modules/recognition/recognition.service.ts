@@ -64,11 +64,10 @@ const OCR_CHAR_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
 const OCR_LANGUAGE_MAP: Record<string, string> = { eng: "eng", bul: "bul", "bul+eng": "bul+eng", "bg+en": "bul+eng", bg: "bul" };
 const OCR_MIN_CANDIDATE_CONFIDENCE = 0.36;
 const OCR_MIN_VERIFIED_CONFIDENCE = 0.54;
-const OCR_MAX_SURFACED_RESULTS = 6;
+const OCR_MAX_SURFACED_RESULTS = 20;
 const OCR_MAX_DIRECT_ATTEMPTS = 3;
 const OCR_MAX_GEMMA_CLEANUP_CALLS = 3;
-const OCR_MAX_YOUTUBE_CHECKS = 6;
-const OCR_MAX_STRONG_MATCHES = 3;
+const OCR_MAX_YOUTUBE_CHECKS = 12;
 const OCR_ATTEMPT_TTL_MS = 20_000;
 const OCR_YOUTUBE_CACHE_TTL_MS = 120_000;
 const JUNK_EXACT_TOKENS = new Set(["codewars", "python", "tutorial", "settings", "notifications", "battery", "wifi", "next", "back", "home", "share", "playlist", "search", "library"]);
@@ -349,6 +348,35 @@ function dedupeOcrCandidates(candidates: OcrCandidateMetadata[]): OcrCandidateMe
   return deduped;
 }
 
+function buildRowAwareCandidates(lines: InterpretedLine[]): OcrCandidateMetadata[] {
+  const eligible = lines.filter((line) => line.features.letterRatio >= 0.45 && line.features.length >= 2 && line.features.length <= 80);
+  if (eligible.length < 2) return [];
+  const sorted = [...eligible].sort((a, b) => a.bbox.y - b.bbox.y);
+  const rows: OcrCandidateMetadata[] = [];
+
+  for (let i = 0; i < sorted.length - 1; i += 1) {
+    const titleLine = sorted[i]!;
+    const artistLine = sorted[i + 1]!;
+    const deltaY = artistLine.bbox.y - (titleLine.bbox.y + titleLine.bbox.height);
+    const alignedX = Math.abs(titleLine.bbox.x - artistLine.bbox.x) <= Math.max(24, titleLine.bbox.width * 0.3);
+    const plausibleGap = deltaY >= -4 && deltaY <= Math.max(24, titleLine.bbox.height * 1.4);
+    const artistLooksValid = artistLine.features.letterRatio >= 0.45 && artistLine.features.digitRatio <= 0.5;
+    if (!alignedX || !plausibleGap || !artistLooksValid) continue;
+
+    const titleConfidence = Math.max(0.3, Math.min(0.68, titleLine.avgConfidence / 100));
+    const artistBonus = artistLine.avgConfidence >= 45 ? 0.05 : 0;
+    rows.push({
+      songName: titleLine.text,
+      artist: artistLine.text,
+      album: UNKNOWN_METADATA.album,
+      confidenceScore: Math.max(0.25, Math.min(0.72, titleConfidence + artistBonus)),
+      source: "tesseract",
+    });
+  }
+
+  return rows;
+}
+
 function pruneImageCaches(): void {
   const now = Date.now();
   for (const [key, value] of imageAttemptCache.entries()) {
@@ -402,7 +430,7 @@ function deriveCandidateMetadata(lines: InterpretedLine[]): OcrCandidateMetadata
 
   const rankedTitles = [...eligible]
     .sort((a, b) => scoreLineForTitle(b) - scoreLineForTitle(a))
-    .slice(0, 15);
+    .slice(0, 25);
 
   const candidates: OcrCandidateMetadata[] = rankedTitles.map((titleLine) => {
     const artistLine = eligible
@@ -418,7 +446,7 @@ function deriveCandidateMetadata(lines: InterpretedLine[]): OcrCandidateMetadata
     };
   });
 
-  return dedupeOcrCandidates(candidates);
+  return dedupeOcrCandidates([...buildRowAwareCandidates(lines), ...candidates]);
 }
 
 async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise<OcrCandidateMetadata[]> {
@@ -552,7 +580,7 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
     .filter((candidate): candidate is OcrCandidateMetadata => Boolean(candidate));
   const rankedCandidates = cleanedCandidates
     .sort((a, b) => scoreOcrCandidate(b) - scoreOcrCandidate(a))
-    .slice(0, Math.min(resolvedMaxSongs, OCR_MAX_SURFACED_RESULTS));
+    .slice(0, Math.min(Math.max(resolvedMaxSongs * 2, resolvedMaxSongs + 4), OCR_MAX_SURFACED_RESULTS));
 
   console.info("[recognition:image] candidate_pipeline", {
     rawCandidates: candidates.length,
@@ -561,8 +589,9 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
     provider: warnings.includes("OCR_FALLBACK_USED") ? "tesseract" : "gemini_vision",
   });
 
+  const youtubeCheckBudget = Math.min(OCR_MAX_YOUTUBE_CHECKS, Math.max(resolvedMaxSongs + 3, 8));
   for (const candidate of rankedCandidates) {
-    if (usage.youtubeChecks >= OCR_MAX_YOUTUBE_CHECKS || usage.strongMatches >= OCR_MAX_STRONG_MATCHES) break;
+    if (usage.youtubeChecks >= youtubeCheckBudget) break;
     const lookupKey = `${candidate.songName.toLowerCase()}::${candidate.artist.toLowerCase()}`;
     if (checkedQueries.has(lookupKey)) continue;
     checkedQueries.add(lookupKey);
@@ -586,7 +615,7 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
           warnings: resultState === "need_better_sample" || resultState === "possible_matches" ? ["LOW_CONFIDENCE_MATCH", ...warnings] : warnings,
         });
       } else {
-        const bulgarianFallback = usage.youtubeChecks <= OCR_MAX_YOUTUBE_CHECKS ? matchBulgarianSong(`${candidate.songName} ${candidate.artist}`) : null;
+        const bulgarianFallback = usage.youtubeChecks <= youtubeCheckBudget ? matchBulgarianSong(`${candidate.songName} ${candidate.artist}`) : null;
         songMetadataResults.push(
           bulgarianFallback
             ? { ...toProviderResponse(bulgarianFallback), resultState: "strong_likely_match", ocrEngine: candidate.source === "tesseract" ? "tesseract" : "gemini_vision", warnings }
@@ -596,6 +625,10 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
     } catch {
       songMetadataResults.push({ ...toFallbackResponse(candidate), warnings: ["LOW_CONFIDENCE_MATCH", ...warnings] });
     }
+  }
+
+  if (usage.youtubeChecks >= youtubeCheckBudget && rankedCandidates.length > youtubeCheckBudget) {
+    warnings.push("YOUTUBE_VERIFICATION_BUDGET_REACHED");
   }
 
   if (songMetadataResults.length === 0 && candidates.length > 0) {
