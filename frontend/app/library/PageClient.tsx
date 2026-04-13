@@ -468,7 +468,7 @@ return ( <section className="space-y-5 sm:space-y-6"> <div className="card p-4 s
     </div>
   </div>
 
-  {loadError && <div className="card p-4 text-sm text-red-300">{loadError}</div>}
+  {loadError && <div className="card p-4 text-sm status-danger">{loadError}</div>}
 
   {showUndoToast && (
     <div className="card relative overflow-hidden p-4 text-sm">
@@ -480,7 +480,7 @@ return ( <section className="space-y-5 sm:space-y-6"> <div className="card p-4 s
     </div>
   )}
   {statusToast && (
-    <div className={`card p-4 text-sm ${statusToast.kind === "success" ? "border-emerald-300/40 bg-emerald-500/15" : "border-red-300/40 bg-red-500/15"}`}>
+    <div className={`card p-4 text-sm ${statusToast.kind === "success" ? "status-surface-success" : "status-surface-danger"}`}>
       {statusToast.message}
     </div>
   )}

@@ -81,6 +81,16 @@ body {
   --muted: rgba(255, 255, 255, 0.62);
   --free: #2cff9a;
   --warning: #ffcc66;
+  --status-success: #34d399;
+  --status-success-rgb: 52, 211, 153;
+  --status-warning: #fbbf24;
+  --status-warning-rgb: 251, 191, 36;
+  --status-danger: #f87171;
+  --status-danger-rgb: 248, 113, 113;
+  --status-info: #38bdf8;
+  --status-info-rgb: 56, 189, 248;
+  --overlay-scrim: rgba(0, 0, 0, 0.62);
+  --shadow-raised: 0 12px 30px rgba(0, 0, 0, 0.3);
   --sidebar-bg: rgba(10, 12, 18, 0.55);
   --hover-bg: rgba(255, 255, 255, 0.06);
   --active-bg: var(--accent-active-bg);
@@ -103,6 +113,16 @@ body {
   --muted: rgba(0, 0, 0, 0.62);
   --free: #12995f;
   --warning: #b67900;
+  --status-success: #059669;
+  --status-success-rgb: 5, 150, 105;
+  --status-warning: #b45309;
+  --status-warning-rgb: 180, 83, 9;
+  --status-danger: #dc2626;
+  --status-danger-rgb: 220, 38, 38;
+  --status-info: #0369a1;
+  --status-info-rgb: 3, 105, 161;
+  --overlay-scrim: rgba(8, 12, 20, 0.45);
+  --shadow-raised: 0 8px 24px rgba(15, 23, 42, 0.12);
   --sidebar-bg: rgba(255, 255, 255, 0.68);
   --hover-bg: rgba(0, 0, 0, 0.04);
   --active-bg: var(--accent-active-bg);
@@ -143,6 +163,21 @@ body {
 :root[data-sidebar="tinted"] { --sidebar-bg: var(--surface-tinted); }
 :root[data-sidebar="elevated"] { --sidebar-bg: var(--surface-elevated); }
 
+
+:root {
+  --card-surface: var(--surface);
+  --card-border: var(--border);
+}
+
+:root[data-card-emphasis="accented"] {
+  --card-border: color-mix(in srgb, var(--accent-border) 90%, var(--border));
+}
+
+:root[data-card-emphasis="tinted"] {
+  --card-surface: var(--surface-tinted);
+  --card-border: color-mix(in srgb, var(--accent-border) 75%, var(--border));
+}
+
 .themed-surface { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
 .themed-surface-subtle { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius-md); }
 .themed-surface-elevated { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); }
@@ -150,6 +185,16 @@ body {
 .themed-link { color: var(--accent); text-underline-offset: 2px; }
 .themed-link:hover { color: color-mix(in srgb, var(--accent) 70%, white); }
 .themed-progress { accent-color: var(--accent); }
+
+.status-success { color: var(--status-success); }
+.status-warning { color: var(--status-warning); }
+.status-danger { color: var(--status-danger); }
+.status-info { color: var(--status-info); }
+
+.status-surface-success { border-color: rgba(var(--status-success-rgb), 0.34); background: rgba(var(--status-success-rgb), 0.15); }
+.status-surface-warning { border-color: rgba(var(--status-warning-rgb), 0.34); background: rgba(var(--status-warning-rgb), 0.15); }
+.status-surface-danger { border-color: rgba(var(--status-danger-rgb), 0.34); background: rgba(var(--status-danger-rgb), 0.15); }
+.status-surface-info { border-color: rgba(var(--status-info-rgb), 0.34); background: rgba(var(--status-info-rgb), 0.15); }
 
 button:focus-visible,
 input:focus-visible,
@@ -739,8 +784,8 @@ select:focus-visible {
 .assistant-action-primary, .assistant-action-ghost { border-radius: var(--radius-sm); padding: 6px 10px; border: 1px solid var(--border); }
 .assistant-action-primary { background: var(--accent); color: var(--accent-foreground); border-color: transparent; }
 .assistant-action-ghost:hover { background: var(--accent-soft); border-color: var(--accent-border); }
-.assistant-action-success { color: #22c55e; margin-top: 8px; }
-.assistant-action-failed { color: #ef4444; margin-top: 8px; }
+.assistant-action-success { color: var(--status-success); margin-top: 8px; }
+.assistant-action-failed { color: var(--status-danger); margin-top: 8px; }
 .assistant-action-muted { color: var(--muted); margin-top: 8px; }
 
 .assistant-fab { position: fixed; right: 24px; width: 56px; height: 56px; border-radius: 50%; border: none; z-index: 50; background: var(--accent); color: white; box-shadow: 0 4px 12px rgba(0,0,0,.3); transition: transform .2s ease, filter .2s ease, opacity .25s ease; animation: assistantFabIn .25s ease both; }

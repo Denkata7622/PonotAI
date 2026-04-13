@@ -56,7 +56,7 @@ export default function SongRow({
       data-song-id={id}
       className={`group relative flex w-full items-center gap-3 rounded-2xl border bg-[var(--surface)] p-3 transition-[transform,border-color] duration-150 hover:translate-x-1 hover:border-[var(--accent)]/50 hover:bg-[var(--surface-2)] ${
         isHighlighted
-          ? "border-[var(--accent)] border-l-[3px]"
+          ? "themed-selected border-l-[3px]"
           : "border-[var(--border)]"
       } ${className}`}
     >
@@ -104,7 +104,7 @@ export default function SongRow({
           <button
             type="button"
             onClick={onPlay}
-            className="rounded-full bg-[var(--accent)] p-2 text-white"
+            className="rounded-full bg-[var(--accent)] p-2 text-[var(--accent-foreground)] shadow-[0_0_0_1px_var(--accent-border)]"
             aria-label={actionLabel ?? t("song_row_play", language)}
             title={actionLabel ?? t("song_row_play", language)}
           >

@@ -36,7 +36,7 @@ type ActivitySummary = {
 function ActivityCard({ title, data }: { title: string; data: ActivityPeriod }) {
   const hasData = data.totalPlays > 0;
   return (
-    <article className="card overflow-hidden p-5">
+    <article className="card overflow-hidden p-5 border-[var(--accent-border)]/40">
       <h3 className="text-lg font-semibold">{title}</h3>
       {!hasData ? (
         <p className="mt-3 text-sm text-[var(--muted)]">No listening data yet. Play tracks and check back for insights.</p>
@@ -102,7 +102,7 @@ export default function StatsPage() {
         </div>
       </div>
 
-      <div className="card p-6">
+      <div className="card p-6 themed-surface-elevated">
         <h2 className="text-xl font-semibold">{t("stats_top_artists", language)}</h2>
         <div className="mt-4 h-72 overflow-x-auto">
           <div className="h-full min-w-[360px] sm:min-w-0">
@@ -110,7 +110,7 @@ export default function StatsPage() {
               <BarChart data={stats.topArtists.slice(0, 7)}>
                 <XAxis dataKey="name" interval={0} tickMargin={10} tickFormatter={(value: string) => String(value).length > 12 ? `${String(value).slice(0, 12)}…` : String(value)} />
                 <YAxis width={36} />
-                <Tooltip />
+                <Tooltip contentStyle={{ background: "var(--surface-elevated)", borderColor: "var(--accent-border)", borderRadius: "var(--radius-sm)", color: "var(--text)" }} cursor={{ fill: "var(--accent-soft)" }} />
                 <Bar dataKey="count" fill="var(--chart-1)" radius={[8, 8, 0, 0]} maxBarSize={42} />
               </BarChart>
             </ResponsiveContainer>

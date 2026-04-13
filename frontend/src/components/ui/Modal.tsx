@@ -43,43 +43,17 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = '480px' }: 
 
   return ReactDOM.createPortal(
     <>
-      <div
-        onClick={onClose}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 1000,
-          background: 'rgba(0, 0, 0, 0.6)',
-          backdropFilter: 'blur(4px)',
-        }}
-      />
+      <div onClick={onClose} className="fixed inset-0 z-[1000] bg-[var(--overlay-scrim)] backdrop-blur-sm" />
       <div
         data-modal-box
-        style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          zIndex: 1001,
-          width: '90%',
-          maxWidth,
-          maxHeight: '85vh',
-          overflowY: 'auto',
-          background: 'var(--card)',
-          border: '1px solid var(--border)',
-          borderRadius: '12px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
-          padding: '24px',
-        }}
+        className="fixed left-1/2 top-1/2 z-[1001] w-[90%] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-[var(--shadow-raised)]"
+        style={{ maxWidth }}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>{title}</h2>
-            <button
-              onClick={onClose}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}
-            >
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="m-0 text-[1.1rem] font-semibold text-[var(--text)]">{title}</h2>
+            <button onClick={onClose} className="flex items-center rounded-[var(--radius-sm)] p-1 text-[var(--muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--text)]">
               <X width={18} height={18} />
             </button>
           </div>
@@ -96,7 +70,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = '480px' }: 
             transform: none !important;
             width: 100% !important;
             max-width: 100% !important;
-            border-radius: 16px 16px 0 0 !important;
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
           }
         }
       `}</style>

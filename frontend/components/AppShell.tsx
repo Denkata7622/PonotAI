@@ -404,7 +404,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                     <span className="inline-flex items-center gap-2"><Settings className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Настройки" : "Settings"}</span>
                   </Link>
                   <button
-                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-400 hover:bg-[var(--hover-bg)]"
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm status-danger hover:bg-[var(--hover-bg)]"
                     onClick={handleLogout}
                   >
                     <span className="inline-flex items-center gap-2"><LogOut className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Изход" : "Sign out"}</span>

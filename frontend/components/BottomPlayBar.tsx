@@ -176,7 +176,7 @@ export default function BottomPlayBar() {
                 </div>
               </div>
 
-              {playerError && <p className="text-xs text-red-300">{playerError}</p>}
+              {playerError && <p className="text-xs status-danger">{playerError}</p>}
             </div>
           )}
         </div>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyAccentVariables } from "../lib/ThemeContext";
+import { applyAccentVariables, UI_PRESETS, themeStorageKeys } from "../lib/ThemeContext";
 import { getAccentCssVariables, normalizeAccentPreset } from "../lib/themePresets";
 
 test("normalizeAccentPreset falls back for unsupported accent values", () => {
@@ -30,4 +30,16 @@ test("applyAccentVariables writes accent data and css variables to root", () => 
   assert.equal(values.get("data-accent"), "ruby");
   assert.equal(values.get("--accent"), "#be123c");
   assert.ok(values.get("--accent-soft")?.includes("190, 18, 60"));
+});
+
+
+test("theme storage includes advanced personalization keys", () => {
+  assert.equal(themeStorageKeys.cardEmphasis, "ponotai-card-emphasis");
+  assert.equal(themeStorageKeys.chartStyle, "ponotai-chart-style");
+});
+
+test("ui presets define card emphasis for all preset templates", () => {
+  for (const preset of Object.values(UI_PRESETS)) {
+    assert.ok(["standard", "accented", "tinted"].includes(preset.cardEmphasis));
+  }
 });

@@ -139,9 +139,9 @@ export default function PlaylistDetail({
                   onClose();
                 }
               }}
-              className="w-full flex items-center justify-center gap-2 border-red-400/40 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+              className="w-full flex items-center justify-center gap-2 border-red-400/40 bg-red-500/10 status-danger hover:bg-red-500/20"
             >
-              <Trash2 className="w-4 h-4 text-red-300" />
+              <Trash2 className="w-4 h-4 status-danger" />
               {t("track_delete_playlist", language)}
             </Button>
           </div>
