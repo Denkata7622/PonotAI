@@ -11,7 +11,7 @@ function normalize(baseUrl: string): string {
 }
 
 export function getApiBaseUrl(): string {
-  const envBaseUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  const envBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.NEXT_PUBLIC_API_URL?.trim();
   if (envBaseUrl) {
     return normalize(envBaseUrl);
   }

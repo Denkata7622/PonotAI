@@ -10,6 +10,7 @@ import {
 import { recognizeWithAcrCloud } from "./providers/acrcloud.provider";
 import { recognizeWithShazam } from "./providers/shazam.provider";
 import { matchBulgarianSong } from "./providers/bulgarian.provider";
+import { extractMetadataWithAiOcr } from "./aiImageOcr.service";
 import {
   beforeProviderCall,
   buildAttemptContext,
@@ -29,10 +30,12 @@ import { preprocessAudioForRecognition } from "./audioPreprocess";
 
 export type SongMetadata = ProviderSongMetadata & {
   source: "provider" | "ocr_fallback";
+  ocrEngine?: "gemini_vision" | "tesseract";
   verificationStatus: "verified" | "not_found";
   resultState?: "exact_match" | "strong_likely_match" | "possible_matches" | "need_better_sample";
   alternatives?: Array<Pick<ProviderSongMetadata, "songName" | "artist" | "confidenceScore">>;
   attemptId?: string;
+  warnings?: string[];
 };
 
 type OcrCandidateMetadata = {
@@ -57,6 +60,8 @@ const UNKNOWN_METADATA: OcrCandidateMetadata = {
 
 const OCR_CHAR_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 &-_\'\"():,./+!?[]";
 const OCR_LANGUAGE_MAP: Record<string, string> = { eng: "eng", bul: "bul", "bul+eng": "bul+eng", "bg+en": "bul+eng", bg: "bul" };
+let aiOcrExtractor: typeof extractMetadataWithAiOcr = extractMetadataWithAiOcr;
+let tesseractExtractor: typeof extractMetadataWithOcr = extractMetadataWithOcr;
 
 const providerStrategy = {
   primaryProvider: (process.env.RECOGNITION_PRIMARY_PROVIDER as ProviderName | undefined) ?? "audd",
@@ -89,8 +94,10 @@ function toFallbackResponse(metadata: OcrCandidateMetadata): SongMetadata {
     releaseYear: null,
     confidenceScore: metadata.confidenceScore,
     source: "ocr_fallback",
+    ocrEngine: "tesseract",
     verificationStatus: "not_found",
     resultState: "need_better_sample",
+    warnings: ["OCR_FALLBACK_USED"],
   };
 }
 
@@ -330,25 +337,87 @@ async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise
   }
 }
 
-export async function recognizeSongFromImage(buffer: Buffer, language = "eng"): Promise<SongMetadata[]> {
-  const fallback = await extractMetadataWithOcr(buffer, language);
-  const candidates: OcrCandidateMetadata[] = [fallback];
+export function __setImageOcrExtractorsForTests(overrides: {
+  aiExtractor?: typeof extractMetadataWithAiOcr;
+  tesseractExtractor?: typeof extractMetadataWithOcr;
+} | null): void {
+  aiOcrExtractor = overrides?.aiExtractor ?? extractMetadataWithAiOcr;
+  tesseractExtractor = overrides?.tesseractExtractor ?? extractMetadataWithOcr;
+}
+
+export type ImageRecognitionOutput = {
+  songs: SongMetadata[];
+  warnings: string[];
+  ocrPath: "ai_primary" | "tesseract_only";
+};
+
+export async function recognizeSongFromImage(buffer: Buffer, language = "eng", mimeType = "image/jpeg"): Promise<ImageRecognitionOutput> {
+  const warnings: string[] = [];
+  const candidates: OcrCandidateMetadata[] = [];
+  const aiStart = Date.now();
+  console.info("[recognition:image] primary_ocr_attempt", { provider: "gemini_vision", language });
+  const aiResult = await aiOcrExtractor(buffer, mimeType);
+
+  if (aiResult.status === "success") {
+    console.info("[recognition:image] primary_ocr_success", {
+      provider: "gemini_vision",
+      textLength: aiResult.title.length + aiResult.artist.length,
+      confidence: aiResult.confidenceScore,
+      latencyMs: Date.now() - aiStart,
+    });
+    candidates.push({
+      songName: aiResult.title,
+      artist: aiResult.artist,
+      album: UNKNOWN_METADATA.album,
+      confidenceScore: Math.max(0.5, aiResult.confidenceScore),
+    });
+  } else {
+    console.warn("[recognition:image] primary_ocr_unavailable", {
+      provider: "gemini_vision",
+      reason: aiResult.reason,
+      fallback: "tesseract",
+      latencyMs: Date.now() - aiStart,
+    });
+    warnings.push(`PRIMARY_OCR_UNAVAILABLE:${aiResult.reason}`);
+  }
+
+  if (candidates.length === 0) {
+    const fallback = await tesseractExtractor(buffer, language);
+    console.info("[recognition:image] fallback_ocr_result", {
+      provider: "tesseract",
+      textLength: fallback.songName.length + fallback.artist.length,
+      confidence: fallback.confidenceScore,
+    });
+    candidates.push(fallback);
+    warnings.push("OCR_FALLBACK_USED");
+  }
+
   const songMetadataResults: SongMetadata[] = [];
 
   for (const candidate of candidates) {
     try {
       const providerResult = await lookupSongByTitleAndArtist(candidate.songName, candidate.artist);
       if (providerResult) {
-        songMetadataResults.push({ ...toProviderResponse(providerResult), resultState: classifyResultState(providerResult.confidenceScore) });
+        const resultState = classifyResultState(providerResult.confidenceScore);
+        songMetadataResults.push({
+          ...toProviderResponse(providerResult),
+          resultState,
+          ocrEngine: candidates.length > 0 && warnings.includes("OCR_FALLBACK_USED") ? "tesseract" : "gemini_vision",
+          warnings: resultState === "need_better_sample" || resultState === "possible_matches" ? ["LOW_CONFIDENCE_MATCH", ...warnings] : warnings,
+        });
       } else {
         const bulgarianFallback = matchBulgarianSong(`${candidate.songName} ${candidate.artist}`);
-        songMetadataResults.push(bulgarianFallback ? { ...toProviderResponse(bulgarianFallback), resultState: "strong_likely_match" } : toFallbackResponse(candidate));
+        songMetadataResults.push(
+          bulgarianFallback
+            ? { ...toProviderResponse(bulgarianFallback), resultState: "strong_likely_match", ocrEngine: warnings.includes("OCR_FALLBACK_USED") ? "tesseract" : "gemini_vision", warnings }
+            : { ...toFallbackResponse(candidate), warnings: ["LOW_CONFIDENCE_MATCH", ...warnings] },
+        );
       }
     } catch {
-      songMetadataResults.push(toFallbackResponse(candidate));
+      songMetadataResults.push({ ...toFallbackResponse(candidate), warnings: ["LOW_CONFIDENCE_MATCH", ...warnings] });
     }
   }
 
   if (songMetadataResults.length === 0) throw new NoVerifiedResultError("No songs detected in image.");
-  return songMetadataResults;
+  return { songs: songMetadataResults, warnings, ocrPath: warnings.includes("OCR_FALLBACK_USED") ? "tesseract_only" : "ai_primary" };
 }

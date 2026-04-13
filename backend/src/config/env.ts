@@ -85,11 +85,11 @@ export function validateEnvironment(): void {
     console.warn('[env] DATABASE_URL missing in production; database-backed features may fail.');
   }
 
-  const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
+  const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
   if (geminiApiKey) {
     process.env.GEMINI_API_KEY = geminiApiKey;
   } else if (isProduction) {
-    console.error("[env] GEMINI_API_KEY missing in production. /api/assistant will return AI_SERVICE_UNAVAILABLE until configured.");
+    console.error("[env] GEMINI_API_KEY missing in production. /api/assistant and image AI OCR will run in degraded mode.");
   }
 
   const auddToken = process.env.AUDD_API_TOKEN?.trim() || process.env.AUDD_API_KEY?.trim();

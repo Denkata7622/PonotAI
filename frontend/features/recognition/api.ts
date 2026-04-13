@@ -23,12 +23,14 @@ import { getApiBaseUrl } from "@/lib/apiConfig";
 
 export type SongRecognitionResult = SongMatch & {
   source?: "provider" | "ocr_fallback" | "audio" | "image";
+  ocrEngine?: "gemini_vision" | "tesseract";
   verificationStatus?: "verified" | "not_found";
   attemptId?: string;
+  warnings?: string[];
 };
 
 export type AudioRecognitionResult = { primaryMatch: SongRecognitionResult; alternatives: SongRecognitionResult[] };
-export type ImageRecognitionResult = { songs: SongRecognitionResult[]; count: number; language: string };
+export type ImageRecognitionResult = { songs: SongRecognitionResult[]; count: number; language: string; warnings?: string[]; ocrPath?: "ai_primary" | "tesseract_only" };
 
 export class RecognitionError extends Error {
   code?: string;
