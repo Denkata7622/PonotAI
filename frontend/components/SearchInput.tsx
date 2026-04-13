@@ -33,7 +33,7 @@ export default function SearchInput({
       <Search className="h-4 w-4 shrink-0 text-[var(--muted)]" />
       <input
         ref={inputRef}
-        className="ml-2 w-full bg-transparent text-sm text-[var(--text)] outline-none placeholder:text-[var(--muted)]"
+        className="ml-2 w-full bg-transparent text-sm text-[var(--text)] outline-none placeholder:text-[var(--muted)] focus:outline-none focus-visible:outline-none focus-visible:ring-0"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onFocus={onFocus}

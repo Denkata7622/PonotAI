@@ -42,9 +42,16 @@
   --font-poppins: Poppins, "Avenir Next", "Segoe UI", sans-serif;
   --font-nunito: Nunito, "Trebuchet MS", "Segoe UI", sans-serif;
   --font-ibm-plex-sans: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-manrope: Manrope, "Segoe UI", Roboto, sans-serif;
+  --font-outfit: Outfit, "Avenir Next", "Segoe UI", sans-serif;
+  --font-dm-sans: "DM Sans", "Segoe UI", Roboto, sans-serif;
+  --font-sora: Sora, "Segoe UI", Roboto, sans-serif;
+  --font-plus-jakarta-sans: "Plus Jakarta Sans", "Segoe UI", Roboto, sans-serif;
   --text-scale: 1;
   --sidebar-border: var(--border);
   --sidebar-shadow: var(--shadow-raised);
+  --panel-tint-mix: 18%;
+  --accent-glow-strength: 0.16;
 }
 
 .dark {
@@ -81,7 +88,7 @@ body {
   --dropdown-bg-solid: #111827;
   --surface: rgba(255, 255, 255, 0.05);
   --surface-subtle: rgba(255, 255, 255, 0.04);
-  --surface-tinted: color-mix(in srgb, var(--surface) 84%, var(--accent) 16%);
+  --surface-tinted: color-mix(in srgb, var(--surface) calc(100% - var(--panel-tint-mix)), var(--accent) var(--panel-tint-mix));
   --surface-elevated: rgba(255, 255, 255, 0.14);
   --surface-2: rgba(255, 255, 255, 0.18);
   --border: rgba(255, 255, 255, 0.1);
@@ -113,7 +120,7 @@ body {
   --dropdown-bg-solid: #ffffff;
   --surface: rgba(255, 255, 255, 0.8);
   --surface-subtle: rgba(255, 255, 255, 0.62);
-  --surface-tinted: color-mix(in srgb, var(--surface) 82%, var(--accent) 18%);
+  --surface-tinted: color-mix(in srgb, var(--surface) calc(100% - var(--panel-tint-mix)), var(--accent) var(--panel-tint-mix));
   --surface-elevated: rgba(255, 255, 255, 0.96);
   --surface-2: rgba(255, 255, 255, 0.92);
   --border: rgba(0, 0, 0, 0.1);
@@ -189,6 +196,14 @@ html {
 :root[data-sidebar="tinted"] { --sidebar-bg: var(--surface-tinted); --sidebar-border: color-mix(in srgb, var(--accent-border) 64%, var(--border)); --sidebar-shadow: 0 10px 24px color-mix(in srgb, var(--accent-soft) 45%, transparent); }
 :root[data-sidebar="elevated"] { --sidebar-bg: var(--surface-elevated); --sidebar-border: color-mix(in srgb, var(--accent-border) 48%, var(--border)); --sidebar-shadow: var(--shadow-raised); }
 
+:root[data-panel-tint="off"] { --panel-tint-mix: 8%; }
+:root[data-panel-tint="subtle"] { --panel-tint-mix: 18%; }
+:root[data-panel-tint="rich"] { --panel-tint-mix: 30%; }
+
+:root[data-glow="off"] { --accent-glow-strength: 0; }
+:root[data-glow="low"] { --accent-glow-strength: 0.14; }
+:root[data-glow="medium"] { --accent-glow-strength: 0.24; }
+
 
 :root {
   --card-surface: var(--surface);
@@ -210,6 +225,7 @@ html {
 .themed-surface-subtle { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: color-mix(in srgb, var(--card-shadow-soft) 45%, transparent); }
 .themed-surface-elevated { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-raised); }
 .themed-selected { background: var(--accent-soft); border-color: var(--accent-border) !important; }
+.themed-selected { box-shadow: 0 0 0 1px var(--accent-border), 0 10px 20px rgba(var(--accent-rgb), var(--accent-glow-strength)); }
 
 
 :root[data-font="inter"] { --app-font: var(--font-inter); }
@@ -217,6 +233,11 @@ html {
 :root[data-font="poppins"] { --app-font: var(--font-poppins); }
 :root[data-font="nunito"] { --app-font: var(--font-nunito); }
 :root[data-font="ibm-plex-sans"] { --app-font: var(--font-ibm-plex-sans); }
+:root[data-font="manrope"] { --app-font: var(--font-manrope); }
+:root[data-font="outfit"] { --app-font: var(--font-outfit); }
+:root[data-font="dm-sans"] { --app-font: var(--font-dm-sans); }
+:root[data-font="sora"] { --app-font: var(--font-sora); }
+:root[data-font="plus-jakarta-sans"] { --app-font: var(--font-plus-jakarta-sans); }
 
 :root[data-text-scale="sm"] { --text-scale: 0.94; }
 :root[data-text-scale="md"] { --text-scale: 1; }
@@ -242,6 +263,7 @@ html {
 }
 .app-tab:hover { background: var(--hover-bg); color: var(--text); }
 .app-tab-active { background: var(--active-bg); border-color: var(--accent-border); color: var(--text); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-border) 75%, transparent); }
+.app-tab-active { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-border) 75%, transparent), 0 8px 18px rgba(var(--accent-rgb), var(--accent-glow-strength)); }
 
 .danger-zone-card {
   border-color: color-mix(in srgb, var(--status-danger) 50%, var(--accent-border)) !important;
@@ -308,6 +330,28 @@ html {
 .themed-link:hover { color: color-mix(in srgb, var(--accent) 70%, white); }
 .themed-progress { accent-color: var(--accent); }
 
+.dropdown-surface {
+  background: var(--dropdown-bg-solid, var(--surface-elevated));
+  border: 1px solid color-mix(in srgb, var(--border) 70%, var(--accent-border));
+  box-shadow: 0 16px 36px color-mix(in srgb, rgba(2, 6, 23, 0.45) 70%, var(--accent-soft));
+}
+
+.dropdown-item {
+  color: var(--text);
+  border: 1px solid transparent;
+  transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+
+.dropdown-item:hover {
+  background: color-mix(in srgb, var(--hover-bg) 72%, var(--accent-soft));
+  border-color: color-mix(in srgb, var(--border) 70%, var(--accent-border));
+}
+
+.dropdown-item[data-active="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+
 .status-success { color: var(--status-success); }
 .status-warning { color: var(--status-warning); }
 .status-danger { color: var(--status-danger); }
@@ -357,6 +401,7 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 10px;
+  box-shadow: 0 8px 18px rgba(var(--accent-rgb), var(--accent-glow-strength));
 }
 
 .navItemActive::before {

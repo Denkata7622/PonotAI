@@ -17,8 +17,10 @@ export type SurfaceStyle = "flat" | "soft" | "elevated";
 export type SidebarStyle = "standard" | "tinted" | "elevated";
 export type MotionLevel = "full" | "reduced" | "minimal";
 export type CardEmphasis = "standard" | "accented" | "tinted";
-export type FontFamily = "inter" | "system" | "poppins" | "nunito" | "ibm-plex-sans";
+export type FontFamily = "inter" | "system" | "poppins" | "nunito" | "ibm-plex-sans" | "manrope" | "outfit" | "dm-sans" | "sora" | "plus-jakarta-sans";
 export type TextScale = "sm" | "md" | "lg";
+export type GlowLevel = "off" | "low" | "medium";
+export type PanelTint = "off" | "subtle" | "rich";
 
 export type { AccentPreset, AccentIntensity, ChartStyle };
 
@@ -35,6 +37,8 @@ export type UiPersonalization = {
   cardEmphasis: CardEmphasis;
   fontFamily: FontFamily;
   textScale: TextScale;
+  glowLevel: GlowLevel;
+  panelTint: PanelTint;
 };
 
 type ThemeContextValue = UiPersonalization & {
@@ -52,6 +56,8 @@ type ThemeContextValue = UiPersonalization & {
   setCardEmphasis: (cardEmphasis: CardEmphasis) => void;
   setFontFamily: (fontFamily: FontFamily) => void;
   setTextScale: (textScale: TextScale) => void;
+  setGlowLevel: (glowLevel: GlowLevel) => void;
+  setPanelTint: (panelTint: PanelTint) => void;
   applyPersonalization: (patch: Partial<UiPersonalization>) => void;
 };
 
@@ -68,6 +74,8 @@ const STORAGE = {
   cardEmphasis: "ponotai-card-emphasis",
   fontFamily: "ponotai-font-family",
   textScale: "ponotai-text-scale",
+  glowLevel: "ponotai-glow-level",
+  panelTint: "ponotai-panel-tint",
 } as const;
 
 const densityVars: Record<DensityMode, Record<string, string>> = {
@@ -89,6 +97,8 @@ const defaults: UiPersonalization = {
   cardEmphasis: "standard",
   fontFamily: "inter",
   textScale: "md",
+  glowLevel: "low",
+  panelTint: "subtle",
 };
 
 export const ACCENT_TOKENS = THEME_ACCENT_TOKENS;
@@ -125,6 +135,8 @@ function applyUiStateToDocument(state: UiPersonalization): void {
   html.setAttribute("data-card-emphasis", state.cardEmphasis);
   html.setAttribute("data-font", state.fontFamily);
   html.setAttribute("data-text-scale", state.textScale);
+  html.setAttribute("data-glow", state.glowLevel);
+  html.setAttribute("data-panel-tint", state.panelTint);
 
   const variables = {
     ...getAccentCssVariables(state.accent, state.intensity, state.chartStyle),
@@ -144,8 +156,10 @@ const allowed = {
   sidebarStyle: ["standard", "tinted", "elevated"] as SidebarStyle[],
   motionLevel: ["full", "reduced", "minimal"] as MotionLevel[],
   cardEmphasis: ["standard", "accented", "tinted"] as CardEmphasis[],
-  fontFamily: ["inter", "system", "poppins", "nunito", "ibm-plex-sans"] as FontFamily[],
+  fontFamily: ["inter", "system", "poppins", "nunito", "ibm-plex-sans", "manrope", "outfit", "dm-sans", "sora", "plus-jakarta-sans"] as FontFamily[],
   textScale: ["sm", "md", "lg"] as TextScale[],
+  glowLevel: ["off", "low", "medium"] as GlowLevel[],
+  panelTint: ["off", "subtle", "rich"] as PanelTint[],
 };
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -166,6 +180,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       cardEmphasis: allowed.cardEmphasis.includes(window.localStorage.getItem(STORAGE.cardEmphasis) as CardEmphasis) ? (window.localStorage.getItem(STORAGE.cardEmphasis) as CardEmphasis) : defaults.cardEmphasis,
       fontFamily: allowed.fontFamily.includes(window.localStorage.getItem(STORAGE.fontFamily) as FontFamily) ? (window.localStorage.getItem(STORAGE.fontFamily) as FontFamily) : defaults.fontFamily,
       textScale: allowed.textScale.includes(window.localStorage.getItem(STORAGE.textScale) as TextScale) ? (window.localStorage.getItem(STORAGE.textScale) as TextScale) : defaults.textScale,
+      glowLevel: allowed.glowLevel.includes(window.localStorage.getItem(STORAGE.glowLevel) as GlowLevel) ? (window.localStorage.getItem(STORAGE.glowLevel) as GlowLevel) : defaults.glowLevel,
+      panelTint: allowed.panelTint.includes(window.localStorage.getItem(STORAGE.panelTint) as PanelTint) ? (window.localStorage.getItem(STORAGE.panelTint) as PanelTint) : defaults.panelTint,
     } satisfies UiPersonalization;
     return saved;
   });
@@ -192,6 +208,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(STORAGE.cardEmphasis, ui.cardEmphasis);
     window.localStorage.setItem(STORAGE.fontFamily, ui.fontFamily);
     window.localStorage.setItem(STORAGE.textScale, ui.textScale);
+    window.localStorage.setItem(STORAGE.glowLevel, ui.glowLevel);
+    window.localStorage.setItem(STORAGE.panelTint, ui.panelTint);
 
     if (ui.theme === "system") {
       const media = window.matchMedia("(prefers-color-scheme: light)");
@@ -219,6 +237,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setCardEmphasis: (cardEmphasis: CardEmphasis) => updateUiSetting("cardEmphasis", cardEmphasis),
       setFontFamily: (fontFamily: FontFamily) => updateUiSetting("fontFamily", fontFamily),
       setTextScale: (textScale: TextScale) => updateUiSetting("textScale", textScale),
+      setGlowLevel: (glowLevel: GlowLevel) => updateUiSetting("glowLevel", glowLevel),
+      setPanelTint: (panelTint: PanelTint) => updateUiSetting("panelTint", panelTint),
       applyPersonalization,
     }),
     [ui],

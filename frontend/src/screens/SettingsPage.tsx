@@ -12,7 +12,7 @@ import Modal from "../components/ui/Modal";
 import { useUser } from "../context/UserContext";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
-import { useTheme, UI_PRESETS, type DensityMode, type RadiusMode, type SurfaceStyle, type AccentIntensity, type ChartStyle, type SidebarStyle, type MotionLevel, type CardEmphasis, type FontFamily, type TextScale } from "../../lib/ThemeContext";
+import { useTheme, UI_PRESETS, type DensityMode, type RadiusMode, type SurfaceStyle, type AccentIntensity, type ChartStyle, type SidebarStyle, type MotionLevel, type CardEmphasis, type FontFamily, type TextScale, type GlowLevel, type PanelTint } from "../../lib/ThemeContext";
 import { ACCENT_TOKENS, SUPPORTED_ACCENTS } from "../../lib/themePresets";
 import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON, LIBRARY_EXPORT_VERSION } from "../lib/libraryExport";
 import type { Playlist } from "../../features/library/types";
@@ -36,8 +36,10 @@ const CONTROL_GROUPS = {
   sidebarStyle: ["standard", "tinted", "elevated"] as SidebarStyle[],
   motionLevel: ["full", "reduced", "minimal"] as MotionLevel[],
   cardEmphasis: ["standard", "accented", "tinted"] as CardEmphasis[],
-  fontFamily: ["inter", "system", "poppins", "nunito", "ibm-plex-sans"] as FontFamily[],
+  fontFamily: ["inter", "system", "manrope", "outfit", "dm-sans", "sora", "plus-jakarta-sans", "poppins", "nunito", "ibm-plex-sans"] as FontFamily[],
   textScale: ["sm", "md", "lg"] as TextScale[],
+  glowLevel: ["off", "low", "medium"] as GlowLevel[],
+  panelTint: ["off", "subtle", "rich"] as PanelTint[],
 } as const;
 
 export default function SettingsPage() {
@@ -51,7 +53,7 @@ export default function SettingsPage() {
   const { profile } = useProfile();
   const { user, preferences, updateProfile, changePassword, setPreferences, deleteAccount, isAuthenticated, favorites, history, addFavorite, addToHistory } = useUser();
   const { language } = useLanguage();
-  const { theme, toggleTheme, accent, density, intensity, surfaceStyle, radius, chartStyle, sidebarStyle, motionLevel, cardEmphasis, fontFamily, textScale, applyPersonalization, updateUiSetting } = useTheme();
+  const { theme, toggleTheme, accent, density, intensity, surfaceStyle, radius, chartStyle, sidebarStyle, motionLevel, cardEmphasis, fontFamily, textScale, glowLevel, panelTint, applyPersonalization, updateUiSetting } = useTheme();
 
   const [displayName, setDisplayName] = useState(user?.username ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -73,6 +75,8 @@ export default function SettingsPage() {
     cardEmphasis: (value: CardEmphasis) => updateUiSetting("cardEmphasis", value),
     fontFamily: (value: FontFamily) => updateUiSetting("fontFamily", value),
     textScale: (value: TextScale) => updateUiSetting("textScale", value),
+    glowLevel: (value: GlowLevel) => updateUiSetting("glowLevel", value),
+    panelTint: (value: PanelTint) => updateUiSetting("panelTint", value),
   } as const;
 
   useEffect(() => {
@@ -197,7 +201,7 @@ export default function SettingsPage() {
               <p className="mb-2 capitalize">{key.replace(/([A-Z])/g, " $1")}</p>
               <div className="flex flex-wrap gap-2">
                 {options.map((option) => {
-                  const active = String({ intensity, surfaceStyle, radius, density, chartStyle, sidebarStyle, motionLevel, cardEmphasis, fontFamily, textScale }[key as keyof typeof CONTROL_GROUPS]) === option;
+                  const active = String({ intensity, surfaceStyle, radius, density, chartStyle, sidebarStyle, motionLevel, cardEmphasis, fontFamily, textScale, glowLevel, panelTint }[key as keyof typeof CONTROL_GROUPS]) === option;
                   const onClick = () => {
                     const setter = controlSetters[key as keyof typeof controlSetters];
                     if (setter) setter(option as never);
