@@ -23,6 +23,7 @@ import { corsOptions } from "./config/cors";
 import assistantRouter from "./routes/assistant";
 import coverArtRouter from "./routes/coverArt";
 import aiRouter from "./modules/ai/ai.routes";
+import { getPersistenceHealth } from "./db/persistence";
 
 const app = express();
 const YAML = require("js-yaml");
@@ -78,6 +79,20 @@ app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true });
+});
+
+app.get("/api/health", (_req: Request, res: Response) => {
+  const persistence = getPersistenceHealth();
+  const db = persistence.connected ? "connected" : "disconnected";
+  const ai = process.env.GEMINI_API_KEY?.trim() ? "ok" : "degraded";
+  const status = db === "connected" ? "ok" : "partial";
+  res.status(status === "ok" ? 200 : 503).json({
+    db,
+    ai,
+    status,
+    mode: persistence.mode,
+    ...(persistence.lastError ? { error: persistence.lastError } : {}),
+  });
 });
 
 app.use("/api", apiRateLimit);

@@ -82,7 +82,10 @@ export function validateEnvironment(): void {
   if (databaseUrl) {
     process.env.DATABASE_URL = databaseUrl;
   } else if (isProduction) {
-    console.warn('[env] DATABASE_URL missing in production; database-backed features may fail.');
+    console.error("FATAL: DATABASE_URL environment variable is required in production");
+    process.exit(1);
+  } else {
+    console.warn("[env] DATABASE_URL missing in development; using local file persistence.");
   }
 
   const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();

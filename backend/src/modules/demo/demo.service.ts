@@ -37,6 +37,32 @@ type PersonaTemplate = {
 
 const DEMO_DATASET_ERROR_CODE = "DEMO_DATA_UNAVAILABLE";
 const DEMO_DATASET_ERROR_MESSAGE = "Demo song dataset is unavailable on the server.";
+const EMBEDDED_DEMO_SONGS: DemoSong[] = [
+  {
+    title: "Blinding Lights",
+    artist: "The Weeknd",
+    album: "After Hours",
+    coverUrl: "https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg",
+    genre: "pop",
+    mood: "upbeat",
+    year: 2019,
+    duration: 200,
+    youtubeVideoId: "4NRXx6U8ABQ",
+    persona: "Pop Fan",
+  },
+  {
+    title: "Smells Like Teen Spirit",
+    artist: "Nirvana",
+    album: "Nevermind",
+    coverUrl: "https://i.ytimg.com/vi/hTWKbfoikeg/hqdefault.jpg",
+    genre: "rock",
+    mood: "intense",
+    year: 1991,
+    duration: 301,
+    youtubeVideoId: "hTWKbfoikeg",
+    persona: "Gym Motivator",
+  },
+];
 
 type DatasetCache = {
   songs: DemoSong[] | null;
@@ -85,6 +111,7 @@ export function getDemoSongsDatasetPathCandidates(
 function loadDemoSongsDataset(): DatasetCache {
   if (datasetCache) return datasetCache;
 
+  const hasOverridePaths = Boolean(process.env.DEMO_SONGS_DATASET_PATHS?.trim());
   const checkedPaths = getDemoSongsDatasetPathCandidates();
   for (const candidate of checkedPaths) {
     try {
@@ -98,7 +125,9 @@ function loadDemoSongsDataset(): DatasetCache {
   }
 
   console.warn("[demo] Demo song dataset is unavailable. Checked paths:", checkedPaths);
-  datasetCache = { songs: null, resolvedPath: null, checkedPaths };
+  datasetCache = hasOverridePaths
+    ? { songs: null, resolvedPath: null, checkedPaths }
+    : { songs: EMBEDDED_DEMO_SONGS, resolvedPath: "embedded:fallback", checkedPaths };
   return datasetCache;
 }
 

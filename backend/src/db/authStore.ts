@@ -1,6 +1,5 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { readJsonDocument, writeJsonDocument } from "./persistence";
 
 export type UserRecord = {
   id: string;
@@ -151,14 +150,6 @@ export type AdminOverviewSnapshot = {
   apiKeys: ApiKeyRecord[];
 };
 
-function resolveDataDir(): string {
-  return process.env.PONOTAI_DATA_DIR?.trim() || path.join(process.cwd(), "backend", "data");
-}
-
-function resolveDbPath(): string {
-  return path.join(resolveDataDir(), "appdb.json");
-}
-
 function normalizeTrackKey(title: string, artist: string): string {
   const normalizePart = (value: string) =>
     value
@@ -172,34 +163,24 @@ function normalizeTrackKey(title: string, artist: string): string {
 }
 
 
-async function ensureDb() {
-  const dbPath = resolveDbPath();
-  await fs.mkdir(path.dirname(dbPath), { recursive: true });
-  try {
-    await fs.access(dbPath);
-  } catch {
-    const initial: AppDb = {
-      users: [],
-      searchHistory: [],
-      favorites: [],
-      sharedSongs: [],
-      playlists: [],
-      sharedPlaylists: [],
-      sharedRecognitions: [],
-      achievements: [],
-      apiKeys: [],
-      trackTags: [],
-    };
-    await fs.writeFile(dbPath, JSON.stringify(initial, null, 2));
-  }
+function createInitialDb(): AppDb {
+  return {
+    users: [],
+    searchHistory: [],
+    favorites: [],
+    sharedSongs: [],
+    playlists: [],
+    sharedPlaylists: [],
+    sharedRecognitions: [],
+    achievements: [],
+    apiKeys: [],
+    trackTags: [],
+  };
 }
 
 async function readDb(): Promise<AppDb> {
-  await ensureDb();
   try {
-    const raw = await fs.readFile(resolveDbPath(), "utf8");
-    if (!raw || !raw.trim()) throw new Error("empty");
-    const parsed = JSON.parse(raw) as Partial<AppDb>;
+    const parsed = await readJsonDocument<Partial<AppDb>>("appdb", "appdb.json", createInitialDb);
     const db: AppDb = {
       users: parsed.users ?? [],
       playlists: parsed.playlists ?? [],
@@ -223,25 +204,13 @@ async function readDb(): Promise<AppDb> {
     }
     return db;
   } catch {
-    const fresh: AppDb = {
-      users: [],
-      playlists: [],
-      searchHistory: [],
-      favorites: [],
-      sharedSongs: [],
-      sharedPlaylists: [],
-      sharedRecognitions: [],
-      achievements: [],
-      apiKeys: [],
-      trackTags: [],
-    };
+    const fresh = createInitialDb();
     await writeDb(fresh);
     return fresh;
   }
 }
 async function writeDb(db: AppDb): Promise<void> {
-  await ensureDb();
-  await fs.writeFile(resolveDbPath(), JSON.stringify(db, null, 2), "utf8");
+  await writeJsonDocument("appdb", "appdb.json", db);
 }
 
 export async function listUsers() { return (await readDb()).users; }

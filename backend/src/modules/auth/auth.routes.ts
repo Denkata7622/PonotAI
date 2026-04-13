@@ -110,7 +110,7 @@ authRouter.post("/logout", (_req, res) => res.status(200).json({ ok: true }));
 authRouter.get("/me", requireAuth, async (req, res) => {
   const user = await findUserById(req.userId!);
   if (!user) {
-    return void sendError(res, ErrorCatalog.NOT_FOUND);
+    return void sendError(res, ErrorCatalog.UNAUTHORIZED);
   }
   const finalUser = await ensureAdminRoleForConfiguredEmail(user, "auth_me");
   const payload = toUserPayload(finalUser);
