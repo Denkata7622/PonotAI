@@ -3,6 +3,7 @@
 // this route without debouncing on the frontend — doing so will exhaust the quota immediately.
 
 import { NextResponse } from "next/server";
+import { normalizeVisibleText } from "@/lib/text";
 
 type YouTubeSearchItem = {
   id?: { videoId?: string };
@@ -62,8 +63,8 @@ export async function GET(request: Request) {
     const results = (payload.items ?? [])
       .map((item) => {
         const videoId = item.id?.videoId;
-        const title = item.snippet?.title;
-        const artist = item.snippet?.channelTitle;
+        const title = normalizeVisibleText(item.snippet?.title);
+        const artist = normalizeVisibleText(item.snippet?.channelTitle);
         const thumbnailUrl = item.snippet?.thumbnails?.medium?.url;
         if (!videoId || !title || !artist || !thumbnailUrl) return null;
 

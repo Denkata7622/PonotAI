@@ -11,13 +11,14 @@ import {
 } from "../../db/authStore";
 import { requireAuth } from "../../middlewares/auth.middleware";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
+import { normalizeVisibleText } from "../../utils/text";
 
 const shareRouter = Router();
 
 shareRouter.post("/song", requireAuth, async (req, res) => {
   const { title, artist, album, coverUrl } = req.body as { title?: string; artist?: string; album?: string; coverUrl?: string };
-  const safeTitle = typeof title === "string" ? title.trim().slice(0, 180) : "";
-  const safeArtist = typeof artist === "string" ? artist.trim().slice(0, 180) : "";
+  const safeTitle = normalizeVisibleText(title).slice(0, 180);
+  const safeArtist = normalizeVisibleText(artist).slice(0, 180);
   if (!safeTitle || !safeArtist) return void sendError(res, ErrorCatalog.INVALID_PAYLOAD);
 
   const shared = await createSharedSong({ userId: req.userId!, title: safeTitle, artist: safeArtist, album, coverUrl });
@@ -50,15 +51,15 @@ shareRouter.post("/recognition", requireAuth, async (req, res) => {
     source?: string;
   };
 
-  const safeTitle = typeof title === "string" ? title.trim().slice(0, 180) : "";
-  const safeArtist = typeof artist === "string" ? artist.trim().slice(0, 180) : "";
+  const safeTitle = normalizeVisibleText(title).slice(0, 180);
+  const safeArtist = normalizeVisibleText(artist).slice(0, 180);
   if (!safeTitle || !safeArtist) return void sendError(res, ErrorCatalog.INVALID_PAYLOAD);
 
   const shared = await createSharedRecognition({
     userId: req.userId!,
     title: safeTitle,
     artist: safeArtist,
-    album: typeof album === "string" ? album.slice(0, 180) : undefined,
+    album: normalizeVisibleText(album).slice(0, 180) || undefined,
     coverUrl: typeof coverUrl === "string" ? coverUrl.slice(0, 500) : undefined,
     source: typeof source === "string" ? source.slice(0, 30) : undefined,
   });
@@ -68,8 +69,8 @@ shareRouter.post("/recognition", requireAuth, async (req, res) => {
 
 shareRouter.post("/", requireAuth, async (req, res) => {
   const { title, artist, album, coverUrl } = req.body as { title?: string; artist?: string; album?: string; coverUrl?: string };
-  const safeTitle = typeof title === "string" ? title.trim().slice(0, 180) : "";
-  const safeArtist = typeof artist === "string" ? artist.trim().slice(0, 180) : "";
+  const safeTitle = normalizeVisibleText(title).slice(0, 180);
+  const safeArtist = normalizeVisibleText(artist).slice(0, 180);
   if (!safeTitle || !safeArtist) return void sendError(res, ErrorCatalog.INVALID_PAYLOAD);
 
   const shared = await createSharedSong({ userId: req.userId!, title: safeTitle, artist: safeArtist, album, coverUrl });

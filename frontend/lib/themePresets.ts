@@ -76,6 +76,7 @@ export function getAccentCssVariables(accent: AccentPreset, intensity: AccentInt
       : chartStyle === "multicolor"
         ? [token.accent, token.accent2, "#22c55e", "#f59e0b", "#ef4444"]
         : [token.accent, token.accent2, `rgba(${token.accentRgb}, 0.75)`, `rgba(${token.accentRgb}, 0.58)`, `rgba(${token.accentRgb}, 0.42)`];
+  const chartLabel = chartStyle === "neutral" ? "var(--muted)" : "color-mix(in srgb, var(--text) 82%, var(--chart-1))";
 
   return {
     "--accent": token.accent,
@@ -94,5 +95,6 @@ export function getAccentCssVariables(accent: AccentPreset, intensity: AccentInt
     "--chart-3": chartTokens[2],
     "--chart-4": chartTokens[3],
     "--chart-5": chartTokens[4],
+    "--chart-label": chartLabel,
   };
 }

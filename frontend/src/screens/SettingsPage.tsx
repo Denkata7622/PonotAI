@@ -51,7 +51,7 @@ export default function SettingsPage() {
   const { profile } = useProfile();
   const { user, preferences, updateProfile, changePassword, setPreferences, deleteAccount, isAuthenticated, favorites, history, addFavorite, addToHistory } = useUser();
   const { language } = useLanguage();
-  const { theme, toggleTheme, accent, setAccent, density, setDensity, intensity, setIntensity, surfaceStyle, setSurfaceStyle, radius, setRadius, chartStyle, setChartStyle, sidebarStyle, setSidebarStyle, motionLevel, setMotionLevel, cardEmphasis, setCardEmphasis, fontFamily, setFontFamily, textScale, setTextScale, applyPersonalization } = useTheme();
+  const { theme, toggleTheme, accent, density, intensity, surfaceStyle, radius, chartStyle, sidebarStyle, motionLevel, cardEmphasis, fontFamily, textScale, applyPersonalization, updateUiSetting } = useTheme();
 
   const [displayName, setDisplayName] = useState(user?.username ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -62,6 +62,18 @@ export default function SettingsPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const controlSetters = {
+    intensity: (value: AccentIntensity) => updateUiSetting("intensity", value),
+    surfaceStyle: (value: SurfaceStyle) => updateUiSetting("surfaceStyle", value),
+    radius: (value: RadiusMode) => updateUiSetting("radius", value),
+    density: (value: DensityMode) => updateUiSetting("density", value),
+    chartStyle: (value: ChartStyle) => updateUiSetting("chartStyle", value),
+    sidebarStyle: (value: SidebarStyle) => updateUiSetting("sidebarStyle", value),
+    motionLevel: (value: MotionLevel) => updateUiSetting("motionLevel", value),
+    cardEmphasis: (value: CardEmphasis) => updateUiSetting("cardEmphasis", value),
+    fontFamily: (value: FontFamily) => updateUiSetting("fontFamily", value),
+    textScale: (value: TextScale) => updateUiSetting("textScale", value),
+  } as const;
 
   useEffect(() => {
     try {
@@ -161,7 +173,7 @@ export default function SettingsPage() {
               <span className="text-xs text-[var(--muted)]">Mode: {theme}</span>
             </div>
             <p className="text-sm font-medium">{t("settings_accent_color", language)}</p>
-            <div className="flex flex-wrap gap-1.5">{SUPPORTED_ACCENTS.map((preset) => <button key={preset} type="button" onClick={() => setAccent(preset)} aria-pressed={accent === preset} className={`selectable-card rounded-full border px-2.5 py-1 text-xs transition ${accent === preset ? "themed-selected" : "border-[var(--border)]"}`}><span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: ACCENT_TOKENS[preset].accent }} />{preset}</span></button>)}</div>
+            <div className="flex flex-wrap gap-1.5">{SUPPORTED_ACCENTS.map((preset) => <button key={preset} type="button" onClick={() => updateUiSetting("accent", preset)} aria-pressed={accent === preset} className={`selectable-card rounded-full border px-2.5 py-1 text-xs transition ${accent === preset ? "themed-selected" : "border-[var(--border)]"}`}><span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: ACCENT_TOKENS[preset].accent }} />{preset}</span></button>)}</div>
           </div>
 
           <div className="themed-surface-subtle settings-card p-4 space-y-3">
@@ -187,16 +199,8 @@ export default function SettingsPage() {
                 {options.map((option) => {
                   const active = String({ intensity, surfaceStyle, radius, density, chartStyle, sidebarStyle, motionLevel, cardEmphasis, fontFamily, textScale }[key as keyof typeof CONTROL_GROUPS]) === option;
                   const onClick = () => {
-                    if (key === "intensity") setIntensity(option as AccentIntensity);
-                    if (key === "surfaceStyle") setSurfaceStyle(option as SurfaceStyle);
-                    if (key === "radius") setRadius(option as RadiusMode);
-                    if (key === "density") setDensity(option as DensityMode);
-                    if (key === "chartStyle") setChartStyle(option as ChartStyle);
-                    if (key === "sidebarStyle") setSidebarStyle(option as SidebarStyle);
-                    if (key === "motionLevel") setMotionLevel(option as MotionLevel);
-                    if (key === "cardEmphasis") setCardEmphasis(option as CardEmphasis);
-                    if (key === "fontFamily") setFontFamily(option as FontFamily);
-                    if (key === "textScale") setTextScale(option as TextScale);
+                    const setter = controlSetters[key as keyof typeof controlSetters];
+                    if (setter) setter(option as never);
                   };
                   return <button key={option} type="button" onClick={onClick} className={`selectable-card rounded-[var(--radius-sm)] border px-2.5 py-1 text-xs transition ${active ? "themed-selected shadow-[0_0_0_1px_var(--accent-border)]" : "border-[var(--border)]"}`}>{option}</button>;
                 })}

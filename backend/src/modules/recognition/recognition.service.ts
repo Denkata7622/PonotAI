@@ -27,6 +27,7 @@ import {
   type ProviderName,
 } from "./recognition.guard";
 import { preprocessAudioForRecognition } from "./audioPreprocess";
+import { normalizeVisibleText } from "../../utils/text";
 
 export type SongMetadata = ProviderSongMetadata & {
   source: "provider" | "ocr_fallback";
@@ -388,7 +389,7 @@ function pruneImageCaches(): void {
 }
 
 function normalizeOcrText(text: string): string {
-  return text
+  return normalizeVisibleText(text)
     .replace(/[“”„‟"']/g, "")
     .replace(/[|`~^_*]+/g, " ")
     .replace(/\s+/g, " ")

@@ -76,6 +76,25 @@ export interface LibraryContextPayload {
   stats?: {
     topGenres: LibraryStatItem[];
     topArtists: LibraryStatItem[];
+    recentTopArtists?: LibraryStatItem[];
+    recurringArtists?: LibraryStatItem[];
+    recentTrendSummary?: string;
+    novelty?: {
+      newArtistsLast7Days: number;
+      replayedTracksLast7Days: number;
+    };
+    playlistPatterns?: {
+      totalPlaylists: number;
+      avgTracksPerPlaylist: number;
+      topPlaylistNames: string[];
+    };
+  };
+  grounding?: {
+    dataRichness: "sparse" | "growing" | "rich";
+    historyEvents: number;
+    favoritesCount: number;
+    playlistsCount: number;
+    strategyHint: string;
   };
   statedPreferences?: {
     genres: string[];
