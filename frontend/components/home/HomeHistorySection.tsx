@@ -1,6 +1,7 @@
 "use client";
 
 import type { SongMatch } from "../../features/recognition/api";
+import type { Playlist } from "../../features/library/types";
 import { t, type Language } from "../../lib/translations";
 import { Clock } from "../icons";
 import SongRow from "../SongRow";
@@ -15,6 +16,8 @@ export default function HomeHistorySection({
   onPlay,
   favoritesSet,
   onFavorite,
+  playlists,
+  onAddToPlaylist,
 }: {
   language: Language;
   items: HistoryEntry[];
@@ -22,6 +25,8 @@ export default function HomeHistorySection({
   onPlay: (song: SongMatch) => void;
   favoritesSet: Set<string>;
   onFavorite: (id: string, title?: string, artist?: string, artworkUrl?: string, videoId?: string) => void;
+  playlists: Playlist[];
+  onAddToPlaylist: (song: SongMatch, playlistId: string) => void;
 }) {
   return (
     <section className="card-base space-y-3">
@@ -50,6 +55,9 @@ export default function HomeHistorySection({
                 onDelete={() => onDelete(entry.id)}
                 isFavorite={favoritesSet.has(key)}
                 onFavorite={() => onFavorite(entry.id, entry.song.songName, entry.song.artist, entry.song.albumArtUrl, entry.song.youtubeVideoId)}
+                showMoreMenu
+                playlists={playlists}
+                onAddToPlaylist={(playlistId) => onAddToPlaylist(entry.song, playlistId)}
               />
             );
           })}

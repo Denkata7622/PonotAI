@@ -113,9 +113,10 @@ export async function recognizeImageController(req: Request, res: Response): Pro
     }
 
     const language = typeof req.body?.language === "string" ? req.body.language : undefined;
-    void req.body?.maxSongs;
+    const parsedMaxSongs = Number.parseInt(String(req.body?.maxSongs ?? ""), 10);
+    const maxSongs = Number.isFinite(parsedMaxSongs) ? Math.max(1, Math.min(20, parsedMaxSongs)) : 5;
 
-    const result = await recognizeSongFromImage(req.file.buffer, language, req.file.mimetype);
+    const result = await recognizeSongFromImage(req.file.buffer, language, req.file.mimetype, maxSongs);
 
     const persistenceWarnings: string[] = [];
     for (const song of result.songs) {

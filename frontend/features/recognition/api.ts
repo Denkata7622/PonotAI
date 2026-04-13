@@ -120,5 +120,11 @@ export async function recognizeFromVideo(videoFile: File): Promise<AudioRecognit
 export async function recognizeFromImage(imageFile: File, maxSongs = 1, language = "eng"): Promise<ImageRecognitionResult> {
   const result = await postMultipart<ImageRecognitionResult>("/api/recognition/image", "image", imageFile, imageFile.name, { maxSongs: String(maxSongs), language });
   const songs = result.songs.map((song) => normalizeSong(song)).slice(0, Math.max(1, maxSongs));
-  return { songs, count: songs.length, language: result.language || language };
+  return {
+    songs,
+    count: songs.length,
+    language: result.language || language,
+    warnings: result.warnings ?? [],
+    ocrPath: result.ocrPath,
+  };
 }

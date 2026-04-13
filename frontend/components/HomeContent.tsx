@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import HeroSection from "./HeroSection";
 import ResultCard from "./ResultCard";
+import SongRow from "./SongRow";
 
 import UploadModal from "./UploadModal";
 const LibrarySidebar = lazy(() => import("./LibrarySidebar"));
@@ -19,6 +20,7 @@ import {
   type SongMatch,
   type SongRecognitionResult,
 } from "../features/recognition/api";
+import { getVisibleOcrCandidates } from "../features/recognition/ui";
 import type { Track } from "../features/tracks/types";
 import { getHomeRecommendations } from "../features/recommendations/homeRecommendations";
 import { readTasteProfile } from "../src/features/onboarding/tasteProfile";
@@ -137,6 +139,14 @@ export function HomeContent() {
       artist: track.artistName,
       coverUrl: track.artworkUrl,
       videoId: videoId ?? track.youtubeVideoId,
+    });
+  };
+  const addSongMatchToPlaylist = (song: SongMatch, playlistId: string) => {
+    addSongToPlaylist(playlistId, {
+      title: song.songName,
+      artist: song.artist,
+      coverUrl: song.albumArtUrl,
+      videoId: song.youtubeVideoId,
     });
   };
 
@@ -732,10 +742,44 @@ export function HomeContent() {
             )}
 
             <ResultCard language={language} song={latestResult} onSave={saveSong} onPlay={playSong} onFavorite={favoriteSong} favoritedKeys={favoritedKeys} />
+            {getVisibleOcrCandidates(imageResult).length > 0 && (
+              <Card className="space-y-3 p-4">
+                <h3 className="text-base font-semibold">
+                  {language === "bg" ? "OCR кандидати" : "OCR candidates"}
+                </h3>
+                <div className="space-y-2">
+                  {getVisibleOcrCandidates(imageResult).map((song, index) => (
+                    <SongRow
+                      key={`${song.songName}-${song.artist}-${index}`}
+                      id={`ocr-${song.songName}-${song.artist}-${index}`.toLowerCase().replace(/\s+/g, "-")}
+                      title={song.songName}
+                      artist={`${song.artist} • ${Math.round((song.confidence ?? 0) * 100)}%`}
+                      artworkUrl={song.albumArtUrl}
+                      videoId={song.youtubeVideoId}
+                      onPlay={() => playSong(song)}
+                      isFavorite={favoritedKeys.has(normalizeTrackKey(song.songName, song.artist))}
+                      onFavorite={() => favoriteSong(song)}
+                      showMoreMenu
+                      playlists={playlists}
+                      onAddToPlaylist={(playlistId) => addSongMatchToPlaylist(song, playlistId)}
+                    />
+                  ))}
+                </div>
+              </Card>
+            )}
 
             <div className="space-y-2">
               <h2 className="text-xl font-semibold">{language === "bg" ? "Последна активност" : "Recent activity"}</h2>
-              <HomeHistorySection language={language} items={history} onDelete={handleDeleteHistoryItem} onPlay={playSong} favoritesSet={favoritesSet} onFavorite={toggleFavorite} />
+              <HomeHistorySection
+                language={language}
+                items={history}
+                onDelete={handleDeleteHistoryItem}
+                onPlay={playSong}
+                favoritesSet={favoritesSet}
+                onFavorite={toggleFavorite}
+                playlists={playlists}
+                onAddToPlaylist={addSongMatchToPlaylist}
+              />
             </div>
 
             {(stats.totalFavorites > 0 || stats.totalPlaylists > 0) && (

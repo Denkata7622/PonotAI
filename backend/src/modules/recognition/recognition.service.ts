@@ -62,6 +62,7 @@ const OCR_CHAR_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
 const OCR_LANGUAGE_MAP: Record<string, string> = { eng: "eng", bul: "bul", "bul+eng": "bul+eng", "bg+en": "bul+eng", bg: "bul" };
 let aiOcrExtractor: typeof extractMetadataWithAiOcr = extractMetadataWithAiOcr;
 let tesseractExtractor: typeof extractMetadataWithOcr = extractMetadataWithOcr;
+let lookupSongExtractor: typeof lookupSongByTitleAndArtist = lookupSongByTitleAndArtist;
 
 const providerStrategy = {
   primaryProvider: (process.env.RECOGNITION_PRIMARY_PROVIDER as ProviderName | undefined) ?? "audd",
@@ -318,7 +319,43 @@ function toOcrBlocks(words: TesseractWord[]): OcrBlock[] {
   return blocks;
 }
 
-async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise<OcrCandidateMetadata> {
+function dedupeOcrCandidates(candidates: OcrCandidateMetadata[]): OcrCandidateMetadata[] {
+  const seen = new Set<string>();
+  const deduped: OcrCandidateMetadata[] = [];
+  for (const candidate of candidates) {
+    const key = `${candidate.songName}::${candidate.artist}`.trim().toLowerCase();
+    if (!candidate.songName.trim() || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(candidate);
+  }
+  return deduped;
+}
+
+function deriveCandidateMetadata(lines: InterpretedLine[]): OcrCandidateMetadata[] {
+  const eligible = lines.filter((line) => line.features.letterRatio >= 0.45 && line.features.length >= 2 && line.features.length <= 80);
+  if (eligible.length === 0) return [];
+
+  const rankedTitles = [...eligible]
+    .sort((a, b) => scoreLineForTitle(b) - scoreLineForTitle(a))
+    .slice(0, 15);
+
+  const candidates = rankedTitles.map((titleLine) => {
+    const artistLine = eligible
+      .filter((line) => line !== titleLine && line.bbox.y >= titleLine.bbox.y - 4)
+      .sort((a, b) => Math.abs(a.bbox.y - (titleLine.bbox.y + titleLine.bbox.height)) - Math.abs(b.bbox.y - (titleLine.bbox.y + titleLine.bbox.height)))[0];
+
+    return {
+      songName: titleLine.text,
+      artist: artistLine?.text ?? UNKNOWN_METADATA.artist,
+      album: UNKNOWN_METADATA.album,
+      confidenceScore: Math.max(0.2, Math.min(0.65, titleLine.avgConfidence / 100)),
+    };
+  });
+
+  return dedupeOcrCandidates(candidates);
+}
+
+async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise<OcrCandidateMetadata[]> {
   const normalizedLanguage = OCR_LANGUAGE_MAP[language] ?? "eng";
   const worker = await Tesseract.createWorker(normalizedLanguage);
   await worker.setParameters({ tessedit_char_whitelist: OCR_CHAR_WHITELIST, preserve_interword_spaces: "1" });
@@ -326,12 +363,23 @@ async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise
     const ocrResult = await worker.recognize(buffer);
     const words = ((ocrResult.data as { words?: TesseractWord[] }).words ?? []) as TesseractWord[];
     const interpreted = interpretOcr(toOcrBlocks(words));
+    const candidates: OcrCandidateMetadata[] = [];
     if (interpreted.music?.title && interpreted.music.confidenceScore >= 0.42) {
-      return { songName: interpreted.music.title, artist: interpreted.music.artist ?? UNKNOWN_METADATA.artist, album: UNKNOWN_METADATA.album, confidenceScore: interpreted.music.confidenceScore };
+      candidates.push({
+        songName: interpreted.music.title,
+        artist: interpreted.music.artist ?? UNKNOWN_METADATA.artist,
+        album: UNKNOWN_METADATA.album,
+        confidenceScore: interpreted.music.confidenceScore,
+      });
     }
-    const fallback = deriveBestEffortMetadata(interpreted.lines);
-    if (!fallback) throw new NoVerifiedResultError("Could not extract readable song text from the uploaded image.");
-    return fallback;
+
+    candidates.push(...deriveCandidateMetadata(interpreted.lines));
+    if (candidates.length === 0) {
+      const fallback = deriveBestEffortMetadata(interpreted.lines);
+      if (fallback) candidates.push(fallback);
+    }
+    if (candidates.length === 0) throw new NoVerifiedResultError("Could not extract readable song text from the uploaded image.");
+    return dedupeOcrCandidates(candidates).sort((a, b) => b.confidenceScore - a.confidenceScore);
   } finally {
     await worker.terminate().catch(() => undefined);
   }
@@ -340,9 +388,11 @@ async function extractMetadataWithOcr(buffer: Buffer, language = "eng"): Promise
 export function __setImageOcrExtractorsForTests(overrides: {
   aiExtractor?: typeof extractMetadataWithAiOcr;
   tesseractExtractor?: typeof extractMetadataWithOcr;
+  lookupExtractor?: typeof lookupSongByTitleAndArtist;
 } | null): void {
   aiOcrExtractor = overrides?.aiExtractor ?? extractMetadataWithAiOcr;
   tesseractExtractor = overrides?.tesseractExtractor ?? extractMetadataWithOcr;
+  lookupSongExtractor = overrides?.lookupExtractor ?? lookupSongByTitleAndArtist;
 }
 
 export type ImageRecognitionOutput = {
@@ -351,9 +401,10 @@ export type ImageRecognitionOutput = {
   ocrPath: "ai_primary" | "tesseract_only";
 };
 
-export async function recognizeSongFromImage(buffer: Buffer, language = "eng", mimeType = "image/jpeg"): Promise<ImageRecognitionOutput> {
+export async function recognizeSongFromImage(buffer: Buffer, language = "eng", mimeType = "image/jpeg", maxSongs = 5): Promise<ImageRecognitionOutput> {
   const warnings: string[] = [];
   const candidates: OcrCandidateMetadata[] = [];
+  const resolvedMaxSongs = Math.max(1, Math.min(20, Number.isFinite(maxSongs) ? Math.trunc(maxSongs) : 5));
   const aiStart = Date.now();
   console.info("[recognition:image] primary_ocr_attempt", { provider: "gemini_vision", language });
   const aiResult = await aiOcrExtractor(buffer, mimeType);
@@ -361,16 +412,18 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
   if (aiResult.status === "success") {
     console.info("[recognition:image] primary_ocr_success", {
       provider: "gemini_vision",
-      textLength: aiResult.title.length + aiResult.artist.length,
-      confidence: aiResult.confidenceScore,
+      candidates: aiResult.songs.length,
+      confidence: aiResult.songs[0]?.confidenceScore ?? null,
       latencyMs: Date.now() - aiStart,
     });
-    candidates.push({
-      songName: aiResult.title,
-      artist: aiResult.artist,
-      album: UNKNOWN_METADATA.album,
-      confidenceScore: Math.max(0.5, aiResult.confidenceScore),
-    });
+    candidates.push(
+      ...aiResult.songs.map((song) => ({
+        songName: song.title,
+        artist: song.artist,
+        album: UNKNOWN_METADATA.album,
+        confidenceScore: Math.max(0.5, song.confidenceScore),
+      })),
+    );
   } else {
     console.warn("[recognition:image] primary_ocr_unavailable", {
       provider: "gemini_vision",
@@ -385,18 +438,19 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
     const fallback = await tesseractExtractor(buffer, language);
     console.info("[recognition:image] fallback_ocr_result", {
       provider: "tesseract",
-      textLength: fallback.songName.length + fallback.artist.length,
-      confidence: fallback.confidenceScore,
+      candidates: fallback.length,
+      confidence: fallback[0]?.confidenceScore ?? null,
     });
-    candidates.push(fallback);
+    candidates.push(...fallback);
     warnings.push("OCR_FALLBACK_USED");
   }
 
   const songMetadataResults: SongMetadata[] = [];
+  const rankedCandidates = dedupeOcrCandidates(candidates).sort((a, b) => b.confidenceScore - a.confidenceScore).slice(0, resolvedMaxSongs);
 
-  for (const candidate of candidates) {
+  for (const candidate of rankedCandidates) {
     try {
-      const providerResult = await lookupSongByTitleAndArtist(candidate.songName, candidate.artist);
+      const providerResult = await lookupSongExtractor(candidate.songName, candidate.artist);
       if (providerResult) {
         const resultState = classifyResultState(providerResult.confidenceScore);
         songMetadataResults.push({
@@ -419,5 +473,5 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
   }
 
   if (songMetadataResults.length === 0) throw new NoVerifiedResultError("No songs detected in image.");
-  return { songs: songMetadataResults, warnings, ocrPath: warnings.includes("OCR_FALLBACK_USED") ? "tesseract_only" : "ai_primary" };
+  return { songs: songMetadataResults.slice(0, resolvedMaxSongs), warnings, ocrPath: warnings.includes("OCR_FALLBACK_USED") ? "tesseract_only" : "ai_primary" };
 }
