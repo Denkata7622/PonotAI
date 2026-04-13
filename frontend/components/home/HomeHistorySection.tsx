@@ -24,12 +24,12 @@ export default function HomeHistorySection({
   onFavorite: (id: string, title?: string, artist?: string, artworkUrl?: string, videoId?: string) => void;
 }) {
   return (
-    <section className="rounded-3xl border border-border bg-surface p-6">
+    <section className="card-base space-y-3">
       <h2 className="text-2xl font-semibold">{t("history_recent", language)}</h2>
       {items.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-border bg-surface-overlay p-8 text-center">
+        <div className="homeEmptyState mt-2 p-8 text-center">
           <div className="flex flex-col items-center gap-3">
-            <Clock className="w-10 h-10 text-[var(--muted)]" />
+            <Clock className="h-10 w-10 text-[var(--muted)]" />
             <p className="text-lg font-semibold">{t("empty_history_heading", language)}</p>
             <p className="text-sm text-text-muted">{t("empty_history_hint", language)}</p>
           </div>

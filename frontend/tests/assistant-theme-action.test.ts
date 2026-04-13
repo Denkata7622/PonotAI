@@ -27,3 +27,10 @@ test("unsupported template ids are not emitted as executable changes", () => {
   assert.equal(parsed.template, undefined);
   assert.equal(hasApplicableThemeChange(parsed), false);
 });
+
+test("assistant theme action accepts stock template ids", () => {
+  const parsed = normalizeThemeActionPayload({ template: "stock-light" });
+  assert.equal(parsed.template, "stock-light");
+  assert.equal(parsed.theme, "light");
+  assert.equal(parsed.accent, "slate");
+});

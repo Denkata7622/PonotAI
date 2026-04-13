@@ -3,6 +3,7 @@
 import { Camera, Mic, Radio } from "./icons";
 import { useEffect, useRef, useState } from "react";
 import { t, type Language } from "../lib/translations";
+import { Button } from "../src/components/ui/Button";
 
 type HeroSectionProps = {
   language: Language;
@@ -72,7 +73,7 @@ export default function HeroSection({
         const barWidth = 4;
         const gap = 2;
         const barCount = Math.floor(canvas.width / (barWidth + gap));
-        canvasContext.fillStyle = "rgba(255,255,255,0.06)";
+        canvasContext.fillStyle = "var(--surface-subtle)";
         canvasContext.fillRect(0, 0, canvas.width, canvas.height);
         canvasContext.fillStyle = "var(--accent)";
 
@@ -103,13 +104,14 @@ export default function HeroSection({
   }, [isListening, microphoneStream]);
 
   return (
-    <section className="relative overflow-hidden rounded-[28px] border border-border bg-surface p-6 sm:p-10">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(124,92,255,0.3),transparent_45%),radial-gradient(circle_at_80%_10%,rgba(76,211,255,0.2),transparent_40%)]" />
+    <section className="heroSurface relative overflow-hidden rounded-[28px] p-6 sm:p-10">
+      <div className="heroAccentOverlay" />
+      <div className="heroNoiseOverlay" />
       <div className="relative">
         <div className="mb-8 flex flex-wrap items-center justify-end gap-2">
-          <button aria-label={isLibraryOpen ? t("hide_library", language) : t("show_library", language)} className="glassBtn" onClick={onToggleLibrary}>{isLibraryOpen ? t("hide_library", language) : t("show_library", language)}</button>
-          <button aria-label={t("language_label", language)} className="glassBtn" onClick={onToggleLanguage}>{language === "en" ? "БГ" : "EN"}</button>
-          <button aria-label={theme === "dark" ? t("theme_light", language) : t("theme_dark", language)} className="glassBtn" onClick={onToggleTheme}>{theme === "dark" ? t("theme_light", language) : t("theme_dark", language)}</button>
+          <Button aria-label={isLibraryOpen ? t("hide_library", language) : t("show_library", language)} variant="secondary" size="sm" className="glassBtn" onClick={onToggleLibrary}>{isLibraryOpen ? t("hide_library", language) : t("show_library", language)}</Button>
+          <Button aria-label={t("language_label", language)} variant="secondary" size="sm" className="glassBtn" onClick={onToggleLanguage}>{language === "en" ? "БГ" : "EN"}</Button>
+          <Button aria-label={theme === "dark" ? t("theme_light", language) : t("theme_dark", language)} variant="secondary" size="sm" className="glassBtn" onClick={onToggleTheme}>{theme === "dark" ? t("theme_light", language) : t("theme_dark", language)}</Button>
         </div>
 
         <p className="text-center text-sm uppercase tracking-[0.28em] text-text-muted">{language === "bg" ? "ПонотИИ" : "PonotAI"}</p>
@@ -126,9 +128,9 @@ export default function HeroSection({
               <span className="text-5xl font-bold text-[var(--text)]">{preparingCountdown}</span>
             ) : (
               <>
-                {isListening ? <Radio className="w-10 h-10 text-[var(--accent)]" /> : <Mic className="w-10 h-10 text-[var(--text)]" />}
-                <span className="mt-2 text-base font-semibold tracking-wide">{t("hero_title", language)}</span>
-                {isListening && <span className="mt-1 text-xs text-text-muted">{t("recognizing_status", language)}</span>}
+                {isListening ? <Radio className="w-10 h-10 text-[var(--accent-foreground)]" /> : <Mic className="w-10 h-10 text-[var(--accent-foreground)]" />}
+                <span className="mt-2 text-base font-semibold tracking-wide text-[var(--accent-foreground)]">{t("hero_title", language)}</span>
+                {isListening && <span className="mt-1 text-xs text-[color:color-mix(in_srgb,var(--accent-foreground)_74%,transparent)]">{t("recognizing_status", language)}</span>}
               </>
             )}
           </button>
@@ -138,15 +140,15 @@ export default function HeroSection({
               ref={canvasRef}
               width={280}
               height={64}
-              className="h-16 w-[280px] rounded-xl border border-border bg-[var(--surface-raised)]"
+              className="h-16 w-[280px] rounded-xl border border-border bg-[var(--surface-subtle)]"
               aria-label="Audio waveform visualizer"
             />
           )}
 
-          <button onClick={onOpenUpload} className="secondaryHeroAction flex items-center gap-2">
-            <Camera className="w-4 h-4 text-[var(--text)]" />
+          <Button onClick={onOpenUpload} variant="secondary" className="secondaryHeroAction flex items-center gap-2">
+            <Camera className="w-4 h-4" />
             {t("btn_upload_photo", language)}
-          </button>
+          </Button>
         </div>
       </div>
     </section>

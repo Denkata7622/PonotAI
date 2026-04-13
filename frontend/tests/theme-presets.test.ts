@@ -43,3 +43,9 @@ test("ui presets define card emphasis for all preset templates", () => {
     assert.ok(["standard", "accented", "tinted"].includes(preset.cardEmphasis));
   }
 });
+
+test("stock presets are registered for legacy theme choices", () => {
+  assert.equal(UI_PRESETS["Stock Light"]?.theme, "light");
+  assert.equal(UI_PRESETS["Stock Dark"]?.theme, "dark");
+  assert.equal(UI_PRESETS["Stock Dark"]?.accent, "graphite");
+});
