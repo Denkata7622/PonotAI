@@ -33,13 +33,13 @@ export default function QueuePanel() {
                 setOverIndex(null);
               }}
               onClick={() => playFromQueue(entry.queueId)}
-              className={`group flex w-full items-center gap-2 rounded-[var(--radius-md)] border p-2 text-left ${index === currentIndex ? 'themed-selected border-l-4' : 'border-[var(--border)]'} ${overIndex === index ? 'bg-[var(--surface-2)]' : 'bg-[var(--surface-subtle)]'}`}
+              className={`group flex w-full items-center gap-2 rounded-[var(--radius-md)] border p-2 text-left transition-colors ${index === currentIndex ? 'themed-selected border-l-4 shadow-[0_0_0_1px_var(--accent-border)]' : 'border-[var(--border)] hover:border-[var(--accent-border)]'} ${overIndex === index ? 'bg-[var(--surface-2)]' : 'bg-[var(--surface-subtle)] hover:bg-[var(--hover-bg)]'}`}
             >
               <span className="w-5 text-xs text-[var(--muted)]">{index + 1}</span>
               {entry.track.artworkUrl ? <img src={entry.track.artworkUrl} alt="cover" className="h-9 w-9 rounded object-cover" /> : <div className="h-9 w-9 rounded bg-[var(--surface-2)]" />}
               <div className="min-w-0 flex-1"><p className="truncate text-sm">{entry.track.title}</p><p className="truncate text-xs text-[var(--muted)]">{entry.track.artist}</p></div>
               {index === currentIndex ? <Volume2 className="h-[14px] w-[14px] text-[var(--accent)] animate-pulse" /> : null}
-              <button type="button" onClick={(event) => { event.stopPropagation(); removeFromQueue(entry.queueId); }} className="opacity-0 transition group-hover:opacity-100"><X className="h-[14px] w-[14px]" /></button>
+              <button type="button" onClick={(event) => { event.stopPropagation(); removeFromQueue(entry.queueId); }} className="opacity-0 transition group-hover:opacity-100 rounded-[var(--radius-sm)] p-1 hover:bg-[var(--hover-bg)]"><X className="h-[14px] w-[14px]" /></button>
             </div>
           ))}
         </div>

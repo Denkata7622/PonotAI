@@ -811,7 +811,7 @@ export function HomeContent() {
           </div>
         )}
         {toasts.map((toast) => (
-          <div role="status" key={toast.id} className={`relative overflow-hidden rounded-xl border px-4 py-3 shadow-xl ${toast.kind === "success" ? "border-emerald-300/40 bg-emerald-500/15" : toast.kind === "error" ? "border-red-300/40 bg-red-500/15" : "border-sky-300/40 bg-sky-500/15"}`}>
+          <div role="status" key={toast.id} className={`relative overflow-hidden rounded-xl border px-4 py-3 shadow-xl ${toast.kind === "success" ? "status-surface-success" : toast.kind === "error" ? "status-surface-danger" : "status-surface-info"}`}>
             <button
               type="button"
               className="absolute right-2 top-2 rounded p-1 text-[var(--muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--text)]"

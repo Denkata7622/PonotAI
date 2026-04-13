@@ -53,11 +53,11 @@ export default function PlaylistCard({
               event.stopPropagation();
               onDelete(playlist.id);
             }}
-            className="rounded-lg border border-red-400/40 p-2 text-red-300 transition hover:bg-red-500/10"
+            className="rounded-lg border border-[color:rgba(var(--status-danger-rgb),0.4)] p-2 status-danger transition hover:bg-[color:rgba(var(--status-danger-rgb),0.12)]"
             aria-label={t("track_delete_playlist", language)}
             title={t("track_delete_playlist", language)}
           >
-            <Trash2 className="w-4 h-4 text-red-300" />
+            <Trash2 className="w-4 h-4 status-danger" />
           </button>
         )}
         {onPlay && playlist.songs.length > 0 && (

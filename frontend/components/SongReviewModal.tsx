@@ -134,7 +134,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
                 key={index}
                 className={`rounded-xl border p-4 transition ${
                   song.selected
-                    ? "border-violet-400/40 bg-violet-500/10"
+                    ? "border-[var(--accent-border)] bg-[var(--accent-soft)]"
                     : "border-border bg-surface opacity-60"
                 }`}
               >
@@ -162,7 +162,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
                             onClick={() => selectArtwork(index, artIndex)}
                             className={`h-16 w-16 overflow-hidden rounded-lg border-2 transition ${
                               song.selectedArtIndex === artIndex
-                                ? "border-violet-400 ring-2 ring-violet-400/50"
+                                ? "border-[var(--accent-border)] ring-2 ring-[var(--accent-ring)]"
                                 : "border-border opacity-60 hover:opacity-100"
                             }`}
                           >
@@ -222,7 +222,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
           <button
             onClick={handleConfirm}
             disabled={selectedCount === 0}
-            className="rounded-lg bg-violet-600 px-5 py-2 font-medium hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-[var(--accent)] px-5 py-2 font-medium hover:bg-[var(--accent-2)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {selectedCount > 0
               ? t("modal_confirm_count", language, { count: selectedCount })

@@ -137,7 +137,7 @@ export default function AdminPage() {
           { label: "Achievements", value: overview.totals.achievementsAwarded, Icon: Sparkles },
           { label: "Developer API keys", value: overview.totals.apiKeys, Icon: Sparkles },
         ].map(({ label, value, Icon }) => (
-          <article key={label} className="card p-4">
+          <article key={label} className="card p-4 border-[var(--accent-border)]/40">
             <p className="inline-flex items-center gap-2 text-xs uppercase tracking-wide text-[var(--muted)]"><Icon className="h-3.5 w-3.5" />{label}</p>
             <p className="mt-2 text-2xl font-semibold">{value}</p>
           </article>
@@ -153,7 +153,7 @@ export default function AdminPage() {
               {personas.map((persona) => <option key={persona.key} value={persona.key}>{persona.key} — {persona.description}</option>)}
             </select>
           </label>
-          <button className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={isGenerating} onClick={createDemo}>
+          <button className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-foreground)] shadow-[0_0_0_1px_var(--accent-border)] disabled:opacity-60" disabled={isGenerating} onClick={createDemo}>
             {isGenerating ? "Generating…" : "Generate demo account"}
           </button>
           {actionMessage ? <p className="text-sm text-[var(--muted)]">{actionMessage}</p> : null}

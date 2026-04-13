@@ -58,7 +58,7 @@ export default function SidebarShell({ id, title, icon, active, open, stacked, o
       aria-modal={active}
       aria-label={title}
       onMouseDown={() => open && setActive(id)}
-      className="fixed top-[env(safe-area-inset-top,0px)] z-[46] w-full max-w-[390px] rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl backdrop-blur-xl"
+      className="fixed top-[env(safe-area-inset-top,0px)] z-[46] w-full max-w-[390px] rounded-2xl border border-[var(--border)] bg-[var(--sidebar-bg)] shadow-[var(--shadow-raised)] backdrop-blur-xl"
       style={{
         bottom: 'var(--layout-bottom-offset, calc(var(--player-bar-height, 90px) + env(safe-area-inset-bottom, 0px)))',
         height: 'calc(100dvh - var(--layout-bottom-offset, var(--player-bar-height, 90px)) - env(safe-area-inset-top, 0px))',
@@ -74,7 +74,7 @@ export default function SidebarShell({ id, title, icon, active, open, stacked, o
         <header className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
           <div className="flex items-center gap-2 font-semibold">{icon}{title}</div>
           <div className="flex items-center gap-1">
-            <button aria-label="Close panel" onClick={onClose} className="rounded-md p-2 hover:bg-[var(--surface-2)]"><X className="h-4 w-4"/></button>
+            <button aria-label="Close panel" onClick={onClose} className="rounded-md p-2 hover:bg-[var(--accent-soft)] hover:text-[var(--text)]"><X className="h-4 w-4"/></button>
           </div>
         </header>
         <div className="min-h-0 flex-1 [--sidebar-bottom-clearance:var(--layout-bottom-offset)]">{children}</div>

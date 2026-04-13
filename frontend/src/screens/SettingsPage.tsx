@@ -12,7 +12,7 @@ import Modal from "../components/ui/Modal";
 import { useUser } from "../context/UserContext";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
-import { useTheme, UI_PRESETS, type DensityMode, type RadiusMode, type SurfaceStyle, type AccentIntensity, type ChartStyle, type SidebarStyle, type MotionLevel } from "../../lib/ThemeContext";
+import { useTheme, UI_PRESETS, type DensityMode, type RadiusMode, type SurfaceStyle, type AccentIntensity, type ChartStyle, type SidebarStyle, type MotionLevel, type CardEmphasis } from "../../lib/ThemeContext";
 import { ACCENT_TOKENS, SUPPORTED_ACCENTS } from "../../lib/themePresets";
 import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON, LIBRARY_EXPORT_VERSION } from "../lib/libraryExport";
 import type { Playlist } from "../../features/library/types";
@@ -35,6 +35,7 @@ const CONTROL_GROUPS = {
   chartStyle: ["neutral", "accent-led", "multicolor"] as ChartStyle[],
   sidebarStyle: ["standard", "tinted", "elevated"] as SidebarStyle[],
   motionLevel: ["full", "reduced", "minimal"] as MotionLevel[],
+  cardEmphasis: ["standard", "accented", "tinted"] as CardEmphasis[],
 } as const;
 
 export default function SettingsPage() {
@@ -48,7 +49,7 @@ export default function SettingsPage() {
   const { profile } = useProfile();
   const { user, preferences, updateProfile, changePassword, setPreferences, deleteAccount, isAuthenticated, favorites, history, addFavorite, addToHistory } = useUser();
   const { language } = useLanguage();
-  const { theme, toggleTheme, accent, setAccent, density, setDensity, intensity, setIntensity, surfaceStyle, setSurfaceStyle, radius, setRadius, chartStyle, setChartStyle, sidebarStyle, setSidebarStyle, motionLevel, setMotionLevel, applyPersonalization } = useTheme();
+  const { theme, toggleTheme, accent, setAccent, density, setDensity, intensity, setIntensity, surfaceStyle, setSurfaceStyle, radius, setRadius, chartStyle, setChartStyle, sidebarStyle, setSidebarStyle, motionLevel, setMotionLevel, cardEmphasis, setCardEmphasis, applyPersonalization } = useTheme();
 
   const [displayName, setDisplayName] = useState(user?.username ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -148,11 +149,11 @@ export default function SettingsPage() {
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6 pb-[calc(var(--layout-bottom-offset)+24px)]">
       <h1 className="text-3xl font-bold tracking-tight">{t("nav_settings", language)}</h1>
 
-      <Card className="space-y-4">
-        <h2 className="text-xl font-semibold">{t("settings_appearance", language)}</h2>
+      <Card className="space-y-5">
+        <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-semibold">{t("settings_appearance", language)}</h2><p className="text-xs text-[var(--muted)]">Fine-tune visual behavior, structure, and interaction feedback.</p></div><span className="badge">Live preview</span></div>
         <p className="text-sm text-[var(--muted)]">Create a polished look with live controls and instant preview cards.</p>
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="themed-surface-subtle p-4 space-y-3">
+          <div className="themed-surface-subtle p-4 space-y-3 border-[var(--accent-border)]/50">
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="secondary" onClick={toggleTheme}>{theme === "dark" ? <span className="inline-flex items-center gap-2"><Sun className="w-4 h-4" />{t("theme_light", language)}</span> : <span className="inline-flex items-center gap-2"><Moon className="w-4 h-4" />{t("theme_dark", language)}</span>}</Button>
               <span className="text-xs text-[var(--muted)]">Mode: {theme}</span>
@@ -164,7 +165,7 @@ export default function SettingsPage() {
           <div className="themed-surface-subtle p-4 space-y-3">
             <p className="text-sm font-medium">Curated presets</p>
             <div className="grid grid-cols-2 gap-2">
-              {Object.entries(UI_PRESETS).map(([name, preset]) => <button key={name} type="button" className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs hover:border-[var(--accent-border)]" onClick={() => applyPersonalization(preset)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{preset.accent} · {preset.surfaceStyle}</p></button>)}
+              {Object.entries(UI_PRESETS).map(([name, preset]) => <button key={name} type="button" className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition hover:border-[var(--accent-border)] hover:bg-[var(--surface-elevated)]" onClick={() => applyPersonalization(preset)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{preset.accent} · {preset.surfaceStyle}</p></button>)}
             </div>
           </div>
         </div>
@@ -175,7 +176,7 @@ export default function SettingsPage() {
               <p className="mb-2 capitalize">{key.replace(/([A-Z])/g, " $1")}</p>
               <div className="flex flex-wrap gap-2">
                 {options.map((option) => {
-                  const active = String({ intensity, surfaceStyle, radius, density, chartStyle, sidebarStyle, motionLevel }[key as keyof typeof CONTROL_GROUPS]) === option;
+                  const active = String({ intensity, surfaceStyle, radius, density, chartStyle, sidebarStyle, motionLevel, cardEmphasis }[key as keyof typeof CONTROL_GROUPS]) === option;
                   const onClick = () => {
                     if (key === "intensity") setIntensity(option as AccentIntensity);
                     if (key === "surfaceStyle") setSurfaceStyle(option as SurfaceStyle);
@@ -184,18 +185,19 @@ export default function SettingsPage() {
                     if (key === "chartStyle") setChartStyle(option as ChartStyle);
                     if (key === "sidebarStyle") setSidebarStyle(option as SidebarStyle);
                     if (key === "motionLevel") setMotionLevel(option as MotionLevel);
+                    if (key === "cardEmphasis") setCardEmphasis(option as CardEmphasis);
                   };
-                  return <button key={option} type="button" onClick={onClick} className={`rounded-[var(--radius-sm)] border px-2.5 py-1 text-xs ${active ? "themed-selected" : "border-[var(--border)]"}`}>{option}</button>;
+                  return <button key={option} type="button" onClick={onClick} className={`rounded-[var(--radius-sm)] border px-2.5 py-1 text-xs transition ${active ? "themed-selected shadow-[0_0_0_1px_var(--accent-border)]" : "border-[var(--border)] hover:border-[var(--accent-border)]"}`}>{option}</button>;
                 })}
               </div>
             </div>
           ))}
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="themed-surface p-3"><p className="text-xs text-[var(--muted)] mb-2">Buttons / tabs</p><div className="flex gap-2"><Button variant="primary" size="sm">Primary</Button><Button variant="secondary" size="sm">Secondary</Button></div></div>
           <div className="themed-surface p-3"><p className="text-xs text-[var(--muted)] mb-2">Selected row</p><div className="rounded-[var(--radius-sm)] border themed-selected px-3 py-2 text-sm">Now active selection</div></div>
-          <div className="themed-surface p-3"><p className="text-xs text-[var(--muted)] mb-2">Chart palette</p><div className="flex gap-1">{["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"].map((color) => <span key={color} className="h-8 flex-1 rounded" style={{ background: color }} />)}</div></div>
+          <div className="themed-surface p-3"><p className="text-xs text-[var(--muted)] mb-2">Chart palette</p><div className="flex gap-1">{["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"].map((color) => <span key={color} className="h-8 flex-1 rounded" style={{ background: color }} />)}</div></div><div className="themed-surface p-3"><p className="text-xs text-[var(--muted)] mb-2">Card emphasis</p><div className="rounded-[var(--radius-sm)] border border-[var(--card-border,var(--border))] bg-[var(--card-surface,var(--surface))] px-3 py-2 text-sm">Preview card style</div></div>
         </div>
       </Card>
 

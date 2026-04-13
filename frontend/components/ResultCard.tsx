@@ -108,7 +108,7 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite,
             <div className="mt-5 flex items-center gap-2">
               <Badge variant="success">{t("confidence", language)}</Badge>
               <div className="h-2 w-full rounded-full bg-surface-raised">
-                <div className="h-2 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400" style={{ width: `${Math.round(song.confidence * 100)}%` }} />
+                <div className="h-2 rounded-full bg-gradient-to-r from-[var(--chart-1)] to-[var(--chart-2)]" style={{ width: `${Math.round(song.confidence * 100)}%` }} />
               </div>
             </div>
           )}
@@ -117,9 +117,9 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite,
             <button className="pillAction inline-flex items-center gap-2" onClick={() => onPlay(song)}><Play className="w-4 h-4 text-[var(--text)]" /> {t("btn_play", language)}</button>
             <button className="pillAction inline-flex items-center gap-2" onClick={() => onSave(song)}><Save className="w-4 h-4 text-[var(--text)]" /> {t("btn_save", language)}</button>
             <button className="glassBtn inline-flex items-center gap-2" onClick={() => void handleShare()}><Share2 className="w-4 h-4 text-[var(--text)]" /> Share</button>
-            {song.platformLinks.spotify && <a className="pillAction bg-[#1db954]/20" href={song.platformLinks.spotify} target="_blank" rel="noreferrer">{t("btn_spotify", language)}</a>}
-            {song.platformLinks.appleMusic && <a className="pillAction bg-rose-500/20" href={song.platformLinks.appleMusic} target="_blank" rel="noreferrer">{t("btn_apple_music", language)}</a>}
-            {song.platformLinks.youtubeMusic && <a className="pillAction bg-red-500/20" href={song.platformLinks.youtubeMusic} target="_blank" rel="noreferrer">{t("btn_youtube_music", language)}</a>}
+            {song.platformLinks.spotify && <a className="pillAction border-[var(--accent-border)] bg-[var(--surface-tinted)]" href={song.platformLinks.spotify} target="_blank" rel="noreferrer">{t("btn_spotify", language)}</a>}
+            {song.platformLinks.appleMusic && <a className="pillAction border-[var(--accent-border)] bg-[var(--surface-tinted)]" href={song.platformLinks.appleMusic} target="_blank" rel="noreferrer">{t("btn_apple_music", language)}</a>}
+            {song.platformLinks.youtubeMusic && <a className="pillAction border-[var(--accent-border)] bg-[var(--surface-tinted)]" href={song.platformLinks.youtubeMusic} target="_blank" rel="noreferrer">{t("btn_youtube_music", language)}</a>}
             {onFavorite && (
               <Button
                 variant="ghost"
@@ -134,7 +134,7 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite,
                 {favoriteConfirmed ? (
                   <Check className="w-4 h-4 text-[var(--text)]" />
                 ) : (
-                  <Heart className={`w-4 h-4 ${isFavorited ? "fill-current text-rose-500" : "text-[var(--text)]"}`} />
+                  <Heart className={`w-4 h-4 ${isFavorited ? "fill-current status-danger" : "text-[var(--text)]"}`} />
                 )}
               </Button>
             )}
@@ -159,7 +159,7 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite,
           )}
 
           {(shareHint || shareUrl) && (
-            <div className="mt-3 rounded-xl border border-white/15 bg-black/25 p-3 text-sm">
+            <div className="mt-3 rounded-xl border border-[var(--accent-border)] bg-[var(--surface-tinted)] p-3 text-sm">
               {shareHint && <p>{shareHint}</p>}
               {shareUrl && (
                 <div className="flex items-center gap-2">

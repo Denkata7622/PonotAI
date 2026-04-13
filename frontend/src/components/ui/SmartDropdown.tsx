@@ -25,9 +25,9 @@ interface SmartDropdownProps {
   children: ReactNode;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  placement?: Placement;       // default: 'bottom-start'
+  placement?: Placement;
   minWidth?: number;
-  matchTriggerWidth?: boolean; // dropdown same width as trigger
+  matchTriggerWidth?: boolean;
   className?: string;
   bottomPadding?: number;
   enableClickTrigger?: boolean;
@@ -66,19 +66,14 @@ export function SmartDropdown({
     open: isOpen,
     onOpenChange,
     placement,
-    // autoUpdate repositions on scroll, resize, and DOM changes
     whileElementsMounted: autoUpdate,
     middleware: [
-      // Gap between trigger and dropdown
       offset(6),
-      // Flip to opposite side if not enough space
       flip({
         fallbackAxisSideDirection: 'start',
         padding: viewportPadding,
       }),
-      // Shift along the axis to stay in viewport
       shift({ padding: viewportPadding }),
-      // Optionally match trigger width or enforce minWidth
       size({
         apply({ rects, elements }) {
           const w = matchTriggerWidth
@@ -95,7 +90,6 @@ export function SmartDropdown({
     ],
   });
 
-  // floating-ui interaction hooks
   const click = useClick(context);
   const dismiss = useDismiss(context, {
     outsidePressEvent: 'pointerdown',
@@ -107,11 +101,11 @@ export function SmartDropdown({
   const dropdownStyle: CSSProperties = {
     ...floatingStyles,
     zIndex: 9999,
-    background: 'var(--dropdown-bg-solid, var(--dropdown-bg, #111827))',
+    background: 'var(--dropdown-bg-solid, var(--dropdown-bg, var(--surface-elevated)))',
     opacity: 1,
     border: '1px solid var(--border)',
     borderRadius: 'var(--radius-md)',
-    boxShadow: '0 14px 28px rgba(0,0,0,0.28), 0 6px 18px rgba(var(--accent-rgb),0.14)',
+    boxShadow: 'var(--shadow-raised)',
     overflowY: 'auto',
     maxHeight: '80vh',
     backdropFilter: 'none',

@@ -3,9 +3,9 @@ import type { PropsWithChildren } from "react";
 type BadgeVariant = "success" | "warning" | "danger" | "accent";
 
 const variants: Record<BadgeVariant, string> = {
-  success: "bg-green-500/15 text-green-300 border-green-500/30",
-  warning: "bg-yellow-500/15 text-yellow-200 border-yellow-500/30",
-  danger: "bg-red-500/15 text-red-200 border-red-500/30",
+  success: "status-surface-success status-success",
+  warning: "status-surface-warning status-warning",
+  danger: "status-surface-danger status-danger",
   accent: "bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--accent-border)]",
 };
 

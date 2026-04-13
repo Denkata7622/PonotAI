@@ -14,7 +14,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   secondary:
     "bg-[var(--surface-subtle)] border border-border text-text-primary hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] focus:ring-2 focus:ring-[var(--accent-ring)] transition-all duration-[var(--motion-base)] rounded-[var(--radius-sm)] font-medium select-none",
   danger:
-    "bg-danger text-text-inverse hover:opacity-90 focus:ring-2 focus:ring-red-300 transition-all duration-[var(--motion-base)] rounded-[var(--radius-sm)] font-medium select-none",
+    "bg-[var(--status-danger)] text-[var(--accent-foreground)] hover:opacity-90 focus:ring-2 focus:ring-[color:rgba(var(--status-danger-rgb),0.35)] transition-all duration-[var(--motion-base)] rounded-[var(--radius-sm)] font-medium select-none",
   ghost: "text-text-muted hover:text-text-primary hover:bg-[var(--accent-soft)] transition-all duration-[var(--motion-base)] rounded-[var(--radius-sm)] select-none",
 };
 

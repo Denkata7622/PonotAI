@@ -16,6 +16,7 @@ export type RadiusMode = "compact" | "default" | "rounded";
 export type SurfaceStyle = "flat" | "soft" | "elevated";
 export type SidebarStyle = "standard" | "tinted" | "elevated";
 export type MotionLevel = "full" | "reduced" | "minimal";
+export type CardEmphasis = "standard" | "accented" | "tinted";
 
 export type { AccentPreset, AccentIntensity, ChartStyle };
 
@@ -29,6 +30,7 @@ export type UiPersonalization = {
   chartStyle: ChartStyle;
   sidebarStyle: SidebarStyle;
   motionLevel: MotionLevel;
+  cardEmphasis: CardEmphasis;
 };
 
 type ThemeContextValue = UiPersonalization & {
@@ -42,6 +44,7 @@ type ThemeContextValue = UiPersonalization & {
   setChartStyle: (chartStyle: ChartStyle) => void;
   setSidebarStyle: (sidebarStyle: SidebarStyle) => void;
   setMotionLevel: (motionLevel: MotionLevel) => void;
+  setCardEmphasis: (cardEmphasis: CardEmphasis) => void;
   applyPersonalization: (patch: Partial<UiPersonalization>) => void;
 };
 
@@ -55,6 +58,7 @@ const STORAGE = {
   chartStyle: "ponotai-chart-style",
   sidebarStyle: "ponotai-sidebar-style",
   motionLevel: "ponotai-motion-level",
+  cardEmphasis: "ponotai-card-emphasis",
 } as const;
 
 const densityVars: Record<DensityMode, Record<string, string>> = {
@@ -73,17 +77,18 @@ const defaults: UiPersonalization = {
   chartStyle: "accent-led",
   sidebarStyle: "standard",
   motionLevel: "full",
+  cardEmphasis: "standard",
 };
 
 export const ACCENT_TOKENS = THEME_ACCENT_TOKENS;
 
 export const UI_PRESETS: Record<string, UiPersonalization> = {
-  "Clean Minimal": { ...defaults, theme: "light", accent: "slate", intensity: "subtle", surfaceStyle: "flat", density: "compact", radius: "compact", chartStyle: "neutral", sidebarStyle: "standard", motionLevel: "reduced" },
-  "Neon Night": { ...defaults, theme: "dark", accent: "magenta", intensity: "vivid", surfaceStyle: "elevated", density: "compact", radius: "rounded", chartStyle: "multicolor", sidebarStyle: "elevated", motionLevel: "full" },
-  "Ocean Studio": { ...defaults, theme: "dark", accent: "ocean", intensity: "balanced", surfaceStyle: "soft", density: "default", radius: "default", chartStyle: "accent-led", sidebarStyle: "tinted", motionLevel: "full" },
-  "Sunset Warm": { ...defaults, theme: "light", accent: "sunset", intensity: "vivid", surfaceStyle: "soft", density: "comfortable", radius: "rounded", chartStyle: "multicolor", sidebarStyle: "tinted", motionLevel: "reduced" },
-  "Forest Focus": { ...defaults, theme: "dark", accent: "emerald", intensity: "balanced", surfaceStyle: "flat", density: "compact", radius: "default", chartStyle: "accent-led", sidebarStyle: "standard", motionLevel: "minimal" },
-  "Mono Pro": { ...defaults, theme: "dark", accent: "graphite", intensity: "subtle", surfaceStyle: "elevated", density: "default", radius: "compact", chartStyle: "neutral", sidebarStyle: "elevated", motionLevel: "minimal" },
+  "Clean Minimal": { ...defaults, theme: "light", accent: "slate", intensity: "subtle", surfaceStyle: "flat", density: "compact", radius: "compact", chartStyle: "neutral", sidebarStyle: "standard", motionLevel: "reduced", cardEmphasis: "standard" },
+  "Neon Night": { ...defaults, theme: "dark", accent: "magenta", intensity: "vivid", surfaceStyle: "elevated", density: "compact", radius: "rounded", chartStyle: "multicolor", sidebarStyle: "elevated", motionLevel: "full", cardEmphasis: "accented" },
+  "Ocean Studio": { ...defaults, theme: "dark", accent: "ocean", intensity: "balanced", surfaceStyle: "soft", density: "default", radius: "default", chartStyle: "accent-led", sidebarStyle: "tinted", motionLevel: "full", cardEmphasis: "tinted" },
+  "Sunset Warm": { ...defaults, theme: "light", accent: "sunset", intensity: "vivid", surfaceStyle: "soft", density: "comfortable", radius: "rounded", chartStyle: "multicolor", sidebarStyle: "tinted", motionLevel: "reduced", cardEmphasis: "tinted" },
+  "Forest Focus": { ...defaults, theme: "dark", accent: "emerald", intensity: "balanced", surfaceStyle: "flat", density: "compact", radius: "default", chartStyle: "accent-led", sidebarStyle: "standard", motionLevel: "minimal", cardEmphasis: "standard" },
+  "Mono Pro": { ...defaults, theme: "dark", accent: "graphite", intensity: "subtle", surfaceStyle: "elevated", density: "default", radius: "compact", chartStyle: "neutral", sidebarStyle: "elevated", motionLevel: "minimal", cardEmphasis: "accented" },
 };
 
 function resolveTheme(theme: Theme): "light" | "dark" {
@@ -103,6 +108,7 @@ function applyUiStateToDocument(state: UiPersonalization): void {
   html.setAttribute("data-surface", state.surfaceStyle);
   html.setAttribute("data-sidebar", state.sidebarStyle);
   html.setAttribute("data-motion", state.motionLevel);
+  html.setAttribute("data-card-emphasis", state.cardEmphasis);
 
   const variables = {
     ...getAccentCssVariables(state.accent, state.intensity, state.chartStyle),
@@ -121,6 +127,7 @@ const allowed = {
   chartStyle: ["neutral", "accent-led", "multicolor"] as ChartStyle[],
   sidebarStyle: ["standard", "tinted", "elevated"] as SidebarStyle[],
   motionLevel: ["full", "reduced", "minimal"] as MotionLevel[],
+  cardEmphasis: ["standard", "accented", "tinted"] as CardEmphasis[],
 };
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -138,6 +145,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       chartStyle: allowed.chartStyle.includes(window.localStorage.getItem(STORAGE.chartStyle) as ChartStyle) ? (window.localStorage.getItem(STORAGE.chartStyle) as ChartStyle) : defaults.chartStyle,
       sidebarStyle: allowed.sidebarStyle.includes(window.localStorage.getItem(STORAGE.sidebarStyle) as SidebarStyle) ? (window.localStorage.getItem(STORAGE.sidebarStyle) as SidebarStyle) : defaults.sidebarStyle,
       motionLevel: allowed.motionLevel.includes(window.localStorage.getItem(STORAGE.motionLevel) as MotionLevel) ? (window.localStorage.getItem(STORAGE.motionLevel) as MotionLevel) : defaults.motionLevel,
+      cardEmphasis: allowed.cardEmphasis.includes(window.localStorage.getItem(STORAGE.cardEmphasis) as CardEmphasis) ? (window.localStorage.getItem(STORAGE.cardEmphasis) as CardEmphasis) : defaults.cardEmphasis,
     } satisfies UiPersonalization;
     return saved;
   });
@@ -157,6 +165,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(STORAGE.chartStyle, ui.chartStyle);
     window.localStorage.setItem(STORAGE.sidebarStyle, ui.sidebarStyle);
     window.localStorage.setItem(STORAGE.motionLevel, ui.motionLevel);
+    window.localStorage.setItem(STORAGE.cardEmphasis, ui.cardEmphasis);
 
     if (ui.theme === "system") {
       const media = window.matchMedia("(prefers-color-scheme: light)");
@@ -180,6 +189,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setChartStyle: (chartStyle: ChartStyle) => applyPersonalization({ chartStyle }),
       setSidebarStyle: (sidebarStyle: SidebarStyle) => applyPersonalization({ sidebarStyle }),
       setMotionLevel: (motionLevel: MotionLevel) => applyPersonalization({ motionLevel }),
+      setCardEmphasis: (cardEmphasis: CardEmphasis) => applyPersonalization({ cardEmphasis }),
       applyPersonalization,
     }),
     [ui],
