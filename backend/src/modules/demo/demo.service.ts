@@ -189,6 +189,14 @@ const personas: Record<string, PersonaTemplate> = {
 };
 
 export type DemoPersona = keyof typeof personas;
+export type DemoGenerationOptions = {
+  activityWindowDays?: number;
+  playlistCount?: number;
+  playlistSize?: number;
+  favoritesCount?: number;
+  seed?: string;
+};
+
 export type DemoAccountResponse = {
   account: {
     id: string;
@@ -204,6 +212,12 @@ export type DemoAccountResponse = {
     seededPlaylists: number;
     seededListeningLogs: number;
     activityWindowDays: number;
+    generationConfig: {
+      playlistCount: number;
+      playlistSize: number;
+      favoritesCount: number;
+      seedApplied: boolean;
+    };
   };
 };
 
@@ -251,13 +265,27 @@ function dateDaysAgo(day: number, hour: number, rand: () => number): string {
   return date.toISOString();
 }
 
-export async function generateDemoAccount(persona: DemoPersona = "gym"): Promise<DemoAccountResponse> {
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function sanitizeOptions(input?: DemoGenerationOptions) {
+  const activityWindowDays = clamp(Number.isFinite(input?.activityWindowDays) ? Number(input?.activityWindowDays) : 30, 7, 120);
+  const playlistCount = clamp(Number.isFinite(input?.playlistCount) ? Number(input?.playlistCount) : 4, 1, 8);
+  const playlistSize = clamp(Number.isFinite(input?.playlistSize) ? Number(input?.playlistSize) : 25, 5, 50);
+  const favoritesCount = clamp(Number.isFinite(input?.favoritesCount) ? Number(input?.favoritesCount) : 36, 0, 120);
+  const seed = typeof input?.seed === "string" ? input.seed.trim().slice(0, 60) : "";
+  return { activityWindowDays, playlistCount, playlistSize, favoritesCount, seed };
+}
+
+export async function generateDemoAccount(persona: DemoPersona = "gym", options?: DemoGenerationOptions): Promise<DemoAccountResponse> {
   const { songs: demoSongs, checkedPaths } = loadDemoSongsDataset();
   if (!demoSongs || demoSongs.length === 0) {
     throw new DemoDatasetUnavailableError(checkedPaths);
   }
 
   const template = personas[persona] ?? personas.gym;
+  const config = sanitizeOptions(options);
   const suffix = crypto.randomInt(1000, 9999);
   const username = `${template.usernamePrefix}${suffix}`;
   const email = `${username.toLowerCase()}@demo.trackly.local`;
@@ -270,12 +298,13 @@ export async function generateDemoAccount(persona: DemoPersona = "gym"): Promise
   const passwordHash = hashPassword(temporaryPassword);
   const user = await createUser({ username, email, passwordHash, role: "user", isDemo: true });
 
-  const rand = createSeededRng(`${user.id}:${persona}`);
-  const tracks = pickPersonaSongs(template, demoSongs).slice(0, 120);
-  const playlistSize = 25;
+  const randSeed = config.seed || `${user.id}:${persona}`;
+  const rand = createSeededRng(randSeed);
+  const maxTracksNeeded = Math.max(config.playlistCount * config.playlistSize, config.favoritesCount, 40);
+  const tracks = pickPersonaSongs(template, demoSongs).slice(0, maxTracksNeeded);
 
-  for (let i = 0; i < template.playlistNames.length; i += 1) {
-    const chunk = tracks.slice(i * playlistSize, i * playlistSize + playlistSize);
+  for (let i = 0; i < config.playlistCount; i += 1) {
+    const chunk = tracks.slice(i * config.playlistSize, i * config.playlistSize + config.playlistSize);
     const songs: PlaylistSongRecord[] = chunk.map((track) => ({
       title: track.title,
       artist: track.artist,
@@ -283,10 +312,11 @@ export async function generateDemoAccount(persona: DemoPersona = "gym"): Promise
       coverUrl: track.coverUrl,
       videoId: track.youtubeVideoId,
     }));
-    await createPlaylist(user.id, template.playlistNames[i], undefined, songs);
+    const playlistName = template.playlistNames[i % template.playlistNames.length] ?? `Trackly Mix ${i + 1}`;
+    await createPlaylist(user.id, `${playlistName} ${i >= template.playlistNames.length ? i + 1 : ""}`.trim(), undefined, songs);
   }
 
-  const favoriteCandidates = tracks.slice(0, 36);
+  const favoriteCandidates = tracks.slice(0, config.favoritesCount);
   for (const track of favoriteCandidates) {
     await createFavorite({
       userId: user.id,
@@ -298,7 +328,7 @@ export async function generateDemoAccount(persona: DemoPersona = "gym"): Promise
   }
 
   let seededListeningLogs = 0;
-  for (let day = 0; day < 30; day += 1) {
+  for (let day = 0; day < config.activityWindowDays; day += 1) {
     const sessions = 3 + Math.floor(rand() * 4);
     for (let s = 0; s < sessions; s += 1) {
       const trackIndex = Math.floor(rand() * tracks.length);
@@ -331,9 +361,15 @@ export async function generateDemoAccount(persona: DemoPersona = "gym"): Promise
       createdAt: user.createdAt,
       seededSongs: tracks.length,
       seededFavorites: favoriteCandidates.length,
-      seededPlaylists: template.playlistNames.length,
+      seededPlaylists: config.playlistCount,
       seededListeningLogs,
-      activityWindowDays: 30,
+      activityWindowDays: config.activityWindowDays,
+    generationConfig: {
+      playlistCount: config.playlistCount,
+      playlistSize: config.playlistSize,
+      favoritesCount: config.favoritesCount,
+      seedApplied: Boolean(config.seed),
+    },
     },
   };
 }

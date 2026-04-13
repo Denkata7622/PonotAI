@@ -136,6 +136,8 @@ export type AdminOverviewSnapshot = {
     sharedRecognitions: number;
     sharesTotal: number;
     recognitions: number;
+    favorites: number;
+    historyEntries: number;
     demoAccounts: number;
     achievementsAwarded: number;
     apiKeys: number;
@@ -143,6 +145,7 @@ export type AdminOverviewSnapshot = {
   users: UserRecord[];
   playlists: PlaylistRecord[];
   searchHistory: SearchHistoryRecord[];
+  favorites: FavoriteRecord[];
   sharedSongs: SharedSongRecord[];
   sharedPlaylists: SharedPlaylistRecord[];
   sharedRecognitions: SharedRecognitionRecord[];
@@ -628,6 +631,8 @@ export async function getAdminOverviewSnapshot(): Promise<AdminOverviewSnapshot>
       sharedRecognitions: db.sharedRecognitions.length,
       sharesTotal: db.sharedSongs.length + db.sharedPlaylists.length + db.sharedRecognitions.length,
       recognitions: db.searchHistory.filter((item) => item.recognized).length,
+      favorites: db.favorites.length,
+      historyEntries: db.searchHistory.length,
       demoAccounts: db.users.filter((user) => Boolean(user.isDemo)).length,
       achievementsAwarded: db.achievements.length,
       apiKeys: db.apiKeys.length,
@@ -635,6 +640,7 @@ export async function getAdminOverviewSnapshot(): Promise<AdminOverviewSnapshot>
     users: db.users,
     playlists: db.playlists,
     searchHistory: db.searchHistory,
+    favorites: db.favorites,
     sharedSongs: db.sharedSongs,
     sharedPlaylists: db.sharedPlaylists,
     sharedRecognitions: db.sharedRecognitions,
