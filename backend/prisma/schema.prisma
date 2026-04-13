@@ -1,34 +1,37 @@
-// Prisma schema is retained for reference and is not used in runtime persistence.
-// All persistence currently goes through backend/src/db/authStore.ts (appdb.json)
-// and backend/src/db/client.ts (history.json).
-// To activate Prisma: run `npx prisma generate` and replace authStore/client with prisma client calls.
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id           String        @id @default(cuid())
-  username     String        @unique
-  email        String        @unique
+  id           String          @id
+  username     String          @unique
+  email        String          @unique
   passwordHash String
+  role         String          @default("user")
+  isDemo       Boolean         @default(false)
   avatarBase64 String?
   bio          String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  history      SearchHistory[]
-  favorites    Favorite[]
-  sharedSongs  SharedSong[]
-  playlists    Playlist[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  history             SearchHistory[]
+  favorites           Favorite[]
+  sharedSongs         SharedSong[]
+  sharedPlaylists     SharedPlaylist[]
+  sharedRecognitions  SharedRecognition[]
+  playlists           Playlist[]
+  achievements        Achievement[]
+  apiKeys             ApiKey[]
+  trackTags           TrackTag[]
 }
 
 model SearchHistory {
-  id         String   @id @default(cuid())
+  id         String   @id
   userId     String
   method     String
   title      String?
@@ -43,8 +46,18 @@ model SearchHistory {
   @@index([userId, createdAt])
 }
 
+model LegacyHistoryEntry {
+  id             String   @id
+  songName       String
+  artist         String
+  youtubeVideoId String?
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model Favorite {
-  id       String   @id @default(cuid())
+  id       String   @id
   userId   String
   title    String
   artist   String
@@ -59,8 +72,8 @@ model Favorite {
 }
 
 model SharedSong {
-  id        String   @id @default(cuid())
-  shareCode String   @unique @default(cuid())
+  id        String   @id
+  shareCode String   @unique
   userId    String
   title     String
   artist    String
@@ -70,33 +83,110 @@ model SharedSong {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([shareCode])
+  @@index([userId, createdAt])
+}
+
+model SharedPlaylist {
+  id         String   @id
+  shareCode  String   @unique
+  userId     String
+  playlistId String
+  title      String
+  songCount  Int
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model SharedRecognition {
+  id        String   @id
+  shareCode String   @unique
+  userId    String
+  title     String
+  artist    String
+  album     String?
+  coverUrl  String?
+  source    String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model Playlist {
-  id        String   @id @default(cuid())
+  id        String   @id
   userId    String
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  songs PlaylistSong[]
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracks           PlaylistTrack[]
+  sharedPlaylists  SharedPlaylist[]
 
-  @@index([userId])
+  @@index([userId, updatedAt])
 }
 
-model PlaylistSong {
-  id         String   @id @default(cuid())
+model PlaylistTrack {
+  id         String   @id
   playlistId String
   title      String
   artist     String
   album      String?
   coverUrl   String?
+  videoId    String?
+  position   Int
   addedAt    DateTime @default(now())
 
   playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
 
   @@unique([playlistId, title, artist])
-  @@index([playlistId])
+  @@index([playlistId, position])
+}
+
+model Achievement {
+  id         String   @id
+  userId     String
+  key        String
+  unlockedAt DateTime @default(now())
+  meta       Json?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, unlockedAt])
+}
+
+model ApiKey {
+  id        String   @id
+  userId    String
+  label     String
+  keyPrefix String   @unique
+  keyHash   String
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime?
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model TrackTag {
+  id        String   @id
+  userId    String
+  trackKey  String
+  genre     String
+  mood      String
+  tempo     String
+  updatedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trackKey])
+  @@index([userId, updatedAt])
 }
