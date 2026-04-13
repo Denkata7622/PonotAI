@@ -1,114 +1,188 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ACCENT_TOKENS as THEME_ACCENT_TOKENS, getAccentCssVariables, type AccentPreset, isAccentPreset } from "./themePresets";
+import {
+  ACCENT_TOKENS as THEME_ACCENT_TOKENS,
+  getAccentCssVariables,
+  type AccentPreset,
+  type AccentIntensity,
+  type ChartStyle,
+  isAccentPreset,
+} from "./themePresets";
 
 type Theme = "dark" | "light" | "system";
-export type DensityMode = "comfortable" | "compact";
-export type { AccentPreset };
+export type DensityMode = "compact" | "default" | "comfortable";
+export type RadiusMode = "compact" | "default" | "rounded";
+export type SurfaceStyle = "flat" | "soft" | "elevated";
+export type SidebarStyle = "standard" | "tinted" | "elevated";
+export type MotionLevel = "full" | "reduced" | "minimal";
 
-type ThemeContextValue = {
+export type { AccentPreset, AccentIntensity, ChartStyle };
+
+export type UiPersonalization = {
   theme: Theme;
-  setTheme: (theme: Theme) => void;
-  toggleTheme: () => void;
   accent: AccentPreset;
-  setAccent: (accent: AccentPreset) => void;
+  intensity: AccentIntensity;
+  surfaceStyle: SurfaceStyle;
   density: DensityMode;
-  setDensity: (density: DensityMode) => void;
+  radius: RadiusMode;
+  chartStyle: ChartStyle;
+  sidebarStyle: SidebarStyle;
+  motionLevel: MotionLevel;
 };
 
-const THEME_KEY = "ponotai-theme";
-const ACCENT_KEY = "ponotai-accent";
-const DENSITY_KEY = "ponotai-density";
+type ThemeContextValue = UiPersonalization & {
+  setTheme: (theme: Theme) => void;
+  toggleTheme: () => void;
+  setAccent: (accent: AccentPreset) => void;
+  setIntensity: (intensity: AccentIntensity) => void;
+  setSurfaceStyle: (surfaceStyle: SurfaceStyle) => void;
+  setDensity: (density: DensityMode) => void;
+  setRadius: (radius: RadiusMode) => void;
+  setChartStyle: (chartStyle: ChartStyle) => void;
+  setSidebarStyle: (sidebarStyle: SidebarStyle) => void;
+  setMotionLevel: (motionLevel: MotionLevel) => void;
+  applyPersonalization: (patch: Partial<UiPersonalization>) => void;
+};
+
+const STORAGE = {
+  theme: "ponotai-theme",
+  accent: "ponotai-accent",
+  density: "ponotai-density",
+  intensity: "ponotai-intensity",
+  surfaceStyle: "ponotai-surface-style",
+  radius: "ponotai-radius",
+  chartStyle: "ponotai-chart-style",
+  sidebarStyle: "ponotai-sidebar-style",
+  motionLevel: "ponotai-motion-level",
+} as const;
+
+const densityVars: Record<DensityMode, Record<string, string>> = {
+  compact: { "--density-space-multiplier": "0.86", "--density-card-padding": "0.95rem", "--density-control-padding-y": "0.42rem", "--density-control-padding-x": "0.62rem" },
+  default: { "--density-space-multiplier": "1", "--density-card-padding": "1.15rem", "--density-control-padding-y": "0.5rem", "--density-control-padding-x": "0.75rem" },
+  comfortable: { "--density-space-multiplier": "1.12", "--density-card-padding": "1.35rem", "--density-control-padding-y": "0.64rem", "--density-control-padding-x": "0.92rem" },
+};
+
+const defaults: UiPersonalization = {
+  theme: "dark",
+  accent: "violet",
+  intensity: "balanced",
+  surfaceStyle: "soft",
+  density: "default",
+  radius: "default",
+  chartStyle: "accent-led",
+  sidebarStyle: "standard",
+  motionLevel: "full",
+};
 
 export const ACCENT_TOKENS = THEME_ACCENT_TOKENS;
 
-export const THEME_TEMPLATES = {
-  "Night Drive": { theme: "dark" as const, accent: "violet" as const, density: "compact" as const },
-  "Ocean Pulse": { theme: "dark" as const, accent: "ocean" as const, density: "comfortable" as const },
-  "Sunset Glow": { theme: "light" as const, accent: "sunset" as const, density: "comfortable" as const },
-  "Forest Focus": { theme: "dark" as const, accent: "emerald" as const, density: "compact" as const },
-  "Neon Violet": { theme: "dark" as const, accent: "magenta" as const, density: "compact" as const },
-} as const;
-
-
+export const UI_PRESETS: Record<string, UiPersonalization> = {
+  "Clean Minimal": { ...defaults, theme: "light", accent: "slate", intensity: "subtle", surfaceStyle: "flat", density: "compact", radius: "compact", chartStyle: "neutral", sidebarStyle: "standard", motionLevel: "reduced" },
+  "Neon Night": { ...defaults, theme: "dark", accent: "magenta", intensity: "vivid", surfaceStyle: "elevated", density: "compact", radius: "rounded", chartStyle: "multicolor", sidebarStyle: "elevated", motionLevel: "full" },
+  "Ocean Studio": { ...defaults, theme: "dark", accent: "ocean", intensity: "balanced", surfaceStyle: "soft", density: "default", radius: "default", chartStyle: "accent-led", sidebarStyle: "tinted", motionLevel: "full" },
+  "Sunset Warm": { ...defaults, theme: "light", accent: "sunset", intensity: "vivid", surfaceStyle: "soft", density: "comfortable", radius: "rounded", chartStyle: "multicolor", sidebarStyle: "tinted", motionLevel: "reduced" },
+  "Forest Focus": { ...defaults, theme: "dark", accent: "emerald", intensity: "balanced", surfaceStyle: "flat", density: "compact", radius: "default", chartStyle: "accent-led", sidebarStyle: "standard", motionLevel: "minimal" },
+  "Mono Pro": { ...defaults, theme: "dark", accent: "graphite", intensity: "subtle", surfaceStyle: "elevated", density: "default", radius: "compact", chartStyle: "neutral", sidebarStyle: "elevated", motionLevel: "minimal" },
+};
 
 function resolveTheme(theme: Theme): "light" | "dark" {
   if (theme !== "system") return theme;
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
-function applyAccentVariables(accent: AccentPreset): void {
-  document.documentElement.setAttribute("data-accent", accent);
-  const variables = getAccentCssVariables(accent);
-  Object.entries(variables).forEach(([key, value]) => document.documentElement.style.setProperty(key, value));
+function applyUiStateToDocument(state: UiPersonalization): void {
+  const html = document.documentElement;
+  const resolvedTheme = resolveTheme(state.theme);
+  html.setAttribute("data-theme", resolvedTheme);
+  document.body.setAttribute("data-theme", resolvedTheme);
+  html.style.colorScheme = resolvedTheme;
+  html.setAttribute("data-accent", state.accent);
+  html.setAttribute("data-density", state.density);
+  html.setAttribute("data-radius", state.radius);
+  html.setAttribute("data-surface", state.surfaceStyle);
+  html.setAttribute("data-sidebar", state.sidebarStyle);
+  html.setAttribute("data-motion", state.motionLevel);
+
+  const variables = {
+    ...getAccentCssVariables(state.accent, state.intensity, state.chartStyle),
+    ...densityVars[state.density],
+  };
+  Object.entries(variables).forEach(([key, value]) => html.style.setProperty(key, value));
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
+const allowed = {
+  intensity: ["subtle", "balanced", "vivid"] as AccentIntensity[],
+  density: ["compact", "default", "comfortable"] as DensityMode[],
+  radius: ["compact", "default", "rounded"] as RadiusMode[],
+  surfaceStyle: ["flat", "soft", "elevated"] as SurfaceStyle[],
+  chartStyle: ["neutral", "accent-led", "multicolor"] as ChartStyle[],
+  sidebarStyle: ["standard", "tinted", "elevated"] as SidebarStyle[],
+  motionLevel: ["full", "reduced", "minimal"] as MotionLevel[],
+};
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window === "undefined") return "dark";
-    const savedTheme = window.localStorage.getItem(THEME_KEY);
-    if (savedTheme === "dark" || savedTheme === "light" || savedTheme === "system") return savedTheme;
-    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  const [ui, setUi] = useState<UiPersonalization>(() => {
+    if (typeof window === "undefined") return defaults;
+    const savedTheme = window.localStorage.getItem(STORAGE.theme);
+    const savedAccent = window.localStorage.getItem(STORAGE.accent);
+    const saved = {
+      theme: savedTheme === "dark" || savedTheme === "light" || savedTheme === "system" ? savedTheme : defaults.theme,
+      accent: isAccentPreset(savedAccent) ? savedAccent : defaults.accent,
+      density: allowed.density.includes(window.localStorage.getItem(STORAGE.density) as DensityMode) ? (window.localStorage.getItem(STORAGE.density) as DensityMode) : defaults.density,
+      intensity: allowed.intensity.includes(window.localStorage.getItem(STORAGE.intensity) as AccentIntensity) ? (window.localStorage.getItem(STORAGE.intensity) as AccentIntensity) : defaults.intensity,
+      surfaceStyle: allowed.surfaceStyle.includes(window.localStorage.getItem(STORAGE.surfaceStyle) as SurfaceStyle) ? (window.localStorage.getItem(STORAGE.surfaceStyle) as SurfaceStyle) : defaults.surfaceStyle,
+      radius: allowed.radius.includes(window.localStorage.getItem(STORAGE.radius) as RadiusMode) ? (window.localStorage.getItem(STORAGE.radius) as RadiusMode) : defaults.radius,
+      chartStyle: allowed.chartStyle.includes(window.localStorage.getItem(STORAGE.chartStyle) as ChartStyle) ? (window.localStorage.getItem(STORAGE.chartStyle) as ChartStyle) : defaults.chartStyle,
+      sidebarStyle: allowed.sidebarStyle.includes(window.localStorage.getItem(STORAGE.sidebarStyle) as SidebarStyle) ? (window.localStorage.getItem(STORAGE.sidebarStyle) as SidebarStyle) : defaults.sidebarStyle,
+      motionLevel: allowed.motionLevel.includes(window.localStorage.getItem(STORAGE.motionLevel) as MotionLevel) ? (window.localStorage.getItem(STORAGE.motionLevel) as MotionLevel) : defaults.motionLevel,
+    } satisfies UiPersonalization;
+    return saved;
   });
 
-  const [accent, setAccent] = useState<AccentPreset>(() => {
-    if (typeof window === "undefined") return "violet";
-    const savedAccent = window.localStorage.getItem(ACCENT_KEY);
-    if (isAccentPreset(savedAccent)) return savedAccent;
-    return "violet";
-  });
-
-  const [density, setDensity] = useState<DensityMode>(() => {
-    if (typeof window === "undefined") return "comfortable";
-    return window.localStorage.getItem(DENSITY_KEY) === "compact" ? "compact" : "comfortable";
-  });
+  const applyPersonalization = (patch: Partial<UiPersonalization>) => {
+    setUi((prev) => ({ ...prev, ...patch }));
+  };
 
   useEffect(() => {
-    const resolvedTheme = resolveTheme(theme);
-    document.documentElement.setAttribute("data-theme", resolvedTheme);
-    document.body.setAttribute("data-theme", resolvedTheme);
-    document.documentElement.style.colorScheme = resolvedTheme;
-    window.localStorage.setItem(THEME_KEY, theme);
+    applyUiStateToDocument(ui);
+    window.localStorage.setItem(STORAGE.theme, ui.theme);
+    window.localStorage.setItem(STORAGE.accent, ui.accent);
+    window.localStorage.setItem(STORAGE.density, ui.density);
+    window.localStorage.setItem(STORAGE.intensity, ui.intensity);
+    window.localStorage.setItem(STORAGE.surfaceStyle, ui.surfaceStyle);
+    window.localStorage.setItem(STORAGE.radius, ui.radius);
+    window.localStorage.setItem(STORAGE.chartStyle, ui.chartStyle);
+    window.localStorage.setItem(STORAGE.sidebarStyle, ui.sidebarStyle);
+    window.localStorage.setItem(STORAGE.motionLevel, ui.motionLevel);
 
-    if (theme === "system") {
+    if (ui.theme === "system") {
       const media = window.matchMedia("(prefers-color-scheme: light)");
-      const listener = () => {
-        const next = media.matches ? "light" : "dark";
-        document.documentElement.setAttribute("data-theme", next);
-        document.body.setAttribute("data-theme", next);
-        document.documentElement.style.colorScheme = next;
-      };
+      const listener = () => applyUiStateToDocument(ui);
       media.addEventListener("change", listener);
       return () => media.removeEventListener("change", listener);
     }
-
     return undefined;
-  }, [theme]);
-
-  useEffect(() => {
-    applyAccentVariables(accent);
-    window.localStorage.setItem(ACCENT_KEY, accent);
-  }, [accent]);
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-density", density);
-    window.localStorage.setItem(DENSITY_KEY, density);
-  }, [density]);
+  }, [ui]);
 
   const value = useMemo(
     () => ({
-      theme,
-      setTheme,
-      toggleTheme: () => setTheme((prev) => (prev === "dark" ? "light" : "dark")),
-      accent,
-      setAccent,
-      density,
-      setDensity,
+      ...ui,
+      setTheme: (theme: Theme) => applyPersonalization({ theme }),
+      toggleTheme: () => applyPersonalization({ theme: resolveTheme(ui.theme) === "dark" ? "light" : "dark" }),
+      setAccent: (accent: AccentPreset) => applyPersonalization({ accent }),
+      setIntensity: (intensity: AccentIntensity) => applyPersonalization({ intensity }),
+      setSurfaceStyle: (surfaceStyle: SurfaceStyle) => applyPersonalization({ surfaceStyle }),
+      setDensity: (density: DensityMode) => applyPersonalization({ density }),
+      setRadius: (radius: RadiusMode) => applyPersonalization({ radius }),
+      setChartStyle: (chartStyle: ChartStyle) => applyPersonalization({ chartStyle }),
+      setSidebarStyle: (sidebarStyle: SidebarStyle) => applyPersonalization({ sidebarStyle }),
+      setMotionLevel: (motionLevel: MotionLevel) => applyPersonalization({ motionLevel }),
+      applyPersonalization,
     }),
-    [accent, density, theme],
+    [ui],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
@@ -120,6 +194,12 @@ export function useTheme() {
   return context;
 }
 
+function applyAccentVariables(accent: AccentPreset, intensity: AccentIntensity = "balanced", chartStyle: ChartStyle = "accent-led") {
+  const html = document.documentElement;
+  const variables = getAccentCssVariables(accent, intensity, chartStyle);
+  html.setAttribute("data-accent", accent);
+  Object.entries(variables).forEach(([key, value]) => html.style.setProperty(key, value));
+}
 
-export const themeStorageKeys = { THEME_KEY, ACCENT_KEY, DENSITY_KEY };
+export const themeStorageKeys = STORAGE;
 export { applyAccentVariables, resolveTheme };

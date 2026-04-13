@@ -10,12 +10,12 @@ type Props = PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>> & {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-[var(--accent)] text-[var(--accent-foreground)] hover:bg-[var(--accent-2)] focus:ring-2 focus:ring-[var(--accent-ring)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 rounded-lg font-medium select-none",
+    "bg-[var(--accent)] text-[var(--accent-foreground)] hover:bg-[var(--accent-2)] focus:ring-2 focus:ring-[var(--accent-ring)] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-[var(--motion-base)] rounded-[var(--radius-sm)] font-medium select-none shadow-[0_6px_18px_rgba(var(--accent-rgb),0.28)]",
   secondary:
-    "bg-surface border border-border text-text-primary hover:bg-[var(--accent-soft)] focus:ring-2 focus:ring-[var(--accent-ring)] transition-all duration-200 rounded-lg font-medium select-none",
+    "bg-[var(--surface-subtle)] border border-border text-text-primary hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] focus:ring-2 focus:ring-[var(--accent-ring)] transition-all duration-[var(--motion-base)] rounded-[var(--radius-sm)] font-medium select-none",
   danger:
-    "bg-danger text-text-inverse hover:opacity-90 focus:ring-2 focus:ring-red-300 transition-all duration-200 rounded-lg font-medium select-none",
-  ghost: "text-text-muted hover:text-text-primary hover:bg-surface-raised transition-all duration-200 rounded-lg select-none",
+    "bg-danger text-text-inverse hover:opacity-90 focus:ring-2 focus:ring-red-300 transition-all duration-[var(--motion-base)] rounded-[var(--radius-sm)] font-medium select-none",
+  ghost: "text-text-muted hover:text-text-primary hover:bg-[var(--accent-soft)] transition-all duration-[var(--motion-base)] rounded-[var(--radius-sm)] select-none",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
