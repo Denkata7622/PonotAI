@@ -49,7 +49,8 @@ export async function recognizeAudioController(req: Request, res: Response): Pro
     }
 
     const mode = resolveMode(req.body?.mode);
-    const metadata = await recognizeSongFromAudioByMode(req.file.buffer, req.file.originalname, mode);
+    const attemptId = typeof req.headers["x-recognition-attempt-id"] === "string" ? req.headers["x-recognition-attempt-id"] : undefined;
+    const metadata = await recognizeSongFromAudioByMode(req.file.buffer, req.file.originalname, mode, req.userId, attemptId);
     await addHistoryEntry({
       songName: metadata.songName,
       artist: metadata.artist,
@@ -61,10 +62,12 @@ export async function recognizeAudioController(req: Request, res: Response): Pro
       ...metadata,
       mode,
       notes: mode === "humming"
-        ? ["Experimental humming mode: results may be less accurate."]
+        ? ["Humming mode works best with a clear short melody."]
         : mode === "video"
           ? ["Video input recognized via audio track extraction path."]
-          : [],
+          : mode === "live"
+            ? ["Difficult mode enabled: uses bounded multi-clip checks."]
+            : [],
     });
   } catch (error) {
     handleRecognitionError(res, error, "AUDIO_RECOGNITION_FAILED");

@@ -45,6 +45,14 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite,
   const currentSong = song;
 
   const favoriteKey = normalizeTrackKey(song.songName, song.artist);
+
+  function confidenceLabel() {
+    if ((currentSong.resultState ?? "") === "exact_match") return "Exact match";
+    if ((currentSong.resultState ?? "") === "strong_likely_match") return "Likely match";
+    if ((currentSong.resultState ?? "") === "possible_matches") return "Possible match";
+    return "Need clearer sample";
+  }
+
   const isFavorited = favoritedKeys?.has(favoriteKey) ?? false;
 
   if (process.env.NODE_ENV === "development") {
@@ -104,12 +112,22 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite,
           <p className="mt-2 text-xl text-text-muted">{song.artist}</p>
           <p className="mt-3 text-sm text-text-muted">{song.album} • {song.genre} • {song.releaseYear ?? "—"}</p>
 
-          {song.confidence >= 0.8 && (
+          {(song.confidence >= 0.45 || song.resultState) && (
             <div className="mt-5 flex items-center gap-2">
-              <Badge variant="success">{t("confidence", language)}</Badge>
+              <Badge variant={song.confidence >= 0.72 ? "success" : "warning"}>{confidenceLabel()}</Badge>
               <div className="h-2 w-full rounded-full bg-surface-raised">
                 <div className="h-2 rounded-full bg-gradient-to-r from-[var(--chart-1)] to-[var(--chart-2)]" style={{ width: `${Math.round(song.confidence * 100)}%` }} />
               </div>
+            </div>
+          )}
+
+
+          {song.alternatives && song.alternatives.length > 0 && (
+            <div className="mt-3 rounded-xl border border-border bg-[var(--surface-raised)] p-3 text-xs text-text-muted">
+              <p className="font-semibold text-text-primary">Possible matches</p>
+              {song.alternatives.slice(0, 3).map((alt) => (
+                <p key={`${alt.songName}-${alt.artist}`}>{alt.songName} — {alt.artist}</p>
+              ))}
             </div>
           )}
 
