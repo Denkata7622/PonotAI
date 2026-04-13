@@ -17,6 +17,8 @@ export type SurfaceStyle = "flat" | "soft" | "elevated";
 export type SidebarStyle = "standard" | "tinted" | "elevated";
 export type MotionLevel = "full" | "reduced" | "minimal";
 export type CardEmphasis = "standard" | "accented" | "tinted";
+export type FontFamily = "inter" | "system" | "poppins" | "nunito" | "ibm-plex-sans";
+export type TextScale = "sm" | "md" | "lg";
 
 export type { AccentPreset, AccentIntensity, ChartStyle };
 
@@ -31,6 +33,8 @@ export type UiPersonalization = {
   sidebarStyle: SidebarStyle;
   motionLevel: MotionLevel;
   cardEmphasis: CardEmphasis;
+  fontFamily: FontFamily;
+  textScale: TextScale;
 };
 
 type ThemeContextValue = UiPersonalization & {
@@ -45,6 +49,8 @@ type ThemeContextValue = UiPersonalization & {
   setSidebarStyle: (sidebarStyle: SidebarStyle) => void;
   setMotionLevel: (motionLevel: MotionLevel) => void;
   setCardEmphasis: (cardEmphasis: CardEmphasis) => void;
+  setFontFamily: (fontFamily: FontFamily) => void;
+  setTextScale: (textScale: TextScale) => void;
   applyPersonalization: (patch: Partial<UiPersonalization>) => void;
 };
 
@@ -59,6 +65,8 @@ const STORAGE = {
   sidebarStyle: "ponotai-sidebar-style",
   motionLevel: "ponotai-motion-level",
   cardEmphasis: "ponotai-card-emphasis",
+  fontFamily: "ponotai-font-family",
+  textScale: "ponotai-text-scale",
 } as const;
 
 const densityVars: Record<DensityMode, Record<string, string>> = {
@@ -78,6 +86,8 @@ const defaults: UiPersonalization = {
   sidebarStyle: "standard",
   motionLevel: "full",
   cardEmphasis: "standard",
+  fontFamily: "inter",
+  textScale: "md",
 };
 
 export const ACCENT_TOKENS = THEME_ACCENT_TOKENS;
@@ -111,6 +121,8 @@ function applyUiStateToDocument(state: UiPersonalization): void {
   html.setAttribute("data-sidebar", state.sidebarStyle);
   html.setAttribute("data-motion", state.motionLevel);
   html.setAttribute("data-card-emphasis", state.cardEmphasis);
+  html.setAttribute("data-font", state.fontFamily);
+  html.setAttribute("data-text-scale", state.textScale);
 
   const variables = {
     ...getAccentCssVariables(state.accent, state.intensity, state.chartStyle),
@@ -130,6 +142,8 @@ const allowed = {
   sidebarStyle: ["standard", "tinted", "elevated"] as SidebarStyle[],
   motionLevel: ["full", "reduced", "minimal"] as MotionLevel[],
   cardEmphasis: ["standard", "accented", "tinted"] as CardEmphasis[],
+  fontFamily: ["inter", "system", "poppins", "nunito", "ibm-plex-sans"] as FontFamily[],
+  textScale: ["sm", "md", "lg"] as TextScale[],
 };
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -148,6 +162,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       sidebarStyle: allowed.sidebarStyle.includes(window.localStorage.getItem(STORAGE.sidebarStyle) as SidebarStyle) ? (window.localStorage.getItem(STORAGE.sidebarStyle) as SidebarStyle) : defaults.sidebarStyle,
       motionLevel: allowed.motionLevel.includes(window.localStorage.getItem(STORAGE.motionLevel) as MotionLevel) ? (window.localStorage.getItem(STORAGE.motionLevel) as MotionLevel) : defaults.motionLevel,
       cardEmphasis: allowed.cardEmphasis.includes(window.localStorage.getItem(STORAGE.cardEmphasis) as CardEmphasis) ? (window.localStorage.getItem(STORAGE.cardEmphasis) as CardEmphasis) : defaults.cardEmphasis,
+      fontFamily: allowed.fontFamily.includes(window.localStorage.getItem(STORAGE.fontFamily) as FontFamily) ? (window.localStorage.getItem(STORAGE.fontFamily) as FontFamily) : defaults.fontFamily,
+      textScale: allowed.textScale.includes(window.localStorage.getItem(STORAGE.textScale) as TextScale) ? (window.localStorage.getItem(STORAGE.textScale) as TextScale) : defaults.textScale,
     } satisfies UiPersonalization;
     return saved;
   });
@@ -168,6 +184,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(STORAGE.sidebarStyle, ui.sidebarStyle);
     window.localStorage.setItem(STORAGE.motionLevel, ui.motionLevel);
     window.localStorage.setItem(STORAGE.cardEmphasis, ui.cardEmphasis);
+    window.localStorage.setItem(STORAGE.fontFamily, ui.fontFamily);
+    window.localStorage.setItem(STORAGE.textScale, ui.textScale);
 
     if (ui.theme === "system") {
       const media = window.matchMedia("(prefers-color-scheme: light)");
@@ -192,6 +210,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setSidebarStyle: (sidebarStyle: SidebarStyle) => applyPersonalization({ sidebarStyle }),
       setMotionLevel: (motionLevel: MotionLevel) => applyPersonalization({ motionLevel }),
       setCardEmphasis: (cardEmphasis: CardEmphasis) => applyPersonalization({ cardEmphasis }),
+      setFontFamily: (fontFamily: FontFamily) => applyPersonalization({ fontFamily }),
+      setTextScale: (textScale: TextScale) => applyPersonalization({ textScale }),
       applyPersonalization,
     }),
     [ui],

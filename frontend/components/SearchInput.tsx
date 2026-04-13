@@ -28,7 +28,7 @@ export default function SearchInput({
 }: SearchInputProps) {
   return (
     <div
-      className={`flex w-full items-center rounded-full border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 ${className}`}
+      className={`flex w-full items-center rounded-full border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--text)] transition focus-within:border-[var(--accent-border)] focus-within:bg-[var(--surface)] focus-within:shadow-[0_0_0_3px_var(--accent-ring)] ${className}`}
     >
       <Search className="h-4 w-4 shrink-0 text-[var(--muted)]" />
       <input

@@ -216,16 +216,16 @@ export default function NewPlaylistModal({
             className="w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--text)] placeholder:text-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             autoFocus
           />
-          <div className="mt-3 flex items-center gap-2">
-            <button type="button" onClick={() => setSelectedTab("recognized")} className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${selectedTab === "recognized" ? "bg-[var(--active-bg)] text-[var(--text)]" : "text-[var(--muted)] hover:bg-[var(--hover-bg)]"}`}>
+          <div className="app-tabs mt-3">
+            <button type="button" onClick={() => setSelectedTab("recognized")} className={`app-tab ${selectedTab === "recognized" ? "app-tab-active" : ""}`}>
               <Clock className="h-4 w-4" />
               {t("playlist_modal_tab_recognized", language)}
             </button>
-            <button type="button" onClick={() => setSelectedTab("favorites")} className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${selectedTab === "favorites" ? "bg-[var(--active-bg)] text-[var(--text)]" : "text-[var(--muted)] hover:bg-[var(--hover-bg)]"}`}>
+            <button type="button" onClick={() => setSelectedTab("favorites")} className={`app-tab ${selectedTab === "favorites" ? "app-tab-active" : ""}`}>
               <Heart className="h-4 w-4" />
               {t("playlist_modal_tab_favorites", language)}
             </button>
-            <button type="button" onClick={() => setSelectedTab("search")} className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${selectedTab === "search" ? "bg-[var(--active-bg)] text-[var(--text)]" : "text-[var(--muted)] hover:bg-[var(--hover-bg)]"}`}>
+            <button type="button" onClick={() => setSelectedTab("search")} className={`app-tab ${selectedTab === "search" ? "app-tab-active" : ""}`}>
               <Search className="h-4 w-4" />
               {t("playlist_modal_tab_search", language)}
             </button>

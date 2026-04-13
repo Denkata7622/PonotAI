@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   console.log("[search] key present:", Boolean(apiKey));
 
   if (!apiKey) {
-    return NextResponse.json({ error: "Search unavailable", reason: "no_key" }, { status: 503 });
+    return NextResponse.json([]);
   }
 
   const { searchParams } = new URL(request.url);
@@ -48,12 +48,14 @@ export async function GET(request: Request) {
     console.log("[search] YouTube body:", bodyText.slice(0, 500));
 
     if (!res.ok) {
-      const ytError = JSON.parse(bodyText).catch?.(() => ({})) ?? {};
+      let ytError: unknown = {};
+      try {
+        ytError = JSON.parse(bodyText);
+      } catch {
+        ytError = { raw: bodyText.slice(0, 160) };
+      }
       console.error("[search] YouTube API error:", ytError);
-      return NextResponse.json(
-        { error: "Search unavailable", reason: "youtube_error", details: ytError },
-        { status: 503 },
-      );
+      return NextResponse.json([]);
     }
 
     const payload = JSON.parse(bodyText) as { items?: YouTubeSearchItem[] };
@@ -72,9 +74,6 @@ export async function GET(request: Request) {
     return NextResponse.json(results);
   } catch (error) {
     console.error("[search] Request failed:", error);
-    return NextResponse.json(
-      { error: "Search unavailable", reason: "youtube_error" },
-      { status: 503 },
-    );
+    return NextResponse.json([]);
   }
 }

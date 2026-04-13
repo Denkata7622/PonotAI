@@ -37,6 +37,10 @@
   --listen-glow: rgba(124, 92, 255, 0.55);
   --listen-glow-soft: rgba(124, 92, 255, 0.18);
   --listen-core: var(--accent);
+  --app-font: Inter, system-ui, sans-serif;
+  --text-scale: 1;
+  --sidebar-border: var(--border);
+  --sidebar-shadow: var(--shadow-raised);
 }
 
 .dark {
@@ -140,7 +144,8 @@ body {
     radial-gradient(700px 380px at 20% 80%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 55%),
     linear-gradient(180deg, var(--bg), var(--bg-2));
   color: var(--text);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--app-font);
+  font-size: calc(16px * var(--text-scale));
 }
 
 
@@ -151,17 +156,26 @@ body {
 :root[data-motion="reduced"] { --motion-fast: 100ms; --motion-base: 130ms; --motion-slow: 170ms; }
 :root[data-motion="minimal"] { --motion-fast: 0ms; --motion-base: 0ms; --motion-slow: 0ms; }
 
+
 :root[data-surface="flat"] {
+  --surface-subtle: color-mix(in srgb, var(--surface) 96%, transparent);
   --surface-tinted: color-mix(in srgb, var(--surface) 93%, var(--accent) 7%);
   --surface-elevated: var(--surface);
 }
+:root[data-surface="soft"] {
+  --surface-subtle: color-mix(in srgb, var(--surface) 86%, transparent);
+  --surface-tinted: color-mix(in srgb, var(--surface) 78%, var(--accent) 22%);
+  --surface-elevated: color-mix(in srgb, var(--surface) 88%, white 12%);
+}
 :root[data-surface="elevated"] {
-  --surface-subtle: color-mix(in srgb, var(--surface) 85%, black 15%);
-  --surface-elevated: color-mix(in srgb, var(--surface) 76%, white 24%);
+  --surface-subtle: color-mix(in srgb, var(--surface) 82%, black 18%);
+  --surface-elevated: color-mix(in srgb, var(--surface) 72%, white 28%);
+  --shadow-raised: 0 16px 34px rgba(0, 0, 0, 0.26);
 }
 
-:root[data-sidebar="tinted"] { --sidebar-bg: var(--surface-tinted); }
-:root[data-sidebar="elevated"] { --sidebar-bg: var(--surface-elevated); }
+:root[data-sidebar="standard"] { --sidebar-bg: color-mix(in srgb, var(--surface) 90%, transparent); --sidebar-border: var(--border); --sidebar-shadow: none; }
+:root[data-sidebar="tinted"] { --sidebar-bg: var(--surface-tinted); --sidebar-border: color-mix(in srgb, var(--accent-border) 64%, var(--border)); --sidebar-shadow: 0 10px 24px color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+:root[data-sidebar="elevated"] { --sidebar-bg: var(--surface-elevated); --sidebar-border: color-mix(in srgb, var(--accent-border) 48%, var(--border)); --sidebar-shadow: var(--shadow-raised); }
 
 
 :root {
@@ -184,6 +198,43 @@ body {
 .themed-surface-subtle { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius-md); }
 .themed-surface-elevated { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); }
 .themed-selected { background: var(--accent-soft); border-color: var(--accent-border) !important; }
+
+
+:root[data-font="inter"] { --app-font: Inter, system-ui, sans-serif; }
+:root[data-font="system"] { --app-font: system-ui, -apple-system, "Segoe UI", sans-serif; }
+:root[data-font="poppins"] { --app-font: "Poppins", "Segoe UI", sans-serif; }
+:root[data-font="nunito"] { --app-font: "Nunito", "Segoe UI", sans-serif; }
+:root[data-font="ibm-plex-sans"] { --app-font: "IBM Plex Sans", "Segoe UI", sans-serif; }
+
+:root[data-text-scale="sm"] { --text-scale: 0.94; }
+:root[data-text-scale="md"] { --text-scale: 1; }
+:root[data-text-scale="lg"] { --text-scale: 1.08; }
+
+.app-tabs {
+  display: inline-flex;
+  width: 100%;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-subtle) 92%, transparent);
+}
+.app-tab {
+  flex: 1;
+  min-height: 2.2rem;
+  border-radius: calc(var(--radius-md) - 4px);
+  border: 1px solid transparent;
+  padding: 0.5rem 0.8rem;
+  color: var(--muted);
+  transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+.app-tab:hover { background: var(--hover-bg); color: var(--text); }
+.app-tab-active { background: var(--active-bg); border-color: var(--accent-border); color: var(--text); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-border) 75%, transparent); }
+
+.danger-zone-card {
+  border-color: color-mix(in srgb, var(--status-danger) 50%, var(--accent-border)) !important;
+  background: color-mix(in srgb, var(--surface-tinted) 74%, rgba(var(--status-danger-rgb), 0.12));
+}
 
 .homeEmptyState {
   border: 1px solid color-mix(in srgb, var(--border) 70%, var(--accent-border));
