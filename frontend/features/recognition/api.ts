@@ -42,11 +42,6 @@ export class RecognitionError extends Error {
 let activeController: AbortController | null = null;
 const recentRequestKeys = new Map<string, number>();
 
-function nextAttemptId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  return `attempt-${Date.now()}`;
-}
-
 function markAndCheckDuplicate(requestKey: string): boolean {
   const now = Date.now();
   for (const [key, ts] of recentRequestKeys.entries()) {
@@ -65,8 +60,6 @@ async function postMultipart<T>(endpoint: string, fieldName: string, file: Blob,
 
   if (activeController) activeController.abort();
   activeController = new AbortController();
-  const attemptId = nextAttemptId();
-
   const formData = new FormData();
   formData.append(fieldName, file, filename);
   if (extraFields) for (const [key, value] of Object.entries(extraFields)) formData.append(key, value);
@@ -74,8 +67,7 @@ async function postMultipart<T>(endpoint: string, fieldName: string, file: Blob,
   const response = await fetch(`${getApiBaseUrl()}${endpoint}`, {
     method: "POST",
     body: formData,
-    signal: activeController.signal,
-    headers: { "x-recognition-attempt-id": attemptId },
+    signal: activeController.signal
   });
 
   if (!response.ok) {
