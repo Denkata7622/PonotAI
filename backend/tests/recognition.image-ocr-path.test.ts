@@ -55,7 +55,7 @@ test("image recognition falls back to tesseract only when primary AI OCR is unav
   try {
     const result = await recognizeSongFromImage(SAMPLE, "eng", "image/jpeg");
     assert.deepEqual(calls, ["ai", "tesseract"]);
-    assert.equal(result.ocrPath, "tesseract_only");
+    assert.equal(result.ocrPath, "tesseract_plus_gemma");
     assert.equal(result.warnings.some((warning) => warning.startsWith("PRIMARY_OCR_UNAVAILABLE:")), true);
     assert.equal(result.songs[0]?.warnings?.includes("LOW_CONFIDENCE_MATCH"), true);
     assert.equal(result.songs[0]?.resultState, "need_better_sample");
