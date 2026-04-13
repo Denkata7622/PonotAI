@@ -58,7 +58,9 @@ export default function AssistantFAB() {
       }}
       aria-label="Music Assistant"
     >
-      <Sparkles width={24} height={24} />
+      <span className="inline-flex items-center justify-center rounded-full bg-[color:rgba(255,255,255,0.1)] p-1.5">
+        <Sparkles width={20} height={20} />
+      </span>
     </button>
   );
 }

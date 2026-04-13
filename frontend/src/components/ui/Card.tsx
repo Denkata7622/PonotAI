@@ -1,8 +1,22 @@
 import type { HTMLAttributes, PropsWithChildren } from "react";
 
-export function Card({ children, className = "", ...props }: PropsWithChildren<HTMLAttributes<HTMLElement>>) {
+type CardVariant = "surface" | "settings" | "feature" | "interactive-list" | "selectable";
+
+type Props = PropsWithChildren<HTMLAttributes<HTMLElement>> & {
+  variant?: CardVariant;
+};
+
+const variantClasses: Record<CardVariant, string> = {
+  surface: "surface-card",
+  settings: "settings-card",
+  feature: "feature-card",
+  "interactive-list": "interactive-list-card",
+  selectable: "selectable-card",
+};
+
+export function Card({ children, className = "", variant = "surface", ...props }: Props) {
   return (
-    <section className={`bg-[var(--card-surface,var(--surface))] border border-[var(--card-border,var(--border))] rounded-[var(--radius-lg)] p-[var(--density-card-padding)] shadow-[var(--shadow-raised)] hover:border-[var(--accent-border)] hover:bg-[var(--surface-elevated)] transition-[border-color,box-shadow,background-color] duration-[var(--motion-base)] ${className}`} {...props}>
+    <section className={`card-base ${variantClasses[variant]} ${className}`} {...props}>
       {children}
     </section>
   );
