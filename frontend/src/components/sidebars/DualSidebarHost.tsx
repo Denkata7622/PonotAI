@@ -37,7 +37,7 @@ export default function DualSidebarHost() {
         stacked={bothOpen && state.active !== 'assistant'}
         onClose={() => closePanel('assistant')}
       >
-        <MusicAssistantPage mode="sidebar" />
+        <MusicAssistantPage mode="sidebar" sidebarOpen={state.open.assistant} />
       </SidebarShell>
       <SidebarShell
         id="queue"

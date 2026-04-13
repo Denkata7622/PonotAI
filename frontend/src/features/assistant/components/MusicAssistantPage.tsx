@@ -18,7 +18,7 @@ const capabilityPrompts = [
   { key: "assistant_capability_queue", prompt: "Create a focused queue for the next 45 minutes." },
 ] as const;
 
-export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | "sidebar" }) {
+export default function MusicAssistantPage({ mode = "page", sidebarOpen = false }: { mode?: "page" | "sidebar"; sidebarOpen?: boolean }) {
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading } = useUser();
   const { language } = useLanguage();
@@ -51,10 +51,13 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
   useEffect(() => {
     if (typeof window === "undefined") return;
     setShowHints(window.localStorage.getItem("ponotai-assistant-hints") !== "off");
-    if (mode === "sidebar") {
-      setHistoryOpen(window.matchMedia("(min-width: 1024px)").matches);
-    }
   }, []);
+
+  useEffect(() => {
+    if (mode === "sidebar" && sidebarOpen) {
+      setHistoryOpen(false);
+    }
+  }, [mode, sidebarOpen]);
 
   async function submitMessage() {
     if (!input.trim() || isLoading) return;
@@ -74,7 +77,7 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
       key={conversation.id}
       type="button"
       onClick={() => openConversation(conversation.id)}
-      className={`w-full rounded-xl border px-3 py-2 text-left transition ${conversation.id === activeConversationId ? "border-[var(--accent)] bg-[var(--surface-raised)]" : "border-[var(--border)]"}`}
+      className={`selectable-card w-full rounded-xl border px-3 py-2 text-left transition ${conversation.id === activeConversationId ? "border-[var(--accent-border)] bg-[var(--surface-tinted)]" : "border-[var(--border)]"}`}
     >
       <p className="truncate text-sm font-semibold">{conversation.title}</p>
       <p className="mt-1 text-xs text-[var(--muted)]">{new Date(conversation.updatedAt).toLocaleString()}</p>
@@ -103,13 +106,13 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
         <div className="flex min-h-0 flex-col">
           <div className="border-b border-[var(--border)] px-3 py-2">
             <div className="flex items-center gap-2">
-              <button type="button" className="rounded-lg border border-[var(--border)] px-2 py-1.5 text-xs" onClick={() => setHistoryOpen((prev) => !prev)}>
+              <button type="button" className="selectable-card rounded-lg border border-[var(--border)] px-2 py-1.5 text-xs" onClick={() => setHistoryOpen((prev) => !prev)}>
                 {historyOpen ? <ChevronLeft className="inline h-3.5 w-3.5" /> : <ListPlus className="inline h-3.5 w-3.5" />} {language === "bg" ? "Разговори" : "Conversations"}
               </button>
               {!historyOpen ? <select className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" value={activeConversationId ?? ""} onChange={(event) => openConversation(event.target.value)}>
                 {conversations.map((conversation) => <option key={conversation.id} value={conversation.id}>{conversation.title}</option>)}
               </select> : <span className="text-xs text-[var(--muted)]">{language === "bg" ? "Историята е отворена" : "History expanded"}</span>}
-              {historyOpen ? <button type="button" className="hidden rounded-lg border border-[var(--border)] px-2 py-1.5 text-xs md:inline-flex" onClick={() => setHistoryOpen(false)}><ChevronRight className="h-3.5 w-3.5" /></button> : null}
+              {historyOpen ? <button type="button" className="selectable-card hidden rounded-lg border border-[var(--border)] px-2 py-1.5 text-xs md:inline-flex" onClick={() => setHistoryOpen(false)}><ChevronRight className="h-3.5 w-3.5" /></button> : null}
             </div>
           </div>
 
@@ -146,13 +149,13 @@ export default function MusicAssistantPage({ mode = "page" }: { mode?: "page" | 
           </footer>
 
           <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
-            <button type="button" className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs" onClick={() => resetConversation()}><RotateCcw width={12} height={12} className="inline" /> {language === "bg" ? "Изчисти" : "Clear"}</button>
-            <button type="button" className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs" onClick={() => {
+            <button type="button" className="selectable-card rounded-lg border border-[var(--border)] px-2 py-1 text-xs" onClick={() => resetConversation()}><RotateCcw width={12} height={12} className="inline" /> {language === "bg" ? "Изчисти" : "Clear"}</button>
+            <button type="button" className="selectable-card rounded-lg border border-[var(--border)] px-2 py-1 text-xs" onClick={() => {
               if (!activeConversationId) return;
               const next = window.prompt(language === "bg" ? "Ново име" : "Rename conversation", "");
               if (next !== null) renameConversation(activeConversationId, next);
             }}><Save width={12} height={12} className="inline" /> {language === "bg" ? "Преименувай" : "Rename"}</button>
-            <button type="button" className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-red-300" onClick={() => {
+            <button type="button" className="selectable-card rounded-lg border border-[color:rgba(var(--status-danger-rgb),0.5)] px-2 py-1 text-xs status-danger" onClick={() => {
               if (!activeConversationId) return;
               if (window.confirm(language === "bg" ? "Да изтрием този разговор?" : "Delete this conversation?")) {
                 deleteConversation(activeConversationId);

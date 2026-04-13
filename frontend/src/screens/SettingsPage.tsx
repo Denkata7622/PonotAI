@@ -149,30 +149,30 @@ export default function SettingsPage() {
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6 pb-[calc(var(--layout-bottom-offset)+24px)]">
       <h1 className="text-3xl font-bold tracking-tight">{t("nav_settings", language)}</h1>
 
-      <Card className="space-y-5">
+      <Card variant="settings" className="space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-semibold">{t("settings_appearance", language)}</h2><p className="text-xs text-[var(--muted)]">Fine-tune visual behavior, structure, and interaction feedback.</p></div><span className="badge">Live preview</span></div>
         <p className="text-sm text-[var(--muted)]">Create a polished look with live controls and instant preview cards.</p>
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="themed-surface-subtle p-4 space-y-3 border-[var(--accent-border)]/50">
+          <div className="themed-surface-subtle settings-card p-4 space-y-3 border-[var(--accent-border)]/50">
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="secondary" onClick={toggleTheme}>{theme === "dark" ? <span className="inline-flex items-center gap-2"><Sun className="w-4 h-4" />{t("theme_light", language)}</span> : <span className="inline-flex items-center gap-2"><Moon className="w-4 h-4" />{t("theme_dark", language)}</span>}</Button>
               <span className="text-xs text-[var(--muted)]">Mode: {theme}</span>
             </div>
             <p className="text-sm font-medium">{t("settings_accent_color", language)}</p>
-            <div className="flex flex-wrap gap-1.5">{SUPPORTED_ACCENTS.map((preset) => <button key={preset} type="button" onClick={() => setAccent(preset)} aria-pressed={accent === preset} className={`rounded-full border px-2.5 py-1 text-xs ${accent === preset ? "themed-selected" : "border-[var(--border)]"}`}><span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: ACCENT_TOKENS[preset].accent }} />{preset}</span></button>)}</div>
+            <div className="flex flex-wrap gap-1.5">{SUPPORTED_ACCENTS.map((preset) => <button key={preset} type="button" onClick={() => setAccent(preset)} aria-pressed={accent === preset} className={`selectable-card rounded-full border px-2.5 py-1 text-xs transition ${accent === preset ? "themed-selected" : "border-[var(--border)]"}`}><span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: ACCENT_TOKENS[preset].accent }} />{preset}</span></button>)}</div>
           </div>
 
-          <div className="themed-surface-subtle p-4 space-y-3">
+          <div className="themed-surface-subtle settings-card p-4 space-y-3">
             <p className="text-sm font-medium">Curated presets</p>
             <div className="grid grid-cols-2 gap-2">
-              {Object.entries(UI_PRESETS).map(([name, preset]) => <button key={name} type="button" className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition hover:border-[var(--accent-border)] hover:bg-[var(--surface-elevated)]" onClick={() => applyPersonalization(preset)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{preset.accent} · {preset.surfaceStyle}</p></button>)}
+              {Object.entries(UI_PRESETS).map(([name, preset]) => <button key={name} type="button" className="selectable-card rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition" onClick={() => applyPersonalization(preset)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{preset.accent} · {preset.surfaceStyle}</p></button>)}
             </div>
           </div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 text-sm">
           {Object.entries(CONTROL_GROUPS).map(([key, options]) => (
-            <div key={key} className="themed-surface-subtle p-3">
+            <div key={key} className="themed-surface-subtle settings-card p-3">
               <p className="mb-2 capitalize">{key.replace(/([A-Z])/g, " $1")}</p>
               <div className="flex flex-wrap gap-2">
                 {options.map((option) => {
@@ -187,7 +187,7 @@ export default function SettingsPage() {
                     if (key === "motionLevel") setMotionLevel(option as MotionLevel);
                     if (key === "cardEmphasis") setCardEmphasis(option as CardEmphasis);
                   };
-                  return <button key={option} type="button" onClick={onClick} className={`rounded-[var(--radius-sm)] border px-2.5 py-1 text-xs transition ${active ? "themed-selected shadow-[0_0_0_1px_var(--accent-border)]" : "border-[var(--border)] hover:border-[var(--accent-border)]"}`}>{option}</button>;
+                  return <button key={option} type="button" onClick={onClick} className={`selectable-card rounded-[var(--radius-sm)] border px-2.5 py-1 text-xs transition ${active ? "themed-selected shadow-[0_0_0_1px_var(--accent-border)]" : "border-[var(--border)]"}`}>{option}</button>;
                 })}
               </div>
             </div>
@@ -195,26 +195,26 @@ export default function SettingsPage() {
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="themed-surface p-3"><p className="text-xs text-[var(--muted)] mb-2">Buttons / tabs</p><div className="flex gap-2"><Button variant="primary" size="sm">Primary</Button><Button variant="secondary" size="sm">Secondary</Button></div></div>
-          <div className="themed-surface p-3"><p className="text-xs text-[var(--muted)] mb-2">Selected row</p><div className="rounded-[var(--radius-sm)] border themed-selected px-3 py-2 text-sm">Now active selection</div></div>
-          <div className="themed-surface p-3"><p className="text-xs text-[var(--muted)] mb-2">Chart palette</p><div className="flex gap-1">{["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"].map((color) => <span key={color} className="h-8 flex-1 rounded" style={{ background: color }} />)}</div></div><div className="themed-surface p-3"><p className="text-xs text-[var(--muted)] mb-2">Card emphasis</p><div className="rounded-[var(--radius-sm)] border border-[var(--card-border,var(--border))] bg-[var(--card-surface,var(--surface))] px-3 py-2 text-sm">Preview card style</div></div>
+          <div className="themed-surface settings-card p-3"><p className="text-xs text-[var(--muted)] mb-2">Buttons / tabs</p><div className="flex gap-2"><Button variant="primary" size="sm">Primary</Button><Button variant="secondary" size="sm">Secondary</Button></div></div>
+          <div className="themed-surface settings-card p-3"><p className="text-xs text-[var(--muted)] mb-2">Selected row</p><div className="rounded-[var(--radius-sm)] border themed-selected px-3 py-2 text-sm">Now active selection</div></div>
+          <div className="themed-surface settings-card p-3"><p className="text-xs text-[var(--muted)] mb-2">Chart palette</p><div className="flex gap-1">{["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"].map((color) => <span key={color} className="h-8 flex-1 rounded" style={{ background: color }} />)}</div></div><div className="themed-surface settings-card p-3"><p className="text-xs text-[var(--muted)] mb-2">Card emphasis</p><div className="rounded-[var(--radius-sm)] border border-[var(--card-border,var(--border))] bg-[var(--card-surface,var(--surface))] px-3 py-2 text-sm">Preview card style</div></div>
         </div>
       </Card>
 
-      <Card className="space-y-4">
+      <Card variant="settings" className="space-y-4">
         <h2 className="text-xl font-semibold">Account</h2>
         {saveError ? <p className="text-sm text-danger">{saveError}</p> : null}
         <div><label className="text-sm font-medium mb-1 block">Display name</label><div className="flex flex-col gap-2 sm:flex-row"><Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} /><Button variant="primary" onClick={handleSaveName}>Save</Button></div></div>
         <div><label className="text-sm font-medium mb-1 block">Email</label><div className="flex flex-col gap-2 sm:flex-row"><Input value={email} onChange={(e) => setEmail(e.target.value)} /><Button variant="primary" onClick={handleSaveEmail}>Save</Button></div></div>
       </Card>
 
-      <Card className="space-y-4">
+      <Card variant="settings" className="space-y-4">
         <h2 className="text-xl font-semibold">{t("settings_assistant_behavior", language)}</h2>
-        <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3"><div><p className="font-medium">{t("settings_show_ai_hints", language)}</p><p className="text-sm text-[var(--muted)]">{t("settings_show_ai_hints_desc", language)}</p></div><Button variant="secondary" onClick={() => setAssistantHintsPref(!assistantHints)}>{assistantHints ? t("settings_on", language) : t("settings_off", language)}</Button></div>
-        <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3"><p className="font-medium">{t("settings_notifications", language)}</p><Button variant="secondary" onClick={() => setPreferences({ notifications: !preferences.notifications })}>{preferences.notifications ? t("settings_enabled", language) : t("settings_disabled", language)}</Button></div>
+        <div className="settings-card flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3"><div><p className="font-medium">{t("settings_show_ai_hints", language)}</p><p className="text-sm text-[var(--muted)]">{t("settings_show_ai_hints_desc", language)}</p></div><Button variant="secondary" onClick={() => setAssistantHintsPref(!assistantHints)}>{assistantHints ? t("settings_on", language) : t("settings_off", language)}</Button></div>
+        <div className="settings-card flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3"><p className="font-medium">{t("settings_notifications", language)}</p><Button variant="secondary" onClick={() => setPreferences({ notifications: !preferences.notifications })}>{preferences.notifications ? t("settings_enabled", language) : t("settings_disabled", language)}</Button></div>
       </Card>
 
-      <Card className="space-y-4">
+      <Card variant="settings" className="space-y-4">
         <h2 className="text-xl font-semibold">Data Management</h2>
         <p className="text-xs text-[var(--muted)]">{language === "bg" ? "Виж документацията за архивиране и възстановяване." : "See docs for backup and restore guidance."} <Link href="/docs" className="themed-link underline">{language === "bg" ? "Отвори docs" : "Open docs"}</Link></p>
         <div className="flex flex-col gap-2 sm:flex-row"><Button variant="secondary" onClick={() => void handleExportJSON()} className="flex-1" disabled={isExporting || isImporting}><span className="inline-flex items-center gap-2"><Download className="w-4 h-4" />Export JSON</span></Button><Button variant="secondary" onClick={handleExportCSV} className="flex-1" disabled={isExporting || isImporting}><span className="inline-flex items-center gap-2"><FileSpreadsheet className="w-4 h-4" />Export CSV</span></Button></div>
@@ -225,7 +225,7 @@ export default function SettingsPage() {
         {exportSummary ? <p className="text-xs text-[var(--muted)]">{exportSummary}</p> : null}
       </Card>
 
-      <Card className="space-y-4" style={{ borderColor: "var(--color-danger, #ef4444)" }}>
+      <Card variant="settings" className="space-y-4" style={{ borderColor: "var(--status-danger)" }}>
         <h2 className="text-xl font-semibold">Danger Zone</h2>
         <Button variant="danger" onClick={() => setShowDangerModal(true)}><span className="inline-flex items-center gap-2"><Trash2 className="w-4 h-4 text-white" />Delete Account</span></Button>
       </Card>
