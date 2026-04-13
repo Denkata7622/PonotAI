@@ -83,6 +83,8 @@ const defaults: UiPersonalization = {
 export const ACCENT_TOKENS = THEME_ACCENT_TOKENS;
 
 export const UI_PRESETS: Record<string, UiPersonalization> = {
+  "Stock Light": { ...defaults, theme: "light", accent: "slate", intensity: "subtle", surfaceStyle: "flat", density: "default", radius: "default", chartStyle: "neutral", sidebarStyle: "standard", motionLevel: "reduced", cardEmphasis: "standard" },
+  "Stock Dark": { ...defaults, theme: "dark", accent: "graphite", intensity: "subtle", surfaceStyle: "flat", density: "default", radius: "default", chartStyle: "neutral", sidebarStyle: "standard", motionLevel: "reduced", cardEmphasis: "standard" },
   "Clean Minimal": { ...defaults, theme: "light", accent: "slate", intensity: "subtle", surfaceStyle: "flat", density: "compact", radius: "compact", chartStyle: "neutral", sidebarStyle: "standard", motionLevel: "reduced", cardEmphasis: "standard" },
   "Neon Night": { ...defaults, theme: "dark", accent: "magenta", intensity: "vivid", surfaceStyle: "elevated", density: "compact", radius: "rounded", chartStyle: "multicolor", sidebarStyle: "elevated", motionLevel: "full", cardEmphasis: "accented" },
   "Ocean Studio": { ...defaults, theme: "dark", accent: "ocean", intensity: "balanced", surfaceStyle: "soft", density: "default", radius: "default", chartStyle: "accent-led", sidebarStyle: "tinted", motionLevel: "full", cardEmphasis: "tinted" },

@@ -8,6 +8,8 @@ export const ASSISTANT_THEME_TEMPLATES = {
   "sunset-glow": { id: "sunset-glow", name: "Sunset Glow", presetName: "Sunset Warm" },
   "forest-focus": { id: "forest-focus", name: "Forest Focus", presetName: "Forest Focus" },
   "neon-violet": { id: "neon-violet", name: "Neon Violet", presetName: "Neon Night" },
+  "stock-light": { id: "stock-light", name: "Stock Light", presetName: "Stock Light" },
+  "stock-dark": { id: "stock-dark", name: "Stock Dark", presetName: "Stock Dark" },
 } as const;
 
 export type AssistantThemeTemplateId = keyof typeof ASSISTANT_THEME_TEMPLATES;

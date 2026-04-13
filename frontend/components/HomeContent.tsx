@@ -19,8 +19,9 @@ import {
   type SongMatch,
   type SongRecognitionResult,
 } from "../features/recognition/api";
-import { recentTracksSeed } from "../features/tracks/seed";
 import type { Track } from "../features/tracks/types";
+import { getHomeRecommendations } from "../features/recommendations/homeRecommendations";
+import { readTasteProfile } from "../src/features/onboarding/tasteProfile";
 import { useLanguage } from "../lib/LanguageContext";
 import { useTheme } from "../lib/ThemeContext";
 import { t } from "../lib/translations";
@@ -128,7 +129,7 @@ export function HomeContent() {
   // Adapter functions to convert track data for playlist operations
   const handleAddSongToPlaylist = (trackId: string, playlistId: string, videoId?: string) => {
     // Find the track in our tracks list
-    const track = tracks.find((t) => t.id === trackId);
+    const track = recommendationState.tracks.find((t) => t.id === trackId);
     if (!track) return;
 
     addSongToPlaylist(playlistId, {
@@ -140,7 +141,7 @@ export function HomeContent() {
   };
 
   const handleRemoveSongFromPlaylist = (trackId: string, playlistId: string) => {
-    const track = tracks.find((t) => t.id === trackId);
+    const track = recommendationState.tracks.find((t) => t.id === trackId);
     if (!track) return;
 
     removeSongFromPlaylist(playlistId, track.title, track.artistName);
@@ -165,12 +166,27 @@ export function HomeContent() {
     return null;
   }, [audioResult, imageResult]);
 
-  const tracks = useMemo(() => {
+  const tasteProfile = useMemo(() => readTasteProfile(), []);
+
+  const recommendationState = useMemo(() => {
+    const generated = getHomeRecommendations({
+      language,
+      userId: profile.id,
+      history,
+      favorites: favoritesList,
+      tasteProfile,
+      limit: 6,
+    });
+
     const recognizedTrack = latestResult ? [toRecognizedTrack(latestResult)] : [];
     const uniqueTracks = new Map<string, Track>();
-    [...recognizedTrack, ...recentTracksSeed].forEach((track) => uniqueTracks.set(track.id, track));
-    return [...uniqueTracks.values()];
-  }, [latestResult]);
+    [...recognizedTrack, ...generated.tracks].forEach((track) => uniqueTracks.set(track.id, track));
+
+    return {
+      ...generated,
+      tracks: [...uniqueTracks.values()],
+    };
+  }, [favoritesList, history, language, latestResult, profile.id, tasteProfile]);
 
   const stats = useMemo(() => {
     return {
@@ -619,13 +635,13 @@ export function HomeContent() {
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-6">
             {!isAuthenticated && history.length === 0 && !demoSeen && (
-              <Card className="resultEnter mb-6 rounded-3xl border border-border bg-surface p-6">
+              <Card className="resultEnter mb-6">
                 <p className="text-sm uppercase tracking-[0.22em] text-text-muted">Trackly</p>
                 <h3 className="mt-2 text-2xl font-bold">{language === "bg" ? "Добре дошъл в Trackly" : "Welcome to Trackly"}</h3>
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-xl border border-border bg-[var(--surface-raised)] p-3 text-sm"><Mic className="w-5 h-5 text-[var(--accent)]" /><p className="mt-2">{language === "bg" ? "1. Слушай" : "1. Listen"}</p></div>
-                  <div className="rounded-xl border border-border bg-[var(--surface-raised)] p-3 text-sm"><Music className="w-5 h-5 text-[var(--accent)]" /><p className="mt-2">{language === "bg" ? "2. Разпознай" : "2. Identify"}</p></div>
-                  <div className="rounded-xl border border-border bg-[var(--surface-raised)] p-3 text-sm"><Library className="w-5 h-5 text-[var(--accent)]" /><p className="mt-2">{language === "bg" ? "3. Запази" : "3. Save"}</p></div>
+                  <div className="homeStepCard p-3 text-sm"><Mic className="w-5 h-5 text-[var(--accent)]" /><p className="mt-2">{language === "bg" ? "1. Слушай" : "1. Listen"}</p></div>
+                  <div className="homeStepCard p-3 text-sm"><Music className="w-5 h-5 text-[var(--accent)]" /><p className="mt-2">{language === "bg" ? "2. Разпознай" : "2. Identify"}</p></div>
+                  <div className="homeStepCard p-3 text-sm"><Library className="w-5 h-5 text-[var(--accent)]" /><p className="mt-2">{language === "bg" ? "3. Запази" : "3. Save"}</p></div>
                 </div>
                 <Button className="mt-5 inline-flex items-center gap-2" onClick={handleDemoRecognition}><Play className="w-4 h-4 text-white" />{language === "bg" ? "Пробвай демо" : "Try a demo"}</Button>
               </Card>
@@ -646,7 +662,17 @@ export function HomeContent() {
               theme={theme}
             />
 
-            {showAssistantHints ? <Card className="rounded-3xl p-5">
+            <Card className="space-y-3">
+              <h3 className="text-lg font-semibold">{language === "bg" ? "Бързи действия" : "Quick actions"}</h3>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Button onClick={() => void handleRecognizeAudio()} className="justify-center">{language === "bg" ? "Разпознай от звук" : "Recognize from audio"}</Button>
+                <Button variant="secondary" onClick={() => setIsUploadOpen(true)} className="justify-center">{language === "bg" ? "OCR от снимка" : "OCR from photo"}</Button>
+                <Link href="/assistant" className="homeQuickLink inline-flex items-center justify-center px-4 py-2 text-sm font-medium transition">{language === "bg" ? "Попитай AI асистента" : "Ask AI assistant"}</Link>
+              </div>
+            </Card>
+
+            {showAssistantHints ? <Card className="p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">{language === "bg" ? "Асистент" : "Assistant"}</p>
               <h3 className="inline-flex items-center gap-2 text-lg font-semibold"><Sparkles className="h-4 w-4 text-[var(--accent)]" /> AI can do more than chat</h3>
               <p className="mt-2 text-sm text-[var(--muted)]">Ask Trackly Assistant to generate playlists, summarize your daily/weekly/monthly trends, suggest discovery tracks, and build your queue instantly.</p>
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -656,7 +682,7 @@ export function HomeContent() {
               </div>
             </Card> : null}
 
-            <Card className="rounded-3xl p-5">
+            <Card className="p-5">
               <h3 className="mb-4 text-lg font-semibold">{t("settings_title", language)}</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="text-sm">
@@ -707,10 +733,13 @@ export function HomeContent() {
 
             <ResultCard language={language} song={latestResult} onSave={saveSong} onPlay={playSong} onFavorite={favoriteSong} favoritedKeys={favoritedKeys} />
 
-            <HomeHistorySection language={language} items={history} onDelete={handleDeleteHistoryItem} onPlay={playSong} favoritesSet={favoritesSet} onFavorite={toggleFavorite} />
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold">{language === "bg" ? "Последна активност" : "Recent activity"}</h2>
+              <HomeHistorySection language={language} items={history} onDelete={handleDeleteHistoryItem} onPlay={playSong} favoritesSet={favoritesSet} onFavorite={toggleFavorite} />
+            </div>
 
             {(stats.totalFavorites > 0 || stats.totalPlaylists > 0) && (
-              <Card className="rounded-3xl bg-gradient-to-br from-[var(--accent)]/10 to-[var(--accent-2)]/5 border border-[var(--accent-border)] p-6">
+              <Card className="homeStatsCard p-6">
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <Link href="/library?tab=favorites" className="rounded-xl p-2 transition hover:opacity-80">
                     <p className="text-2xl font-bold text-text-primary">{stats.totalFavorites}</p>
@@ -730,6 +759,11 @@ export function HomeContent() {
 
             <HomePlaylistsSection playlists={playlists} language={language} isAuthenticated={isAuthenticated} onOpenNewPlaylist={() => setShowNewPlaylistModal(true)} onDeletePlaylist={handleDeletePlaylistWithUndo} />
 
+            <Card className="space-y-2">
+              <h3 className="text-lg font-semibold">{language === "bg" ? "Откривай по-бързо" : "Discover faster"}</h3>
+              <p className="text-sm text-text-muted">{language === "bg" ? "Разпознавай моментално, подреждай в плейлисти и продължавай с AI предложения." : "Recognize instantly, save to playlists, and keep exploring with AI suggestions."}</p>
+            </Card>
+
             <HomeFavoritesSection
               language={language}
               favoritesList={favoritesList}
@@ -737,38 +771,48 @@ export function HomeContent() {
               toggleFavorite={toggleFavorite}
               playlists={playlists}
               addToPlaylist={handleAddSongToPlaylist}
-              tracks={tracks}
+              tracks={recommendationState.tracks}
             />
 
             <section className="space-y-3">
-              <h2 className="text-xl font-semibold">{t("songs_heading", language)}</h2>
-              {tracks.length > 0 ? tracks.map((track) => {
+              <Card className="space-y-2">
+                <h2 className="text-xl font-semibold">{recommendationState.title}</h2>
+                <p className="text-sm text-text-muted">{recommendationState.description}</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">
+                  {recommendationState.mode === "history"
+                    ? (language === "bg" ? "История + любими" : "History + favorites")
+                    : recommendationState.mode === "taste"
+                      ? (language === "bg" ? "Onboarding вкус" : "Onboarding taste profile")
+                      : (language === "bg" ? "Курирани стартови предложения" : "Curated starter picks")}
+                </p>
+              </Card>
+              {recommendationState.tracks.length > 0 ? recommendationState.tracks.map((track) => {
                 const trackKey = normalizeTrackKey(track.title, track.artistName);
                 return (
-                <TrackCard
-                  key={track.id}
-                  track={track}
-                  playlists={playlists}
-                  isFavorite={favoritesSet.has(trackKey)}
-                  onToggleFavorite={toggleFavorite}
-                  onAddToPlaylist={handleAddSongToPlaylist}
-                  onCreatePlaylist={createPlaylist}
-                  onDeletePlaylist={handleDeletePlaylistWithUndo}
-                  onRemoveFromPlaylist={handleRemoveSongFromPlaylist}
-                  onPlay={(currentTrack) =>
-                    playNow({
-                      title: currentTrack.title,
-                      artist: currentTrack.artistName,
-                      artistId: currentTrack.artistId,
-                      artworkUrl: currentTrack.artworkUrl,
-                      query: `${currentTrack.title} ${currentTrack.artistName} official audio`,
-                      videoId: currentTrack.youtubeVideoId,
-                      license: currentTrack.license,
-                    }, "manual")
-                  }
-                />
+                  <TrackCard
+                    key={track.id}
+                    track={track}
+                    playlists={playlists}
+                    isFavorite={favoritesSet.has(trackKey)}
+                    onToggleFavorite={toggleFavorite}
+                    onAddToPlaylist={handleAddSongToPlaylist}
+                    onCreatePlaylist={createPlaylist}
+                    onDeletePlaylist={handleDeletePlaylistWithUndo}
+                    onRemoveFromPlaylist={handleRemoveSongFromPlaylist}
+                    onPlay={(currentTrack) =>
+                      playNow({
+                        title: currentTrack.title,
+                        artist: currentTrack.artistName,
+                        artistId: currentTrack.artistId,
+                        artworkUrl: currentTrack.artworkUrl,
+                        query: `${currentTrack.title} ${currentTrack.artistName} official audio`,
+                        videoId: currentTrack.youtubeVideoId,
+                        license: currentTrack.license,
+                      }, "manual")
+                    }
+                  />
                 );
-              }) : <Card className="p-6 text-center"><p className="text-text-muted">Start recognizing songs to build your collection!</p></Card>}
+              }) : <Card className="homeEmptyState p-6 text-center"><p className="text-text-muted">{language === "bg" ? "Няма предложения за момента." : "No recommendations right now."}</p></Card>}
             </section>
           </div>
 

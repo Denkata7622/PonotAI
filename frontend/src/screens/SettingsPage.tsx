@@ -163,9 +163,16 @@ export default function SettingsPage() {
           </div>
 
           <div className="themed-surface-subtle settings-card p-4 space-y-3">
+            <p className="text-sm font-medium">Classic defaults</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(["Stock Light", "Stock Dark"] as const).map((name) => {
+                const preset = UI_PRESETS[name];
+                return <button key={name} type="button" className="selectable-card rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition" onClick={() => applyPersonalization(preset)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{name === "Stock Light" ? (language === "bg" ? "Класически светъл" : "Classic default light") : (language === "bg" ? "Класически тъмен" : "Classic default dark")}</p></button>;
+              })}
+            </div>
             <p className="text-sm font-medium">Curated presets</p>
             <div className="grid grid-cols-2 gap-2">
-              {Object.entries(UI_PRESETS).map(([name, preset]) => <button key={name} type="button" className="selectable-card rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition" onClick={() => applyPersonalization(preset)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{preset.accent} · {preset.surfaceStyle}</p></button>)}
+              {Object.entries(UI_PRESETS).filter(([name]) => name !== "Stock Light" && name !== "Stock Dark").map(([name, preset]) => <button key={name} type="button" className="selectable-card rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition" onClick={() => applyPersonalization(preset)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{preset.accent} · {preset.surfaceStyle}</p></button>)}
             </div>
           </div>
         </div>

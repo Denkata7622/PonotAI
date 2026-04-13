@@ -15,10 +15,10 @@ export default function HomePlaylistsSection({ playlists, language, isAuthentica
 
   if (!isAuthenticated) {
     return (
-      <section className="rounded-3xl border border-border bg-surface p-8">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <ListMusic className="w-10 h-10 text-[var(--muted)]" />
-          <p className="text-lg font-semibold">Sign in to manage playlists</p>
+      <section className="card-base p-8">
+        <div className="homeEmptyState flex flex-col items-center gap-3 p-6 text-center">
+          <ListMusic className="h-10 w-10 text-[var(--muted)]" />
+          <p className="text-lg font-semibold">{language === "bg" ? "Влез, за да управляваш плейлистите си" : "Sign in to manage playlists"}</p>
         </div>
       </section>
     );
@@ -26,12 +26,12 @@ export default function HomePlaylistsSection({ playlists, language, isAuthentica
 
   if (playlists.length === 0) {
     return (
-      <section className="rounded-3xl border border-border bg-surface p-8">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <ListMusic className="w-10 h-10 text-[var(--muted)]" />
-          <p className="text-lg font-semibold">No playlists yet — create your first one</p>
+      <section className="card-base p-8">
+        <div className="homeEmptyState flex flex-col items-center gap-3 p-6 text-center">
+          <ListMusic className="h-10 w-10 text-[var(--muted)]" />
+          <p className="text-lg font-semibold">{language === "bg" ? "Нямаш плейлисти — създай първия" : "No playlists yet — create your first one"}</p>
           <Button onClick={onOpenNewPlaylist} className="mt-2 flex items-center gap-2" disabled={!onOpenNewPlaylist}>
-            <Plus className="w-4 h-4 text-[var(--text)]" />
+            <Plus className="h-4 w-4" />
             {t("playlist_new", language)}
           </Button>
         </div>
@@ -45,13 +45,13 @@ export default function HomePlaylistsSection({ playlists, language, isAuthentica
         <h2 className="text-xl font-semibold">{t("library_playlists", language)}</h2>
         <div className="flex items-center gap-2">
           <Button onClick={onOpenNewPlaylist} className="flex items-center gap-2" disabled={!onOpenNewPlaylist}>
-            <Plus className="w-4 h-4 text-[var(--text)]" />
+            <Plus className="h-4 w-4" />
             {t("playlist_new", language)}
           </Button>
           <Link href="/library?tab=playlists" className="text-sm text-text-muted hover:opacity-80">{t("btn_open", language)}</Link>
         </div>
       </div>
-      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {playlists.slice(0, 4).map((playlist) => (
           <PlaylistCard
             key={playlist.id}

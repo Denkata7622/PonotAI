@@ -184,6 +184,24 @@ body {
 .themed-surface-subtle { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius-md); }
 .themed-surface-elevated { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); }
 .themed-selected { background: var(--accent-soft); border-color: var(--accent-border) !important; }
+
+.homeEmptyState {
+  border: 1px solid color-mix(in srgb, var(--border) 70%, var(--accent-border));
+  background: color-mix(in srgb, var(--surface-subtle) 88%, var(--accent-soft));
+  border-radius: var(--radius-lg);
+}
+
+.homeStepCard {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-subtle) 82%, var(--accent-soft));
+}
+
+.homeStatsCard {
+  border-color: color-mix(in srgb, var(--accent-border) 78%, var(--border));
+  background: linear-gradient(140deg, color-mix(in srgb, var(--accent-soft) 78%, var(--surface)), color-mix(in srgb, var(--accent-2) 12%, var(--surface-subtle)));
+}
+
 .card-base {
   background: var(--card-surface, var(--surface));
   border: 1px solid var(--card-border, var(--border));
@@ -682,38 +700,60 @@ select:focus-visible {
 }
 
 .glassBtn {
-  min-height: 44px;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
-  padding: 10px 14px;
+  min-height: 40px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 62%, var(--accent-border));
+  background: color-mix(in srgb, var(--surface-subtle) 82%, var(--accent-soft));
+  padding: 8px 14px;
   font-size: 13px;
-  transition: transform 0.2s ease, background 0.2s ease;
 }
 
 .glassBtn:hover {
-  transform: translateY(-1px) scale(1.03);
-  background: rgba(255, 255, 255, 0.14);
+  border-color: var(--accent-border);
+  background: color-mix(in srgb, var(--surface-elevated) 72%, var(--accent-soft));
+  transform: translateY(-1px);
+}
+
+.heroSurface {
+  border: 1px solid var(--card-border, var(--border));
+  background: color-mix(in srgb, var(--surface) 88%, var(--accent-soft));
+}
+
+.heroAccentOverlay {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(70% 60% at 16% 18%, color-mix(in srgb, var(--accent) 40%, transparent), transparent 72%),
+    radial-gradient(56% 52% at 82% 8%, color-mix(in srgb, var(--accent-2) 35%, transparent), transparent 70%);
+  pointer-events: none;
+}
+
+.heroNoiseOverlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, transparent 80%, var(--surface-elevated)), transparent 40%);
+  pointer-events: none;
 }
 
 .recognizeHeroButton {
   min-height: 200px;
   width: min(320px, 80vw);
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  background: linear-gradient(130deg, #7c5cff 0%, #4cd3ff 100%);
-  box-shadow: 0 0 0 0 rgba(124, 92, 255, 0.65);
+  border: 1px solid color-mix(in srgb, var(--accent-border) 85%, white 15%);
+  background: radial-gradient(circle at 20% 20%, color-mix(in srgb, white 28%, var(--accent)), color-mix(in srgb, var(--accent) 75%, var(--accent-2)));
+  box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.58);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--text);
-  transition: transform 0.25s ease;
+  color: var(--accent-foreground);
+  transition: transform var(--motion-base) ease, box-shadow var(--motion-base) ease, filter var(--motion-base) ease;
   animation: heroPulse 2.2s infinite;
 }
 
 .recognizeHeroButton:hover {
-  transform: scale(1.04);
+  transform: scale(1.02);
+  box-shadow: 0 12px 38px rgba(var(--accent-rgb), 0.38);
 }
 
 .recognizeHeroButtonListening {
@@ -721,9 +761,9 @@ select:focus-visible {
 }
 
 @keyframes heroPulse {
-  0% { box-shadow: 0 0 0 0 rgba(124, 92, 255, 0.55); }
-  70% { box-shadow: 0 0 0 22px rgba(124, 92, 255, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(124, 92, 255, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.5); }
+  70% { box-shadow: 0 0 0 20px rgba(var(--accent-rgb), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0); }
 }
 
 @keyframes heroListening {
@@ -733,16 +773,19 @@ select:focus-visible {
 }
 
 .secondaryHeroAction {
-  min-height: 46px;
+  min-height: 44px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  background: rgba(255, 255, 255, 0.08);
-  padding: 12px 20px;
+  border: 1px solid color-mix(in srgb, var(--border) 65%, var(--accent-border));
+  background: color-mix(in srgb, var(--surface-subtle) 86%, var(--accent-soft));
+  padding: 10px 20px;
   font-weight: 600;
-  transition: transform 0.2s ease;
 }
 
-.secondaryHeroAction:hover { transform: scale(1.04); }
+.secondaryHeroAction:hover {
+  border-color: var(--accent-border);
+  background: color-mix(in srgb, var(--surface-elevated) 70%, var(--accent-soft));
+  transform: translateY(-1px);
+}
 
 .resultCardAnimated {
   animation: slideUpFade 0.45s ease;
@@ -937,4 +980,16 @@ button, input, textarea, select {
     padding: 10px;
     padding-bottom: calc(10px + env(safe-area-inset-bottom));
   }
+}
+
+.homeQuickLink {
+  border: 1px solid color-mix(in srgb, var(--border) 64%, var(--accent-border));
+  background: color-mix(in srgb, var(--surface-subtle) 88%, var(--accent-soft));
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  min-height: 40px;
+}
+.homeQuickLink:hover {
+  border-color: var(--accent-border);
+  background: color-mix(in srgb, var(--surface-elevated) 74%, var(--accent-soft));
 }
