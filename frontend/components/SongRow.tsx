@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Heart, EllipsisVertical, Music, Play, Trash2, ListPlus, Share2 } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
@@ -57,6 +57,13 @@ export default function SongRow({
   const safeTitle = normalizeVisibleText(title) || title;
   const safeArtist = normalizeVisibleText(artist) || artist;
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("trackly-song-menu-toggle", { detail: { open: menuOpen } }));
+    return () => {
+      window.dispatchEvent(new CustomEvent("trackly-song-menu-toggle", { detail: { open: false } }));
+    };
+  }, [menuOpen]);
+
   return (
     <article
       data-song-id={id}
@@ -81,7 +88,7 @@ export default function SongRow({
         <p className="truncate text-sm text-[var(--muted)]">{formatArtist(safeArtist)}</p>
       </div>
 
-      <div className="relative flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      <div className="relative flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
         {onFavorite && (
           <button
             type="button"

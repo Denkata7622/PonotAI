@@ -118,13 +118,20 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
   const selectedCount = editableSongs.filter((s) => s.selected).length;
 
   return (
-    <Modal isOpen onClose={onCancel} title={t("modal_review_title", language)} maxWidth="960px">
-      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
-        <p className="mb-6 text-sm text-text-muted">
+    <Modal
+      isOpen
+      onClose={onCancel}
+      title={t("modal_review_title", language)}
+      maxWidth="960px"
+      centerOnMobile
+      panelClassName="overflow-hidden p-4 sm:p-6"
+    >
+      <div className="flex h-full max-h-[min(78dvh,760px)] w-full max-w-4xl flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 sm:p-5">
+        <p className="mb-4 shrink-0 text-sm text-text-muted">
           {t("modal_selected_count", language, { selected: selectedCount, total: editableSongs.length })}
         </p>
 
-        <div className="space-y-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           {editableSongs.map((song, index) => {
             const artworkOptions = getArtworkOptions(song);
 
@@ -137,7 +144,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
                     : "border-border bg-surface opacity-60"
                 }`}
               >
-                <div className="flex items-start gap-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                   <input
                     type="checkbox"
                     checked={song.selected}
@@ -211,7 +218,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
           })}
         </div>
 
-        <div className="mt-6 flex items-center justify-end gap-3">
+        <div className="mt-4 flex shrink-0 items-center justify-end gap-3 border-t border-[var(--border)] pt-4">
           <button
             onClick={onCancel}
             className="rounded-lg border border-border px-5 py-2 hover:bg-surface-raised"

@@ -176,12 +176,14 @@ body {
 }
 
 body {
+  margin: 0;
   background:
     radial-gradient(900px 500px at 50% 20%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
     radial-gradient(700px 380px at 20% 80%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 55%),
     linear-gradient(180deg, var(--bg), var(--bg-2));
   color: var(--text);
   font-family: var(--app-body-font);
+  overflow-x: clip;
 }
 
 html {
@@ -1160,6 +1162,10 @@ select:focus-visible {
 .assistant-fab svg { width: 22px; height: 22px; filter: drop-shadow(0 1px 2px rgba(8, 12, 22, 0.38)); }
 .assistant-fab::before { content: "Music Assistant"; position: fixed; right: 92px; bottom: inherit; background: var(--surface-elevated); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 7px 10px; opacity: 0; pointer-events: none; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease; box-shadow: 0 8px 20px rgba(8, 12, 22, 0.2); font-size: 12px; }
 .assistant-fab:hover::before { opacity: 1; transform: translateY(0); }
+.assistant-fab[data-menu-open="true"] {
+  opacity: 0.36;
+  pointer-events: none;
+}
 .fab--pulse { animation: fab-pulse 2s ease-in-out infinite; }
 @keyframes fab-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.4); }
@@ -1242,7 +1248,11 @@ button, input, textarea, select {
 }
 
 @media (max-width: 768px) {
-  .assistant-fab { width: 54px; height: 54px; right: 16px; }
+  .assistant-fab {
+    width: 54px;
+    height: 54px;
+    right: 12px;
+  }
   .assistant-page--sidebar .assistant-thread {
     padding-bottom: 14px;
   }

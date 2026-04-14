@@ -24,7 +24,7 @@ export default function UploadModal({ language, open, previewUrl, onClose, onSel
   }
 
   return (
-    <Modal isOpen={open} onClose={onClose} title={t("upload_modal_title", language)} maxWidth="480px">
+    <Modal isOpen={open} onClose={onClose} title={t("upload_modal_title", language)} maxWidth="480px" centerOnMobile>
       <div
         className="cursor-pointer rounded-2xl border-2 border-dashed border-border bg-surface p-10 text-center"
         onClick={() => inputRef.current?.click()}

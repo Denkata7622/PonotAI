@@ -495,7 +495,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
           className="pageTransition flex min-h-0 min-w-0 flex-1 flex-col px-3 pt-5 sm:px-8 sm:pt-8"
           style={{ paddingBottom: "calc(var(--layout-bottom-offset, var(--player-bar-height, 88px)) + 24px)" }}
         >
-          {pathname !== "/search" ? <div className="mb-4 hidden items-center gap-2 md:flex">
+          {pathname !== "/search" ? <div className="sticky top-[env(safe-area-inset-top,0px)] z-30 mb-4 flex flex-col gap-2 bg-[var(--bg)]/90 pb-2 pt-1 backdrop-blur md:static md:flex-row md:items-center md:bg-transparent md:pb-0 md:pt-0 md:backdrop-blur-0">
             <div className="relative flex-1 pointer-events-none">
               <SmartDropdown
                 isOpen={showSearchDropdown}
@@ -673,7 +673,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
             {mounted && currentTrack && (
               <button
                 type="button"
-                className="rounded-full border border-[var(--panel-border)] bg-[var(--panel-surface)] px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--text)]"
+                className="hidden rounded-full border border-[var(--panel-border)] bg-[var(--panel-surface)] px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--text)] md:inline-flex"
                 onClick={() => executeSearchQuery(currentTrack.artist)}
               >
                 <span className="inline-flex items-center gap-1"><Music className="w-3 h-3 text-[var(--muted)]" />{t("search_more_like_this", language)}</span>
