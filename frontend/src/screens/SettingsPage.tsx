@@ -12,8 +12,9 @@ import Modal from "../components/ui/Modal";
 import { useUser } from "../context/UserContext";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
-import { useTheme, UI_PRESETS, type DensityMode, type RadiusMode, type SurfaceStyle, type AccentIntensity, type ChartStyle, type SidebarStyle, type MotionLevel, type CardEmphasis, type FontFamily, type TextScale, type GlowLevel, type PanelTint } from "../../lib/ThemeContext";
+import { useTheme, UI_PRESETS, type DensityMode, type RadiusMode, type SurfaceStyle, type AccentIntensity, type ChartStyle, type SidebarStyle, type MotionLevel, type CardEmphasis, type BodyFont, type DisplayFont, type TextScale, type GlowLevel, type PanelTint, type DisplayTextStyle } from "../../lib/ThemeContext";
 import { ACCENT_TOKENS, SUPPORTED_ACCENTS } from "../../lib/themePresets";
+import { BODY_FONT_OPTIONS, DISPLAY_FONT_OPTIONS, DISPLAY_TEXT_STYLE_OPTIONS, TEXT_SCALE_OPTIONS } from "../../lib/typographyConfig";
 import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON, LIBRARY_EXPORT_VERSION } from "../lib/libraryExport";
 import type { Playlist } from "../../features/library/types";
 import { syncLibraryState } from "../../features/library/api";
@@ -37,10 +38,12 @@ const CONTROL_GROUPS = {
   sidebarStyle: ["standard", "tinted", "elevated"] as SidebarStyle[],
   motionLevel: ["full", "reduced", "minimal"] as MotionLevel[],
   cardEmphasis: ["standard", "accented", "tinted"] as CardEmphasis[],
-  fontFamily: ["inter", "system", "manrope", "outfit", "dm-sans", "sora", "plus-jakarta-sans", "poppins", "nunito", "ibm-plex-sans"] as FontFamily[],
-  textScale: ["sm", "md", "lg"] as TextScale[],
+  bodyFont: [...BODY_FONT_OPTIONS] as BodyFont[],
+  displayFont: [...DISPLAY_FONT_OPTIONS] as DisplayFont[],
+  textScale: [...TEXT_SCALE_OPTIONS] as TextScale[],
   glowLevel: ["off", "low", "medium"] as GlowLevel[],
   panelTint: ["off", "subtle", "rich"] as PanelTint[],
+  displayTextStyle: [...DISPLAY_TEXT_STYLE_OPTIONS] as DisplayTextStyle[],
 } as const;
 
 export default function SettingsPage() {
@@ -54,7 +57,7 @@ export default function SettingsPage() {
   const { profile } = useProfile();
   const { user, updateProfile, changePassword, deleteAccount, isAuthenticated, favorites, history, addFavorite, addToHistory } = useUser();
   const { language } = useLanguage();
-  const { theme, toggleTheme, accent, density, intensity, surfaceStyle, radius, chartStyle, sidebarStyle, motionLevel, cardEmphasis, fontFamily, textScale, glowLevel, panelTint, applyPersonalization, updateUiSetting } = useTheme();
+  const { theme, toggleTheme, accent, density, intensity, surfaceStyle, radius, chartStyle, sidebarStyle, motionLevel, cardEmphasis, bodyFont, displayFont, textScale, glowLevel, panelTint, displayTextStyle, applyPersonalization, updateUiSetting } = useTheme();
 
   const [displayName, setDisplayName] = useState(user?.username ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -74,10 +77,12 @@ export default function SettingsPage() {
     sidebarStyle: (value: SidebarStyle) => updateUiSetting("sidebarStyle", value),
     motionLevel: (value: MotionLevel) => updateUiSetting("motionLevel", value),
     cardEmphasis: (value: CardEmphasis) => updateUiSetting("cardEmphasis", value),
-    fontFamily: (value: FontFamily) => updateUiSetting("fontFamily", value),
+    bodyFont: (value: BodyFont) => updateUiSetting("bodyFont", value),
+    displayFont: (value: DisplayFont) => updateUiSetting("displayFont", value),
     textScale: (value: TextScale) => updateUiSetting("textScale", value),
     glowLevel: (value: GlowLevel) => updateUiSetting("glowLevel", value),
     panelTint: (value: PanelTint) => updateUiSetting("panelTint", value),
+    displayTextStyle: (value: DisplayTextStyle) => updateUiSetting("displayTextStyle", value),
   } as const;
 
   useEffect(() => {
@@ -181,6 +186,13 @@ export default function SettingsPage() {
       <Card variant="settings" className="space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-semibold">{t("settings_appearance", language)}</h2><p className="text-xs text-[var(--muted)]">Fine-tune visual behavior, structure, and interaction feedback.</p></div><span className="badge">Live preview</span></div>
         <p className="text-sm text-[var(--muted)]">Create a polished look with live controls and instant preview cards.</p>
+        <div className="themed-surface settings-card p-4 space-y-3">
+          <p className="text-xs text-[var(--muted)]">Typography preview · EN + BG</p>
+          <h2 className="display-styled type-display text-3xl font-semibold">Trackly Signal Matrix</h2>
+          <h3 className="display-styled type-display text-2xl font-semibold">Следващата песен е тук</h3>
+          <p className="text-sm text-[var(--muted)]">English preview paragraph: expressive headings + readable UI text for real product usage.</p>
+          <p className="text-sm text-[var(--muted)]">Български преглед: четим основен текст и акцентни заглавия за по-живо изживяване.</p>
+        </div>
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="themed-surface-subtle settings-card p-4 space-y-3 border-[var(--accent-border)]/50">
             <div className="flex flex-wrap items-center gap-2">
@@ -194,14 +206,14 @@ export default function SettingsPage() {
           <div className="themed-surface-subtle settings-card p-4 space-y-3">
             <p className="text-sm font-medium">Classic defaults</p>
             <div className="grid grid-cols-2 gap-2">
-              {(["Stock Light", "Stock Dark"] as const).map((name) => {
+              {(["Stock Clean", "AI Minimal"] as const).map((name) => {
                 const preset = UI_PRESETS[name];
-                return <button key={name} type="button" className="selectable-card rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition" onClick={() => applyPersonalization(preset)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{name === "Stock Light" ? (language === "bg" ? "Класически светъл" : "Classic default light") : (language === "bg" ? "Класически тъмен" : "Classic default dark")}</p></button>;
+                return <button key={name} type="button" className="selectable-card rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition" onClick={() => applyPersonalization(preset)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{preset.bodyFont} · {preset.displayFont}</p></button>;
               })}
             </div>
             <p className="text-sm font-medium">Curated presets</p>
             <div className="grid grid-cols-2 gap-2">
-              {Object.entries(UI_PRESETS).filter(([name]) => name !== "Stock Light" && name !== "Stock Dark").map(([name, preset]) => <button key={name} type="button" className="selectable-card rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition" onClick={() => applyPersonalization(preset)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{preset.accent} · {preset.surfaceStyle}</p></button>)}
+              {Object.entries(UI_PRESETS).filter(([name]) => name !== "Stock Clean" && name !== "AI Minimal").map(([name, preset]) => <button key={name} type="button" className="selectable-card rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition" onClick={() => applyPersonalization(preset)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{preset.accent} · {preset.surfaceStyle}</p></button>)}
             </div>
           </div>
         </div>
@@ -212,7 +224,7 @@ export default function SettingsPage() {
               <p className="mb-2 capitalize">{key.replace(/([A-Z])/g, " $1")}</p>
               <div className="flex flex-wrap gap-2">
                 {options.map((option) => {
-                  const active = String({ intensity, surfaceStyle, radius, density, chartStyle, sidebarStyle, motionLevel, cardEmphasis, fontFamily, textScale, glowLevel, panelTint }[key as keyof typeof CONTROL_GROUPS]) === option;
+                  const active = String({ intensity, surfaceStyle, radius, density, chartStyle, sidebarStyle, motionLevel, cardEmphasis, bodyFont, displayFont, textScale, glowLevel, panelTint, displayTextStyle }[key as keyof typeof CONTROL_GROUPS]) === option;
                   const onClick = () => {
                     const setter = controlSetters[key as keyof typeof controlSetters];
                     if (setter) setter(option as never);

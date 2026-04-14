@@ -114,8 +114,8 @@ export default function HeroSection({
           <Button aria-label={theme === "dark" ? t("theme_light", language) : t("theme_dark", language)} variant="secondary" size="sm" className="glassBtn" onClick={onToggleTheme}>{theme === "dark" ? t("theme_light", language) : t("theme_dark", language)}</Button>
         </div>
 
-        <p className="text-center text-sm uppercase tracking-[0.28em] text-text-muted">{language === "bg" ? "ПонотИИ" : "PonotAI"}</p>
-        <h1 className="mt-3 text-center text-4xl font-bold sm:text-5xl">{t("hero_tagline", language)}</h1>
+        <p className="type-display text-center text-sm uppercase tracking-[0.28em] text-text-muted">{language === "bg" ? "ПонотИИ" : "PonotAI"}</p>
+        <h1 className="display-styled hero-title-flourish mt-3 text-center text-4xl font-bold sm:text-5xl">{t("hero_tagline", language)}</h1>
 
         <div className="mt-10 flex flex-col items-center gap-5">
           <button

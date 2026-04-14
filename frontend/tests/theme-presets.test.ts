@@ -33,19 +33,24 @@ test("applyAccentVariables writes accent data and css variables to root", () => 
 });
 
 
-test("theme storage includes advanced personalization keys", () => {
+test("theme storage includes typography split keys", () => {
   assert.equal(themeStorageKeys.cardEmphasis, "ponotai-card-emphasis");
   assert.equal(themeStorageKeys.chartStyle, "ponotai-chart-style");
+  assert.equal(themeStorageKeys.bodyFont, "ponotai-body-font");
+  assert.equal(themeStorageKeys.displayFont, "ponotai-display-font");
+  assert.equal(themeStorageKeys.displayTextStyle, "ponotai-display-text-style");
 });
 
-test("ui presets define card emphasis for all preset templates", () => {
+test("ui presets define expressive typography for all templates", () => {
   for (const preset of Object.values(UI_PRESETS)) {
-    assert.ok(["standard", "accented", "tinted"].includes(preset.cardEmphasis));
+    assert.ok(["static", "soft-gradient", "subtle-glow", "slight-depth", "cyber-pulse", "shadowed-poster"].includes(preset.displayTextStyle));
+    assert.ok(typeof preset.bodyFont === "string");
+    assert.ok(typeof preset.displayFont === "string");
   }
 });
 
-test("stock presets are registered for legacy theme choices", () => {
-  assert.equal(UI_PRESETS["Stock Light"]?.theme, "light");
-  assert.equal(UI_PRESETS["Stock Dark"]?.theme, "dark");
-  assert.equal(UI_PRESETS["Stock Dark"]?.accent, "graphite");
+test("creative presets are registered", () => {
+  assert.equal(UI_PRESETS["Stock Clean"]?.theme, "light");
+  assert.equal(UI_PRESETS["Cyber Grid"]?.displayFont, "orbitron");
+  assert.equal(UI_PRESETS["Noir Gothic"]?.displayFont, "pirata-one");
 });

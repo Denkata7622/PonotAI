@@ -9,6 +9,7 @@ import {
   type ChartStyle,
   isAccentPreset,
 } from "./themePresets";
+import { BODY_FONT_OPTIONS, DISPLAY_FONT_OPTIONS, DISPLAY_TEXT_STYLE_OPTIONS, TEXT_SCALE_OPTIONS, type BodyFontOption, type DisplayFontOption, type DisplayTextStyleOption } from "./typographyConfig";
 
 type Theme = "dark" | "light" | "system";
 export type DensityMode = "compact" | "default" | "comfortable";
@@ -17,10 +18,12 @@ export type SurfaceStyle = "flat" | "soft" | "elevated";
 export type SidebarStyle = "standard" | "tinted" | "elevated";
 export type MotionLevel = "full" | "reduced" | "minimal";
 export type CardEmphasis = "standard" | "accented" | "tinted";
-export type FontFamily = "inter" | "system" | "poppins" | "nunito" | "ibm-plex-sans" | "manrope" | "outfit" | "dm-sans" | "sora" | "plus-jakarta-sans";
+export type BodyFont = BodyFontOption;
+export type DisplayFont = DisplayFontOption;
 export type TextScale = "sm" | "md" | "lg";
 export type GlowLevel = "off" | "low" | "medium";
 export type PanelTint = "off" | "subtle" | "rich";
+export type DisplayTextStyle = DisplayTextStyleOption;
 
 export type { AccentPreset, AccentIntensity, ChartStyle };
 
@@ -35,10 +38,12 @@ export type UiPersonalization = {
   sidebarStyle: SidebarStyle;
   motionLevel: MotionLevel;
   cardEmphasis: CardEmphasis;
-  fontFamily: FontFamily;
+  bodyFont: BodyFont;
+  displayFont: DisplayFont;
   textScale: TextScale;
   glowLevel: GlowLevel;
   panelTint: PanelTint;
+  displayTextStyle: DisplayTextStyle;
 };
 
 type ThemeContextValue = UiPersonalization & {
@@ -54,10 +59,12 @@ type ThemeContextValue = UiPersonalization & {
   setSidebarStyle: (sidebarStyle: SidebarStyle) => void;
   setMotionLevel: (motionLevel: MotionLevel) => void;
   setCardEmphasis: (cardEmphasis: CardEmphasis) => void;
-  setFontFamily: (fontFamily: FontFamily) => void;
+  setBodyFont: (bodyFont: BodyFont) => void;
+  setDisplayFont: (displayFont: DisplayFont) => void;
   setTextScale: (textScale: TextScale) => void;
   setGlowLevel: (glowLevel: GlowLevel) => void;
   setPanelTint: (panelTint: PanelTint) => void;
+  setDisplayTextStyle: (displayTextStyle: DisplayTextStyle) => void;
   applyPersonalization: (patch: Partial<UiPersonalization>) => void;
 };
 
@@ -72,10 +79,13 @@ const STORAGE = {
   sidebarStyle: "ponotai-sidebar-style",
   motionLevel: "ponotai-motion-level",
   cardEmphasis: "ponotai-card-emphasis",
-  fontFamily: "ponotai-font-family",
+  bodyFont: "ponotai-body-font",
+  displayFont: "ponotai-display-font",
+  legacyFontFamily: "ponotai-font-family",
   textScale: "ponotai-text-scale",
   glowLevel: "ponotai-glow-level",
   panelTint: "ponotai-panel-tint",
+  displayTextStyle: "ponotai-display-text-style",
 } as const;
 
 const densityVars: Record<DensityMode, Record<string, string>> = {
@@ -95,23 +105,27 @@ const defaults: UiPersonalization = {
   sidebarStyle: "standard",
   motionLevel: "full",
   cardEmphasis: "standard",
-  fontFamily: "inter",
+  bodyFont: "inter",
+  displayFont: "space-grotesk",
   textScale: "md",
   glowLevel: "low",
   panelTint: "subtle",
+  displayTextStyle: "static",
 };
 
 export const ACCENT_TOKENS = THEME_ACCENT_TOKENS;
 
 export const UI_PRESETS: Record<string, UiPersonalization> = {
-  "Stock Light": { ...defaults, theme: "light", accent: "slate", intensity: "subtle", surfaceStyle: "flat", density: "default", radius: "default", chartStyle: "neutral", sidebarStyle: "standard", motionLevel: "reduced", cardEmphasis: "standard" },
-  "Stock Dark": { ...defaults, theme: "dark", accent: "graphite", intensity: "subtle", surfaceStyle: "flat", density: "default", radius: "default", chartStyle: "neutral", sidebarStyle: "standard", motionLevel: "reduced", cardEmphasis: "standard" },
-  "Clean Minimal": { ...defaults, theme: "light", accent: "slate", intensity: "subtle", surfaceStyle: "flat", density: "compact", radius: "compact", chartStyle: "neutral", sidebarStyle: "standard", motionLevel: "reduced", cardEmphasis: "standard" },
-  "Neon Night": { ...defaults, theme: "dark", accent: "magenta", intensity: "vivid", surfaceStyle: "elevated", density: "compact", radius: "rounded", chartStyle: "multicolor", sidebarStyle: "elevated", motionLevel: "full", cardEmphasis: "accented" },
-  "Ocean Studio": { ...defaults, theme: "dark", accent: "ocean", intensity: "balanced", surfaceStyle: "soft", density: "default", radius: "default", chartStyle: "accent-led", sidebarStyle: "tinted", motionLevel: "full", cardEmphasis: "tinted" },
-  "Sunset Warm": { ...defaults, theme: "light", accent: "sunset", intensity: "vivid", surfaceStyle: "soft", density: "comfortable", radius: "rounded", chartStyle: "multicolor", sidebarStyle: "tinted", motionLevel: "reduced", cardEmphasis: "tinted" },
-  "Forest Focus": { ...defaults, theme: "dark", accent: "emerald", intensity: "balanced", surfaceStyle: "flat", density: "compact", radius: "default", chartStyle: "accent-led", sidebarStyle: "standard", motionLevel: "minimal", cardEmphasis: "standard" },
-  "Mono Pro": { ...defaults, theme: "dark", accent: "graphite", intensity: "subtle", surfaceStyle: "elevated", density: "default", radius: "compact", chartStyle: "neutral", sidebarStyle: "elevated", motionLevel: "minimal", cardEmphasis: "accented" },
+  "Stock Clean": { ...defaults, theme: "light", accent: "slate", intensity: "subtle", surfaceStyle: "flat", radius: "default", density: "default", motionLevel: "reduced", bodyFont: "inter", displayFont: "space-grotesk", textScale: "md", displayTextStyle: "static" },
+  "AI Minimal": { ...defaults, theme: "dark", accent: "graphite", intensity: "subtle", surfaceStyle: "soft", radius: "rounded", density: "compact", bodyFont: "manrope", displayFont: "sora", textScale: "sm", displayTextStyle: "slight-depth" },
+  "Cyber Grid": { ...defaults, theme: "dark", accent: "ocean", intensity: "balanced", surfaceStyle: "elevated", radius: "compact", density: "compact", bodyFont: "ibm-plex-sans", displayFont: "orbitron", textScale: "sm", displayTextStyle: "subtle-glow" },
+  "Neon Circuit": { ...defaults, theme: "dark", accent: "magenta", intensity: "vivid", surfaceStyle: "elevated", radius: "rounded", density: "compact", bodyFont: "outfit", displayFont: "oxanium", textScale: "md", displayTextStyle: "cyber-pulse" },
+  "Urban Poster": { ...defaults, theme: "light", accent: "sunset", intensity: "vivid", surfaceStyle: "soft", radius: "compact", density: "comfortable", bodyFont: "dm-sans", displayFont: "archivo-black", textScale: "lg", displayTextStyle: "shadowed-poster" },
+  "Velvet Script": { ...defaults, theme: "dark", accent: "ruby", intensity: "balanced", surfaceStyle: "soft", radius: "rounded", density: "comfortable", bodyFont: "nunito", displayFont: "marck-script", textScale: "lg", displayTextStyle: "soft-gradient" },
+  "Steel Console": { ...defaults, theme: "dark", accent: "graphite", intensity: "subtle", surfaceStyle: "flat", radius: "default", density: "compact", bodyFont: "ibm-plex-sans", displayFont: "michroma", textScale: "sm", displayTextStyle: "slight-depth" },
+  "Arcade Pulse": { ...defaults, theme: "dark", accent: "amber", intensity: "vivid", surfaceStyle: "soft", radius: "rounded", density: "default", bodyFont: "poppins", displayFont: "bungee", textScale: "md", displayTextStyle: "cyber-pulse" },
+  "Noir Gothic": { ...defaults, theme: "dark", accent: "violet", intensity: "balanced", surfaceStyle: "soft", radius: "compact", density: "default", bodyFont: "plus-jakarta-sans", displayFont: "pirata-one", textScale: "md", displayTextStyle: "slight-depth" },
+  "Organic Signal": { ...defaults, theme: "light", accent: "emerald", intensity: "balanced", surfaceStyle: "soft", radius: "rounded", density: "comfortable", bodyFont: "plus-jakarta-sans", displayFont: "kalam", textScale: "lg", displayTextStyle: "soft-gradient" },
 };
 
 function resolveTheme(theme: Theme): "light" | "dark" {
@@ -133,10 +147,12 @@ function applyUiStateToDocument(state: UiPersonalization): void {
   html.setAttribute("data-sidebar", state.sidebarStyle);
   html.setAttribute("data-motion", state.motionLevel);
   html.setAttribute("data-card-emphasis", state.cardEmphasis);
-  html.setAttribute("data-font", state.fontFamily);
+  html.setAttribute("data-body-font", state.bodyFont);
+  html.setAttribute("data-display-font", state.displayFont);
   html.setAttribute("data-text-scale", state.textScale);
   html.setAttribute("data-glow", state.glowLevel);
   html.setAttribute("data-panel-tint", state.panelTint);
+  html.setAttribute("data-display-style", state.displayTextStyle);
 
   const variables = {
     ...getAccentCssVariables(state.accent, state.intensity, state.chartStyle),
@@ -156,32 +172,51 @@ const allowed = {
   sidebarStyle: ["standard", "tinted", "elevated"] as SidebarStyle[],
   motionLevel: ["full", "reduced", "minimal"] as MotionLevel[],
   cardEmphasis: ["standard", "accented", "tinted"] as CardEmphasis[],
-  fontFamily: ["inter", "system", "poppins", "nunito", "ibm-plex-sans", "manrope", "outfit", "dm-sans", "sora", "plus-jakarta-sans"] as FontFamily[],
-  textScale: ["sm", "md", "lg"] as TextScale[],
+  bodyFont: [...BODY_FONT_OPTIONS] as BodyFont[],
+  displayFont: [...DISPLAY_FONT_OPTIONS] as DisplayFont[],
+  textScale: [...TEXT_SCALE_OPTIONS] as TextScale[],
   glowLevel: ["off", "low", "medium"] as GlowLevel[],
   panelTint: ["off", "subtle", "rich"] as PanelTint[],
+  displayTextStyle: [...DISPLAY_TEXT_STYLE_OPTIONS] as DisplayTextStyle[],
 };
+
+function readAllowedValue<T extends readonly string[]>(key: string, choices: T, fallback: T[number]) {
+  const candidate = window.localStorage.getItem(key);
+  return choices.includes(candidate as T[number]) ? (candidate as T[number]) : fallback;
+}
+
+function legacyToBodyFont(value: string | null): BodyFont {
+  if (allowed.bodyFont.includes(value as BodyFont)) {
+    return value as BodyFont;
+  }
+  return defaults.bodyFont;
+}
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [ui, setUi] = useState<UiPersonalization>(() => {
     if (typeof window === "undefined") return defaults;
     const savedTheme = window.localStorage.getItem(STORAGE.theme);
     const savedAccent = window.localStorage.getItem(STORAGE.accent);
+    const legacyFont = window.localStorage.getItem(STORAGE.legacyFontFamily);
+    const bodyFont = readAllowedValue(STORAGE.bodyFont, allowed.bodyFont, legacyToBodyFont(legacyFont));
+
     const saved = {
       theme: savedTheme === "dark" || savedTheme === "light" || savedTheme === "system" ? savedTheme : defaults.theme,
       accent: isAccentPreset(savedAccent) ? savedAccent : defaults.accent,
-      density: allowed.density.includes(window.localStorage.getItem(STORAGE.density) as DensityMode) ? (window.localStorage.getItem(STORAGE.density) as DensityMode) : defaults.density,
-      intensity: allowed.intensity.includes(window.localStorage.getItem(STORAGE.intensity) as AccentIntensity) ? (window.localStorage.getItem(STORAGE.intensity) as AccentIntensity) : defaults.intensity,
-      surfaceStyle: allowed.surfaceStyle.includes(window.localStorage.getItem(STORAGE.surfaceStyle) as SurfaceStyle) ? (window.localStorage.getItem(STORAGE.surfaceStyle) as SurfaceStyle) : defaults.surfaceStyle,
-      radius: allowed.radius.includes(window.localStorage.getItem(STORAGE.radius) as RadiusMode) ? (window.localStorage.getItem(STORAGE.radius) as RadiusMode) : defaults.radius,
-      chartStyle: allowed.chartStyle.includes(window.localStorage.getItem(STORAGE.chartStyle) as ChartStyle) ? (window.localStorage.getItem(STORAGE.chartStyle) as ChartStyle) : defaults.chartStyle,
-      sidebarStyle: allowed.sidebarStyle.includes(window.localStorage.getItem(STORAGE.sidebarStyle) as SidebarStyle) ? (window.localStorage.getItem(STORAGE.sidebarStyle) as SidebarStyle) : defaults.sidebarStyle,
-      motionLevel: allowed.motionLevel.includes(window.localStorage.getItem(STORAGE.motionLevel) as MotionLevel) ? (window.localStorage.getItem(STORAGE.motionLevel) as MotionLevel) : defaults.motionLevel,
-      cardEmphasis: allowed.cardEmphasis.includes(window.localStorage.getItem(STORAGE.cardEmphasis) as CardEmphasis) ? (window.localStorage.getItem(STORAGE.cardEmphasis) as CardEmphasis) : defaults.cardEmphasis,
-      fontFamily: allowed.fontFamily.includes(window.localStorage.getItem(STORAGE.fontFamily) as FontFamily) ? (window.localStorage.getItem(STORAGE.fontFamily) as FontFamily) : defaults.fontFamily,
-      textScale: allowed.textScale.includes(window.localStorage.getItem(STORAGE.textScale) as TextScale) ? (window.localStorage.getItem(STORAGE.textScale) as TextScale) : defaults.textScale,
-      glowLevel: allowed.glowLevel.includes(window.localStorage.getItem(STORAGE.glowLevel) as GlowLevel) ? (window.localStorage.getItem(STORAGE.glowLevel) as GlowLevel) : defaults.glowLevel,
-      panelTint: allowed.panelTint.includes(window.localStorage.getItem(STORAGE.panelTint) as PanelTint) ? (window.localStorage.getItem(STORAGE.panelTint) as PanelTint) : defaults.panelTint,
+      density: readAllowedValue(STORAGE.density, allowed.density, defaults.density),
+      intensity: readAllowedValue(STORAGE.intensity, allowed.intensity, defaults.intensity),
+      surfaceStyle: readAllowedValue(STORAGE.surfaceStyle, allowed.surfaceStyle, defaults.surfaceStyle),
+      radius: readAllowedValue(STORAGE.radius, allowed.radius, defaults.radius),
+      chartStyle: readAllowedValue(STORAGE.chartStyle, allowed.chartStyle, defaults.chartStyle),
+      sidebarStyle: readAllowedValue(STORAGE.sidebarStyle, allowed.sidebarStyle, defaults.sidebarStyle),
+      motionLevel: readAllowedValue(STORAGE.motionLevel, allowed.motionLevel, defaults.motionLevel),
+      cardEmphasis: readAllowedValue(STORAGE.cardEmphasis, allowed.cardEmphasis, defaults.cardEmphasis),
+      bodyFont,
+      displayFont: readAllowedValue(STORAGE.displayFont, allowed.displayFont, defaults.displayFont),
+      textScale: readAllowedValue(STORAGE.textScale, allowed.textScale, defaults.textScale),
+      glowLevel: readAllowedValue(STORAGE.glowLevel, allowed.glowLevel, defaults.glowLevel),
+      panelTint: readAllowedValue(STORAGE.panelTint, allowed.panelTint, defaults.panelTint),
+      displayTextStyle: readAllowedValue(STORAGE.displayTextStyle, allowed.displayTextStyle, defaults.displayTextStyle),
     } satisfies UiPersonalization;
     return saved;
   });
@@ -206,10 +241,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(STORAGE.sidebarStyle, ui.sidebarStyle);
     window.localStorage.setItem(STORAGE.motionLevel, ui.motionLevel);
     window.localStorage.setItem(STORAGE.cardEmphasis, ui.cardEmphasis);
-    window.localStorage.setItem(STORAGE.fontFamily, ui.fontFamily);
+    window.localStorage.setItem(STORAGE.bodyFont, ui.bodyFont);
+    window.localStorage.setItem(STORAGE.displayFont, ui.displayFont);
     window.localStorage.setItem(STORAGE.textScale, ui.textScale);
     window.localStorage.setItem(STORAGE.glowLevel, ui.glowLevel);
     window.localStorage.setItem(STORAGE.panelTint, ui.panelTint);
+    window.localStorage.setItem(STORAGE.displayTextStyle, ui.displayTextStyle);
 
     if (ui.theme === "system") {
       const media = window.matchMedia("(prefers-color-scheme: light)");
@@ -235,10 +272,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setSidebarStyle: (sidebarStyle: SidebarStyle) => updateUiSetting("sidebarStyle", sidebarStyle),
       setMotionLevel: (motionLevel: MotionLevel) => updateUiSetting("motionLevel", motionLevel),
       setCardEmphasis: (cardEmphasis: CardEmphasis) => updateUiSetting("cardEmphasis", cardEmphasis),
-      setFontFamily: (fontFamily: FontFamily) => updateUiSetting("fontFamily", fontFamily),
+      setBodyFont: (bodyFont: BodyFont) => updateUiSetting("bodyFont", bodyFont),
+      setDisplayFont: (displayFont: DisplayFont) => updateUiSetting("displayFont", displayFont),
       setTextScale: (textScale: TextScale) => updateUiSetting("textScale", textScale),
       setGlowLevel: (glowLevel: GlowLevel) => updateUiSetting("glowLevel", glowLevel),
       setPanelTint: (panelTint: PanelTint) => updateUiSetting("panelTint", panelTint),
+      setDisplayTextStyle: (displayTextStyle: DisplayTextStyle) => updateUiSetting("displayTextStyle", displayTextStyle),
       applyPersonalization,
     }),
     [ui],
