@@ -40,7 +40,6 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
     songs.forEach((_, index) => {
       void loadCoverOptions(index, false);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function toggleSelection(index: number) {

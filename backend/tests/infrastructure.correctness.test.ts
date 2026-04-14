@@ -93,7 +93,7 @@ test("production CORS excludes localhost defaults unless explicitly configured",
   }
 });
 
-test("/api/health reports file-backed persistence even when DATABASE_URL is unreachable", async () => {
+test("/api/health reports file-backed runtime persistence even when DATABASE_URL is unreachable", async () => {
   const previousDatabaseUrl = process.env.DATABASE_URL;
   process.env.DATABASE_URL = "postgresql://127.0.0.1:1/trackly";
 
@@ -102,10 +102,14 @@ test("/api/health reports file-backed persistence even when DATABASE_URL is unre
   try {
     const response = await fetch(`${running.baseUrl}/api/health`);
     assert.equal(response.status, 200);
-    const payload = (await response.json()) as { db: string; status: string; mode: string };
-    assert.equal(payload.db, "connected");
+    const payload = (await response.json()) as {
+      status: string;
+      persistence: { runtime: string; status: string; mode: string };
+    };
     assert.equal(payload.status, "ok");
-    assert.equal(payload.mode, "file");
+    assert.equal(payload.persistence.runtime, "file-json");
+    assert.equal(payload.persistence.status, "ready");
+    assert.equal(payload.persistence.mode, "file");
   } finally {
     await running.close();
     if (previousDatabaseUrl === undefined) {
