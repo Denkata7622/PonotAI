@@ -12,6 +12,7 @@ import {
 import { apiFetch } from "../lib/apiFetch";
 import { normalizeTrackKey } from "../../lib/dedupe";
 import { t } from "../../lib/translations";
+import { isOnboardingPending, markOnboardingDone, markOnboardingPending, writeTasteProfile, type TasteProfile } from "../features/onboarding/tasteProfile";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -156,6 +157,7 @@ type UserContextValue = {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  onboardingRequired: boolean;
   register: (username: string, email: string, password: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -176,6 +178,7 @@ type UserContextValue = {
   shareSong: (song: { title: string; artist: string; album?: string; coverUrl?: string }) => Promise<string | null>;
   setPreferences: (prefs: Partial<Preferences>) => void;
   deleteAccount: () => Promise<void>;
+  completeOnboarding: (profile?: TasteProfile) => void;
 };
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -207,6 +210,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [guestHydrated, setGuestHydrated] = useState(false);
 
   const isAuthenticated = Boolean(authState.token && authState.user);
+  const [onboardingRequired, setOnboardingRequired] = useState(false);
 
   useEffect(() => {
     dispatchGuest({ type: "HYDRATE", payload: loadGuestState() });
@@ -224,8 +228,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const storedToken = typeof window === "undefined" ? null : localStorage.getItem(TOKEN_KEY);
     if (!storedToken) {
       setAuthState({ isLoading: false });
+      setOnboardingRequired(false);
       return;
     }
+    setOnboardingRequired(isOnboardingPending());
     setAuthState({ token: storedToken, isLoading: true });
   }, []);
 
@@ -269,6 +275,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         localStorage.removeItem(TOKEN_KEY);
+        markOnboardingDone();
+        setOnboardingRequired(false);
         setAuthState({ token: null, user: null });
       })
       .finally(() => setAuthState({ isLoading: false }));
@@ -289,6 +297,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "REGISTER_FAILED");
     await handleAuthSuccess(data as { token: string; user: User });
+    markOnboardingPending();
+    setOnboardingRequired(true);
   }
 
   async function login(email: string, password: string) {
@@ -299,11 +309,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "LOGIN_FAILED");
     await handleAuthSuccess(data as { token: string; user: User });
+    markOnboardingDone();
+    setOnboardingRequired(false);
   }
 
   async function logout() {
     await apiFetch("/api/auth/logout", { method: "POST" });
     localStorage.removeItem(TOKEN_KEY);
+    setOnboardingRequired(false);
     setAuthState({ token: null, user: null, isLoading: false });
     setServerHistory([]);
     setServerFavorites([]);
@@ -334,10 +347,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
       await logout();
     }
     localStorage.clear();
+    setOnboardingRequired(false);
     dispatchGuest({ type: "RESET" });
   }
 
   // ─── Data Actions (hybrid) ────────────────────────────────────────────────────
+
+  function completeOnboarding(profile?: TasteProfile) {
+    if (profile) {
+      writeTasteProfile(profile);
+    }
+    markOnboardingDone();
+    setOnboardingRequired(false);
+  }
 
   function notify(messageKey: "toast_already_favorited" | "toast_duplicate_history") {
     if (typeof window === "undefined") return;
@@ -465,6 +487,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       token: authState.token,
       isAuthenticated,
       isLoading: authState.isLoading,
+      onboardingRequired,
       register,
       login,
       logout,
@@ -483,8 +506,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
       shareSong,
       setPreferences,
       deleteAccount,
+      completeOnboarding,
     }),
-        [authState, serverHistory, serverFavorites, guest, isAuthenticated]
+        [authState, serverHistory, serverFavorites, guest, isAuthenticated, onboardingRequired]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
