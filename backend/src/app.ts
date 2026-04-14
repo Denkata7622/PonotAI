@@ -31,9 +31,31 @@ const swaggerUi = require("swagger-ui-express");
 const openApiPathCandidates = [
   path.join(__dirname, "..", "openapi.yaml"),
   path.join(__dirname, "../../openapi.yaml"),
-];
-const openApiPath = openApiPathCandidates.find((candidate) => existsSync(candidate)) ?? openApiPathCandidates[0];
-const openApiSpec = YAML.load(readFileSync(openApiPath, "utf8"));
+] as const;
+
+type OpenApiLoadResult =
+  | { status: "ready"; sourcePath: string; spec: unknown }
+  | { status: "missing"; sourcePathCandidates: readonly string[] }
+  | { status: "invalid"; sourcePath: string; error: string };
+
+function loadOpenApiSpec(candidates = openApiPathCandidates): OpenApiLoadResult {
+  const sourcePath = candidates.find((candidate) => existsSync(candidate));
+  if (!sourcePath) {
+    return { status: "missing", sourcePathCandidates: candidates };
+  }
+
+  try {
+    const rawSpec = readFileSync(sourcePath, "utf8");
+    const spec = YAML.load(rawSpec);
+    return { status: "ready", sourcePath, spec };
+  } catch (error) {
+    return {
+      status: "invalid",
+      sourcePath,
+      error: (error as Error).message,
+    };
+  }
+}
 
 
 let processHandlersRegistered = false;
@@ -74,8 +96,30 @@ app.use(
 );
 app.use(express.json());
 app.use(responseTimeMiddleware);
-
-app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
+const docsState = loadOpenApiSpec();
+if (docsState.status === "ready") {
+  app.use("/docs", swaggerUi.serve, swaggerUi.setup(docsState.spec));
+} else {
+  const details =
+    docsState.status === "missing"
+      ? {
+        reason: "openapi_asset_missing",
+        sourcePathCandidates: docsState.sourcePathCandidates,
+      }
+      : {
+        reason: "openapi_asset_invalid",
+        sourcePath: docsState.sourcePath,
+        error: docsState.error,
+      };
+  console.warn("[docs] OpenAPI docs unavailable.", details);
+  app.get("/docs", (_req: Request, res: Response) => {
+    res.status(503).json({
+      status: "unavailable",
+      message: "API documentation is unavailable in this runtime.",
+      ...details,
+    });
+  });
+}
 
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true });
@@ -118,3 +162,4 @@ app.use(errorMiddleware);
 registerProcessErrorHandlers();
 
 export default app;
+export { loadOpenApiSpec };

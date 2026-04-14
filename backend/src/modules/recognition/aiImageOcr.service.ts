@@ -28,8 +28,8 @@ export type GemmaCleanupResult = {
   model?: string;
 };
 
-export const DIRECT_IMAGE_OCR_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.1-flash-lite"] as const;
-export const GEMMA_TEXT_CLEANUP_MODELS = ["gemma-3-4b-it", "gemma-3-12b-it", "gemma-4-26b-it"] as const;
+export const DIRECT_IMAGE_OCR_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"] as const;
+export const GEMMA_TEXT_CLEANUP_MODELS = ["gemma-3-4b-it", "gemma-3-12b-it"] as const;
 const IMAGE_OCR_CACHE_TTL_MS = 60_000;
 const TEXT_CLEANUP_CACHE_TTL_MS = 45_000;
 const imageOcrCache = new Map<string, { expiresAt: number; value: AiOcrResult }>();

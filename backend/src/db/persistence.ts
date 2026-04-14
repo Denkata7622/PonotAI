@@ -14,6 +14,7 @@ let health: PersistenceHealth = {
   mode: "file",
   connected: false,
 };
+const documentWriteQueues = new Map<string, Promise<void>>();
 
 function resolveDataDir(): string {
   return process.env.PONOTAI_DATA_DIR?.trim() || DEFAULT_FILE_DIR;
@@ -64,9 +65,11 @@ export async function readJsonDocument<T>(
 }
 
 export async function writeJsonDocument<T>(key: string, fileName: string, payload: T): Promise<void> {
-  const filePath = path.join(resolveDataDir(), fileName);
-  await ensureFile(filePath, JSON.stringify(createDefaultObject(payload), null, 2));
-  await fs.writeFile(filePath, JSON.stringify(payload, null, 2), "utf8");
+  await queueDocumentMutation(key, async () => {
+    const filePath = path.join(resolveDataDir(), fileName);
+    await ensureFile(filePath, JSON.stringify(createDefaultObject(payload), null, 2));
+    await fs.writeFile(filePath, JSON.stringify(payload, null, 2), "utf8");
+  });
 }
 
 function createDefaultObject<T>(payload: T): T {
@@ -75,4 +78,19 @@ function createDefaultObject<T>(payload: T): T {
 
 export function getPersistenceMode(): PersistenceMode {
   return getPersistenceModeInternal();
+}
+
+export async function queueDocumentMutation(key: string, operation: () => Promise<void>): Promise<void> {
+  const previous = documentWriteQueues.get(key) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(operation);
+  documentWriteQueues.set(key, next);
+  try {
+    await next;
+  } finally {
+    if (documentWriteQueues.get(key) === next) {
+      documentWriteQueues.delete(key);
+    }
+  }
 }

@@ -215,6 +215,20 @@ async function readDb(): Promise<AppDb> {
 async function writeDb(db: AppDb): Promise<void> {
   await writeJsonDocument("appdb", "appdb.json", db);
 }
+let dbMutationQueue: Promise<void> = Promise.resolve();
+async function withDbMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = dbMutationQueue;
+  let release!: () => void;
+  dbMutationQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous.catch(() => undefined);
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
 
 export async function listUsers() { return (await readDb()).users; }
 
@@ -256,20 +270,22 @@ export async function createUserHistory(
   item: Omit<SearchHistoryRecord, "id" | "createdAt">,
   options?: { allowDuplicates?: boolean; createdAt?: string },
 ): Promise<SearchHistoryRecord> {
-  const db = await readDb();
-  const targetKey = normalizeTrackKey(item.title ?? "", item.artist ?? "");
-  if (!options?.allowDuplicates) {
-    db.searchHistory = (db.searchHistory ?? []).filter(
-      (entry) =>
-        entry.userId !== item.userId ||
-        normalizeTrackKey(entry.title ?? "", entry.artist ?? "") !== targetKey,
-    );
-  }
+  return withDbMutation(async () => {
+    const db = await readDb();
+    const targetKey = normalizeTrackKey(item.title ?? "", item.artist ?? "");
+    if (!options?.allowDuplicates) {
+      db.searchHistory = (db.searchHistory ?? []).filter(
+        (entry) =>
+          entry.userId !== item.userId ||
+          normalizeTrackKey(entry.title ?? "", entry.artist ?? "") !== targetKey,
+      );
+    }
 
-  const rec: SearchHistoryRecord = { id: randomUUID(), createdAt: options?.createdAt ?? new Date().toISOString(), ...item };
-  db.searchHistory.unshift(rec);
-  await writeDb(db);
-  return rec;
+    const rec: SearchHistoryRecord = { id: randomUUID(), createdAt: options?.createdAt ?? new Date().toISOString(), ...item };
+    db.searchHistory.unshift(rec);
+    await writeDb(db);
+    return rec;
+  });
 }
 
 export async function listUserHistory(userId: string): Promise<SearchHistoryRecord[]> {
@@ -277,21 +293,25 @@ export async function listUserHistory(userId: string): Promise<SearchHistoryReco
 }
 
 export async function deleteUserHistoryItem(userId: string, id: string): Promise<"ok" | "forbidden" | "missing"> {
-  const db = await readDb();
-  const item = db.searchHistory.find((h) => h.id === id);
-  if (!item) return "missing";
-  if (item.userId !== userId) return "forbidden";
-  db.searchHistory = db.searchHistory.filter((h) => h.id !== id);
-  await writeDb(db); // persist delete
-  return "ok";
+  return withDbMutation(async () => {
+    const db = await readDb();
+    const item = db.searchHistory.find((h) => h.id === id);
+    if (!item) return "missing";
+    if (item.userId !== userId) return "forbidden";
+    db.searchHistory = db.searchHistory.filter((h) => h.id !== id);
+    await writeDb(db); // persist delete
+    return "ok";
+  });
 }
 
 export async function clearUserHistory(userId: string): Promise<number> {
-  const db = await readDb();
-  const before = db.searchHistory.length;
-  db.searchHistory = db.searchHistory.filter((h) => h.userId !== userId);
-  await writeDb(db); // persist delete
-  return before - db.searchHistory.length;
+  return withDbMutation(async () => {
+    const db = await readDb();
+    const before = db.searchHistory.length;
+    db.searchHistory = db.searchHistory.filter((h) => h.userId !== userId);
+    await writeDb(db); // persist delete
+    return before - db.searchHistory.length;
+  });
 }
 
 export async function listFavorites(userId: string): Promise<FavoriteRecord[]> {
@@ -308,21 +328,25 @@ export async function findDuplicateFavorite(userId: string, title: string, artis
 }
 
 export async function createFavorite(item: Omit<FavoriteRecord, "id" | "savedAt">): Promise<FavoriteRecord> {
-  const db = await readDb();
-  const rec: FavoriteRecord = { id: randomUUID(), savedAt: new Date().toISOString(), ...item };
-  db.favorites.unshift(rec);
-  await writeDb(db);
-  return rec;
+  return withDbMutation(async () => {
+    const db = await readDb();
+    const rec: FavoriteRecord = { id: randomUUID(), savedAt: new Date().toISOString(), ...item };
+    db.favorites.unshift(rec);
+    await writeDb(db);
+    return rec;
+  });
 }
 
 export async function deleteFavorite(userId: string, id: string): Promise<"ok"|"forbidden"|"missing"> {
-  const db = await readDb();
-  const item = db.favorites.find((f)=>f.id===id);
-  if(!item) return "missing";
-  if(item.userId!==userId) return "forbidden";
-  db.favorites = db.favorites.filter((f)=>f.id!==id);
-  await writeDb(db); // persist delete
-  return "ok";
+  return withDbMutation(async () => {
+    const db = await readDb();
+    const item = db.favorites.find((f)=>f.id===id);
+    if(!item) return "missing";
+    if(item.userId!==userId) return "forbidden";
+    db.favorites = db.favorites.filter((f)=>f.id!==id);
+    await writeDb(db); // persist delete
+    return "ok";
+  });
 }
 
 export async function createSharedSong(item: Omit<SharedSongRecord, "id" | "createdAt" | "shareCode">): Promise<SharedSongRecord> {
@@ -393,21 +417,21 @@ export async function getUserPlaylists(userId: string): Promise<PlaylistRecord[]
 }
 
 export async function createPlaylist(userId: string, name: string, id?: string, songs?: PlaylistSongRecord[]): Promise<PlaylistRecord> {
-  const db = await readDb();
-  const now = new Date().toISOString();
-  
-  const playlist: PlaylistRecord = {
-    id: id || randomUUID(),
-    userId,
-    name,
-    songs: songs || [],
-    createdAt: now,
-    updatedAt: now,
-  };
-  
-  db.playlists.push(playlist);
-  await writeDb(db);
-  return playlist;
+  return withDbMutation(async () => {
+    const db = await readDb();
+    const now = new Date().toISOString();
+    const playlist: PlaylistRecord = {
+      id: id || randomUUID(),
+      userId,
+      name,
+      songs: songs || [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    db.playlists.push(playlist);
+    await writeDb(db);
+    return playlist;
+  });
 }
 
 export async function updatePlaylistName(playlistId: string, name: string): Promise<PlaylistRecord | null> {
@@ -425,26 +449,24 @@ export async function addSongToPlaylist(
   playlistId: string,
   song: Omit<PlaylistSongRecord, "addedAt">
 ): Promise<PlaylistRecord | null> {
-  const db = await readDb();
-  const playlist = db.playlists.find((p) => p.id === playlistId);
-  if (!playlist) return null;
-  
-  // Check if song already exists
-  const exists = playlist.songs.some((s) => s.title === song.title && s.artist === song.artist);
-  if (exists) return playlist;
-  
-  const songRecord: PlaylistSongRecord = {
-    title: song.title,
-    artist: song.artist,
-    album: song.album,
-    coverUrl: song.coverUrl,
-    videoId: song.videoId,
-  };
-  
-  playlist.songs.push(songRecord);
-  playlist.updatedAt = new Date().toISOString();
-  await writeDb(db);
-  return playlist;
+  return withDbMutation(async () => {
+    const db = await readDb();
+    const playlist = db.playlists.find((p) => p.id === playlistId);
+    if (!playlist) return null;
+    const exists = playlist.songs.some((s) => s.title === song.title && s.artist === song.artist);
+    if (exists) return playlist;
+    const songRecord: PlaylistSongRecord = {
+      title: song.title,
+      artist: song.artist,
+      album: song.album,
+      coverUrl: song.coverUrl,
+      videoId: song.videoId,
+    };
+    playlist.songs.push(songRecord);
+    playlist.updatedAt = new Date().toISOString();
+    await writeDb(db);
+    return playlist;
+  });
 }
 
 export async function removeSongFromPlaylist(
@@ -452,29 +474,29 @@ export async function removeSongFromPlaylist(
   title: string,
   artist: string
 ): Promise<PlaylistRecord | null> {
-  const db = await readDb();
-  const playlist = db.playlists.find((p) => p.id === playlistId);
-  if (!playlist) return null;
-  
-  const initialLength = playlist.songs.length;
-  playlist.songs = playlist.songs.filter((s) => !(s.title === title && s.artist === artist));
-  
-  if (playlist.songs.length < initialLength) {
-    playlist.updatedAt = new Date().toISOString();
-    await writeDb(db); // persist remove song
-  }
-  
-  return playlist;
+  return withDbMutation(async () => {
+    const db = await readDb();
+    const playlist = db.playlists.find((p) => p.id === playlistId);
+    if (!playlist) return null;
+    const initialLength = playlist.songs.length;
+    playlist.songs = playlist.songs.filter((s) => !(s.title === title && s.artist === artist));
+    if (playlist.songs.length < initialLength) {
+      playlist.updatedAt = new Date().toISOString();
+      await writeDb(db); // persist remove song
+    }
+    return playlist;
+  });
 }
 
 export async function deletePlaylist(playlistId: string): Promise<"ok" | "missing"> {
-  const db = await readDb();
-  const index = db.playlists.findIndex((p) => p.id === playlistId);
-  if (index < 0) return "missing";
-  
-  db.playlists.splice(index, 1);
-  await writeDb(db); // persist delete
-  return "ok";
+  return withDbMutation(async () => {
+    const db = await readDb();
+    const index = db.playlists.findIndex((p) => p.id === playlistId);
+    if (index < 0) return "missing";
+    db.playlists.splice(index, 1);
+    await writeDb(db); // persist delete
+    return "ok";
+  });
 }
 
 export async function findPlaylistById(playlistId: string): Promise<PlaylistRecord | null> {

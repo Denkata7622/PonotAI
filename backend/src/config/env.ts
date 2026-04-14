@@ -77,7 +77,7 @@ export function validateEnvironment(): void {
   }
 
   if (process.env.DATABASE_URL?.trim()) {
-    console.warn("[env] DATABASE_URL is ignored by runtime persistence (file-backed JSON store is active).");
+    console.warn("[env] DATABASE_URL is configured but runtime persistence is JSON file-backed. Postgres scripts are migration-only utilities.");
   }
 
   const dataDir = process.env.PONOTAI_DATA_DIR?.trim();

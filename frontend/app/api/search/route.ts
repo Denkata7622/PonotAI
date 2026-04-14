@@ -17,7 +17,13 @@ type YouTubeSearchItem = {
 export async function GET(request: Request) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) {
-    return NextResponse.json([]);
+    return NextResponse.json(
+      {
+        error: "SEARCH_UNAVAILABLE",
+        message: "YouTube search is unavailable because YOUTUBE_API_KEY is not configured.",
+      },
+      { status: 503 },
+    );
   }
 
   const { searchParams } = new URL(request.url);
@@ -43,7 +49,14 @@ export async function GET(request: Request) {
     const bodyText = await res.text();
     if (!res.ok) {
       console.error("[search] YouTube API error status", res.status);
-      return NextResponse.json([]);
+      return NextResponse.json(
+        {
+          error: "SEARCH_UPSTREAM_FAILED",
+          message: "YouTube search is temporarily unavailable.",
+          status: res.status,
+        },
+        { status: 503 },
+      );
     }
 
     const payload = JSON.parse(bodyText) as { items?: YouTubeSearchItem[] };
@@ -62,6 +75,12 @@ export async function GET(request: Request) {
     return NextResponse.json(results);
   } catch (error) {
     console.error("[search] Request failed:", error);
-    return NextResponse.json([]);
+    return NextResponse.json(
+      {
+        error: "SEARCH_REQUEST_FAILED",
+        message: "YouTube search request failed.",
+      },
+      { status: 503 },
+    );
   }
 }

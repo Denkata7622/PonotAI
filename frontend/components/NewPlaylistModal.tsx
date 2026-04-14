@@ -11,6 +11,8 @@ import Modal from "../src/components/ui/Modal";
 import SongRow from "./SongRow";
 import { Check, Clock, Heart, Plus, Search } from "../lucide-react";
 import type { Playlist, PlaylistSong } from "../features/library/types";
+import { useUser } from "../src/context/UserContext";
+import { runUnifiedSearch } from "../lib/searchClient";
 
 type ModalTrack = PlaylistSong & { id: string };
 
@@ -45,6 +47,7 @@ export default function NewPlaylistModal({
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { createPlaylist, addSongsToPlaylist } = useLibrary(profile.id);
+  const { token } = useUser();
 
   const [name, setName] = useState(initialName);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -103,17 +106,14 @@ export default function NewPlaylistModal({
     }
 
     let cancelled = false;
-    fetch(`/api/search?q=${encodeURIComponent(debouncedSearchQuery)}`)
-      .then(async (response) => {
-        if (!response.ok) {
-          if (!cancelled) {
-            setSearchResults([]);
-          }
+    runUnifiedSearch(debouncedSearchQuery, token)
+      .then((response) => {
+        if (cancelled) return;
+        if (response.isUnavailable) {
+          setSearchResults([]);
           return;
         }
-        const payload = (await response.json()) as Array<{ videoId?: string; title: string; artist: string; thumbnailUrl?: string }>;
-        if (cancelled) return;
-        const normalizedResults = payload.map((item, index) => ({
+        const normalizedResults = response.discover.map((item, index) => ({
           id: item.videoId ?? `search-${index}-${item.title}`,
           title: item.title,
           artist: item.artist,
@@ -131,7 +131,7 @@ export default function NewPlaylistModal({
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearchQuery]);
+  }, [debouncedSearchQuery, token]);
 
 
   const tracksByTab = useMemo(() => {
