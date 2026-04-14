@@ -7,8 +7,8 @@ import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Clock, EllipsisVerti
 import BottomPlayBar from "./BottomPlayBar";
 import DualSidebarHost from "@/src/components/sidebars/DualSidebarHost";
 import { PlayerProvider } from "./PlayerProvider";
-import type { Playlist, StoredFavorite } from "../features/library/types";
-import { scopedKey, useProfile } from "../lib/ProfileContext";
+import { useLibrary } from "../features/library/useLibrary";
+import { useProfile } from "../lib/ProfileContext";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { useUser } from "../src/context/UserContext";
@@ -19,16 +19,13 @@ import SearchResultActions from "./SearchResultActions";
 import { addSongToPlaylist as addSongToPlaylistApi } from "../features/library/api";
 import { formatArtist } from "../lib/formatArtist";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
+import { runUnifiedSearch, type PersonalizedSearchResult } from "../lib/searchClient";
 
 type HistoryItem = {
   id: string;
   createdAt?: string;
-  song?: { songName?: string; artist?: string };
-};
-
-type LibrarySnapshot = {
-  favorites: StoredFavorite[];
-  playlists: Playlist[];
+  title?: string;
+  artist?: string;
 };
 
 type SearchResult = {
@@ -64,10 +61,9 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { language } = useLanguage();
   const { profile } = useProfile();
-  const { user, isAuthenticated, logout, addFavorite, addToHistory } = useUser();
+  const { user, token, isAuthenticated, logout, addFavorite, addToHistory, history, favorites } = useUser();
+  const { playlists } = useLibrary(profile.id);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [recentHistory, setRecentHistory] = useState<HistoryItem[]>([]);
-  const [librarySnapshot, setLibrarySnapshot] = useState<LibrarySnapshot>({ favorites: [], playlists: [] });
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const { addToQueue, playNow, currentTrack } = usePlayer();
@@ -77,6 +73,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [isSearchUnavailable, setIsSearchUnavailable] = useState(false);
+  const [personalizedResults, setPersonalizedResults] = useState<PersonalizedSearchResult[]>([]);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -118,28 +115,10 @@ function AppShellContent({ children }: { children: ReactNode }) {
     return pathname === href;
   };
 
-  useEffect(() => {
-    
-    function syncSidebarData() {
-      try {
-        const historyRaw = window.localStorage.getItem(scopedKey("ponotai-history", profile.id));
-        const libraryRaw = window.localStorage.getItem(scopedKey("ponotai.library.playlists", profile.id));
-        const favoritesRaw = window.localStorage.getItem(scopedKey("ponotai.library.favorites", profile.id));
-        const history = historyRaw ? (JSON.parse(historyRaw) as HistoryItem[]) : [];
-        const playlists = libraryRaw ? (JSON.parse(libraryRaw) as Playlist[]) : [];
-        const favorites = favoritesRaw ? (JSON.parse(favoritesRaw) as StoredFavorite[]) : [];
-        setRecentHistory(history.slice(0, 5));
-        setLibrarySnapshot({ favorites, playlists });
-      } catch {
-        setRecentHistory([]);
-        setLibrarySnapshot({ favorites: [], playlists: [] });
-      }
-    }
-
-    syncSidebarData();
-    window.addEventListener("storage", syncSidebarData);
-    return () => window.removeEventListener("storage", syncSidebarData);
-  }, [pathname, profile.id]);
+  const recentHistory = useMemo<HistoryItem[]>(
+    () => [...history].sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "")).slice(0, 5),
+    [history],
+  );
 
   const recognizedToday = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -205,38 +184,21 @@ function AppShellContent({ children }: { children: ReactNode }) {
       setSearchResults([]);
       setIsSearching(false);
       setIsSearchUnavailable(false);
+      setPersonalizedResults([]);
       setHighlightedIndex(-1);
       return;
     }
     let cancelled = false;
     setIsSearching(true);
-    fetch(`/api/search?q=${encodeURIComponent(debouncedQuery)}`)
-      .then(async (response) => {
-        if (response.status === 503) {
-          if (!cancelled) {
-            setIsSearchUnavailable(true);
-            setSearchResults([]);
-            setHighlightedIndex(-1);
-          }
-          return;
-        }
-
-        if (!response.ok) {
-          if (!cancelled) {
-            setIsSearchUnavailable(false);
-            setSearchResults([]);
-            setHighlightedIndex(-1);
-          }
-          return;
-        }
-
-        const payload = (await response.json()) as SearchResult[];
+    runUnifiedSearch(debouncedQuery, token)
+      .then((response) => {
         if (cancelled) return;
-        setIsSearchUnavailable(false);
-        const nextResults = Array.isArray(payload)
-          ? payload.slice(0, 8).map((item) => ({ ...item, isTopicChannel: item.artist.endsWith("- Topic"), artist: formatArtist(item.artist) }))
-          : [];
-        saveQuery(debouncedQuery);
+        setIsSearchUnavailable(response.isUnavailable);
+        setPersonalizedResults(response.personalized.slice(0, 5));
+        const nextResults = response.discover.slice(0, 8).map((item) => ({ ...item, isTopicChannel: item.artist.endsWith("- Topic"), artist: formatArtist(item.artist) }));
+        if (!response.isUnavailable) {
+          saveQuery(debouncedQuery);
+        }
         setSearchResults(nextResults);
         setHighlightedIndex(nextResults.length > 0 ? 0 : -1);
       })
@@ -244,6 +206,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
         if (!cancelled) {
           setIsSearchUnavailable(true);
           setSearchResults([]);
+          setPersonalizedResults([]);
           setHighlightedIndex(-1);
         }
       })
@@ -256,7 +219,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery]);
+  }, [debouncedQuery, token]);
 
   function queueTrack(result: SearchResult, playImmediately = true, closeDropdown = true) {
     const trackPayload: Omit<QueueTrack, "id"> & { id?: string } = {
@@ -486,16 +449,16 @@ function AppShellContent({ children }: { children: ReactNode }) {
               </h3>
               <ul className="space-y-1 text-[var(--muted)]">
                 {recentHistory.length === 0 && <li>{t("history_empty", language)}</li>}
-                {recentHistory.map((item) => (
+                    {recentHistory.map((item) => (
                   <li key={item.id} className="truncate">
-                    • {item.song?.songName ?? "-"} — {item.song?.artist ?? "-"}
+                    • {item.title ?? "-"} — {item.artist ?? "-"}
                   </li>
                 ))}
               </ul>
               <div className="rounded-lg border border-[var(--border)] bg-[var(--input-bg)] p-2 text-[var(--muted)]">
                 <div>{t("sidebar_total_recognized", language)}: {recentHistory.length}</div>
                 <div>{t("sidebar_today_count", language)}: {recognizedToday}</div>
-                <div>{t("library_favorites", language)}: {librarySnapshot.favorites.length}</div>
+                <div>{t("library_favorites", language)}: {favorites.length}</div>
               </div>
             </div>
           )}
@@ -503,10 +466,10 @@ function AppShellContent({ children }: { children: ReactNode }) {
           {!isCollapsed && pathname === "/library" && (
             <div className="mt-6 space-y-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-xs text-[var(--muted)]">
               <h3 className="text-sm font-semibold text-[var(--text)]">{t("library_playlists", language)}</h3>
-              {librarySnapshot.playlists.map((playlist) => (
+              {playlists.map((playlist) => (
                 <p key={playlist.id}>• {playlist.name} ({playlist.songs.length})</p>
               ))}
-              {librarySnapshot.playlists.length === 0 && <p>{t("no_playlists_created", language)}</p>}
+              {playlists.length === 0 && <p>{t("no_playlists_created", language)}</p>}
             </div>
           )}
 
@@ -609,6 +572,17 @@ function AppShellContent({ children }: { children: ReactNode }) {
                       <WifiOff className="w-4 h-4 text-[var(--muted)]" />
                       {t("search_unavailable", language)}
                     </p>
+                  ) : personalizedResults.length > 0 && searchResults.length === 0 ? (
+                    <div className="space-y-2 px-3 py-2">
+                      <p className="text-xs uppercase tracking-wider text-[var(--muted)]">Your Library</p>
+                      <ul className="space-y-1">
+                        {personalizedResults.map((item) => (
+                          <li key={item.id} className="text-sm text-[var(--text)]">
+                            {item.title} {item.artist ? `— ${item.artist}` : ""} <span className="text-xs text-[var(--muted)]">({item.type})</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ) : query === debouncedQuery && searchResults.length === 0 ? (
                     <div className="flex flex-col items-center justify-center gap-2 px-3 py-4 text-center text-[var(--muted)]">
                       <SearchX className="w-8 h-8 text-[var(--muted)]" />
@@ -654,7 +628,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                               onSaveToRecent={() => saveResultToRecent(result)}
                               onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
                               onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })}
-                              playlists={librarySnapshot.playlists}
+                              playlists={playlists}
                               onGoToLibrary={() => router.push('/library')}
                             />
                           </li>
@@ -686,7 +660,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                   }}
                                   aria-label={t("btn_play", language)}
                                 ><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToRecent={() => saveResultToRecent(result)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={librarySnapshot.playlists} onGoToLibrary={() => router.push('/library')} />
+                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToRecent={() => saveResultToRecent(result)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
                               </li>
                             ))}
                           </ul>

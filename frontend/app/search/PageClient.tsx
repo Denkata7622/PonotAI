@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { useRecentSearches } from "../../lib/useRecentSearches";
 import { formatArtist } from "../../lib/formatArtist";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
+import { runUnifiedSearch } from "../../lib/searchClient";
 
 type HistoryItem = {
   id: string;
@@ -42,7 +43,7 @@ export default function SearchPage() {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { addToQueue } = usePlayer();
-  const { addFavorite, addToHistory } = useUser();
+  const { addFavorite, addToHistory, token } = useUser();
   const { playlists, addSongToPlaylist } = useLibrary(profile.id);
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
@@ -80,29 +81,14 @@ export default function SearchPage() {
 
     let cancelled = false;
     setIsLoading(true);
-    fetch(`/api/search?q=${encodeURIComponent(debouncedQuery)}`)
-      .then(async (response) => {
-        if (response.status === 503) {
-          if (!cancelled) {
-            setIsUnavailable(true);
-            setDiscoverResults([]);
-          }
-          return;
-        }
-
-        if (!response.ok) {
-          if (!cancelled) {
-            setIsUnavailable(false);
-            setDiscoverResults([]);
-          }
-          return;
-        }
-
-        const payload = (await response.json()) as SearchResult[];
+    runUnifiedSearch(debouncedQuery, token)
+      .then((response) => {
         if (cancelled) return;
-        setIsUnavailable(false);
-        setDiscoverResults(Array.isArray(payload) ? payload.map((item) => ({ ...item, isTopicChannel: item.artist.endsWith("- Topic"), artist: formatArtist(item.artist) })) : []);
-        saveQuery(debouncedQuery);
+        setIsUnavailable(response.isUnavailable);
+        setDiscoverResults(response.discover.map((item) => ({ ...item, isTopicChannel: item.artist.endsWith("- Topic"), artist: formatArtist(item.artist) })));
+        if (!response.isUnavailable) {
+          saveQuery(debouncedQuery);
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -119,7 +105,7 @@ export default function SearchPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery, saveQuery]);
+  }, [debouncedQuery, saveQuery, token]);
 
   const historyResults = useMemo(() => {
     const q = historyQuery.trim().toLowerCase();

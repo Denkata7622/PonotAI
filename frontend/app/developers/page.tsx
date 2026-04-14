@@ -25,9 +25,9 @@ export default function DevelopersPage() {
         <button className="rounded-lg border border-[var(--border)] px-4 py-2" onClick={createKey}>{isBg ? "Създай API ключ" : "Create API key"}</button>
         <Link href="/docs" className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm">{isBg ? "Към docs" : "Open docs"}</Link>
       </div>
-      {apiKey && <pre className="overflow-auto rounded-lg bg-black/30 p-3 text-xs">{apiKey}</pre>}
-      <pre className="overflow-auto rounded-lg bg-black/30 p-3 text-xs">curl -X POST "$API/api/developer/v1/recognition/audio" -H "x-api-key: trk_..." -F "audio=@clip.webm"</pre>
-      <pre className="overflow-auto rounded-lg bg-black/30 p-3 text-xs">curl "$API/api/developer/v1/recommendations?seed=weeknd" -H "x-api-key: trk_..."</pre>
+      {apiKey && <pre className="overflow-auto rounded-lg border border-[var(--border)] bg-[var(--input-bg)] p-3 text-xs">{apiKey}</pre>}
+      <pre className="overflow-auto rounded-lg border border-[var(--border)] bg-[var(--input-bg)] p-3 text-xs">curl -X POST "$API/api/developer/v1/recognition/audio" -H "x-api-key: trk_..." -F "audio=@clip.webm"</pre>
+      <pre className="overflow-auto rounded-lg border border-[var(--border)] bg-[var(--input-bg)] p-3 text-xs">curl "$API/api/developer/v1/recommendations?seed=weeknd" -H "x-api-key: trk_..."</pre>
     </section>
   );
 }

@@ -53,6 +53,46 @@ test("CORS origins resolve from runtime env", async () => {
   }
 });
 
+test("production CORS excludes localhost defaults unless explicitly configured", async () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousAllowed = process.env.ALLOWED_ORIGINS;
+  const previousCors = process.env.CORS_ORIGINS;
+  const previousFrontend = process.env.FRONTEND_URL;
+  const previousFrontends = process.env.FRONTEND_URLS;
+
+  try {
+    process.env.NODE_ENV = "production";
+    delete process.env.ALLOWED_ORIGINS;
+    delete process.env.CORS_ORIGINS;
+    delete process.env.FRONTEND_URL;
+    delete process.env.FRONTEND_URLS;
+    const { getCorsOptions } = await import("../src/config/cors.ts");
+    const cors = getCorsOptions();
+    const allowLocalhost = await new Promise<boolean>((resolve, reject) => {
+      if (typeof cors.origin !== "function") {
+        reject(new Error("origin function missing"));
+        return;
+      }
+      cors.origin("http://localhost:3000", (error, allow) => {
+        if (error) return reject(error);
+        resolve(Boolean(allow));
+      });
+    });
+    assert.equal(allowLocalhost, false);
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    if (previousAllowed === undefined) delete process.env.ALLOWED_ORIGINS;
+    else process.env.ALLOWED_ORIGINS = previousAllowed;
+    if (previousCors === undefined) delete process.env.CORS_ORIGINS;
+    else process.env.CORS_ORIGINS = previousCors;
+    if (previousFrontend === undefined) delete process.env.FRONTEND_URL;
+    else process.env.FRONTEND_URL = previousFrontend;
+    if (previousFrontends === undefined) delete process.env.FRONTEND_URLS;
+    else process.env.FRONTEND_URLS = previousFrontends;
+  }
+});
+
 test("/api/health reports file-backed persistence even when DATABASE_URL is unreachable", async () => {
   const previousDatabaseUrl = process.env.DATABASE_URL;
   process.env.DATABASE_URL = "postgresql://127.0.0.1:1/trackly";

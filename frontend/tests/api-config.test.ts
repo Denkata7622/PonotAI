@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { getApiBaseUrl } from "../lib/apiConfig";
 
-test("api config defaults to trackly production backend in production", () => {
+test("api config requires explicit backend url in production", () => {
   const prevBase = process.env.NEXT_PUBLIC_API_BASE_URL;
   const prevAlt = process.env.NEXT_PUBLIC_API_URL;
   const prevNode = process.env.NODE_ENV;
@@ -12,7 +12,7 @@ test("api config defaults to trackly production backend in production", () => {
     delete process.env.NEXT_PUBLIC_API_URL;
     process.env.NODE_ENV = "production";
 
-    assert.equal(getApiBaseUrl(), "https://trackly-api.up.railway.app");
+    assert.equal(getApiBaseUrl(), "");
   } finally {
     if (prevBase === undefined) delete process.env.NEXT_PUBLIC_API_BASE_URL;
     else process.env.NEXT_PUBLIC_API_BASE_URL = prevBase;

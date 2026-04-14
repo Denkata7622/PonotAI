@@ -21,7 +21,7 @@
     "test:backend:smoke": "npm run test:smoke --prefix backend",
     "test:frontend": "npm run test --prefix frontend",
     "check:backend": "node scripts/backend-validate.mjs && npm run test:backend",
-    "prebuild": "npm ci --prefix backend --include=dev && npm ci --prefix frontend --include=dev",
+    "prebuild": "node -e \"console.log('prebuild: dependency installation removed; run npm run setup separately.')\"",
     "start": "npm run start --prefix backend"
   },
   "dependencies": {

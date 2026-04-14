@@ -8,11 +8,9 @@ function splitCsv(value: string | undefined): string[] {
 }
 
 function resolveAllowedOrigins(): string[] {
-  const defaultOrigins = [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "https://trackly-production.up.railway.app",
-  ];
+  const isProduction = process.env.NODE_ENV === "production";
+  const defaultOrigins = ["https://trackly-production.up.railway.app"];
+  const devOrigins = ["http://localhost:3000", "http://localhost:3001"];
   const envOrigins = [
     ...splitCsv(process.env.ALLOWED_ORIGINS),
     ...splitCsv(process.env.CORS_ORIGINS),
@@ -20,7 +18,7 @@ function resolveAllowedOrigins(): string[] {
     ...splitCsv(process.env.FRONTEND_URLS),
   ];
 
-  return Array.from(new Set([...defaultOrigins, ...envOrigins]));
+  return Array.from(new Set([...(isProduction ? defaultOrigins : [...defaultOrigins, ...devOrigins]), ...envOrigins]));
 }
 
 export function getCorsOptions(): CorsOptions {
