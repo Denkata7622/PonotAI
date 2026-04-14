@@ -1,3 +1,7 @@
+// NOTE: This Prisma schema is migration-only.
+// Runtime persistence is file-backed JSON via backend/src/db/persistence.ts.
+// Do not treat this schema as an active runtime datasource.
+
 generator client {
   provider = "prisma-client-js"
 }

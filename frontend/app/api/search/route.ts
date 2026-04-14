@@ -16,16 +16,12 @@ type YouTubeSearchItem = {
 
 export async function GET(request: Request) {
   const apiKey = process.env.YOUTUBE_API_KEY;
-  console.log("[search] key present:", Boolean(apiKey));
-
   if (!apiKey) {
     return NextResponse.json([]);
   }
 
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q")?.trim() ?? "";
-  console.log("[search] query:", query);
-
   if (!query) {
     return NextResponse.json([]);
   }
@@ -45,17 +41,8 @@ export async function GET(request: Request) {
   try {
     const res = await fetch(target.toString(), { cache: "no-store" });
     const bodyText = await res.text();
-    console.log("[search] YouTube status:", res.status);
-    console.log("[search] YouTube body:", bodyText.slice(0, 500));
-
     if (!res.ok) {
-      let ytError: unknown = {};
-      try {
-        ytError = JSON.parse(bodyText);
-      } catch {
-        ytError = { raw: bodyText.slice(0, 160) };
-      }
-      console.error("[search] YouTube API error:", ytError);
+      console.error("[search] YouTube API error status", res.status);
       return NextResponse.json([]);
     }
 

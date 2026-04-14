@@ -35,8 +35,13 @@ async function readJson<T>(filePath: string, fallback: T): Promise<T> {
 
 async function main() {
   const args = new Set(process.argv.slice(2));
-  const dryRun = args.has("--dry-run") || !args.has("--execute");
   const cwd = process.cwd();
+
+  if (args.has("--execute")) {
+    console.error("[db-migration] --execute is no longer supported. This tool only emits SQL for manual review/execution.");
+    process.exit(1);
+  }
+
   const backendRoot = path.basename(cwd) === "backend" ? cwd : path.join(cwd, "backend");
   const dataDir = process.env.PONOTAI_DATA_DIR?.trim() || path.join(backendRoot, "data");
   const appDbPath = path.join(dataDir, "appdb.json");
@@ -129,11 +134,7 @@ async function main() {
 
   console.info("[db-migration] summary", counters);
   console.info(`[db-migration] generated SQL: ${outputPath}`);
-  if (dryRun) {
-    console.info("[db-migration] dry-run only. Execute SQL manually against PostgreSQL.");
-  } else {
-    console.info("[db-migration] --execute requested, but this script intentionally emits SQL only.");
-  }
+  console.info("[db-migration] SQL generated only. Review and execute manually against PostgreSQL.");
 }
 
 main().catch((error) => {

@@ -5,6 +5,7 @@ import {
   CSSProperties,
   useEffect,
   useState,
+  useCallback,
 } from 'react';
 import {
   useFloating,
@@ -98,6 +99,14 @@ export function SmartDropdown({
   const interactions = enableClickTrigger ? [click, dismiss] : [dismiss];
   const { getReferenceProps, getFloatingProps } = useInteractions(interactions);
 
+  const referenceRef = useCallback((node: HTMLSpanElement | null) => {
+    refs.setReference(node);
+  }, [refs]);
+
+  const floatingRef = useCallback((node: HTMLDivElement | null) => {
+    refs.setFloating(node);
+  }, [refs]);
+
   const dropdownStyle: CSSProperties = {
     ...floatingStyles,
     zIndex: 9999,
@@ -116,7 +125,7 @@ export function SmartDropdown({
   return (
     <>
       <span
-        ref={refs.setReference}
+        ref={referenceRef}
         {...getReferenceProps()}
         style={{ display: 'inline-block', width: matchTriggerWidth ? '100%' : 'auto' }}
       >
@@ -126,7 +135,7 @@ export function SmartDropdown({
       {isOpen && (
         <FloatingPortal>
           <div
-            ref={refs.setFloating}
+            ref={floatingRef}
             style={dropdownStyle}
             className={`dropdown-surface ${className ?? ""}`}
             data-smart-dropdown-floating
