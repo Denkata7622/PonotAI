@@ -122,7 +122,13 @@ export async function recognizeImageController(req: Request, res: Response): Pro
 
     const persistenceWarnings: string[] = [];
     if (req.userId) {
+      const persistedKeys = new Set<string>();
       for (const song of result.songs) {
+        const dedupeKey = `${song.songName.trim().toLowerCase()}|||${song.artist.trim().toLowerCase()}|||${song.youtubeVideoId ?? ""}`;
+        if (persistedKeys.has(dedupeKey)) {
+          continue;
+        }
+        persistedKeys.add(dedupeKey);
         try {
           await addHistoryEntry({
             songName: song.songName,

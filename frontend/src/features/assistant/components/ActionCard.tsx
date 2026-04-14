@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle, Heart, Languages, ListMusic, ListPlus, Search, Sun, X } from "lucide-react";
 import { usePlayer } from "@/components/PlayerProvider";
@@ -58,6 +58,7 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
   const { playlists, createPlaylist, addSongsToPlaylist } = useLibrary(profile.id);
   const { icon: Icon, text } = getActionLabel(intent.type);
   const [busy, setBusy] = useState(false);
+  const inFlightRef = useRef(false);
 
   function resolveTrack(trackId: string) {
     const parsed = parseTrackId(trackId);
@@ -89,7 +90,8 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
   }
 
   async function handleAccept() {
-    if (busy || state === "applying") return;
+    if (busy || state === "applying" || inFlightRef.current) return;
+    inFlightRef.current = true;
     setBusy(true);
     onApplyStart();
     try {
@@ -185,6 +187,7 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
       window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: "Assistant action failed." } }));
       onApplyFailure();
     } finally {
+      inFlightRef.current = false;
       setBusy(false);
     }
   }
