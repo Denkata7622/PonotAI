@@ -11,7 +11,7 @@ function resolveAllowedOrigins(): string[] {
   const defaultOrigins = [
     "http://localhost:3000",
     "http://localhost:3001",
-    "https://ponotai-production.up.railway.app",
+    "https://trackly-production.up.railway.app",
   ];
   const envOrigins = [
     ...splitCsv(process.env.ALLOWED_ORIGINS),

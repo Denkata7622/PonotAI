@@ -5,7 +5,7 @@ import { Clock, Heart, ListMusic, ListPlus, Play, Plus } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
-import SmartDropdown from "@/components/ui/SmartDropdown";
+import SmartDropdown from "@/src/components/ui/SmartDropdown";
 
 type SearchResultActionsProps = {
   resultId: string;

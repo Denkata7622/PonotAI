@@ -43,15 +43,17 @@ async function persistRecognitionForUser(req: Request, metadata: { songName: str
 
 async function safePersistRecognition(req: Request, metadata: { songName: string; artist: string; album?: string; youtubeVideoId?: string; }): Promise<string[]> {
   const warnings: string[] = [];
-  try {
-    await addHistoryEntry({
-      songName: metadata.songName,
-      artist: metadata.artist,
-      youtubeVideoId: metadata.youtubeVideoId,
-    });
-  } catch (error) {
-    warnings.push("History persistence unavailable; recognition result returned without storage.");
-    console.warn("[recognition] Failed to persist global history", error);
+  if (req.userId) {
+    try {
+      await addHistoryEntry({
+        songName: metadata.songName,
+        artist: metadata.artist,
+        youtubeVideoId: metadata.youtubeVideoId,
+      });
+    } catch (error) {
+      warnings.push("History persistence unavailable; recognition result returned without storage.");
+      console.warn("[recognition] Failed to persist global history", error);
+    }
   }
 
   try {
@@ -119,17 +121,19 @@ export async function recognizeImageController(req: Request, res: Response): Pro
     const result = await recognizeSongFromImage(req.file.buffer, language, req.file.mimetype, maxSongs);
 
     const persistenceWarnings: string[] = [];
-    for (const song of result.songs) {
-      try {
-        await addHistoryEntry({
-          songName: song.songName,
-          artist: song.artist,
-          youtubeVideoId: song.youtubeVideoId,
-        });
-      } catch (error) {
-        persistenceWarnings.push("History persistence unavailable; OCR results returned without storage.");
-        console.warn("[recognition] Failed to persist OCR history entry", error);
-        break;
+    if (req.userId) {
+      for (const song of result.songs) {
+        try {
+          await addHistoryEntry({
+            songName: song.songName,
+            artist: song.artist,
+            youtubeVideoId: song.youtubeVideoId,
+          });
+        } catch (error) {
+          persistenceWarnings.push("History persistence unavailable; OCR results returned without storage.");
+          console.warn("[recognition] Failed to persist OCR history entry", error);
+          break;
+        }
       }
     }
 

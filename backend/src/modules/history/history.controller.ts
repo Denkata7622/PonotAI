@@ -88,17 +88,7 @@ export async function createHistoryEntryController(req: Request, res: Response):
     return;
   }
 
-  if (!songName && !title) {
-    sendError(res, ErrorCatalog.INVALID_PAYLOAD, { required: ["songName", "title"] });
-    return;
-  }
-
-  const entry = await addHistoryEntry({
-    songName: songName || title || "Unknown Song",
-    artist: artist || "Unknown Artist",
-    youtubeVideoId,
-  });
-  res.status(201).json(entry);
+  sendError(res, ErrorCatalog.UNAUTHORIZED);
 }
 
 /**

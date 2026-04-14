@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer } from "./helpers/testHarness.ts";
 
-const FRONTEND_ORIGIN = "https://ponotai-production.up.railway.app";
+const FRONTEND_ORIGIN = "https://trackly-production.up.railway.app";
 
 test("CORS preflight returns allow-origin for /api/history", async () => {
   const running = await startTestServer();

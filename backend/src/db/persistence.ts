@@ -1,8 +1,7 @@
 import { promises as fs } from "node:fs";
-import net from "node:net";
 import path from "node:path";
 
-type PersistenceMode = "database_url" | "file";
+type PersistenceMode = "file";
 
 type PersistenceHealth = {
   mode: PersistenceMode;
@@ -25,7 +24,7 @@ export function getPersistenceHealth(): PersistenceHealth {
 }
 
 function getPersistenceModeInternal(): PersistenceMode {
-  return process.env.DATABASE_URL?.trim() ? "database_url" : "file";
+  return "file";
 }
 
 async function probeFilePersistence(): Promise<PersistenceHealth> {
@@ -38,48 +37,8 @@ async function probeFilePersistence(): Promise<PersistenceHealth> {
   }
 }
 
-function tryConnectSocket(host: string, port: number, timeoutMs = 1500): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const socket = net.createConnection({ host, port });
-    const timeout = setTimeout(() => {
-      socket.destroy();
-      reject(new Error(`Connection timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    socket.once("connect", () => {
-      clearTimeout(timeout);
-      socket.end();
-      resolve();
-    });
-    socket.once("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-  });
-}
-
-async function probeDatabaseUrl(urlValue: string): Promise<PersistenceHealth> {
-  try {
-    const parsed = new URL(urlValue);
-    const host = parsed.hostname;
-    const defaultPort = parsed.protocol === "postgresql:" || parsed.protocol === "postgres:" ? 5432 : 0;
-    const port = parsed.port ? Number(parsed.port) : defaultPort;
-    if (!host || !port) {
-      return { mode: "database_url", connected: false, lastError: "DATABASE_URL missing reachable host/port" };
-    }
-
-    await tryConnectSocket(host, port);
-    return { mode: "database_url", connected: true };
-  } catch (error) {
-    return { mode: "database_url", connected: false, lastError: (error as Error).message };
-  }
-}
-
 export async function refreshPersistenceHealth(): Promise<PersistenceHealth> {
-  const mode = getPersistenceModeInternal();
-  health = mode === "database_url"
-    ? await probeDatabaseUrl(process.env.DATABASE_URL!.trim())
-    : await probeFilePersistence();
+  health = await probeFilePersistence();
   return health;
 }
 
