@@ -37,7 +37,9 @@
   --listen-glow: rgba(124, 92, 255, 0.55);
   --listen-glow-soft: rgba(124, 92, 255, 0.18);
   --listen-core: var(--accent);
-  --app-font: Inter, system-ui, sans-serif;
+  --app-body-font: var(--font-inter);
+  --app-display-font: var(--font-space-grotesk);
+  --app-mono-font: "IBM Plex Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
   --font-inter: Inter, "Segoe UI", Roboto, system-ui, sans-serif;
   --font-poppins: Poppins, "Avenir Next", "Segoe UI", sans-serif;
   --font-nunito: Nunito, "Trebuchet MS", "Segoe UI", sans-serif;
@@ -47,6 +49,25 @@
   --font-dm-sans: "DM Sans", "Segoe UI", Roboto, sans-serif;
   --font-sora: Sora, "Segoe UI", Roboto, sans-serif;
   --font-plus-jakarta-sans: "Plus Jakarta Sans", "Segoe UI", Roboto, sans-serif;
+  --font-space-grotesk: "Space Grotesk", "Segoe UI", sans-serif;
+  --font-orbitron: Orbitron, "Eurostile", "Segoe UI", sans-serif;
+  --font-audiowide: Audiowide, "Segoe UI", sans-serif;
+  --font-rajdhani: Rajdhani, "Segoe UI", sans-serif;
+  --font-exo-2: "Exo 2", "Segoe UI", sans-serif;
+  --font-oxanium: Oxanium, "Segoe UI", sans-serif;
+  --font-chakra-petch: "Chakra Petch", "Segoe UI", sans-serif;
+  --font-russo-one: "Russo One", "Segoe UI", sans-serif;
+  --font-michroma: Michroma, "Segoe UI", sans-serif;
+  --font-pirata-one: "Pirata One", "Times New Roman", serif;
+  --font-unifraktur-cook: "UnifrakturCook", "Old English Text MT", serif;
+  --font-yatra-one: "Yatra One", Georgia, serif;
+  --font-kalam: Kalam, "Comic Sans MS", cursive;
+  --font-marck-script: "Marck Script", cursive;
+  --font-bungee: Bungee, "Arial Black", sans-serif;
+  --font-bungee-shade: "Bungee Shade", "Arial Black", sans-serif;
+  --font-monoton: Monoton, Impact, sans-serif;
+  --font-black-ops-one: "Black Ops One", Impact, sans-serif;
+  --font-archivo-black: "Archivo Black", "Arial Black", sans-serif;
   --text-scale: 1;
   --sidebar-border: var(--border);
   --sidebar-shadow: var(--shadow-raised);
@@ -68,7 +89,7 @@
 body {
   background-color: var(--color-page);
   color: var(--color-text-primary);
-  font-family: Inter, system-ui, sans-serif;
+  font-family: var(--app-body-font);
   transition: background-color 200ms ease, color 200ms ease;
 }
 
@@ -155,7 +176,7 @@ body {
     radial-gradient(700px 380px at 20% 80%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 55%),
     linear-gradient(180deg, var(--bg), var(--bg-2));
   color: var(--text);
-  font-family: var(--app-font);
+  font-family: var(--app-body-font);
 }
 
 html {
@@ -228,20 +249,99 @@ html {
 .themed-selected { box-shadow: 0 0 0 1px var(--accent-border), 0 10px 20px rgba(var(--accent-rgb), var(--accent-glow-strength)); }
 
 
-:root[data-font="inter"] { --app-font: var(--font-inter); }
-:root[data-font="system"] { --app-font: system-ui, -apple-system, "Segoe UI", sans-serif; }
-:root[data-font="poppins"] { --app-font: var(--font-poppins); }
-:root[data-font="nunito"] { --app-font: var(--font-nunito); }
-:root[data-font="ibm-plex-sans"] { --app-font: var(--font-ibm-plex-sans); }
-:root[data-font="manrope"] { --app-font: var(--font-manrope); }
-:root[data-font="outfit"] { --app-font: var(--font-outfit); }
-:root[data-font="dm-sans"] { --app-font: var(--font-dm-sans); }
-:root[data-font="sora"] { --app-font: var(--font-sora); }
-:root[data-font="plus-jakarta-sans"] { --app-font: var(--font-plus-jakarta-sans); }
+:root[data-body-font="inter"] { --app-body-font: var(--font-inter); }
+:root[data-body-font="system"] { --app-body-font: system-ui, -apple-system, "Segoe UI", sans-serif; }
+:root[data-body-font="poppins"] { --app-body-font: var(--font-poppins); }
+:root[data-body-font="nunito"] { --app-body-font: var(--font-nunito); }
+:root[data-body-font="ibm-plex-sans"] { --app-body-font: var(--font-ibm-plex-sans); }
+:root[data-body-font="manrope"] { --app-body-font: var(--font-manrope); }
+:root[data-body-font="dm-sans"] { --app-body-font: var(--font-dm-sans); }
+:root[data-body-font="plus-jakarta-sans"] { --app-body-font: var(--font-plus-jakarta-sans); }
+:root[data-body-font="outfit"] { --app-body-font: var(--font-outfit); }
+:root[data-body-font="sora"] { --app-body-font: var(--font-sora); }
+
+:root[data-display-font="manrope"] { --app-display-font: var(--font-manrope); }
+:root[data-display-font="outfit"] { --app-display-font: var(--font-outfit); }
+:root[data-display-font="sora"] { --app-display-font: var(--font-sora); }
+:root[data-display-font="space-grotesk"] { --app-display-font: var(--font-space-grotesk); }
+:root[data-display-font="orbitron"] { --app-display-font: var(--font-orbitron); }
+:root[data-display-font="audiowide"] { --app-display-font: var(--font-audiowide); }
+:root[data-display-font="rajdhani"] { --app-display-font: var(--font-rajdhani); }
+:root[data-display-font="exo-2"] { --app-display-font: var(--font-exo-2); }
+:root[data-display-font="oxanium"] { --app-display-font: var(--font-oxanium); }
+:root[data-display-font="chakra-petch"] { --app-display-font: var(--font-chakra-petch); }
+:root[data-display-font="russo-one"] { --app-display-font: var(--font-russo-one); }
+:root[data-display-font="michroma"] { --app-display-font: var(--font-michroma); }
+:root[data-display-font="pirata-one"] { --app-display-font: var(--font-pirata-one); }
+:root[data-display-font="unifraktur-cook"] { --app-display-font: var(--font-unifraktur-cook); }
+:root[data-display-font="yatra-one"] { --app-display-font: var(--font-yatra-one); }
+:root[data-display-font="kalam"] { --app-display-font: var(--font-kalam); }
+:root[data-display-font="marck-script"] { --app-display-font: var(--font-marck-script); }
+:root[data-display-font="bungee"] { --app-display-font: var(--font-bungee); }
+:root[data-display-font="bungee-shade"] { --app-display-font: var(--font-bungee-shade); }
+:root[data-display-font="monoton"] { --app-display-font: var(--font-monoton); }
+:root[data-display-font="black-ops-one"] { --app-display-font: var(--font-black-ops-one); }
+:root[data-display-font="archivo-black"] { --app-display-font: var(--font-archivo-black); }
 
 :root[data-text-scale="sm"] { --text-scale: 0.94; }
 :root[data-text-scale="md"] { --text-scale: 1; }
 :root[data-text-scale="lg"] { --text-scale: 1.12; }
+
+
+:where(body, button, input, textarea, select, .type-body) {
+  font-family: var(--app-body-font);
+}
+
+:where(.type-display, .display-styled, h1, h2) {
+  font-family: var(--app-display-font);
+}
+
+.type-mono {
+  font-family: var(--app-mono-font);
+}
+
+.display-styled,
+:where(.type-display, .display-styled, h1, h2) {
+  letter-spacing: 0.01em;
+  transition: text-shadow var(--motion-base) ease, transform var(--motion-base) ease, filter var(--motion-base) ease, background-position var(--motion-base) ease;
+}
+
+:root[data-display-style="soft-gradient"] :where(.type-display, .display-styled) {
+  background-image: linear-gradient(115deg, color-mix(in srgb, var(--text) 78%, var(--accent)) 15%, color-mix(in srgb, var(--accent) 58%, var(--accent-2)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+:root[data-display-style="subtle-glow"] :where(.type-display, .display-styled) {
+  text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+:root[data-display-style="slight-depth"] :where(.type-display, .display-styled) {
+  text-shadow: 0 1px 0 color-mix(in srgb, var(--surface) 72%, transparent), 0 10px 22px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+:root[data-display-style="shadowed-poster"] :where(.type-display, .display-styled) {
+  text-shadow: 1px 1px 0 color-mix(in srgb, var(--bg) 56%, transparent), 3px 3px 0 color-mix(in srgb, var(--accent) 25%, transparent);
+  letter-spacing: 0.03em;
+}
+
+:root[data-display-style="cyber-pulse"] :where(.type-display, .display-styled) {
+  text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+@keyframes displayPulse {
+  0%, 100% { opacity: 1; text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 20%, transparent); }
+  50% { opacity: 0.97; text-shadow: 0 0 16px color-mix(in srgb, var(--accent) 32%, transparent); }
+}
+
+:root[data-motion="full"][data-display-style="cyber-pulse"] :where(.type-display, .display-styled) {
+  animation: displayPulse 4.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-display-style="cyber-pulse"] :where(.type-display, .display-styled) { animation: none; }
+}
 
 .app-tabs {
   display: inline-flex;
@@ -252,6 +352,27 @@ html {
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface-subtle) 92%, transparent);
 }
+
+.app-tab,
+.navItem,
+.navItemActive,
+.badge,
+.dropdown-item,
+button,
+input,
+textarea,
+select {
+  font-family: var(--app-body-font);
+}
+
+.dropdown-surface,
+.card-base,
+.themed-surface,
+.themed-surface-subtle,
+.themed-surface-elevated {
+  font-family: var(--app-body-font);
+}
+
 .app-tab {
   flex: 1;
   min-height: 2.2rem;
@@ -1100,4 +1221,29 @@ button, input, textarea, select {
 .homeQuickLink:hover {
   border-color: var(--accent-border);
   background: color-mix(in srgb, var(--surface-elevated) 74%, var(--accent-soft));
+}
+
+
+.hero-title-flourish {
+  position: relative;
+  background-image: linear-gradient(120deg, color-mix(in srgb, var(--text) 78%, white), color-mix(in srgb, var(--accent) 78%, var(--accent-2)), color-mix(in srgb, var(--text) 70%, var(--accent-2)));
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@keyframes heroShine {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+:root[data-motion="full"] .hero-title-flourish {
+  animation: heroShine 12s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-title-flourish {
+    animation: none !important;
+  }
 }
