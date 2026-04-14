@@ -4,7 +4,7 @@ import { getApiBaseUrl } from "@/lib/apiConfig";
 import { getToken } from "@/src/lib/apiFetch";
 import type { AssistantMeta, ChatMessage, ActionIntent } from "./types";
 import { stripAssistantActionMarkup } from "./responseSanitizer";
-import { readTasteProfile } from "../onboarding/tasteProfile";
+import { readTasteProfile, toAssistantPreferencePayload } from "../onboarding/tasteProfile";
 
 async function fetchJsonOrThrow(input: string, init: RequestInit): Promise<unknown> {
   const response = await fetch(input, init);
@@ -43,12 +43,7 @@ export async function sendAssistantMessage(
       ...(queueTitles ? { "X-Trackly-Queue": queueTitles } : {}),
       ...(theme ? { "X-Trackly-Theme": theme } : {}),
       ...(language ? { "X-Trackly-Language": language } : {}),
-      ...(tasteProfile ? { "X-Trackly-Preferences": JSON.stringify({
-        genres: tasteProfile.genres,
-        artists: tasteProfile.artists,
-        moods: tasteProfile.moods,
-        goals: tasteProfile.goals,
-      }) } : {}),
+      ...(tasteProfile ? { "X-Trackly-Preferences": JSON.stringify(toAssistantPreferencePayload(tasteProfile)) } : {}),
       ...(typeof navigator !== "undefined" ? { "X-Trackly-Device": navigator.userAgent.slice(0, 120) } : {}),
     },
     body: JSON.stringify({

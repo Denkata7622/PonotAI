@@ -35,9 +35,6 @@ export default function AssistantFAB() {
     };
 
     updateBottomOffset();
-    if (process.env.NODE_ENV === "development") {
-      console.debug("[AssistantFAB] pathname", pathname);
-    }
     window.addEventListener("resize", updateBottomOffset);
     window.addEventListener("scroll", updateBottomOffset, { passive: true, capture: true });
     window.addEventListener("trackly-song-menu-toggle", handleSongMenuToggle as EventListener);
@@ -69,10 +66,9 @@ export default function AssistantFAB() {
       }}
       aria-label="Music Assistant"
     >
-      <span className="assistant-fab__ring">
-        <span className="assistant-fab__core">
-          <Sparkles width={20} height={20} />
-        </span>
+      <span className="assistant-fab__halo" aria-hidden="true" />
+      <span className="assistant-fab__shell" aria-hidden="true">
+        <Sparkles width={18} height={18} />
       </span>
     </button>
   );

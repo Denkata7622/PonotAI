@@ -4,13 +4,13 @@ import { hasApplicableThemeChange, normalizeThemeActionPayload } from "../src/fe
 
 test("assistant theme action maps supported options", () => {
   const parsed = normalizeThemeActionPayload({ theme: "dark", accent: "emerald", density: "compact", intensity: "vivid", surfaceStyle: "elevated" });
-  assert.deepEqual(parsed, { theme: "dark", accent: "emerald", density: "compact", intensity: "vivid", surfaceStyle: "elevated", radius: undefined, sidebarStyle: undefined, motionLevel: undefined, chartStyle: undefined, template: undefined });
+  assert.deepEqual(parsed, { theme: "dark", accent: "emerald", density: "compact", intensity: "vivid", surfaceStyle: "elevated", radius: undefined, sidebarStyle: undefined, motionLevel: undefined, chartStyle: undefined, template: undefined, panelTint: undefined, textScale: undefined, bodyFont: undefined, displayFont: undefined, displayTextStyle: undefined });
   assert.equal(hasApplicableThemeChange(parsed), true);
 });
 
 test("assistant theme action drops unsupported values", () => {
   const parsed = normalizeThemeActionPayload({ theme: "neon", accent: "midnight", density: "dense", chartStyle: "rainbow" });
-  assert.deepEqual(parsed, { theme: undefined, accent: undefined, density: undefined, surfaceStyle: undefined, radius: undefined, sidebarStyle: undefined, motionLevel: undefined, intensity: undefined, chartStyle: undefined, template: undefined });
+  assert.deepEqual(parsed, { theme: undefined, accent: undefined, density: undefined, surfaceStyle: undefined, radius: undefined, sidebarStyle: undefined, motionLevel: undefined, intensity: undefined, chartStyle: undefined, template: undefined, panelTint: undefined, textScale: undefined, bodyFont: undefined, displayFont: undefined, displayTextStyle: undefined });
   assert.equal(hasApplicableThemeChange(parsed), false);
 });
 
