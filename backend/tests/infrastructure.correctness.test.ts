@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer } from "./helpers/testHarness.ts";
 
-test("persistence mode resolves from current env instead of import-time snapshot", async () => {
+test("persistence mode remains file-backed even when DATABASE_URL is configured", async () => {
   const persistenceModule = await import("../src/db/persistence.ts");
   const previous = process.env.DATABASE_URL;
 
@@ -11,7 +11,7 @@ test("persistence mode resolves from current env instead of import-time snapshot
     assert.equal(persistenceModule.getPersistenceMode(), "file");
 
     process.env.DATABASE_URL = "postgresql://localhost:5432/trackly";
-    assert.equal(persistenceModule.getPersistenceMode(), "database_url");
+    assert.equal(persistenceModule.getPersistenceMode(), "file");
   } finally {
     if (previous === undefined) {
       delete process.env.DATABASE_URL;
@@ -53,7 +53,7 @@ test("CORS origins resolve from runtime env", async () => {
   }
 });
 
-test("/api/health reflects real disconnected DB status when DATABASE_URL is unreachable", async () => {
+test("/api/health reports file-backed persistence even when DATABASE_URL is unreachable", async () => {
   const previousDatabaseUrl = process.env.DATABASE_URL;
   process.env.DATABASE_URL = "postgresql://127.0.0.1:1/trackly";
 
@@ -61,11 +61,11 @@ test("/api/health reflects real disconnected DB status when DATABASE_URL is unre
 
   try {
     const response = await fetch(`${running.baseUrl}/api/health`);
-    assert.equal(response.status, 503);
+    assert.equal(response.status, 200);
     const payload = (await response.json()) as { db: string; status: string; mode: string };
-    assert.equal(payload.db, "disconnected");
-    assert.equal(payload.status, "partial");
-    assert.equal(payload.mode, "database_url");
+    assert.equal(payload.db, "connected");
+    assert.equal(payload.status, "ok");
+    assert.equal(payload.mode, "file");
   } finally {
     await running.close();
     if (previousDatabaseUrl === undefined) {

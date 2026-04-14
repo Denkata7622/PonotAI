@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import {
   createSharedPlaylist,
   createSharedRecognition,
@@ -15,16 +15,29 @@ import { normalizeVisibleText } from "../../utils/text";
 
 const shareRouter = Router();
 
-shareRouter.post("/song", requireAuth, async (req, res) => {
+function getFrontendBaseUrl(): string {
+  const fromEnv = process.env.FRONTEND_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  if (process.env.NODE_ENV === "production") return "https://trackly-production.up.railway.app";
+  return "http://localhost:3000";
+}
+
+async function createSongShareHandler(req: Request, res: Response): Promise<void> {
   const { title, artist, album, coverUrl } = req.body as { title?: string; artist?: string; album?: string; coverUrl?: string };
   const safeTitle = normalizeVisibleText(title).slice(0, 180);
   const safeArtist = normalizeVisibleText(artist).slice(0, 180);
-  if (!safeTitle || !safeArtist) return void sendError(res, ErrorCatalog.INVALID_PAYLOAD);
+  if (!safeTitle || !safeArtist) {
+    sendError(res, ErrorCatalog.INVALID_PAYLOAD);
+    return;
+  }
 
   const shared = await createSharedSong({ userId: req.userId!, title: safeTitle, artist: safeArtist, album, coverUrl });
-  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const frontendUrl = getFrontendBaseUrl();
   res.status(201).json({ type: "song", shareCode: shared.shareCode, shareUrl: `${frontendUrl}/shared/${shared.shareCode}` });
-});
+}
+
+shareRouter.post("/", requireAuth, createSongShareHandler);
+shareRouter.post("/song", requireAuth, createSongShareHandler);
 
 shareRouter.post("/playlist/:playlistId", requireAuth, async (req, res) => {
   const playlist = await findPlaylistById(req.params.playlistId);
@@ -38,7 +51,7 @@ shareRouter.post("/playlist/:playlistId", requireAuth, async (req, res) => {
     songCount: playlist.songs.length,
   });
 
-  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const frontendUrl = getFrontendBaseUrl();
   res.status(201).json({ type: "playlist", shareCode: shared.shareCode, shareUrl: `${frontendUrl}/shared/${shared.shareCode}` });
 });
 
@@ -63,19 +76,8 @@ shareRouter.post("/recognition", requireAuth, async (req, res) => {
     coverUrl: typeof coverUrl === "string" ? coverUrl.slice(0, 500) : undefined,
     source: typeof source === "string" ? source.slice(0, 30) : undefined,
   });
-  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const frontendUrl = getFrontendBaseUrl();
   res.status(201).json({ type: "recognition", shareCode: shared.shareCode, shareUrl: `${frontendUrl}/shared/${shared.shareCode}` });
-});
-
-shareRouter.post("/", requireAuth, async (req, res) => {
-  const { title, artist, album, coverUrl } = req.body as { title?: string; artist?: string; album?: string; coverUrl?: string };
-  const safeTitle = normalizeVisibleText(title).slice(0, 180);
-  const safeArtist = normalizeVisibleText(artist).slice(0, 180);
-  if (!safeTitle || !safeArtist) return void sendError(res, ErrorCatalog.INVALID_PAYLOAD);
-
-  const shared = await createSharedSong({ userId: req.userId!, title: safeTitle, artist: safeArtist, album, coverUrl });
-  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-  res.status(201).json({ type: "song", shareCode: shared.shareCode, shareUrl: `${frontendUrl}/shared/${shared.shareCode}` });
 });
 
 shareRouter.get("/:shareCode", async (req, res) => {

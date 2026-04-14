@@ -8,7 +8,7 @@ import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { formatArtist } from "../lib/formatArtist";
 import { usePlayer } from "./PlayerProvider";
-import SmartDropdown from "@/components/ui/SmartDropdown";
+import SmartDropdown from "@/src/components/ui/SmartDropdown";
 import { useUser } from "../src/context/UserContext";
 import { normalizeVisibleText } from "@/lib/text";
 

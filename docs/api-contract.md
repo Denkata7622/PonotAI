@@ -49,6 +49,8 @@ Response shape is the same as `/api/recognition/audio`.
 
 ## 2026-04 Expansion Endpoints
 
+- `POST /api/share` → canonical song share-create endpoint.
+- `POST /api/share/song` → compatibility alias that delegates to the canonical song share handler.
 - `POST /api/share/playlist/:playlistId` → create public playlist share link.
 - `POST /api/share/recognition` → create public recognition-result share link.
 - `GET /api/share/:shareCode` → returns `type: song | recognition | playlist` with sanitized public payload.

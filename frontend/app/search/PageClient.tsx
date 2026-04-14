@@ -13,7 +13,7 @@ import { useUser } from "../../src/context/UserContext";
 import { useRouter } from "next/navigation";
 import { useRecentSearches } from "../../lib/useRecentSearches";
 import { formatArtist } from "../../lib/formatArtist";
-import SmartDropdown from "@/components/ui/SmartDropdown";
+import SmartDropdown from "@/src/components/ui/SmartDropdown";
 
 type HistoryItem = {
   id: string;

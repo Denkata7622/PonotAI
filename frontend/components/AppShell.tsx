@@ -18,7 +18,7 @@ import SearchInput from "./SearchInput";
 import SearchResultActions from "./SearchResultActions";
 import { addSongToPlaylist as addSongToPlaylistApi } from "../features/library/api";
 import { formatArtist } from "../lib/formatArtist";
-import SmartDropdown from "@/components/ui/SmartDropdown";
+import SmartDropdown from "@/src/components/ui/SmartDropdown";
 
 type HistoryItem = {
   id: string;

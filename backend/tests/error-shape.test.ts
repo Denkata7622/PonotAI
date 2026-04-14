@@ -46,10 +46,10 @@ test("API returns standard error shape for common failures", async () => {
       { name: "favorites unauthorized", run: () => fetch(`${running.baseUrl}/api/favorites`), status: 401, code: "UNAUTHORIZED" },
       { name: "share lookup missing", run: () => fetch(`${running.baseUrl}/api/share/not-a-real-code`), status: 404, code: "NOT_FOUND" },
       {
-        name: "history guest validation",
+        name: "history guest unauthorized",
         run: () => fetch(`${running.baseUrl}/api/history`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }),
-        status: 400,
-        code: "INVALID_PAYLOAD",
+        status: 401,
+        code: "UNAUTHORIZED",
       },
       {
         name: "recognition audio missing file",

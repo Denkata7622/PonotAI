@@ -79,11 +79,9 @@ export function validateEnvironment(): void {
   const databaseUrl = process.env.DATABASE_URL?.trim();
   if (databaseUrl) {
     process.env.DATABASE_URL = databaseUrl;
-  } else if (isProduction) {
-    console.error("FATAL: DATABASE_URL environment variable is required in production");
-    process.exit(1);
+    console.warn("[env] DATABASE_URL is configured, but runtime persistence is still file-backed.");
   } else {
-    console.warn("[env] DATABASE_URL missing in development; using local file persistence.");
+    console.warn("[env] DATABASE_URL not configured; runtime persistence remains file-backed.");
   }
 
   const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();

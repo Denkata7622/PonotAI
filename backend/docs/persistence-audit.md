@@ -104,3 +104,16 @@ Proposed normalized target:
 3. Keep response contracts unchanged.
 4. Provide idempotent JSON-to-PostgreSQL import utility.
 5. Fail fast in production when DB connection/migrations are not ready.
+
+## Active runtime JSON write paths
+
+All runtime persistence writes are still JSON-file backed:
+
+- `backend/src/db/authStore.ts` → writes `appdb.json` for users, auth records, history, favorites, shares, playlists, tags, achievements, API keys, and demo flags.
+- `backend/src/db/client.ts` → writes `history.json` for legacy/global history feed.
+- `backend/src/db/persistence.ts` → generic file helpers used by both stores above.
+
+### Truthfulness check
+
+- Prior behavior was **not truthful**: setting `DATABASE_URL` switched reported mode/health to `database_url` while runtime writes still targeted JSON files.
+- Runtime persistence is currently file-backed; any mode/health response must report file persistence only until a real DB runtime store exists.

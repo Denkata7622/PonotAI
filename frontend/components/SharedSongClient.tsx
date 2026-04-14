@@ -75,33 +75,33 @@ export default function SharedSongClient({ data }: { data: SharedSongPayload | S
   }
 
   return (
-    <section className="resultCardAnimated mx-auto max-w-3xl rounded-3xl border border-white/10 bg-white/5 p-6">
+    <section className="resultCardAnimated mx-auto max-w-3xl rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-6">
       <div className="flex items-start gap-6">
         {topSong?.coverUrl && <img src={topSong.coverUrl} alt={`${topSong.title} cover`} className="h-40 w-40 rounded-2xl object-cover shadow-lg" />}
         <div className="flex-1">
-          <p className="text-xs uppercase tracking-[0.2em] text-white/60">Shared {data.type}</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">Shared {data.type}</p>
           <h1 className="mt-2 text-3xl font-bold">{normalizedTitle}</h1>
-          {!isPlaylist && <p className="mt-2 text-xl text-white/70">{normalizedArtist}</p>}
-          {!isPlaylist && <p className="mt-2 text-sm text-white/60">{data.album || "Unknown Album"}</p>}
-          {data.type === "recognition" && data.source && <p className="mt-2 text-xs text-white/50">Mode: {data.source}</p>}
-          <p className="mt-4 text-sm text-white/50">Shared by {data.sharedBy}</p>
+          {!isPlaylist && <p className="mt-2 text-xl text-[var(--text)]/85">{normalizedArtist}</p>}
+          {!isPlaylist && <p className="mt-2 text-sm text-[var(--muted)]">{data.album || "Unknown Album"}</p>}
+          {data.type === "recognition" && data.source && <p className="mt-2 text-xs text-[var(--muted)]">Mode: {data.source}</p>}
+          <p className="mt-4 text-sm text-[var(--muted)]">Shared by {data.sharedBy}</p>
 
           {isPlaylist && (
-            <div className="mt-4 space-y-2 rounded-xl border border-white/10 p-3">
+            <div className="mt-4 space-y-2 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-3">
               {data.songs.slice(0, 5).map((song, index) => (
-                <p key={`${song.title}-${song.artist}-${index}`} className="text-sm text-white/80">{normalizeVisibleText(song.title)} — {normalizeVisibleText(song.artist)}</p>
+                <p key={`${song.title}-${song.artist}-${index}`} className="text-sm text-[var(--text)]/90">{normalizeVisibleText(song.title)} — {normalizeVisibleText(song.artist)}</p>
               ))}
-              {data.songs.length > 5 && <p className="text-xs text-white/50">+{data.songs.length - 5} more tracks</p>}
+              {data.songs.length > 5 && <p className="text-xs text-[var(--muted)]">+{data.songs.length - 5} more tracks</p>}
             </div>
           )}
 
           <div className="mt-6 flex gap-3">
-            <button onClick={handlePlay} className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-6 py-3 font-semibold text-white transition hover:opacity-90">
-              <Play className="w-4 h-4 text-white" />
+            <button onClick={handlePlay} className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-6 py-3 font-semibold text-[var(--accent-foreground)] transition hover:opacity-90">
+              <Play className="w-4 h-4 text-[var(--accent-foreground)]" />
               Play
             </button>
             {isPlaylist && (
-              <button onClick={importPlaylist} className="rounded-lg border border-white/30 px-5 py-3 text-sm text-white/90 hover:bg-white/10">
+              <button onClick={importPlaylist} className="rounded-lg border border-[var(--border)] px-5 py-3 text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]">
                 Import to Queue
               </button>
             )}
