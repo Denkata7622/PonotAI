@@ -179,6 +179,23 @@ export async function getListeningInsights(userId: string, period: "daily" | "we
     },
     { morning: 0, afternoon: 0, evening: 0, night: 0 },
   );
+  const longTermWindow = history.filter((item) => now - parseDate(item.createdAt) <= 60 * DAY_MS);
+  const longTermAggregate = aggregateBase(longTermWindow, favorites, playlists);
+  const [shortTopArtist] = topCounts(aggregate.artistCounts, 1);
+  const [longTopArtist] = topCounts(longTermAggregate.artistCounts, 1);
+  const underusedFavorites = favorites
+    .map((fav) => {
+      const recentPlay = history.find((item) => trackKey(item.title, item.artist) === trackKey(fav.title, fav.artist));
+      const lastTouchedAt = parseDate(recentPlay?.createdAt ?? fav.savedAt);
+      const daysAgo = lastTouchedAt > 0 ? Math.floor((now - lastTouchedAt) / DAY_MS) : 999;
+      return { title: fav.title, artist: fav.artist, daysAgo };
+    })
+    .filter((item) => item.daysAgo >= 21)
+    .sort((a, b) => b.daysAgo - a.daysAgo)
+    .slice(0, 6);
+  const noveltyRatio = windowHistory.length > 0
+    ? Number((new Set(windowHistory.map((item) => trackKey(item.title, item.artist))).size / windowHistory.length).toFixed(2))
+    : 0;
 
   return {
     period,
@@ -194,6 +211,17 @@ export async function getListeningInsights(userId: string, period: "daily" | "we
     streakDays: calculateStreak(history),
     listeningWindows,
     trendPoints: buildTrendPoints(windowHistory, days),
+    analysis: {
+      shortVsLongTerm: shortTopArtist && longTopArtist
+        ? shortTopArtist.name === longTopArtist.name
+          ? `Recent listening is consistent with your longer-term focus on ${shortTopArtist.name}.`
+          : `Recent listening leans toward ${shortTopArtist.name} versus longer-term ${longTopArtist.name}.`
+        : "Not enough activity to compare short-term and long-term patterns yet.",
+      noveltyVsReplay: noveltyRatio >= 0.65
+        ? "You are in a novelty-heavy phase with more unique track rotation."
+        : "You are in a replay-heavy phase with stronger repeat behavior.",
+      underusedFavorites,
+    },
     explainability: {
       dataSources: {
         historyCount: history.length,
@@ -346,6 +374,13 @@ export async function getMoodRecommendations(userId: string, moodInput: string) 
   const tracks = [...deduped.values()]
     .sort((a, b) => rankTrackForMood(b, mood) - rankTrackForMood(a, mood))
     .slice(0, 20);
+  const topArtists = topCounts(aggregateBase(history, favorites, []).artistCounts, 3).map((item) => item.name);
+  const sourceBasis = {
+    fromHistory: recentHistory.length,
+    fromFavorites: favorites.length,
+    inferredMood: mood,
+    sparseLibrary: history.length < 8 && favorites.length < 5,
+  };
 
   return {
     mood,
@@ -358,6 +393,8 @@ export async function getMoodRecommendations(userId: string, moodInput: string) 
         : "No substantial history/favorites signal yet; using fallback ordering.",
       recentEvents: recentHistory.length,
       favoritesCount: favorites.length,
+      knownTopArtists: topArtists,
+      sourceBasis,
     },
   };
 }
@@ -579,6 +616,14 @@ export async function getCrossArtistRecommendations(
     ? ranked.map((entry) => ({ ...entry, isInLibrary: false }))
     : fallbackLibrary;
 
+  const recommendationBasis = {
+    fromListeningHistory: history.length,
+    fromFavorites: favorites.length,
+    fromPlaylists: playlists.length,
+    usedExternalDiscovery: externalAvailable,
+    sparseFallback: ranked.length === 0,
+  };
+
   crossArtistMemory.set(userId, {
     recent: recommendations
       .map((item) => normalizeName(item.artist))
@@ -598,6 +643,12 @@ export async function getCrossArtistRecommendations(
       moodsKnownFromLibrary: profile.topMoods.map(([name, count]) => ({ name, weight: count })),
     },
     recommendations,
+    explainability: {
+      recommendationBasis,
+      interpretation: recommendationBasis.sparseFallback
+        ? "Sparse library fallback: suggestions prioritize your known artists until broader signals appear."
+        : "Personalized blend: anchored in your behavior with explicit exploration outside repeated artists.",
+    },
   };
 }
 

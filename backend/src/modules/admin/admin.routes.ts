@@ -1,9 +1,12 @@
 import { Router } from "express";
 import { getGlobalStats } from "../stats/stats.service";
 import { getPersistenceHealth } from "../../db/persistence";
-import { getAdminOverviewSnapshot, listApiKeysByUser } from "../../db/authStore";
+import { createUser, findUserByEmail, getAdminOverviewSnapshot, listApiKeysByUser, updateUser } from "../../db/authStore";
 import { requireAuth } from "../../middlewares/auth.middleware";
+import { signAuthToken } from "../../middlewares/auth.middleware";
 import { requireAdmin } from "../../middlewares/admin.middleware";
+import crypto from "node:crypto";
+import { hashPassword } from "../auth/password";
 import {
   DemoDatasetUnavailableError,
   generateDemoAccount,
@@ -24,6 +27,19 @@ function daysAgoIso(days: number): string {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - days);
   return date.toISOString();
+}
+
+function toUserPayload(user: { id: string; username: string; email: string; createdAt: string; role?: "user" | "admin"; isDemo?: boolean }) {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    createdAt: user.createdAt,
+    role: user.role ?? "user",
+    isDemo: Boolean(user.isDemo),
+    avatarBase64: null,
+    bio: null,
+  };
 }
 
 adminRouter.get("/overview", async (_req, res) => {
@@ -250,6 +266,39 @@ adminRouter.get("/developer-keys/:userId", async (req, res) => {
   });
 });
 
+adminRouter.get("/ai-observability", async (_req, res) => {
+  const snapshot = await getAdminOverviewSnapshot();
+  const nowMinus7d = daysAgoIso(7);
+  const assistantEvents = snapshot.searchHistory.filter((item) => item.method === "assistant");
+  const assistantEvents7d = assistantEvents.filter((item) => item.createdAt >= nowMinus7d);
+  const failedAssistantEvents7d = assistantEvents7d.filter((item) => !item.recognized).length;
+  const themeActionSignals7d = snapshot.searchHistory.filter((item) => item.method === "assistant-theme" && item.createdAt >= nowMinus7d).length;
+
+  res.status(200).json({
+    generatedAt: new Date().toISOString(),
+    assistant: {
+      available: Boolean(process.env.GEMINI_API_KEY?.trim()),
+      mode: process.env.GEMINI_API_KEY?.trim() ? "gemini" : "fallback",
+      requestsTotal: assistantEvents.length,
+      requestsLast7d: assistantEvents7d.length,
+      failuresLast7d: failedAssistantEvents7d,
+    },
+    providerStatus: {
+      gemini: Boolean(process.env.GEMINI_API_KEY?.trim()),
+      audd: Boolean((process.env.AUDD_API_TOKEN || process.env.AUDD_API_KEY || "").trim()),
+      acrcloud: Boolean(process.env.ACRCLOUD_ACCESS_KEY?.trim() && process.env.ACRCLOUD_ACCESS_SECRET?.trim() && process.env.ACRCLOUD_HOST?.trim()),
+    },
+    recommendationSignals: {
+      recognitionEventsLast7d: snapshot.searchHistory.filter((item) => item.createdAt >= nowMinus7d).length,
+      uniqueArtistsLast7d: new Set(snapshot.searchHistory.filter((item) => item.createdAt >= nowMinus7d).map((item) => item.artist?.toLowerCase().trim()).filter(Boolean)).size,
+      themeActionSignalsLast7d: themeActionSignals7d,
+    },
+    notes: {
+      themeActionTracking: themeActionSignals7d === 0 ? "No explicit assistant-theme telemetry found in last 7 days." : "Theme assistant actions detected.",
+    },
+  });
+});
+
 adminRouter.post("/demo-account", async (req, res) => {
   try {
     const persona = req.body?.persona as DemoPersona | undefined;
@@ -279,6 +328,41 @@ adminRouter.post("/demo-account", async (req, res) => {
       code: "INTERNAL_ERROR",
       message: "Could not generate demo account.",
     });
+  }
+});
+
+adminRouter.post("/demo-login", async (req, res) => {
+  const configuredEmail = (process.env.ADMIN_DEMO_EMAIL ?? "admin-demo@demo.trackly.local").trim().toLowerCase();
+  if (!configuredEmail.includes("@")) {
+    return res.status(503).json({ code: "ADMIN_DEMO_NOT_CONFIGURED", message: "Admin demo login is not configured." });
+  }
+  const username = (process.env.ADMIN_DEMO_USERNAME ?? "AdminDemo").trim().slice(0, 30) || "AdminDemo";
+  const temporaryPassword = `admin-demo-${crypto.randomBytes(8).toString("hex")}!`;
+  try {
+    const existing = await findUserByEmail(configuredEmail);
+    const account = existing
+      ? await updateUser(existing.id, {
+        role: "admin",
+        isDemo: true,
+        passwordHash: hashPassword(temporaryPassword),
+      }) ?? existing
+      : await createUser({
+        username,
+        email: configuredEmail,
+        role: "admin",
+        isDemo: true,
+        passwordHash: hashPassword(temporaryPassword),
+      });
+
+    const token = signAuthToken(account.id, "admin");
+    res.status(200).json({
+      token,
+      user: toUserPayload(account),
+      mode: "admin_demo_session",
+    });
+  } catch (error) {
+    console.error("[admin] failed to bootstrap admin demo login", error);
+    res.status(500).json({ code: "INTERNAL_ERROR", message: "Could not start admin demo session." });
   }
 });
 

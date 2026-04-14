@@ -1,5 +1,16 @@
 import type { LibraryContextPayload } from "../../types/assistant";
-import { SUPPORTED_ACCENTS, SUPPORTED_DENSITY, SUPPORTED_THEMES, THEME_TEMPLATES } from "./themeCatalog";
+import {
+  SUPPORTED_ACCENTS,
+  SUPPORTED_BODY_FONTS,
+  SUPPORTED_DENSITY,
+  SUPPORTED_DISPLAY_FONTS,
+  SUPPORTED_DISPLAY_TEXT_STYLE,
+  SUPPORTED_PANEL_TINT,
+  SUPPORTED_SURFACE_STYLE,
+  SUPPORTED_TEXT_SCALE,
+  SUPPORTED_THEMES,
+  THEME_TEMPLATES,
+} from "./themeCatalog";
 
 function sanitizeValue(value: unknown): unknown {
   if (typeof value === "string") {
@@ -19,7 +30,7 @@ function buildThemeCatalog(): string {
     .map((template) => `- ${template.name} (${template.id}) => ${template.theme} + ${template.accent} + ${template.density} [${template.compatibility}]`)
     .join("\n");
 
-  return `Theme capabilities (authoritative runtime catalog):\n- base themes: ${SUPPORTED_THEMES.join(", ")}\n- accents: ${SUPPORTED_ACCENTS.join(", ")}\n- density: ${SUPPORTED_DENSITY.join(", ")}\n- templates:\n${templates}`;
+  return `Theme capabilities (authoritative runtime catalog):\n- base themes: ${SUPPORTED_THEMES.join(", ")}\n- accents: ${SUPPORTED_ACCENTS.join(", ")}\n- density: ${SUPPORTED_DENSITY.join(", ")}\n- panel tint: ${SUPPORTED_PANEL_TINT.join(", ")}\n- surface style: ${SUPPORTED_SURFACE_STYLE.join(", ")}\n- text scale: ${SUPPORTED_TEXT_SCALE.join(", ")}\n- display text style: ${SUPPORTED_DISPLAY_TEXT_STYLE.join(", ")}\n- body fonts: ${SUPPORTED_BODY_FONTS.slice(0, 8).join(", ")} ... (${SUPPORTED_BODY_FONTS.length} total)\n- display fonts: ${SUPPORTED_DISPLAY_FONTS.slice(0, 8).join(", ")} ... (${SUPPORTED_DISPLAY_FONTS.length} total)\n- templates:\n${templates}`;
 }
 
 export function buildSystemPrompt(context: LibraryContextPayload): string {
@@ -60,7 +71,7 @@ ADD_TO_QUEUE: {"trackIds":["<trackId>"],"source":"assistant"}
 CREATE_PLAYLIST: {"name":"<name>","description":"<optional>","trackIds":["<trackId>"],"dedupe":true}
 FAVORITE_TRACK: {"trackId":"<trackId>","source":"assistant"}
 SEARCH_AND_SUGGEST: {"query":"<search query>","reason":"<why>"}
-CHANGE_THEME: {"theme":"light"|"dark"|"system" (optional),"accent":"${SUPPORTED_ACCENTS.join('"|"')}" (optional),"density":"compact"|"default"|"comfortable" (optional),"template":"${THEME_TEMPLATES.map((t) => t.id).join('"|"')}" (optional)}
+CHANGE_THEME: {"theme":"light"|"dark"|"system" (optional),"accent":"${SUPPORTED_ACCENTS.join('"|"')}" (optional),"density":"compact"|"default"|"comfortable" (optional),"panelTint":"off"|"subtle"|"rich" (optional),"surfaceStyle":"flat"|"soft"|"elevated" (optional),"textScale":"sm"|"md"|"lg" (optional),"displayTextStyle":"${SUPPORTED_DISPLAY_TEXT_STYLE.join('"|"')}" (optional),"bodyFont":"${SUPPORTED_BODY_FONTS.join('"|"')}" (optional),"displayFont":"${SUPPORTED_DISPLAY_FONTS.join('"|"')}" (optional),"template":"${THEME_TEMPLATES.map((t) => t.id).join('"|"')}" (optional)}
 CHANGE_LANGUAGE: {"locale":"en"|"bg"}
 INSIGHT_REQUEST: {"period":"daily"|"weekly"|"monthly"} OR {"kind":"trends"}
 PLAYLIST_GENERATION: {"prompt":"<natural language request>"}

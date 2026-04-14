@@ -1,5 +1,17 @@
 import type { ActionIntent } from "../../types/assistant";
-import { THEME_TEMPLATE_BY_ID, isAccentName, isDensityName, isTemplateId, isThemeMode } from "./themeCatalog";
+import {
+  THEME_TEMPLATE_BY_ID,
+  isAccentName,
+  isBodyFontName,
+  isDensityName,
+  isDisplayFontName,
+  isDisplayTextStyleName,
+  isPanelTintName,
+  isSurfaceStyleName,
+  isTemplateId,
+  isTextScaleName,
+  isThemeMode,
+} from "./themeCatalog";
 
 const ACTION_TYPES = new Set<ActionIntent["type"]>([
   "ADD_TO_QUEUE",
@@ -39,14 +51,26 @@ function normalizeThemePayload(payload: Record<string, unknown>): Record<string,
   const theme = payload.theme === undefined ? template?.theme : (isThemeMode(payload.theme) ? payload.theme : null);
   const accent = payload.accent === undefined ? template?.accent : (isAccentName(payload.accent) ? payload.accent : null);
   const density = payload.density === undefined ? template?.density : (isDensityName(payload.density) ? payload.density : null);
+  const panelTint = payload.panelTint === undefined ? undefined : (isPanelTintName(payload.panelTint) ? payload.panelTint : null);
+  const surfaceStyle = payload.surfaceStyle === undefined ? undefined : (isSurfaceStyleName(payload.surfaceStyle) ? payload.surfaceStyle : null);
+  const textScale = payload.textScale === undefined ? undefined : (isTextScaleName(payload.textScale) ? payload.textScale : null);
+  const displayTextStyle = payload.displayTextStyle === undefined ? undefined : (isDisplayTextStyleName(payload.displayTextStyle) ? payload.displayTextStyle : null);
+  const bodyFont = payload.bodyFont === undefined ? undefined : (isBodyFontName(payload.bodyFont) ? payload.bodyFont : null);
+  const displayFont = payload.displayFont === undefined ? undefined : (isDisplayFontName(payload.displayFont) ? payload.displayFont : null);
 
-  if (theme === null || accent === null || density === null) return null;
-  if (!theme && !accent && !density && !template) return null;
+  if (theme === null || accent === null || density === null || panelTint === null || surfaceStyle === null || textScale === null || displayTextStyle === null || bodyFont === null || displayFont === null) return null;
+  if (!theme && !accent && !density && !panelTint && !surfaceStyle && !textScale && !displayTextStyle && !bodyFont && !displayFont && !template) return null;
 
   return {
     ...(theme ? { theme } : {}),
     ...(accent ? { accent } : {}),
     ...(density ? { density } : {}),
+    ...(panelTint ? { panelTint } : {}),
+    ...(surfaceStyle ? { surfaceStyle } : {}),
+    ...(textScale ? { textScale } : {}),
+    ...(displayTextStyle ? { displayTextStyle } : {}),
+    ...(bodyFont ? { bodyFont } : {}),
+    ...(displayFont ? { displayFont } : {}),
     ...(template ? { template: template.id } : {}),
   };
 }

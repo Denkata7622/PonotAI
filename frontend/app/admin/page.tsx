@@ -99,6 +99,14 @@ type AdminOverview = {
   ai: { assistantAvailable: boolean; mode: string; recentFailures: number; assistantRequests: number };
 };
 
+type AiObservability = {
+  generatedAt: string;
+  assistant: { available: boolean; mode: string; requestsTotal: number; requestsLast7d: number; failuresLast7d: number };
+  providerStatus: Record<string, boolean>;
+  recommendationSignals: { recognitionEventsLast7d: number; uniqueArtistsLast7d: number; themeActionSignalsLast7d: number };
+  notes: { themeActionTracking: string };
+};
+
 export default function AdminPage() {
   const { user, isLoading } = useUser();
   const [overview, setOverview] = useState<AdminOverview | null>(null);
@@ -116,6 +124,8 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [demoConfirmed, setDemoConfirmed] = useState(false);
+  const [isAdminDemoLoggingIn, setIsAdminDemoLoggingIn] = useState(false);
+  const [aiObservability, setAiObservability] = useState<AiObservability | null>(null);
 
   const formatUtcDateTime = (value: string) => {
     const parsed = new Date(value);
@@ -132,16 +142,19 @@ export default function AdminPage() {
     Promise.all([
       apiFetch("/api/admin/overview", { cache: "no-store" }),
       apiFetch("/api/admin/demo-personas", { cache: "no-store" }),
+      apiFetch("/api/admin/ai-observability", { cache: "no-store" }),
     ])
-      .then(async ([overviewResponse, personasResponse]) => {
-        if (!overviewResponse.ok || !personasResponse.ok) {
+      .then(async ([overviewResponse, personasResponse, aiObsResponse]) => {
+        if (!overviewResponse.ok || !personasResponse.ok || !aiObsResponse.ok) {
           setError("Admin access required.");
           return;
         }
         const overviewPayload = (await overviewResponse.json()) as AdminOverview;
         const personasPayload = (await personasResponse.json()) as { items: PersonaOption[] };
+        const aiObsPayload = (await aiObsResponse.json()) as AiObservability;
         setOverview(overviewPayload);
         setPersonas(personasPayload.items);
+        setAiObservability(aiObsPayload);
       })
       .catch(() => setError("Failed to load admin overview."));
   }, [isLoading, user]);
@@ -184,6 +197,29 @@ export default function AdminPage() {
     setActionMessage(`${label} copied to clipboard.`);
   }
 
+  async function loginAsAdminDemo() {
+    setIsAdminDemoLoggingIn(true);
+    setActionMessage(null);
+    try {
+      const response = await apiFetch("/api/admin/demo-login", {
+        method: "POST",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(payload?.message ?? "Could not start admin demo session.");
+      }
+      const payload = (await response.json()) as { token: string; user: { email: string } };
+      window.localStorage.setItem("ponotii_token", payload.token);
+      setActionMessage(`Logged in as admin demo user (${payload.user.email}). Redirecting…`);
+      window.location.assign("/admin");
+    } catch (error) {
+      setActionMessage((error as Error).message);
+    } finally {
+      setIsAdminDemoLoggingIn(false);
+    }
+  }
+
   if (error) return <section className="card p-4 sm:p-6">{error}</section>;
   if (!overview) return <section className="card p-4 sm:p-6">Loading admin dashboard...</section>;
 
@@ -195,6 +231,15 @@ export default function AdminPage() {
         <p className="mb-3 inline-flex rounded-full border border-[var(--border)] px-3 py-1 text-xs uppercase tracking-wide text-[var(--muted)]">Trackly control center</p>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Admin Operations Dashboard</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">Live operational visibility for users, recognition quality, demos, provider coverage, and subsystem health.</p>
+        <div className="mt-4">
+          <button
+            className="rounded-lg border border-[var(--accent-border)] bg-[var(--surface)] px-3 py-2 text-sm font-medium hover:bg-[var(--surface-2)] disabled:opacity-60"
+            onClick={loginAsAdminDemo}
+            disabled={isAdminDemoLoggingIn}
+          >
+            {isAdminDemoLoggingIn ? "Starting admin demo session…" : "Log in as admin demo"}
+          </button>
+        </div>
       </header>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -252,6 +297,24 @@ export default function AdminPage() {
         </section>
       </div>
       </section>
+
+      {aiObservability ? (
+        <section className="card p-5">
+          <h2 className="text-lg font-semibold">AI observability (concise)</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">Assistant readiness and recommendation telemetry grounded in stored activity.</p>
+          <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            <p>Assistant available: <strong>{aiObservability.assistant.available ? "yes" : "no"}</strong></p>
+            <p>Mode: <strong>{aiObservability.assistant.mode}</strong></p>
+            <p>Assistant requests (total): <strong>{aiObservability.assistant.requestsTotal}</strong></p>
+            <p>Assistant requests (7d): <strong>{aiObservability.assistant.requestsLast7d}</strong></p>
+            <p>Assistant failures (7d): <strong>{aiObservability.assistant.failuresLast7d}</strong></p>
+            <p>Recognition events (7d): <strong>{aiObservability.recommendationSignals.recognitionEventsLast7d}</strong></p>
+            <p>Unique artists seen (7d): <strong>{aiObservability.recommendationSignals.uniqueArtistsLast7d}</strong></p>
+            <p>Theme action signals (7d): <strong>{aiObservability.recommendationSignals.themeActionSignalsLast7d}</strong></p>
+          </div>
+          <p className="mt-3 text-xs text-[var(--muted)]">{aiObservability.notes.themeActionTracking}</p>
+        </section>
+      ) : null}
 
       <section className="card p-5">
         <h2 className="text-lg font-semibold">Content & infrastructure</h2>
