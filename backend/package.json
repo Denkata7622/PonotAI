@@ -5,19 +5,18 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "npm run prisma:generate && tsc -p tsconfig.json && node ./scripts/copy-runtime-assets.mjs",
+    "build": "tsc -p tsconfig.json && node ./scripts/copy-runtime-assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test tests/*.test.ts tests/**/*.test.ts",
     "test:smoke": "tsx --test tests/smoke/**/*.test.ts",
     "start": "node dist/server.js",
     "db:migrate:json": "tsx scripts/migrate-json-to-postgres.ts --execute",
     "db:migrate:json:emit": "tsx scripts/migrate-json-to-postgres.ts",
-    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
-    "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+    "prisma:generate": "npm exec -- prisma generate --schema prisma/schema.prisma",
+    "prisma:migrate:deploy": "npm exec -- prisma migrate deploy --schema prisma/schema.prisma",
     "db:migrate:json:dry-run": "tsx scripts/migrate-json-to-postgres.ts --dry-run",
-    "prestart": "npm run prisma:generate",
     "pretest": "npm run prisma:generate",
-    "postinstall": "npm run prisma:generate"
+    "prebuild": "npm run prisma:generate"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
@@ -29,7 +28,8 @@
     "music-metadata": "^10.6.5",
     "swagger-ui-express": "^5.0.1",
     "tesseract.js": "^5.1.1",
-    "@prisma/client": "^6.7.0"
+    "@prisma/client": "^6.7.0",
+    "prisma": "^6.7.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -37,8 +37,7 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^20.17.24",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.2",
-    "prisma": "^6.7.0"
+    "typescript": "^5.8.2"
   },
   "overrides": {
     "music-metadata": {
