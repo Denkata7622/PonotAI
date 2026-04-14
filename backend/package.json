@@ -12,24 +12,24 @@
     "start": "node dist/server.js",
     "db:migrate:json": "tsx scripts/migrate-json-to-postgres.ts --execute",
     "db:migrate:json:emit": "tsx scripts/migrate-json-to-postgres.ts",
+    "db:migrate:json:dry-run": "tsx scripts/migrate-json-to-postgres.ts --dry-run",
     "prisma:generate": "npm exec -- prisma generate --schema prisma/schema.prisma",
     "prisma:migrate:deploy": "npm exec -- prisma migrate deploy --schema prisma/schema.prisma",
-    "db:migrate:json:dry-run": "tsx scripts/migrate-json-to-postgres.ts --dry-run",
-    "pretest": "npm run prisma:generate",
-    "prebuild": "npm run prisma:generate"
+    "prebuild": "npm run prisma:generate",
+    "pretest": "npm run prisma:generate"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
+    "@prisma/client": "6.19.3",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "helmet": "^8.1.0",
     "js-yaml": "^4.1.0",
     "multer": "^1.4.5-lts.1",
     "music-metadata": "^10.6.5",
+    "prisma": "6.19.3",
     "swagger-ui-express": "^5.0.1",
-    "tesseract.js": "^5.1.1",
-    "@prisma/client": "^6.7.0",
-    "prisma": "^6.7.0"
+    "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
