@@ -136,7 +136,7 @@ export async function updatePlaylistNameController(req: Request, res: Response) 
     }
 
     if (playlist.userId !== userId) {
-      sendError(res, ErrorCatalog.FORBIDDEN);
+      sendError(res, ErrorCatalog.NOT_FOUND);
       return;
     }
 
@@ -213,7 +213,7 @@ export async function addSongToPlaylistController(req: Request, res: Response) {
     }
 
     if (playlist.userId !== userId) {
-      sendError(res, ErrorCatalog.FORBIDDEN);
+      sendError(res, ErrorCatalog.NOT_FOUND);
       return;
     }
 
@@ -273,7 +273,7 @@ export async function removeSongFromPlaylistController(req: Request, res: Respon
     }
 
     if (playlist.userId !== userId) {
-      sendError(res, ErrorCatalog.FORBIDDEN);
+      sendError(res, ErrorCatalog.NOT_FOUND);
       return;
     }
 
@@ -313,7 +313,7 @@ export async function deletePlaylistController(req: Request, res: Response) {
     }
 
     if (playlist.userId !== userId) {
-      sendError(res, ErrorCatalog.FORBIDDEN);
+      sendError(res, ErrorCatalog.NOT_FOUND);
       return;
     }
 

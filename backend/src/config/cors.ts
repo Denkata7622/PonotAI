@@ -7,22 +7,26 @@ function splitCsv(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-const defaultOrigins = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "https://ponotai-production.up.railway.app",
-];
-const envOrigins = [
-  ...splitCsv(process.env.ALLOWED_ORIGINS),
-  ...splitCsv(process.env.CORS_ORIGINS),
-  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []),
-  ...splitCsv(process.env.FRONTEND_URLS),
-];
+function resolveAllowedOrigins(): string[] {
+  const defaultOrigins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://ponotai-production.up.railway.app",
+  ];
+  const envOrigins = [
+    ...splitCsv(process.env.ALLOWED_ORIGINS),
+    ...splitCsv(process.env.CORS_ORIGINS),
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []),
+    ...splitCsv(process.env.FRONTEND_URLS),
+  ];
 
-const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
+  return Array.from(new Set([...defaultOrigins, ...envOrigins]));
+}
 
-export const corsOptions: CorsOptions = {
+export function getCorsOptions(): CorsOptions {
+  return {
   origin(origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) {
+    const allowedOrigins = resolveAllowedOrigins();
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
       return;
@@ -48,10 +52,13 @@ export const corsOptions: CorsOptions = {
     "x-trackly-preferences",
     "X-Trackly-Device",
     "x-trackly-device",
+    "X-Api-Key",
+    "x-api-key",
     "x-recognition-attempt-id",
     "X-Recognition-Attempt-Id",
     "x-requested-with",
   ],
   exposedHeaders: ["X-Response-Time", "X-Request-ID"],
   optionsSuccessStatus: 204,
-};
+  };
+}

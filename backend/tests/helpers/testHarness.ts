@@ -17,6 +17,8 @@ export async function startTestServer(): Promise<RunningTestServer> {
   process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
   process.env.SHAZAM_MOCK_RESPONSE = process.env.SHAZAM_MOCK_RESPONSE ?? "";
 
+  const { validateEnvironment } = await import("../../src/config/env.ts");
+  validateEnvironment();
   const { default: app } = await import("../../src/app.ts");
   const server = await new Promise<Server>((resolve) => {
     const instance = app.listen(0, () => resolve(instance));
