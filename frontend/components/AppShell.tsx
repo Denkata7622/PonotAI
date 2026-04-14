@@ -340,7 +340,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
 
           {/* User section */}
           {!isCollapsed && (
-            <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-xs">
+            <div className="mb-4 rounded-xl border border-[var(--panel-border)] bg-[var(--panel-surface)] p-3 text-xs">
               {isAuthenticated && user ? (
                 <SmartDropdown
                   isOpen={showUserMenu}
@@ -419,7 +419,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                 </Link>
               ) : (
                 <Link href="/auth">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-base">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--panel-border)] bg-[var(--panel-surface)] text-base">
                     <User className="w-4 h-4 text-[var(--muted)]" />
                   </div>
                 </Link>
@@ -443,7 +443,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
 
           {/* Recent history panel */}
           {!isCollapsed && pathname === "/" && (
-            <div className="mt-6 space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-xs">
+            <div className="mt-6 space-y-4 rounded-xl border border-[var(--panel-border)] bg-[var(--panel-surface)] p-3 text-xs">
               <h3 className="text-sm font-semibold text-[var(--text)]">
                 {t("sidebar_recent_history", language)}
               </h3>
@@ -464,7 +464,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
           )}
 
           {!isCollapsed && pathname === "/library" && (
-            <div className="mt-6 space-y-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-xs text-[var(--muted)]">
+            <div className="mt-6 space-y-2 rounded-xl border border-[var(--panel-border)] bg-[var(--panel-surface)] p-3 text-xs text-[var(--muted)]">
               <h3 className="text-sm font-semibold text-[var(--text)]">{t("library_playlists", language)}</h3>
               {playlists.map((playlist) => (
                 <p key={playlist.id}>• {playlist.name} ({playlist.songs.length})</p>
@@ -558,7 +558,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                         <p className="mb-2 inline-flex items-center gap-2 px-2 text-sm text-[var(--muted)]"><TrendingUp className="w-4 h-4 text-[var(--muted)]" />{t("search_suggested", language)}</p>
                         <div className="flex flex-wrap gap-2 px-2 pb-1">
                           {suggestedQueries.map((item) => (
-                            <button key={item} type="button" className="dropdown-item rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm" onMouseDown={(event) => { event.preventDefault(); executeSearchQuery(item); }}>{item}</button>
+                            <button key={item} type="button" className="dropdown-item rounded-full border border-[var(--panel-border)] bg-[var(--panel-surface)] px-3 py-1 text-sm" onMouseDown={(event) => { event.preventDefault(); executeSearchQuery(item); }}>{item}</button>
                           ))}
                         </div>
                       </div>
@@ -673,7 +673,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
             {mounted && currentTrack && (
               <button
                 type="button"
-                className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--text)]"
+                className="rounded-full border border-[var(--panel-border)] bg-[var(--panel-surface)] px-2 py-1 text-xs text-[var(--muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--text)]"
                 onClick={() => executeSearchQuery(currentTrack.artist)}
               >
                 <span className="inline-flex items-center gap-1"><Music className="w-3 h-3 text-[var(--muted)]" />{t("search_more_like_this", language)}</span>

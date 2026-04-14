@@ -110,7 +110,7 @@ export default function MusicAssistantPage({ mode = "page", sidebarOpen = false 
               <button type="button" className="selectable-card rounded-lg border border-[var(--border)] px-2 py-1.5 text-xs" onClick={() => setHistoryOpen((prev) => !prev)}>
                 {historyOpen ? <ChevronLeft className="inline h-3.5 w-3.5" /> : <ListPlus className="inline h-3.5 w-3.5" />} {language === "bg" ? "Разговори" : "Conversations"}
               </button>
-              {!historyOpen ? <select className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" value={activeConversationId ?? ""} onChange={(event) => openConversation(event.target.value)}>
+              {!historyOpen ? <select className="min-w-0 flex-1 rounded-lg border border-[var(--panel-border)] bg-[var(--panel-surface)] px-3 py-2 text-sm" value={activeConversationId ?? ""} onChange={(event) => openConversation(event.target.value)}>
                 {conversations.map((conversation) => <option key={conversation.id} value={conversation.id}>{conversation.title}</option>)}
               </select> : <span className="text-xs text-[var(--muted)]">{language === "bg" ? "Историята е отворена" : "History expanded"}</span>}
               {historyOpen ? <button type="button" className="selectable-card hidden rounded-lg border border-[var(--border)] px-2 py-1.5 text-xs md:inline-flex" onClick={() => setHistoryOpen(false)}><ChevronRight className="h-3.5 w-3.5" /></button> : null}

@@ -30,6 +30,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#7c5cff" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Audiowide&family=Archivo+Black&family=Black+Ops+One&family=Bungee&family=Bungee+Shade&family=Chakra+Petch:wght@400;500;600;700&family=DM+Sans:wght@400;500;700&family=Exo+2:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Kalam:wght@400;700&family=Manrope:wght@400;500;600;700;800&family=Marck+Script&family=Michroma&family=Monoton&family=Nunito:wght@400;500;600;700;800&family=Orbitron:wght@400;500;700;800&family=Outfit:wght@400;500;600;700;800&family=Oxanium:wght@400;500;600;700&family=Pirata+One&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&family=Rajdhani:wght@400;500;600;700&family=Russo+One&family=Sora:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=UnifrakturCook:wght@700&family=Yatra+One&display=swap"
+        />
       </head>
       <body className="text-[var(--text)]" suppressHydrationWarning>
         <script

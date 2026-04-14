@@ -46,6 +46,38 @@ const CONTROL_GROUPS = {
   displayTextStyle: [...DISPLAY_TEXT_STYLE_OPTIONS] as DisplayTextStyle[],
 } as const;
 
+const FONT_LABELS: Record<BodyFont | DisplayFont, string> = {
+  inter: "Inter",
+  system: "System UI",
+  poppins: "Poppins",
+  nunito: "Nunito",
+  "ibm-plex-sans": "IBM Plex Sans",
+  manrope: "Manrope",
+  "dm-sans": "DM Sans",
+  "plus-jakarta-sans": "Plus Jakarta Sans",
+  outfit: "Outfit",
+  sora: "Sora",
+  "space-grotesk": "Space Grotesk",
+  orbitron: "Orbitron",
+  audiowide: "Audiowide",
+  rajdhani: "Rajdhani",
+  "exo-2": "Exo 2",
+  oxanium: "Oxanium",
+  "chakra-petch": "Chakra Petch",
+  "russo-one": "Russo One",
+  michroma: "Michroma",
+  "pirata-one": "Pirata One",
+  "unifraktur-cook": "UnifrakturCook",
+  "yatra-one": "Yatra One",
+  kalam: "Kalam",
+  "marck-script": "Marck Script",
+  bungee: "Bungee",
+  "bungee-shade": "Bungee Shade",
+  monoton: "Monoton",
+  "black-ops-one": "Black Ops One",
+  "archivo-black": "Archivo Black",
+};
+
 export default function SettingsPage() {
   const [libraryData, setLibraryData] = useState<{ favorites: unknown[]; history: unknown[]; playlists: Playlist[] }>(() => ({ favorites: [], history: [], playlists: [] }));
   const [importSummary, setImportSummary] = useState<string | null>(null);
@@ -68,6 +100,7 @@ export default function SettingsPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const baseControlKeys = (Object.keys(CONTROL_GROUPS) as Array<keyof typeof CONTROL_GROUPS>).filter((key) => key !== "bodyFont" && key !== "displayFont");
   const controlSetters = {
     intensity: (value: AccentIntensity) => updateUiSetting("intensity", value),
     surfaceStyle: (value: SurfaceStyle) => updateUiSetting("surfaceStyle", value),
@@ -219,7 +252,9 @@ export default function SettingsPage() {
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 text-sm">
-          {Object.entries(CONTROL_GROUPS).map(([key, options]) => (
+          {baseControlKeys.map((key) => {
+            const options = CONTROL_GROUPS[key];
+            return (
             <div key={key} className="themed-surface-subtle settings-card p-3">
               <p className="mb-2 capitalize">{key.replace(/([A-Z])/g, " $1")}</p>
               <div className="flex flex-wrap gap-2">
@@ -233,7 +268,37 @@ export default function SettingsPage() {
                 })}
               </div>
             </div>
-          ))}
+          );
+          })}
+        </div>
+
+        <div className="grid gap-3 xl:grid-cols-2">
+          <div className="themed-panel-surface-subtle settings-card p-4 space-y-3">
+            <p className="text-sm font-semibold">Body font · UI text</p>
+            <p className="text-xs text-[var(--muted)]">Applies to buttons, cards, forms, tabs, dropdowns, and paragraphs.</p>
+            <div className="grid max-h-56 gap-2 overflow-auto pr-1">
+              {CONTROL_GROUPS.bodyFont.map((option) => {
+                const active = bodyFont === option;
+                return <button key={option} type="button" onClick={() => controlSetters.bodyFont(option)} className={`selectable-card rounded-[var(--radius-sm)] border px-3 py-2 text-left transition ${active ? "themed-selected" : "border-[var(--border)]"}`}>
+                  <p className="text-sm font-semibold">{FONT_LABELS[option]}</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]" style={{ fontFamily: option === "system" ? "system-ui, -apple-system, Segoe UI, sans-serif" : `var(--font-${option})` }}>EN + BG preview · Музиката е емоция</p>
+                </button>;
+              })}
+            </div>
+          </div>
+          <div className="themed-panel-surface-subtle settings-card p-4 space-y-3">
+            <p className="text-sm font-semibold">Display font · branded headings</p>
+            <p className="text-xs text-[var(--muted)]">Applies to display text surfaces and expressive titles.</p>
+            <div className="grid max-h-56 gap-2 overflow-auto pr-1">
+              {CONTROL_GROUPS.displayFont.map((option) => {
+                const active = displayFont === option;
+                return <button key={option} type="button" onClick={() => controlSetters.displayFont(option)} className={`selectable-card rounded-[var(--radius-sm)] border px-3 py-2 text-left transition ${active ? "themed-selected" : "border-[var(--border)]"}`}>
+                  <p className="text-sm font-semibold">{FONT_LABELS[option]}</p>
+                  <p className="display-styled type-display mt-1 text-xs" style={{ fontFamily: `var(--font-${option})` }}>Trackly Signal Matrix</p>
+                </button>;
+              })}
+            </div>
+          </div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">

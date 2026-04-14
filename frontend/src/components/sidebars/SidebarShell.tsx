@@ -71,7 +71,7 @@ export default function SidebarShell({ id, title, icon, active, open, stacked, o
       }}
     >
       <div className="flex h-full flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+        <header className="flex items-center justify-between border-b border-[var(--panel-border)] px-4 py-3">
           <div className="flex items-center gap-2 font-semibold">{icon}{title}</div>
           <div className="flex items-center gap-1">
             <button aria-label="Close panel" onClick={onClose} className="rounded-md p-2 hover:bg-[var(--accent-soft)] hover:text-[var(--text)]"><X className="h-4 w-4"/></button>
