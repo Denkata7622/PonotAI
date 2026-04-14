@@ -9,6 +9,16 @@ function normalize(baseUrl: string): string {
   return baseUrl.trim().replace(/\/$/, "");
 }
 
+function isLocalhostHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+function missingApiBaseUrlError(): Error {
+  return new Error(
+    "[api-config] NEXT_PUBLIC_API_BASE_URL (or NEXT_PUBLIC_API_URL) is required outside localhost. Refusing empty API base URL.",
+  );
+}
+
 export function getApiBaseUrl(): string {
   const envBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.NEXT_PUBLIC_API_URL?.trim();
   if (envBaseUrl) {
@@ -16,16 +26,15 @@ export function getApiBaseUrl(): string {
   }
 
   if (typeof window !== "undefined") {
-    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    if (isLocalhostHost(window.location.hostname)) {
       return normalize(DEFAULT_DEV_API_URL);
     }
-    console.error("[api-config] NEXT_PUBLIC_API_BASE_URL is required outside localhost.");
-    return "";
+    throw missingApiBaseUrlError();
   }
 
   if (process.env.NODE_ENV === "production") {
-    console.error("[api-config] NEXT_PUBLIC_API_BASE_URL is required for production server runtime.");
-    return "";
+    throw missingApiBaseUrlError();
   }
+
   return normalize(DEFAULT_DEV_API_URL);
 }

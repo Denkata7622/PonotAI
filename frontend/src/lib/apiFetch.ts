@@ -9,7 +9,8 @@ export function getToken(): string | null {
 
 export async function apiFetch(path: string, options?: RequestInit): Promise<Response> {
   const token = getToken(); // always read fresh — never stale
-  return fetch(`${getApiBaseUrl()}${path}`, {
+  const baseUrl = getApiBaseUrl();
+  return fetch(`${baseUrl}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",

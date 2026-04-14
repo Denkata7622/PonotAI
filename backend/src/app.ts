@@ -128,15 +128,17 @@ app.get("/health", (_req: Request, res: Response) => {
 app.get("/api/health", async (_req: Request, res: Response) => {
   await refreshPersistenceHealth();
   const persistence = getPersistenceHealth();
-  const db = persistence.connected ? "connected" : "disconnected";
   const ai = process.env.GEMINI_API_KEY?.trim() ? "ok" : "degraded";
-  const status = db === "connected" ? "ok" : "partial";
+  const status = persistence.connected ? "ok" : "partial";
   res.status(status === "ok" ? 200 : 503).json({
-    db,
-    ai,
     status,
-    mode: persistence.mode,
-    ...(persistence.lastError ? { error: persistence.lastError } : {}),
+    persistence: {
+      runtime: "file-json",
+      mode: persistence.mode,
+      status: persistence.connected ? "ready" : "error",
+      ...(persistence.lastError ? { error: persistence.lastError } : {}),
+    },
+    ai,
   });
 });
 
