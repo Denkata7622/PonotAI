@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readJsonDocument, writeJsonDocument } from "./persistence";
+import { prisma } from "./prisma";
 
 export type UserRecord = {
   id: string;
@@ -87,6 +87,14 @@ export type ApiKeyRecord = {
   revokedAt?: string;
 };
 
+export type PlaylistSongRecord = {
+  title: string;
+  artist: string;
+  album?: string;
+  coverUrl?: string;
+  videoId?: string;
+};
+
 export type PlaylistRecord = {
   id: string;
   userId: string;
@@ -94,14 +102,6 @@ export type PlaylistRecord = {
   songs: PlaylistSongRecord[];
   createdAt: string;
   updatedAt: string;
-};
-
-export type PlaylistSongRecord = {
-  title: string;
-  artist: string;
-  album?: string;
-  coverUrl?: string;
-  videoId?: string;
 };
 
 export type TrackTagRecord = {
@@ -112,19 +112,6 @@ export type TrackTagRecord = {
   mood: string;
   tempo: string;
   updatedAt: string;
-};
-
-type AppDb = {
-  users: UserRecord[];
-  searchHistory: SearchHistoryRecord[];
-  favorites: FavoriteRecord[];
-  sharedSongs: SharedSongRecord[];
-  playlists: PlaylistRecord[];
-  sharedPlaylists: SharedPlaylistRecord[];
-  sharedRecognitions: SharedRecognitionRecord[];
-  achievements: AchievementRecord[];
-  apiKeys: ApiKeyRecord[];
-  trackTags: TrackTagRecord[];
 };
 
 export type AdminOverviewSnapshot = {
@@ -165,234 +152,328 @@ function normalizeTrackKey(title: string, artist: string): string {
   return `${normalizePart(title)}|||${normalizePart(artist)}`;
 }
 
+const toIso = (value: Date | string) => (value instanceof Date ? value.toISOString() : new Date(value).toISOString());
 
-function createInitialDb(): AppDb {
+function mapUser(user: any): UserRecord {
   return {
-    users: [],
-    searchHistory: [],
-    favorites: [],
-    sharedSongs: [],
-    playlists: [],
-    sharedPlaylists: [],
-    sharedRecognitions: [],
-    achievements: [],
-    apiKeys: [],
-    trackTags: [],
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    passwordHash: user.passwordHash,
+    role: user.role,
+    isDemo: user.isDemo,
+    avatarBase64: user.avatarBase64 ?? undefined,
+    bio: user.bio ?? undefined,
+    createdAt: toIso(user.createdAt),
   };
 }
 
-async function readDb(): Promise<AppDb> {
-  try {
-    const parsed = await readJsonDocument<Partial<AppDb>>("appdb", "appdb.json", createInitialDb);
-    const db: AppDb = {
-      users: parsed.users ?? [],
-      playlists: parsed.playlists ?? [],
-      searchHistory: parsed.searchHistory ?? [],
-      favorites: parsed.favorites ?? [],
-      sharedSongs: parsed.sharedSongs ?? [],
-      sharedPlaylists: parsed.sharedPlaylists ?? [],
-      sharedRecognitions: parsed.sharedRecognitions ?? [],
-      achievements: parsed.achievements ?? [],
-      apiKeys: parsed.apiKeys ?? [],
-      trackTags: parsed.trackTags ?? [],
-    };
-    let hasPlaylistMigration = false;
-    db.playlists = db.playlists.map((playlist) => {
-      if ((playlist as Partial<PlaylistRecord>).userId) return playlist;
-      hasPlaylistMigration = true;
-      return { ...playlist, userId: "legacy" };
-    });
-    if (hasPlaylistMigration) {
-      await writeDb(db);
-    }
-    return db;
-  } catch {
-    const fresh = createInitialDb();
-    await writeDb(fresh);
-    return fresh;
-  }
-}
-async function writeDb(db: AppDb): Promise<void> {
-  await writeJsonDocument("appdb", "appdb.json", db);
-}
-let dbMutationQueue: Promise<void> = Promise.resolve();
-async function withDbMutation<T>(operation: () => Promise<T>): Promise<T> {
-  const previous = dbMutationQueue;
-  let release!: () => void;
-  dbMutationQueue = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await previous.catch(() => undefined);
-  try {
-    return await operation();
-  } finally {
-    release();
-  }
+function mapHistory(item: any): SearchHistoryRecord {
+  return {
+    id: item.id,
+    userId: item.userId,
+    method: item.method,
+    title: item.title ?? undefined,
+    artist: item.artist ?? undefined,
+    album: item.album ?? undefined,
+    coverUrl: item.coverUrl ?? undefined,
+    recognized: item.recognized,
+    createdAt: toIso(item.createdAt),
+  };
 }
 
-export async function listUsers() { return (await readDb()).users; }
+function mapFavorite(item: any): FavoriteRecord {
+  return {
+    id: item.id,
+    userId: item.userId,
+    title: item.title,
+    artist: item.artist,
+    album: item.album ?? undefined,
+    coverUrl: item.coverUrl ?? undefined,
+    savedAt: toIso(item.savedAt),
+  };
+}
+
+function mapPlaylist(item: any): PlaylistRecord {
+  return {
+    id: item.id,
+    userId: item.userId,
+    name: item.name,
+    songs: (item.tracks ?? [])
+      .sort((a: any, b: any) => a.position - b.position)
+      .map((track: any) => ({
+        title: track.title,
+        artist: track.artist,
+        album: track.album ?? undefined,
+        coverUrl: track.coverUrl ?? undefined,
+        videoId: track.videoId ?? undefined,
+      })),
+    createdAt: toIso(item.createdAt),
+    updatedAt: toIso(item.updatedAt),
+  };
+}
+
+function mapSharedSong(item: any): SharedSongRecord {
+  return {
+    id: item.id,
+    shareCode: item.shareCode,
+    userId: item.userId,
+    title: item.title,
+    artist: item.artist,
+    album: item.album ?? undefined,
+    coverUrl: item.coverUrl ?? undefined,
+    createdAt: toIso(item.createdAt),
+  };
+}
+
+function mapSharedPlaylist(item: any): SharedPlaylistRecord {
+  return {
+    id: item.id,
+    shareCode: item.shareCode,
+    userId: item.userId,
+    playlistId: item.playlistId,
+    title: item.title,
+    songCount: item.songCount,
+    createdAt: toIso(item.createdAt),
+  };
+}
+
+function mapSharedRecognition(item: any): SharedRecognitionRecord {
+  return {
+    id: item.id,
+    shareCode: item.shareCode,
+    userId: item.userId,
+    title: item.title,
+    artist: item.artist,
+    album: item.album ?? undefined,
+    coverUrl: item.coverUrl ?? undefined,
+    source: item.source ?? undefined,
+    createdAt: toIso(item.createdAt),
+  };
+}
+
+function mapAchievement(item: any): AchievementRecord {
+  return {
+    id: item.id,
+    userId: item.userId,
+    key: item.key,
+    unlockedAt: toIso(item.unlockedAt),
+    meta: (item.meta as Record<string, unknown> | null) ?? undefined,
+  };
+}
+
+function mapApiKey(item: any): ApiKeyRecord {
+  return {
+    id: item.id,
+    userId: item.userId,
+    label: item.label,
+    keyPrefix: item.keyPrefix,
+    keyHash: item.keyHash,
+    createdAt: toIso(item.createdAt),
+    lastUsedAt: item.lastUsedAt ? toIso(item.lastUsedAt) : undefined,
+    revokedAt: item.revokedAt ? toIso(item.revokedAt) : undefined,
+  };
+}
+
+export async function listUsers() {
+  return (await prisma.user.findMany({ orderBy: { createdAt: "asc" } })).map(mapUser);
+}
 
 export async function createUser(input: Omit<UserRecord, "id" | "createdAt">): Promise<UserRecord> {
-  const db = await readDb();
-  const user: UserRecord = { id: randomUUID(), createdAt: new Date().toISOString(), ...input };
-  db.users.push(user);
-  await writeDb(db);
-  return user;
+  const user = await prisma.user.create({
+    data: {
+      id: randomUUID(),
+      username: input.username,
+      email: input.email.trim().toLowerCase(),
+      passwordHash: input.passwordHash,
+      role: input.role ?? "user",
+      isDemo: Boolean(input.isDemo),
+      avatarBase64: input.avatarBase64,
+      bio: input.bio,
+    },
+  });
+  return mapUser(user);
 }
 
 export async function updateUser(id: string, updates: Partial<Omit<UserRecord, "id" | "createdAt">>): Promise<UserRecord | null> {
-  const db = await readDb();
-  const idx = db.users.findIndex((u) => u.id === id);
-  if (idx < 0) return null;
-  db.users[idx] = { ...db.users[idx], ...updates };
-  await writeDb(db);
-  return db.users[idx];
+  const found = await prisma.user.findUnique({ where: { id } });
+  if (!found) return null;
+  const user = await prisma.user.update({
+    where: { id },
+    data: {
+      username: updates.username,
+      email: updates.email ? updates.email.trim().toLowerCase() : undefined,
+      passwordHash: updates.passwordHash,
+      role: updates.role,
+      isDemo: updates.isDemo,
+      avatarBase64: updates.avatarBase64,
+      bio: updates.bio,
+    },
+  });
+  return mapUser(user);
 }
 
 export async function deleteUserCascade(id: string): Promise<void> {
-  const db = await readDb();
-  db.users = db.users.filter((u) => u.id !== id);
-  db.searchHistory = db.searchHistory.filter((h) => h.userId !== id);
-  db.favorites = db.favorites.filter((f) => f.userId !== id);
-  db.sharedSongs = db.sharedSongs.filter((s) => s.userId !== id);
-  db.playlists = db.playlists.filter((p) => p.userId !== id);
-  await writeDb(db);
+  await prisma.user.delete({ where: { id } });
 }
 
 export async function findUserByEmail(email: string) {
-  const normalizedEmail = email.trim().toLowerCase();
-  return (await readDb()).users.find((u) => u.email.trim().toLowerCase() === normalizedEmail) || null;
+  const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+  return user ? mapUser(user) : null;
 }
-export async function findUserByUsername(username: string) { return (await readDb()).users.find((u) => u.username === username) || null; }
-export async function findUserById(id: string) { return (await readDb()).users.find((u) => u.id === id) || null; }
+export async function findUserByUsername(username: string) {
+  const user = await prisma.user.findUnique({ where: { username } });
+  return user ? mapUser(user) : null;
+}
+export async function findUserById(id: string) {
+  const user = await prisma.user.findUnique({ where: { id } });
+  return user ? mapUser(user) : null;
+}
 
 export async function createUserHistory(
   item: Omit<SearchHistoryRecord, "id" | "createdAt">,
   options?: { allowDuplicates?: boolean; createdAt?: string },
 ): Promise<SearchHistoryRecord> {
-  return withDbMutation(async () => {
-    const db = await readDb();
+  return prisma.$transaction(async (tx: any) => {
     const targetKey = normalizeTrackKey(item.title ?? "", item.artist ?? "");
     if (!options?.allowDuplicates) {
-      db.searchHistory = (db.searchHistory ?? []).filter(
-        (entry) =>
-          entry.userId !== item.userId ||
-          normalizeTrackKey(entry.title ?? "", entry.artist ?? "") !== targetKey,
-      );
+      const existing = await tx.searchHistory.findMany({ where: { userId: item.userId } });
+      const duplicateIds = existing
+        .filter((entry: any) => normalizeTrackKey(entry.title ?? "", entry.artist ?? "") === targetKey)
+        .map((entry: any) => entry.id);
+      if (duplicateIds.length > 0) {
+        await tx.searchHistory.deleteMany({ where: { id: { in: duplicateIds } } });
+      }
     }
 
-    const rec: SearchHistoryRecord = { id: randomUUID(), createdAt: options?.createdAt ?? new Date().toISOString(), ...item };
-    db.searchHistory.unshift(rec);
-    await writeDb(db);
-    return rec;
+    const created = await tx.searchHistory.create({
+      data: {
+        id: randomUUID(),
+        userId: item.userId,
+        method: item.method,
+        title: item.title,
+        artist: item.artist,
+        album: item.album,
+        coverUrl: item.coverUrl,
+        recognized: item.recognized,
+        createdAt: options?.createdAt ? new Date(options.createdAt) : new Date(),
+      },
+    });
+
+    return mapHistory(created);
   });
 }
 
 export async function listUserHistory(userId: string): Promise<SearchHistoryRecord[]> {
-  return (await readDb()).searchHistory.filter((h) => h.userId === userId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  return (
+    await prisma.searchHistory.findMany({ where: { userId }, orderBy: { createdAt: "desc" } })
+  ).map(mapHistory);
 }
 
 export async function deleteUserHistoryItem(userId: string, id: string): Promise<"ok" | "forbidden" | "missing"> {
-  return withDbMutation(async () => {
-    const db = await readDb();
-    const item = db.searchHistory.find((h) => h.id === id);
-    if (!item) return "missing";
-    if (item.userId !== userId) return "forbidden";
-    db.searchHistory = db.searchHistory.filter((h) => h.id !== id);
-    await writeDb(db); // persist delete
-    return "ok";
-  });
+  const item = await prisma.searchHistory.findUnique({ where: { id } });
+  if (!item) return "missing";
+  if (item.userId !== userId) return "forbidden";
+  await prisma.searchHistory.delete({ where: { id } });
+  return "ok";
 }
 
 export async function clearUserHistory(userId: string): Promise<number> {
-  return withDbMutation(async () => {
-    const db = await readDb();
-    const before = db.searchHistory.length;
-    db.searchHistory = db.searchHistory.filter((h) => h.userId !== userId);
-    await writeDb(db); // persist delete
-    return before - db.searchHistory.length;
-  });
+  const result = await prisma.searchHistory.deleteMany({ where: { userId } });
+  return result.count;
 }
 
 export async function listFavorites(userId: string): Promise<FavoriteRecord[]> {
-  return (await readDb()).favorites.filter((f) => f.userId === userId).sort((a,b)=>b.savedAt.localeCompare(a.savedAt));
+  return (await prisma.favorite.findMany({ where: { userId }, orderBy: { savedAt: "desc" } })).map(mapFavorite);
 }
 
 export async function findDuplicateFavorite(userId: string, title: string, artist: string) {
   const targetKey = normalizeTrackKey(title, artist);
-  return (
-    (await readDb()).favorites.find(
-      (f) => f.userId === userId && normalizeTrackKey(f.title, f.artist) === targetKey,
-    ) || null
-  );
+  const favorites = await prisma.favorite.findMany({ where: { userId } });
+  const found = favorites.find((item: any) => normalizeTrackKey(item.title, item.artist) === targetKey);
+  return found ? mapFavorite(found) : null;
 }
 
 export async function createFavorite(item: Omit<FavoriteRecord, "id" | "savedAt">): Promise<FavoriteRecord> {
-  return withDbMutation(async () => {
-    const db = await readDb();
-    const rec: FavoriteRecord = { id: randomUUID(), savedAt: new Date().toISOString(), ...item };
-    db.favorites.unshift(rec);
-    await writeDb(db);
-    return rec;
+  const favorite = await prisma.favorite.create({
+    data: {
+      id: randomUUID(),
+      userId: item.userId,
+      title: item.title,
+      artist: item.artist,
+      album: item.album,
+      coverUrl: item.coverUrl,
+      savedAt: new Date(),
+    },
   });
+  return mapFavorite(favorite);
 }
 
-export async function deleteFavorite(userId: string, id: string): Promise<"ok"|"forbidden"|"missing"> {
-  return withDbMutation(async () => {
-    const db = await readDb();
-    const item = db.favorites.find((f)=>f.id===id);
-    if(!item) return "missing";
-    if(item.userId!==userId) return "forbidden";
-    db.favorites = db.favorites.filter((f)=>f.id!==id);
-    await writeDb(db); // persist delete
-    return "ok";
-  });
+export async function deleteFavorite(userId: string, id: string): Promise<"ok" | "forbidden" | "missing"> {
+  const item = await prisma.favorite.findUnique({ where: { id } });
+  if (!item) return "missing";
+  if (item.userId !== userId) return "forbidden";
+  await prisma.favorite.delete({ where: { id } });
+  return "ok";
 }
 
 export async function createSharedSong(item: Omit<SharedSongRecord, "id" | "createdAt" | "shareCode">): Promise<SharedSongRecord> {
-  const db = await readDb();
-  const rec: SharedSongRecord = { id: randomUUID(), shareCode: randomUUID().replace(/-/g, ""), createdAt: new Date().toISOString(), ...item };
-  db.sharedSongs.unshift(rec);
-  await writeDb(db);
-  return rec;
+  const record = await prisma.sharedSong.create({
+    data: {
+      id: randomUUID(),
+      shareCode: randomUUID().replace(/-/g, ""),
+      userId: item.userId,
+      title: item.title,
+      artist: item.artist,
+      album: item.album,
+      coverUrl: item.coverUrl,
+    },
+  });
+  return mapSharedSong(record);
 }
 
 export async function createSharedPlaylist(
   item: Omit<SharedPlaylistRecord, "id" | "createdAt" | "shareCode">,
 ): Promise<SharedPlaylistRecord> {
-  const db = await readDb();
-  const rec: SharedPlaylistRecord = {
-    id: randomUUID(),
-    shareCode: randomUUID().replace(/-/g, ""),
-    createdAt: new Date().toISOString(),
-    ...item,
-  };
-  db.sharedPlaylists.unshift(rec);
-  await writeDb(db);
-  return rec;
+  const record = await prisma.sharedPlaylist.create({
+    data: {
+      id: randomUUID(),
+      shareCode: randomUUID().replace(/-/g, ""),
+      userId: item.userId,
+      playlistId: item.playlistId,
+      title: item.title,
+      songCount: item.songCount,
+    },
+  });
+  return mapSharedPlaylist(record);
 }
 
 export async function findSharedPlaylistByCode(shareCode: string): Promise<SharedPlaylistRecord | null> {
-  return (await readDb()).sharedPlaylists.find((s) => s.shareCode === shareCode) || null;
+  const record = await prisma.sharedPlaylist.findUnique({ where: { shareCode } });
+  return record ? mapSharedPlaylist(record) : null;
 }
 
 export async function createSharedRecognition(
   item: Omit<SharedRecognitionRecord, "id" | "createdAt" | "shareCode">,
 ): Promise<SharedRecognitionRecord> {
-  const db = await readDb();
-  const rec: SharedRecognitionRecord = {
-    id: randomUUID(),
-    shareCode: randomUUID().replace(/-/g, ""),
-    createdAt: new Date().toISOString(),
-    ...item,
-  };
-  db.sharedRecognitions.unshift(rec);
-  await writeDb(db);
-  return rec;
+  const record = await prisma.sharedRecognition.create({
+    data: {
+      id: randomUUID(),
+      shareCode: randomUUID().replace(/-/g, ""),
+      userId: item.userId,
+      title: item.title,
+      artist: item.artist,
+      album: item.album,
+      coverUrl: item.coverUrl,
+      source: item.source,
+    },
+  });
+  return mapSharedRecognition(record);
 }
 
 export async function findSharedRecognitionByCode(shareCode: string): Promise<SharedRecognitionRecord | null> {
-  return (await readDb()).sharedRecognitions.find((s) => s.shareCode === shareCode) || null;
+  const record = await prisma.sharedRecognition.findUnique({ where: { shareCode } });
+  return record ? mapSharedRecognition(record) : null;
 }
 
 export async function listSharedAssets(limit = 100): Promise<{
@@ -400,72 +481,101 @@ export async function listSharedAssets(limit = 100): Promise<{
   playlists: SharedPlaylistRecord[];
   recognitions: SharedRecognitionRecord[];
 }> {
-  const db = await readDb();
+  const [songs, playlists, recognitions] = await Promise.all([
+    prisma.sharedSong.findMany({ orderBy: { createdAt: "desc" }, take: limit }),
+    prisma.sharedPlaylist.findMany({ orderBy: { createdAt: "desc" }, take: limit }),
+    prisma.sharedRecognition.findMany({ orderBy: { createdAt: "desc" }, take: limit }),
+  ]);
   return {
-    songs: db.sharedSongs.slice(0, limit),
-    playlists: db.sharedPlaylists.slice(0, limit),
-    recognitions: db.sharedRecognitions.slice(0, limit),
+    songs: songs.map(mapSharedSong),
+    playlists: playlists.map(mapSharedPlaylist),
+    recognitions: recognitions.map(mapSharedRecognition),
   };
 }
 
 export async function findSharedSongByCode(shareCode: string): Promise<SharedSongRecord | null> {
-  return (await readDb()).sharedSongs.find((s) => s.shareCode === shareCode) || null;
+  const record = await prisma.sharedSong.findUnique({ where: { shareCode } });
+  return record ? mapSharedSong(record) : null;
 }
 
 export async function getUserPlaylists(userId: string): Promise<PlaylistRecord[]> {
-  return (await readDb()).playlists.filter((p) => p.userId === userId).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+  const playlists = await prisma.playlist.findMany({
+    where: { userId },
+    include: { tracks: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  return playlists.map(mapPlaylist);
 }
 
 export async function createPlaylist(userId: string, name: string, id?: string, songs?: PlaylistSongRecord[]): Promise<PlaylistRecord> {
-  return withDbMutation(async () => {
-    const db = await readDb();
-    const now = new Date().toISOString();
-    const playlist: PlaylistRecord = {
+  const now = new Date();
+  const playlist = await prisma.playlist.create({
+    data: {
       id: id || randomUUID(),
       userId,
       name,
-      songs: songs || [],
       createdAt: now,
       updatedAt: now,
-    };
-    db.playlists.push(playlist);
-    await writeDb(db);
-    return playlist;
+      tracks: {
+        create: (songs ?? []).map((song, index) => ({
+          id: randomUUID(),
+          title: song.title,
+          artist: song.artist,
+          album: song.album,
+          coverUrl: song.coverUrl,
+          videoId: song.videoId,
+          position: index,
+        })),
+      },
+    },
+    include: { tracks: true },
   });
+  return mapPlaylist(playlist);
 }
 
 export async function updatePlaylistName(playlistId: string, name: string): Promise<PlaylistRecord | null> {
-  const db = await readDb();
-  const playlist = db.playlists.find((p) => p.id === playlistId);
-  if (!playlist) return null;
-  
-  playlist.name = name;
-  playlist.updatedAt = new Date().toISOString();
-  await writeDb(db);
-  return playlist;
+  const found = await prisma.playlist.findUnique({ where: { id: playlistId } });
+  if (!found) return null;
+  const playlist = await prisma.playlist.update({
+    where: { id: playlistId },
+    data: { name, updatedAt: new Date() },
+    include: { tracks: true },
+  });
+  return mapPlaylist(playlist);
 }
 
 export async function addSongToPlaylist(
   playlistId: string,
   song: Omit<PlaylistSongRecord, "addedAt">
 ): Promise<PlaylistRecord | null> {
-  return withDbMutation(async () => {
-    const db = await readDb();
-    const playlist = db.playlists.find((p) => p.id === playlistId);
+  return prisma.$transaction(async (tx: any) => {
+    const playlist = await tx.playlist.findUnique({
+      where: { id: playlistId },
+      include: { tracks: { orderBy: { position: "asc" } } },
+    });
     if (!playlist) return null;
-    const exists = playlist.songs.some((s) => s.title === song.title && s.artist === song.artist);
-    if (exists) return playlist;
-    const songRecord: PlaylistSongRecord = {
-      title: song.title,
-      artist: song.artist,
-      album: song.album,
-      coverUrl: song.coverUrl,
-      videoId: song.videoId,
-    };
-    playlist.songs.push(songRecord);
-    playlist.updatedAt = new Date().toISOString();
-    await writeDb(db);
-    return playlist;
+    const exists = playlist.tracks.some((s: any) => s.title === song.title && s.artist === song.artist);
+    if (!exists) {
+      await tx.playlistTrack.create({
+        data: {
+          id: randomUUID(),
+          playlistId,
+          title: song.title,
+          artist: song.artist,
+          album: song.album,
+          coverUrl: song.coverUrl,
+          videoId: song.videoId,
+          position: playlist.tracks.length,
+        },
+      });
+      await tx.playlist.update({ where: { id: playlistId }, data: { updatedAt: new Date() } });
+    }
+
+    const next = await tx.playlist.findUnique({
+      where: { id: playlistId },
+      include: { tracks: true },
+    });
+    return next ? mapPlaylist(next) : null;
   });
 }
 
@@ -474,39 +584,43 @@ export async function removeSongFromPlaylist(
   title: string,
   artist: string
 ): Promise<PlaylistRecord | null> {
-  return withDbMutation(async () => {
-    const db = await readDb();
-    const playlist = db.playlists.find((p) => p.id === playlistId);
+  return prisma.$transaction(async (tx: any) => {
+    const playlist = await tx.playlist.findUnique({
+      where: { id: playlistId },
+      include: { tracks: { orderBy: { position: "asc" } } },
+    });
     if (!playlist) return null;
-    const initialLength = playlist.songs.length;
-    playlist.songs = playlist.songs.filter((s) => !(s.title === title && s.artist === artist));
-    if (playlist.songs.length < initialLength) {
-      playlist.updatedAt = new Date().toISOString();
-      await writeDb(db); // persist remove song
+    const target = playlist.tracks.find((track: any) => track.title === title && track.artist === artist);
+    if (!target) return mapPlaylist(playlist);
+
+    await tx.playlistTrack.delete({ where: { id: target.id } });
+    const remaining = playlist.tracks.filter((track: any) => track.id !== target.id);
+    for (const [index, track] of remaining.entries()) {
+      if (track.position !== index) {
+        await tx.playlistTrack.update({ where: { id: track.id }, data: { position: index } });
+      }
     }
-    return playlist;
+    await tx.playlist.update({ where: { id: playlistId }, data: { updatedAt: new Date() } });
+
+    const next = await tx.playlist.findUnique({ where: { id: playlistId }, include: { tracks: true } });
+    return next ? mapPlaylist(next) : null;
   });
 }
 
 export async function deletePlaylist(playlistId: string): Promise<"ok" | "missing"> {
-  return withDbMutation(async () => {
-    const db = await readDb();
-    const index = db.playlists.findIndex((p) => p.id === playlistId);
-    if (index < 0) return "missing";
-    db.playlists.splice(index, 1);
-    await writeDb(db); // persist delete
-    return "ok";
-  });
+  const found = await prisma.playlist.findUnique({ where: { id: playlistId } });
+  if (!found) return "missing";
+  await prisma.playlist.delete({ where: { id: playlistId } });
+  return "ok";
 }
 
 export async function findPlaylistById(playlistId: string): Promise<PlaylistRecord | null> {
-  return (await readDb()).playlists.find((p) => p.id === playlistId) || null;
+  const playlist = await prisma.playlist.findUnique({ where: { id: playlistId }, include: { tracks: true } });
+  return playlist ? mapPlaylist(playlist) : null;
 }
 
 export async function clearUserPlaylists(userId: string): Promise<void> {
-  const db = await readDb();
-  db.playlists = (db.playlists ?? []).filter((p) => p.userId !== userId);
-  await writeDb(db);
+  await prisma.playlist.deleteMany({ where: { userId } });
 }
 
 export async function syncUserPlaylists(
@@ -514,47 +628,73 @@ export async function syncUserPlaylists(
   incomingPlaylists: Array<{ id?: string; name: string; songs?: PlaylistSongRecord[] }>,
   options?: { mode?: "merge" | "replace"; allowEmptyReplace?: boolean },
 ): Promise<PlaylistRecord[]> {
-  const db = await readDb();
   const mode = options?.mode ?? "merge";
-  const existingForUser = db.playlists.filter((item) => item.userId === userId);
-  const hasExistingData = existingForUser.length > 0;
-  const normalized = incomingPlaylists.map((playlist) => ({
-    id: playlist.id?.trim() || randomUUID(),
-    userId,
-    name: playlist.name.trim(),
-    songs: Array.isArray(playlist.songs) ? playlist.songs : [],
-    updatedAt: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
-  }));
-
-  if (mode === "replace") {
-    if (normalized.length === 0 && hasExistingData && options?.allowEmptyReplace !== true) {
-      throw new Error("SAFE_GUARD_EMPTY_PLAYLIST_REPLACE");
-    }
-    db.playlists = db.playlists.filter((item) => item.userId !== userId);
-    db.playlists.push(...normalized);
-    await writeDb(db);
-    return db.playlists.filter((item) => item.userId === userId);
+  const existing = await prisma.playlist.findMany({ where: { userId } });
+  if (mode === "replace" && incomingPlaylists.length === 0 && existing.length > 0 && options?.allowEmptyReplace !== true) {
+    throw new Error("SAFE_GUARD_EMPTY_PLAYLIST_REPLACE");
   }
 
-  const existingById = new Map(existingForUser.map((item) => [item.id, item]));
-  for (const playlist of normalized) {
-    const found = existingById.get(playlist.id);
-    if (!found) {
-      db.playlists.push(playlist);
-      continue;
+  await prisma.$transaction(async (tx: any) => {
+    if (mode === "replace") {
+      await tx.playlist.deleteMany({ where: { userId } });
     }
-    found.name = playlist.name;
-    found.songs = playlist.songs;
-    found.updatedAt = new Date().toISOString();
-  }
 
-  await writeDb(db);
-  return db.playlists.filter((item) => item.userId === userId);
+    const existingById = new Map<string, any>((await tx.playlist.findMany({ where: { userId } })).map((item: any) => [item.id, item] as const));
+
+    for (const incoming of incomingPlaylists) {
+      const playlistId = incoming.id?.trim() || randomUUID();
+      const songList = Array.isArray(incoming.songs) ? incoming.songs : [];
+      const found = existingById.get(playlistId);
+
+      if (!found) {
+        await tx.playlist.create({
+          data: {
+            id: playlistId,
+            userId,
+            name: incoming.name.trim(),
+            tracks: {
+              create: songList.map((song, index) => ({
+                id: randomUUID(),
+                title: song.title,
+                artist: song.artist,
+                album: song.album,
+                coverUrl: song.coverUrl,
+                videoId: song.videoId,
+                position: index,
+              })),
+            },
+          },
+        });
+        continue;
+      }
+
+      await tx.playlist.update({
+        where: { id: found.id },
+        data: { name: incoming.name.trim(), updatedAt: new Date() },
+      });
+      await tx.playlistTrack.deleteMany({ where: { playlistId: found.id } });
+      if (songList.length > 0) {
+        await tx.playlistTrack.createMany({
+          data: songList.map((song, index) => ({
+            id: randomUUID(),
+            playlistId: found.id,
+            title: song.title,
+            artist: song.artist,
+            album: song.album,
+            coverUrl: song.coverUrl,
+            videoId: song.videoId,
+            position: index,
+          })),
+        });
+      }
+    }
+  });
+
+  return getUserPlaylists(userId);
 }
 
 export async function listAchievements(userId: string): Promise<AchievementRecord[]> {
-  return (await readDb()).achievements.filter((a) => a.userId === userId).sort((a, b) => b.unlockedAt.localeCompare(a.unlockedAt));
+  return (await prisma.achievement.findMany({ where: { userId }, orderBy: { unlockedAt: "desc" } })).map(mapAchievement);
 }
 
 export async function unlockAchievement(
@@ -562,60 +702,62 @@ export async function unlockAchievement(
   key: string,
   meta?: Record<string, unknown>,
 ): Promise<AchievementRecord | null> {
-  const db = await readDb();
-  const existing = db.achievements.find((achievement) => achievement.userId === userId && achievement.key === key);
+  const existing = await prisma.achievement.findFirst({ where: { userId, key } });
   if (existing) return null;
-  const rec: AchievementRecord = {
-    id: randomUUID(),
-    userId,
-    key,
-    unlockedAt: new Date().toISOString(),
-    meta,
-  };
-  db.achievements.unshift(rec);
-  await writeDb(db);
-  return rec;
+  const record = await prisma.achievement.create({
+    data: {
+      id: randomUUID(),
+      userId,
+      key,
+      meta: (meta as object | undefined) ?? undefined,
+    },
+  });
+  return mapAchievement(record);
 }
 
 export async function createApiKey(record: Omit<ApiKeyRecord, "id" | "createdAt" | "lastUsedAt" | "revokedAt">): Promise<ApiKeyRecord> {
-  const db = await readDb();
-  const apiKey: ApiKeyRecord = {
-    id: randomUUID(),
-    createdAt: new Date().toISOString(),
-    ...record,
-  };
-  db.apiKeys.unshift(apiKey);
-  await writeDb(db);
-  return apiKey;
+  const apiKey = await prisma.apiKey.create({
+    data: {
+      id: randomUUID(),
+      userId: record.userId,
+      label: record.label,
+      keyPrefix: record.keyPrefix,
+      keyHash: record.keyHash,
+    },
+  });
+  return mapApiKey(apiKey);
 }
 
 export async function listApiKeysByUser(userId: string): Promise<ApiKeyRecord[]> {
-  return (await readDb()).apiKeys.filter((key) => key.userId === userId);
+  return (await prisma.apiKey.findMany({ where: { userId } })).map(mapApiKey);
 }
 
 export async function findApiKeyByPrefix(prefix: string): Promise<ApiKeyRecord | null> {
-  return (await readDb()).apiKeys.find((key) => key.keyPrefix === prefix && !key.revokedAt) || null;
+  const key = await prisma.apiKey.findFirst({ where: { keyPrefix: prefix, revokedAt: null } });
+  return key ? mapApiKey(key) : null;
 }
 
 export async function touchApiKey(id: string): Promise<void> {
-  const db = await readDb();
-  const found = db.apiKeys.find((key) => key.id === id);
-  if (!found) return;
-  found.lastUsedAt = new Date().toISOString();
-  await writeDb(db);
+  await prisma.apiKey.update({ where: { id }, data: { lastUsedAt: new Date() } }).catch(() => undefined);
 }
 
 export async function revokeApiKey(userId: string, id: string): Promise<boolean> {
-  const db = await readDb();
-  const found = db.apiKeys.find((key) => key.id === id && key.userId === userId);
-  if (!found || found.revokedAt) return false;
-  found.revokedAt = new Date().toISOString();
-  await writeDb(db);
+  const found = await prisma.apiKey.findUnique({ where: { id } });
+  if (!found || found.userId !== userId || found.revokedAt) return false;
+  await prisma.apiKey.update({ where: { id }, data: { revokedAt: new Date() } });
   return true;
 }
 
 export async function getTrackTags(userId: string): Promise<TrackTagRecord[]> {
-  return (await readDb()).trackTags.filter((item) => item.userId === userId);
+  return (await prisma.trackTag.findMany({ where: { userId }, orderBy: { updatedAt: "desc" } })).map((item: any) => ({
+    id: item.id,
+    userId: item.userId,
+    trackKey: item.trackKey,
+    genre: item.genre,
+    mood: item.mood,
+    tempo: item.tempo,
+    updatedAt: toIso(item.updatedAt),
+  }));
 }
 
 export async function setTrackTags(
@@ -625,48 +767,59 @@ export async function setTrackTags(
   if (tags.length === 0) {
     throw new Error("SAFE_GUARD_EMPTY_TAG_REPLACE");
   }
-  const db = await readDb();
-  db.trackTags = (db.trackTags ?? []).filter((item) => item.userId !== userId);
-  const now = new Date().toISOString();
-  const records = tags.map((tag) => ({
-    id: randomUUID(),
-    userId,
-    trackKey: tag.trackKey,
-    genre: tag.genre,
-    mood: tag.mood,
-    tempo: tag.tempo,
-    updatedAt: now,
-  }));
-  db.trackTags.unshift(...records);
-  await writeDb(db);
-  return records;
+  await prisma.$transaction(async (tx: any) => {
+    await tx.trackTag.deleteMany({ where: { userId } });
+    await tx.trackTag.createMany({
+      data: tags.map((tag) => ({
+        id: randomUUID(),
+        userId,
+        trackKey: tag.trackKey,
+        genre: tag.genre,
+        mood: tag.mood,
+        tempo: tag.tempo,
+        updatedAt: new Date(),
+      })),
+    });
+  });
+  return getTrackTags(userId);
 }
 
 export async function getAdminOverviewSnapshot(): Promise<AdminOverviewSnapshot> {
-  const db = await readDb();
+  const [users, playlists, searchHistory, favorites, sharedSongs, sharedPlaylists, sharedRecognitions, achievements, apiKeys] = await Promise.all([
+    listUsers(),
+    prisma.playlist.findMany({ include: { tracks: true } }).then((items: any[]) => items.map(mapPlaylist)),
+    prisma.searchHistory.findMany().then((items: any[]) => items.map(mapHistory)),
+    prisma.favorite.findMany().then((items: any[]) => items.map(mapFavorite)),
+    prisma.sharedSong.findMany().then((items: any[]) => items.map(mapSharedSong)),
+    prisma.sharedPlaylist.findMany().then((items: any[]) => items.map(mapSharedPlaylist)),
+    prisma.sharedRecognition.findMany().then((items: any[]) => items.map(mapSharedRecognition)),
+    prisma.achievement.findMany().then((items: any[]) => items.map(mapAchievement)),
+    prisma.apiKey.findMany().then((items: any[]) => items.map(mapApiKey)),
+  ]);
+
   return {
     totals: {
-      users: db.users.length,
-      playlists: db.playlists.length,
-      sharedSongs: db.sharedSongs.length,
-      sharedPlaylists: db.sharedPlaylists.length,
-      sharedRecognitions: db.sharedRecognitions.length,
-      sharesTotal: db.sharedSongs.length + db.sharedPlaylists.length + db.sharedRecognitions.length,
-      recognitions: db.searchHistory.filter((item) => item.recognized).length,
-      favorites: db.favorites.length,
-      historyEntries: db.searchHistory.length,
-      demoAccounts: db.users.filter((user) => Boolean(user.isDemo)).length,
-      achievementsAwarded: db.achievements.length,
-      apiKeys: db.apiKeys.length,
+      users: users.length,
+      playlists: playlists.length,
+      sharedSongs: sharedSongs.length,
+      sharedPlaylists: sharedPlaylists.length,
+      sharedRecognitions: sharedRecognitions.length,
+      sharesTotal: sharedSongs.length + sharedPlaylists.length + sharedRecognitions.length,
+      recognitions: searchHistory.filter((item: any) => item.recognized).length,
+      favorites: favorites.length,
+      historyEntries: searchHistory.length,
+      demoAccounts: users.filter((user: any) => Boolean(user.isDemo)).length,
+      achievementsAwarded: achievements.length,
+      apiKeys: apiKeys.length,
     },
-    users: db.users,
-    playlists: db.playlists,
-    searchHistory: db.searchHistory,
-    favorites: db.favorites,
-    sharedSongs: db.sharedSongs,
-    sharedPlaylists: db.sharedPlaylists,
-    sharedRecognitions: db.sharedRecognitions,
-    achievements: db.achievements,
-    apiKeys: db.apiKeys,
+    users,
+    playlists,
+    searchHistory,
+    favorites,
+    sharedSongs,
+    sharedPlaylists,
+    sharedRecognitions,
+    achievements,
+    apiKeys,
   };
 }

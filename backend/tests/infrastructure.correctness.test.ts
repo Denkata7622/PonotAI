@@ -2,22 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer } from "./helpers/testHarness.ts";
 
-test("persistence mode remains file-backed even when DATABASE_URL is configured", async () => {
+test("persistence mode defaults to postgres and only switches in explicit legacy mode", async () => {
   const persistenceModule = await import("../src/db/persistence.ts");
-  const previous = process.env.DATABASE_URL;
+  const previousMode = process.env.PERSISTENCE_MODE;
 
   try {
-    delete process.env.DATABASE_URL;
-    assert.equal(persistenceModule.getPersistenceMode(), "file");
+    delete process.env.PERSISTENCE_MODE;
+    assert.equal(persistenceModule.getPersistenceMode(), "postgres");
 
-    process.env.DATABASE_URL = "postgresql://localhost:5432/trackly";
-    assert.equal(persistenceModule.getPersistenceMode(), "file");
+    process.env.PERSISTENCE_MODE = "file-legacy";
+    assert.equal(persistenceModule.getPersistenceMode(), "file-legacy");
   } finally {
-    if (previous === undefined) {
-      delete process.env.DATABASE_URL;
-    } else {
-      process.env.DATABASE_URL = previous;
-    }
+    if (previousMode === undefined) delete process.env.PERSISTENCE_MODE;
+    else process.env.PERSISTENCE_MODE = previousMode;
   }
 });
 
@@ -93,29 +90,30 @@ test("production CORS excludes localhost defaults unless explicitly configured",
   }
 });
 
-test("/api/health reports file-backed runtime persistence even when DATABASE_URL is unreachable", async () => {
+test("/api/health reports degraded status when postgres is unavailable", async () => {
   const previousDatabaseUrl = process.env.DATABASE_URL;
+  const previousMode = process.env.PERSISTENCE_MODE;
   process.env.DATABASE_URL = "postgresql://127.0.0.1:1/trackly";
+  process.env.PERSISTENCE_MODE = "postgres";
 
   const running = await startTestServer();
 
   try {
     const response = await fetch(`${running.baseUrl}/api/health`);
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 503);
     const payload = (await response.json()) as {
       status: string;
       persistence: { runtime: string; status: string; mode: string };
     };
-    assert.equal(payload.status, "ok");
-    assert.equal(payload.persistence.runtime, "file-json");
-    assert.equal(payload.persistence.status, "ready");
-    assert.equal(payload.persistence.mode, "file");
+    assert.equal(payload.status, "partial");
+    assert.equal(payload.persistence.runtime, "postgresql");
+    assert.equal(payload.persistence.status, "error");
+    assert.equal(payload.persistence.mode, "postgres");
   } finally {
     await running.close();
-    if (previousDatabaseUrl === undefined) {
-      delete process.env.DATABASE_URL;
-    } else {
-      process.env.DATABASE_URL = previousDatabaseUrl;
-    }
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+    if (previousMode === undefined) delete process.env.PERSISTENCE_MODE;
+    else process.env.PERSISTENCE_MODE = previousMode;
   }
 });

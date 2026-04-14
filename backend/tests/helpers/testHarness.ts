@@ -14,6 +14,7 @@ export async function startTestServer(): Promise<RunningTestServer> {
   process.env.NODE_ENV = "test";
   process.env.JWT_SECRET = "test-secret";
   process.env.PONOTAI_DATA_DIR = tempDataDir;
+  process.env.PERSISTENCE_MODE = process.env.PERSISTENCE_MODE ?? "file-legacy";
   process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
   process.env.SHAZAM_MOCK_RESPONSE = process.env.SHAZAM_MOCK_RESPONSE ?? "";
 
@@ -35,6 +36,7 @@ export async function startTestServer(): Promise<RunningTestServer> {
       });
       await rm(tempDataDir, { recursive: true, force: true });
       delete process.env.PONOTAI_DATA_DIR;
+      if (process.env.PERSISTENCE_MODE === "file-legacy") delete process.env.PERSISTENCE_MODE;
       if (process.env.GEMINI_API_KEY === "") delete process.env.GEMINI_API_KEY;
       if (process.env.SHAZAM_MOCK_RESPONSE === "") delete process.env.SHAZAM_MOCK_RESPONSE;
       delete process.env.JWT_SECRET;
