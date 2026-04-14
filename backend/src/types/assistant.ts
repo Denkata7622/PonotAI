@@ -88,6 +88,25 @@ export interface LibraryContextPayload {
       avgTracksPerPlaylist: number;
       topPlaylistNames: string[];
     };
+    tasteShifts?: {
+      shortTermWindowDays: number;
+      longTermWindowDays: number;
+      shortTermTopArtists: LibraryStatItem[];
+      longTermTopArtists: LibraryStatItem[];
+      artistShiftSummary: string;
+    };
+    listeningWindows?: {
+      morning: number;
+      afternoon: number;
+      evening: number;
+      night: number;
+      strongestWindow: "morning" | "afternoon" | "evening" | "night" | "none";
+      strongestWindowShare: number;
+    };
+    favoritesBehavior?: {
+      underusedFavorites: Array<{ trackId: string; title: string; artist: string; daysSinceLastPlay: number }>;
+      underusedCount: number;
+    };
   };
   grounding?: {
     dataRichness: "sparse" | "growing" | "rich";

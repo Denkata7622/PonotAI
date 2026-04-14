@@ -129,3 +129,44 @@ test("admin demo generation supports advanced options and requires explicit conf
     delete process.env.ADMIN_EMAIL;
   }
 });
+
+test("admin can start one-click admin demo login session", async () => {
+  process.env.ADMIN_EMAIL = "owner+instant@test.dev";
+  const running = await startTestServer();
+
+  try {
+    const registerResponse = await register(running.baseUrl, "instant_admin", "owner+instant@test.dev");
+    assert.equal(registerResponse.status, 201);
+    const registerBody = (await registerResponse.json()) as { token: string };
+
+    const demoLogin = await fetch(`${running.baseUrl}/api/admin/demo-login`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${registerBody.token}` },
+    });
+    assert.equal(demoLogin.status, 200);
+    const payload = (await demoLogin.json()) as { token: string; user: { role: string; isDemo: boolean; email: string } };
+    assert.equal(typeof payload.token, "string");
+    assert.equal(payload.user.role, "admin");
+    assert.equal(payload.user.isDemo, true);
+    assert.match(payload.user.email, /admin-demo|demo\.trackly/i);
+  } finally {
+    await running.close();
+    delete process.env.ADMIN_EMAIL;
+  }
+});
+
+test("non-admin cannot start admin demo login session", async () => {
+  const running = await startTestServer();
+  try {
+    const registerResponse = await register(running.baseUrl, "plain_user", "plain-user@test.dev");
+    assert.equal(registerResponse.status, 201);
+    const registerBody = (await registerResponse.json()) as { token: string };
+    const demoLogin = await fetch(`${running.baseUrl}/api/admin/demo-login`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${registerBody.token}` },
+    });
+    assert.equal(demoLogin.status, 403);
+  } finally {
+    await running.close();
+  }
+});

@@ -63,6 +63,21 @@ function isWithinDays(value: string | undefined, days: number): boolean {
   return (Date.now() - timestamp) <= days * 24 * 60 * 60 * 1000;
 }
 
+function daysSince(value: string | undefined): number | null {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) return null;
+  return Math.max(0, Math.floor((Date.now() - timestamp) / (1000 * 60 * 60 * 24)));
+}
+
+function getUtcHourBucket(createdAt?: string): "morning" | "afternoon" | "evening" | "night" {
+  const hour = new Date(createdAt ?? "").getUTCHours();
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 17) return "afternoon";
+  if (hour >= 17 && hour < 22) return "evening";
+  return "night";
+}
+
 function trimToBudget(payload: LibraryContextPayload): LibraryContextPayload {
   const clone: LibraryContextPayload = JSON.parse(JSON.stringify(payload));
   const exceeds = () => JSON.stringify(clone).length > MAX_CHARS;
@@ -199,6 +214,64 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
       .filter((artist): artist is string => Boolean(artist && !knownArtistsBeforeRecent.has(artist))),
   ).size;
   const replayedTracksLast7Days = [...repeatedTrackCount.values()].filter((count) => count >= 2).length;
+  const shortTermWindowDays = 7;
+  const longTermWindowDays = 45;
+  const shortTermArtistCounts = new Map<string, number>();
+  const longTermArtistCounts = new Map<string, number>();
+  const windowedHistory = history.filter((item) => isWithinDays(item.createdAt, longTermWindowDays));
+  for (const item of windowedHistory) {
+    if (!item.artist) continue;
+    longTermArtistCounts.set(item.artist, (longTermArtistCounts.get(item.artist) ?? 0) + 1);
+    if (isWithinDays(item.createdAt, shortTermWindowDays)) {
+      shortTermArtistCounts.set(item.artist, (shortTermArtistCounts.get(item.artist) ?? 0) + 1);
+    }
+  }
+  const shortTermTopArtists = [...shortTermArtistCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, count]) => ({ name, count }));
+  const longTermTopArtists = [...longTermArtistCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, count]) => ({ name, count }));
+  const artistShiftSummary = shortTermTopArtists[0] && longTermTopArtists[0]
+    ? shortTermTopArtists[0].name === longTermTopArtists[0].name
+      ? `Recent and longer-term listening both center on ${shortTermTopArtists[0].name}.`
+      : `Recent listening shifted toward ${shortTermTopArtists[0].name} from longer-term ${longTermTopArtists[0].name}.`
+    : "Not enough artist activity to compare short-term and long-term behavior.";
+
+  const listeningWindows = history.reduce(
+    (acc, item) => {
+      acc[getUtcHourBucket(item.createdAt)] += 1;
+      return acc;
+    },
+    { morning: 0, afternoon: 0, evening: 0, night: 0 },
+  );
+  const strongestWindow = (Object.entries(listeningWindows).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "none") as
+    | "morning"
+    | "afternoon"
+    | "evening"
+    | "night"
+    | "none";
+  const strongestWindowShare = history.length > 0 && strongestWindow !== "none"
+    ? Number((((listeningWindows as Record<string, number>)[strongestWindow] ?? 0) / history.length).toFixed(2))
+    : 0;
+
+  const underusedFavorites = favorites
+    .map((fav) => {
+      const key = trackIdFrom(fav.title, fav.artist);
+      const latestHistory = history.find((entry) => trackIdFrom(entry.title, entry.artist) === key)?.createdAt ?? fav.savedAt;
+      const days = daysSince(latestHistory);
+      return {
+        trackId: key,
+        title: fav.title,
+        artist: fav.artist,
+        daysSinceLastPlay: days ?? 999,
+      };
+    })
+    .filter((item) => item.daysSinceLastPlay >= 21)
+    .sort((a, b) => b.daysSinceLastPlay - a.daysSinceLastPlay)
+    .slice(0, 6);
   const avgTracksPerPlaylist = playlists.length > 0
     ? Number((playlists.reduce((sum, playlist) => sum + (playlist.songs?.length ?? 0), 0) / playlists.length).toFixed(1))
     : 0;
@@ -254,6 +327,22 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
         totalPlaylists: playlists.length,
         avgTracksPerPlaylist,
         topPlaylistNames: playlists.slice(0, 5).map((playlist) => playlist.name),
+      },
+      tasteShifts: {
+        shortTermWindowDays,
+        longTermWindowDays,
+        shortTermTopArtists,
+        longTermTopArtists,
+        artistShiftSummary,
+      },
+      listeningWindows: {
+        ...listeningWindows,
+        strongestWindow,
+        strongestWindowShare,
+      },
+      favoritesBehavior: {
+        underusedFavorites,
+        underusedCount: underusedFavorites.length,
       },
     },
     grounding: {

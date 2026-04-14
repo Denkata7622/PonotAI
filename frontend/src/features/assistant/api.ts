@@ -120,6 +120,6 @@ export async function runAssistantAction(intent: ActionIntent): Promise<unknown>
         { method: "POST", headers, body: JSON.stringify({ prompt: `${intent.payload.name}: ${(intent.payload.artists as string[] ?? []).join(", ")}`, confirmed: true }) },
       );
     default:
-      return null;
+      throw new Error(`Unsupported assistant action type: ${intent.type}`);
   }
 }

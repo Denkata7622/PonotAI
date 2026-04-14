@@ -1,4 +1,20 @@
-import type { AccentPreset, DensityMode, SurfaceStyle, RadiusMode, SidebarStyle, MotionLevel, AccentIntensity, ChartStyle, UiPersonalization } from "@/lib/ThemeContext";
+import type {
+  AccentPreset,
+  DensityMode,
+  SurfaceStyle,
+  RadiusMode,
+  SidebarStyle,
+  MotionLevel,
+  AccentIntensity,
+  ChartStyle,
+  UiPersonalization,
+  BodyFont,
+  DisplayFont,
+  TextScale,
+  PanelTint,
+  DisplayTextStyle,
+} from "@/lib/ThemeContext";
+import { BODY_FONT_OPTIONS, DISPLAY_FONT_OPTIONS, DISPLAY_TEXT_STYLE_OPTIONS, TEXT_SCALE_OPTIONS } from "@/lib/typographyConfig";
 import { isAccentPreset } from "@/lib/themePresets";
 import { isAssistantTemplateId, resolveTemplatePreset } from "./themeCatalog";
 
@@ -10,6 +26,11 @@ const SUPPORTED = {
   motionLevel: ["full", "reduced", "minimal"] as MotionLevel[],
   intensity: ["subtle", "balanced", "vivid"] as AccentIntensity[],
   chartStyle: ["neutral", "accent-led", "multicolor"] as ChartStyle[],
+  panelTint: ["off", "subtle", "rich"] as PanelTint[],
+  bodyFont: [...BODY_FONT_OPTIONS] as BodyFont[],
+  displayFont: [...DISPLAY_FONT_OPTIONS] as DisplayFont[],
+  textScale: [...TEXT_SCALE_OPTIONS] as TextScale[],
+  displayTextStyle: [...DISPLAY_TEXT_STYLE_OPTIONS] as DisplayTextStyle[],
 };
 
 export type NormalizedThemeAction = {
@@ -22,6 +43,11 @@ export type NormalizedThemeAction = {
   motionLevel?: MotionLevel;
   intensity?: AccentIntensity;
   chartStyle?: ChartStyle;
+  panelTint?: PanelTint;
+  bodyFont?: BodyFont;
+  displayFont?: DisplayFont;
+  textScale?: TextScale;
+  displayTextStyle?: DisplayTextStyle;
   template?: string;
 };
 
@@ -46,6 +72,11 @@ export function normalizeThemeActionPayload(payload: Record<string, unknown>): N
     motionLevel: pick(payload.motionLevel, SUPPORTED.motionLevel) ?? templateBase.motionLevel,
     intensity: pick(payload.intensity, SUPPORTED.intensity) ?? templateBase.intensity,
     chartStyle: pick(payload.chartStyle, SUPPORTED.chartStyle) ?? templateBase.chartStyle,
+    panelTint: pick(payload.panelTint, SUPPORTED.panelTint) ?? templateBase.panelTint,
+    bodyFont: pick(payload.bodyFont, SUPPORTED.bodyFont) ?? templateBase.bodyFont,
+    displayFont: pick(payload.displayFont, SUPPORTED.displayFont) ?? templateBase.displayFont,
+    textScale: pick(payload.textScale, SUPPORTED.textScale) ?? templateBase.textScale,
+    displayTextStyle: pick(payload.displayTextStyle, SUPPORTED.displayTextStyle) ?? templateBase.displayTextStyle,
     template: isAssistantTemplateId(payload.template) ? payload.template : undefined,
   };
 }
@@ -60,6 +91,11 @@ export function hasApplicableThemeChange(payload: NormalizedThemeAction): boolea
     || payload.sidebarStyle
     || payload.motionLevel
     || payload.intensity
-    || payload.chartStyle,
+    || payload.chartStyle
+    || payload.panelTint
+    || payload.bodyFont
+    || payload.displayFont
+    || payload.textScale
+    || payload.displayTextStyle
   );
 }

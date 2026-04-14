@@ -109,6 +109,9 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
           suffix += 1;
         }
         const playlist = await createPlaylist(name);
+        if (!playlist) {
+          throw new Error("Playlist was not created.");
+        }
         if (playlist && trackIds.length) {
           const songs = trackIds.map(resolveTrack).map((track) => ({
             title: track.title,
@@ -170,6 +173,9 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
         || intent.type === "CREATE_DISCOVERY_PLAYLIST"
       ) {
         const result = await runAssistantAction(intent);
+        if (!result || typeof result !== "object") {
+          throw new Error("Assistant action did not return executable result.");
+        }
         window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `AI action complete: ${text}` } }));
         console.info("[assistant action]", result);
       }

@@ -57,6 +57,29 @@ test("theme template payload is normalized from authoritative catalog", () => {
   assert.deepEqual(parsed.actionIntent?.payload, { theme: "light", accent: "sunset", density: "comfortable", template: "sunset-glow" });
 });
 
+test("theme action supports custom personalization controls beyond presets", () => {
+  const input = '<action>{"type":"CHANGE_THEME","confidence":0.9,"payload":{"theme":"dark","accent":"ruby","panelTint":"rich","surfaceStyle":"elevated","textScale":"lg","displayTextStyle":"cyber-pulse","bodyFont":"manrope","displayFont":"orbitron"},"requiresConfirmation":true}</action>';
+  const parsed = parseActionIntent(input);
+  assert.equal(parsed.parseError, false);
+  assert.deepEqual(parsed.actionIntent?.payload, {
+    theme: "dark",
+    accent: "ruby",
+    panelTint: "rich",
+    surfaceStyle: "elevated",
+    textScale: "lg",
+    displayTextStyle: "cyber-pulse",
+    bodyFont: "manrope",
+    displayFont: "orbitron",
+  });
+});
+
+test("theme action rejects invalid custom personalization values", () => {
+  const input = '<action>{"type":"CHANGE_THEME","confidence":0.82,"payload":{"panelTint":"ultra","surfaceStyle":"soft"},"requiresConfirmation":true}</action>';
+  const parsed = parseActionIntent(input);
+  assert.equal(parsed.actionIntent, null);
+  assert.equal(parsed.parseError, true);
+});
+
 test("system prompt documents sunset glow as light-only and enforces truthful action language", () => {
   const prompt = buildSystemPrompt({
     profile: { totalTracks: 0 },

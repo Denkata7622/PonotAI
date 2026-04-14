@@ -32,10 +32,11 @@ test("cross-artist recommendations exclude heavily present library artists", asy
       headers: { authorization: `Bearer ${user.token}` },
     });
     assert.equal(response.status, 200);
-    const body = await response.json() as { recommendations: Array<{ artist: string }> };
+    const body = await response.json() as { recommendations: Array<{ artist: string }>; explainability?: { recommendationBasis?: { usedExternalDiscovery: boolean } } };
     assert.ok(body.recommendations.length > 0);
     assert.equal(body.recommendations.some((item) => item.artist === "Known Artist"), false);
     assert.equal(body.recommendations.some((item) => item.artist === "New Artist"), true);
+    assert.equal(body.explainability?.recommendationBasis?.usedExternalDiscovery, true);
   } finally {
     __setExternalDiscoveryClientForTests(null);
     await running.close();
@@ -57,9 +58,14 @@ test("cross-artist recommendations gracefully handle tiny libraries", async () =
       headers: { authorization: `Bearer ${user.token}` },
     });
     assert.equal(response.status, 200);
-    const body = await response.json() as { recommendations: Array<{ artist: string }>; message: string };
+    const body = await response.json() as {
+      recommendations: Array<{ artist: string }>;
+      message: string;
+      explainability?: { recommendationBasis?: { sparseFallback: boolean } };
+    };
     assert.ok(body.recommendations.length > 0);
     assert.match(body.message, /discovery/i);
+    assert.equal(body.explainability?.recommendationBasis?.sparseFallback, true);
   } finally {
     __setExternalDiscoveryClientForTests(null);
     await running.close();
