@@ -14,7 +14,10 @@
     "db:migrate:json:emit": "tsx scripts/migrate-json-to-postgres.ts",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
-    "db:migrate:json:dry-run": "tsx scripts/migrate-json-to-postgres.ts --dry-run"
+    "db:migrate:json:dry-run": "tsx scripts/migrate-json-to-postgres.ts --dry-run",
+    "prestart": "npm run prisma:generate",
+    "pretest": "npm run prisma:generate",
+    "postinstall": "npm run prisma:generate"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
