@@ -45,7 +45,7 @@ export default function QueuePanel() {
         </div>
       )}
       {queue.length > 0 ? (
-        <div className="border-t border-[var(--border)] bg-[var(--surface)] px-3 py-2 pb-[calc(10px+env(safe-area-inset-bottom,0px))]">
+        <div className="border-t border-[var(--panel-border)] bg-[var(--panel-surface)] px-3 py-2 pb-[calc(10px+env(safe-area-inset-bottom,0px))]">
           <button onClick={clearQueue} className="selectable-card w-full rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-2 text-sm">
             Clear queue
           </button>

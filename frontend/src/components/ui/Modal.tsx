@@ -46,7 +46,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = '480px' }: 
       <div onClick={onClose} className="fixed inset-0 z-[1000] bg-[var(--overlay-scrim)] backdrop-blur-sm" />
       <div
         data-modal-box
-        className="fixed left-1/2 top-1/2 z-[1001] w-[90%] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-6 shadow-[var(--shadow-raised)]"
+        className="fixed left-1/2 top-1/2 z-[1001] w-[90%] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--panel-border)] bg-[var(--panel-surface-elevated)] p-6 shadow-[var(--shadow-raised)]"
         style={{ maxWidth }}
         onClick={(e) => e.stopPropagation()}
       >
