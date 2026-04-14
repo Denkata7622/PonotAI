@@ -76,12 +76,13 @@ export function validateEnvironment(): void {
     process.exit(1);
   }
 
-  const databaseUrl = process.env.DATABASE_URL?.trim();
-  if (databaseUrl) {
-    process.env.DATABASE_URL = databaseUrl;
-    console.warn("[env] DATABASE_URL is configured, but runtime persistence is still file-backed.");
-  } else {
-    console.warn("[env] DATABASE_URL not configured; runtime persistence remains file-backed.");
+  if (process.env.DATABASE_URL?.trim()) {
+    console.warn("[env] DATABASE_URL is ignored by runtime persistence (file-backed JSON store is active).");
+  }
+
+  const dataDir = process.env.PONOTAI_DATA_DIR?.trim();
+  if (dataDir) {
+    process.env.PONOTAI_DATA_DIR = dataDir;
   }
 
   const geminiApiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();

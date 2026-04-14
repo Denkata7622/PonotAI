@@ -16,6 +16,7 @@ import { useTheme, UI_PRESETS, type DensityMode, type RadiusMode, type SurfaceSt
 import { ACCENT_TOKENS, SUPPORTED_ACCENTS } from "../../lib/themePresets";
 import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON, LIBRARY_EXPORT_VERSION } from "../lib/libraryExport";
 import type { Playlist } from "../../features/library/types";
+import { syncLibraryState } from "../../features/library/api";
 
 function dedupeByTrack<T extends { title?: string; artist?: string }>(items: T[]): T[] {
   const seen = new Set<string>();
@@ -51,7 +52,7 @@ export default function SettingsPage() {
   const [processingStep, setProcessingStep] = useState<string | null>(null);
   const [assistantHints, setAssistantHints] = useState(true);
   const { profile } = useProfile();
-  const { user, preferences, updateProfile, changePassword, setPreferences, deleteAccount, isAuthenticated, favorites, history, addFavorite, addToHistory } = useUser();
+  const { user, updateProfile, changePassword, deleteAccount, isAuthenticated, favorites, history, addFavorite, addToHistory } = useUser();
   const { language } = useLanguage();
   const { theme, toggleTheme, accent, density, intensity, surfaceStyle, radius, chartStyle, sidebarStyle, motionLevel, cardEmphasis, fontFamily, textScale, glowLevel, panelTint, applyPersonalization, updateUiSetting } = useTheme();
 
@@ -151,8 +152,18 @@ export default function SettingsPage() {
       for (const item of historyToImport) await addToHistory(item);
       for (const fav of favoritesToImport) await addFavorite({ title: fav.title, artist: fav.artist, album: fav.album, coverUrl: fav.coverUrl });
       const playlistsToImport = Array.isArray(payload.data.playlists) ? payload.data.playlists : [];
-      if (!isAuthenticated) window.localStorage.setItem(scopedKey("ponotai.library.playlists", profile.id), JSON.stringify(playlistsToImport));
-      setImportSummary(`${language === "bg" ? "Импортирани" : "Imported"}: ${favoritesToImport.length} favorites, ${historyToImport.length} history, ${playlistsToImport.length} playlists`);
+      let importedPlaylistsCount = playlistsToImport.length;
+
+      if (isAuthenticated) {
+        const playlistsSynced = await syncLibraryState({ favorites: [], playlists: playlistsToImport });
+        if (!playlistsSynced) {
+          importedPlaylistsCount = 0;
+        }
+      } else {
+        window.localStorage.setItem(scopedKey("ponotai.library.playlists", profile.id), JSON.stringify(playlistsToImport));
+      }
+
+      setImportSummary(`${language === "bg" ? "Импортирани" : "Imported"}: ${favoritesToImport.length} favorites, ${historyToImport.length} history, ${importedPlaylistsCount} playlists`);
       setProcessingStep(language === "bg" ? "Импортирането завърши успешно." : "Import completed successfully.");
     } catch (error) {
       setImportSummary((error as Error).message);
@@ -230,7 +241,6 @@ export default function SettingsPage() {
       <Card variant="settings" className="space-y-4">
         <h2 className="text-xl font-semibold">{t("settings_assistant_behavior", language)}</h2>
         <div className="settings-card flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3"><div><p className="font-medium">{t("settings_show_ai_hints", language)}</p><p className="text-sm text-[var(--muted)]">{t("settings_show_ai_hints_desc", language)}</p></div><Button variant="secondary" onClick={() => setAssistantHintsPref(!assistantHints)}>{assistantHints ? t("settings_on", language) : t("settings_off", language)}</Button></div>
-        <div className="settings-card flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3"><p className="font-medium">{t("settings_notifications", language)}</p><Button variant="secondary" onClick={() => setPreferences({ notifications: !preferences.notifications })}>{preferences.notifications ? t("settings_enabled", language) : t("settings_disabled", language)}</Button></div>
       </Card>
 
       <Card variant="settings" className="space-y-4">

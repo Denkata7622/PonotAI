@@ -10,8 +10,8 @@
     "test": "tsx --test tests/*.test.ts tests/**/*.test.ts",
     "test:smoke": "tsx --test tests/smoke/**/*.test.ts",
     "start": "node dist/server.js",
-    "db:migrate:json": "tsx scripts/migrate-json-to-postgres.ts --dry-run",
-    "db:migrate:json:execute": "tsx scripts/migrate-json-to-postgres.ts --execute"
+    "db:migrate:json": "tsx scripts/migrate-json-to-postgres.ts",
+    "db:migrate:json:emit": "tsx scripts/migrate-json-to-postgres.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

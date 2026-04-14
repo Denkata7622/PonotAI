@@ -277,7 +277,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
   async function handleAuthSuccess(payload: { token: string; user: User }) {
     localStorage.setItem(TOKEN_KEY, payload.token);
     setAuthState({ token: payload.token, user: payload.user, isLoading: false });
-    await fetchServerData();
   }
 
   // ─── Auth Actions ────────────────────────────────────────────────────────────
