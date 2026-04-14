@@ -37,13 +37,13 @@ Frontend queue -> resolve videoId -> YouTube IFrame API -> visible embed player
 
 ### Frontend (Railway service)
 - **Root Directory:** `frontend/`
-- **Build Command:** `npm install && npm run build`
-- **Start Command:** `npm run start`
+- **Build Command:** `npm install && npm run build` (build lifecycle runs `prisma generate` before TypeScript compile)
+- **Start Command:** `npm run start` (uses generated Prisma client; no runtime Prisma CLI invocation)
 
 ### Backend (Railway service)
 - **Root Directory:** `backend/`
-- **Build Command:** `npm install && npm run build`
-- **Start Command:** `npm run start`
+- **Build Command:** `npm install && npm run build` (build lifecycle runs `prisma generate` before TypeScript compile)
+- **Start Command:** `npm run start` (uses generated Prisma client; no runtime Prisma CLI invocation)
 
 ## Environment variables
 
