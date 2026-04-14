@@ -10,9 +10,19 @@ interface ModalProps {
   title?: string;
   children: ReactNode;
   maxWidth?: string;
+  centerOnMobile?: boolean;
+  panelClassName?: string;
 }
 
-export function Modal({ isOpen, onClose, title, children, maxWidth = '480px' }: ModalProps) {
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  maxWidth = '480px',
+  centerOnMobile = false,
+  panelClassName = '',
+}: ModalProps) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -46,7 +56,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = '480px' }: 
       <div onClick={onClose} className="fixed inset-0 z-[1000] bg-[var(--overlay-scrim)] backdrop-blur-sm" />
       <div
         data-modal-box
-        className="fixed left-1/2 top-1/2 z-[1001] w-[90%] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--panel-border)] bg-[var(--panel-surface-elevated)] p-6 shadow-[var(--shadow-raised)]"
+        className={`fixed left-1/2 top-1/2 z-[1001] w-[90%] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--panel-border)] bg-[var(--panel-surface-elevated)] p-6 shadow-[var(--shadow-raised)] ${panelClassName}`}
         style={{ maxWidth }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -61,19 +71,21 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = '480px' }: 
         {children}
       </div>
 
-      <style>{`
-        @media (max-width: 768px) {
-          [data-modal-box] {
-            top: auto !important;
-            bottom: 0 !important;
-            left: 0 !important;
-            transform: none !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+      {!centerOnMobile ? (
+        <style>{`
+          @media (max-width: 768px) {
+            [data-modal-box] {
+              top: auto !important;
+              bottom: 0 !important;
+              left: 0 !important;
+              transform: none !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+            }
           }
-        }
-      `}</style>
+        `}</style>
+      ) : null}
     </>,
     document.body,
   );

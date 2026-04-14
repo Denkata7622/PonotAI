@@ -639,7 +639,7 @@ export function HomeContent() {
   }
 
   return (
-    <main className="min-h-screen transition-colors">
+    <main className="min-h-screen w-full overflow-x-hidden transition-colors">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-8">
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-6">
@@ -936,7 +936,7 @@ export function HomeContent() {
         />
       )}
 
-      <div className="fixed top-4 right-4 z-50 flex w-[320px] flex-col gap-3">
+      <div className="fixed left-2 right-2 top-4 z-50 flex w-auto max-w-[calc(100vw-1rem)] flex-col gap-3 sm:left-auto sm:right-4 sm:w-[320px] sm:max-w-[320px]">
         {showPlaylistUndoToast && (
           <div role="status" className="relative overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 shadow-xl">
             <div className="flex items-center justify-between gap-3">
