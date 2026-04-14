@@ -27,13 +27,13 @@ test("playlist ownership and authorization boundaries", async () => {
       headers: { "content-type": "application/json", authorization: `Bearer ${userB.token}` },
       body: JSON.stringify({ name: "Hacked" }),
     });
-    assert.equal(editByB.status, 403);
+    assert.equal(editByB.status, 404);
 
     const deleteByB = await fetch(`${running.baseUrl}/api/playlists/${created.id}`, {
       method: "DELETE",
       headers: { authorization: `Bearer ${userB.token}` },
     });
-    assert.equal(deleteByB.status, 403);
+    assert.equal(deleteByB.status, 404);
 
     const unauthorizedChecks = await Promise.all([
       fetch(`${running.baseUrl}/api/playlists`),

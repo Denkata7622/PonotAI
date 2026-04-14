@@ -63,3 +63,24 @@ test("CORS preflight allows assistant custom headers", async () => {
     await running.close();
   }
 });
+
+test("CORS preflight allows x-api-key for developer API routes", async () => {
+  const running = await startTestServer();
+  try {
+    const response = await fetch(`${running.baseUrl}/api/developer/v1/recommendations`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: FRONTEND_ORIGIN,
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "x-api-key,content-type",
+      },
+    });
+
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get("access-control-allow-origin"), FRONTEND_ORIGIN);
+    const allowHeaders = response.headers.get("access-control-allow-headers") ?? "";
+    assert.match(allowHeaders.toLowerCase(), /x-api-key/);
+  } finally {
+    await running.close();
+  }
+});

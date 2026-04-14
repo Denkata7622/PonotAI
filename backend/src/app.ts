@@ -19,11 +19,11 @@ import developerRouter from "./modules/developer/developer.routes";
 import adminRouter from "./modules/admin/admin.routes";
 import { apiRateLimit, recognitionRateLimit } from "./middlewares/rateLimit.middleware";
 import { responseTimeMiddleware } from "./middlewares/responseTime.middleware";
-import { corsOptions } from "./config/cors";
+import { getCorsOptions } from "./config/cors";
 import assistantRouter from "./routes/assistant";
 import coverArtRouter from "./routes/coverArt";
 import aiRouter from "./modules/ai/ai.routes";
-import { getPersistenceHealth } from "./db/persistence";
+import { getPersistenceHealth, refreshPersistenceHealth } from "./db/persistence";
 
 const app = express();
 const YAML = require("js-yaml");
@@ -51,6 +51,7 @@ function registerProcessErrorHandlers(): void {
   });
 }
 
+const corsOptions = getCorsOptions();
 app.use(cors(corsOptions));
 // Handle preflight for all routes
 app.options("*", cors(corsOptions));
@@ -80,7 +81,8 @@ app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-app.get("/api/health", (_req: Request, res: Response) => {
+app.get("/api/health", async (_req: Request, res: Response) => {
+  await refreshPersistenceHealth();
   const persistence = getPersistenceHealth();
   const db = persistence.connected ? "connected" : "disconnected";
   const ai = process.env.GEMINI_API_KEY?.trim() ? "ok" : "degraded";

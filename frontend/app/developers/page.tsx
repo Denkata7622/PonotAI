@@ -27,7 +27,7 @@ export default function DevelopersPage() {
       </div>
       {apiKey && <pre className="overflow-auto rounded-lg bg-black/30 p-3 text-xs">{apiKey}</pre>}
       <pre className="overflow-auto rounded-lg bg-black/30 p-3 text-xs">curl -X POST "$API/api/developer/v1/recognition/audio" -H "x-api-key: trk_..." -F "audio=@clip.webm"</pre>
-      <pre className="overflow-auto rounded-lg bg-black/30 p-3 text-xs">curl -X POST "$API/api/developer/v1/recognition/image" -H "x-api-key: trk_..." -F "image=@playlist.png"</pre>
+      <pre className="overflow-auto rounded-lg bg-black/30 p-3 text-xs">curl "$API/api/developer/v1/recommendations?seed=weeknd" -H "x-api-key: trk_..."</pre>
     </section>
   );
 }
