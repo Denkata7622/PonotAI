@@ -55,6 +55,8 @@ export function validateEnvironment(): void {
 
   const isProduction = process.env.NODE_ENV === "production";
   const jwtSecret = process.env.JWT_SECRET?.trim();
+  const persistenceMode = process.env.PERSISTENCE_MODE?.trim().toLowerCase() || "postgres";
+  const databaseUrl = process.env.DATABASE_URL?.trim();
 
   if (jwtSecret) {
     process.env.JWT_SECRET = jwtSecret;
@@ -69,15 +71,26 @@ export function validateEnvironment(): void {
     console.warn("WARN: Using default JWT_SECRET — do not use in production");
   }
 
-
   const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];
   if (isProduction && allowedOrigins.length === 0) {
     console.error("FATAL: ALLOWED_ORIGINS is required in production");
     process.exit(1);
   }
 
-  if (process.env.DATABASE_URL?.trim()) {
-    console.warn("[env] DATABASE_URL is configured but runtime persistence is JSON file-backed. Postgres scripts are migration-only utilities.");
+  process.env.PERSISTENCE_MODE = persistenceMode;
+
+  if (persistenceMode === "file-legacy") {
+    if (isProduction) {
+      console.error("FATAL: PERSISTENCE_MODE=file-legacy is blocked in production. Use PostgreSQL runtime persistence.");
+      process.exit(1);
+    }
+    console.warn("[env] Running in legacy file persistence mode (development/testing only).");
+  } else {
+    if (!databaseUrl) {
+      console.error("FATAL: DATABASE_URL is required when PERSISTENCE_MODE is postgres.");
+      process.exit(1);
+    }
+    process.env.DATABASE_URL = databaseUrl;
   }
 
   const dataDir = process.env.PONOTAI_DATA_DIR?.trim();

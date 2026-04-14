@@ -133,7 +133,7 @@ app.get("/api/health", async (_req: Request, res: Response) => {
   res.status(status === "ok" ? 200 : 503).json({
     status,
     persistence: {
-      runtime: "file-json",
+      runtime: persistence.mode === "postgres" ? "postgresql" : "file-legacy",
       mode: persistence.mode,
       status: persistence.connected ? "ready" : "error",
       ...(persistence.lastError ? { error: persistence.lastError } : {}),
