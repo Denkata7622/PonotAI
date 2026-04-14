@@ -22,8 +22,23 @@ export function readTasteProfile(): TasteProfile | null {
   }
 }
 
+export function isOnboardingPending(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(ONBOARDING_PENDING_KEY) === "pending";
+}
+
+export function markOnboardingPending(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ONBOARDING_PENDING_KEY, "pending");
+}
+
+export function markOnboardingDone(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ONBOARDING_PENDING_KEY, "done");
+}
+
 export function writeTasteProfile(profile: TasteProfile): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(TASTE_PROFILE_KEY, JSON.stringify(profile));
-  window.localStorage.setItem(ONBOARDING_PENDING_KEY, "done");
+  markOnboardingDone();
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useDualSidebar } from "./sidebars/DualSidebarContext";
-import { Sparkles } from "lucide-react";
+import { Sparkles } from "../../lucide-react";
 import { useUser } from "@/src/context/UserContext";
 
 export default function AssistantFAB() {
@@ -69,8 +69,10 @@ export default function AssistantFAB() {
       }}
       aria-label="Music Assistant"
     >
-      <span className="inline-flex items-center justify-center rounded-full bg-[color:rgba(255,255,255,0.1)] p-1.5">
-        <Sparkles width={20} height={20} />
+      <span className="assistant-fab__ring">
+        <span className="assistant-fab__core">
+          <Sparkles width={20} height={20} />
+        </span>
       </span>
     </button>
   );
