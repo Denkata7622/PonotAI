@@ -19,7 +19,7 @@ type EditableSong = SongMatch & {
 
 type SongReviewModalProps = {
   songs: SongMatch[];
-  onConfirm: (selectedSongs: SongMatch[]) => void;
+  onConfirm: (selectedSongs: SongMatch[]) => void | Promise<void>;
   onCancel: () => void;
 };
 
@@ -35,6 +35,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
     })),
   );
   const { language } = useLanguage();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     songs.forEach((_, index) => {
@@ -96,7 +97,8 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
     }
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
+    if (isSubmitting) return;
     const selected = editableSongs
       .filter((song) => song.selected)
       .map((song) => ({
@@ -105,7 +107,12 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
         artist: song.editedArtist?.trim() || song.artist,
         albumArtUrl: getArtworkOptions(song)[song.selectedArtIndex] || song.albumArtUrl,
       }));
-    onConfirm(selected);
+    setIsSubmitting(true);
+    try {
+      await onConfirm(selected);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function getArtworkOptions(song: EditableSong): string[] {
@@ -221,13 +228,14 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
         <div className="mt-4 flex shrink-0 items-center justify-end gap-3 border-t border-[var(--border)] pt-4">
           <button
             onClick={onCancel}
+            disabled={isSubmitting}
             className="rounded-lg border border-border px-5 py-2 hover:bg-surface-raised"
           >
             {t("modal_cancel", language)}
           </button>
           <button
-            onClick={handleConfirm}
-            disabled={selectedCount === 0}
+            onClick={() => void handleConfirm()}
+            disabled={selectedCount === 0 || isSubmitting}
             className="rounded-lg bg-[var(--accent)] px-5 py-2 font-medium hover:bg-[var(--accent-2)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {selectedCount > 0
