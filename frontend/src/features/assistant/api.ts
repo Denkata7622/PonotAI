@@ -21,36 +21,63 @@ function buildAuthHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+type AssistantClientContext = {
+  queueTitles?: string[];
+  theme?: string;
+  language?: string;
+  preferences?: ReturnType<typeof toAssistantPreferencePayload>;
+  device?: string;
+};
+
+function sanitizeHeaderValue(value: string | null | undefined, maxLength = 120): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  // Keep only Latin-1 clean characters to prevent browser RequestInit header encoding failures.
+  const latin1Only = trimmed.replace(/[^\u0009\u0020-\u007E\u00A0-\u00FF]/g, "");
+  if (!latin1Only) return undefined;
+  return latin1Only.slice(0, maxLength);
+}
+
+function buildAssistantClientContext(): AssistantClientContext {
+  if (typeof window === "undefined") return {};
+
+  const queueTitles = ((JSON.parse(window.localStorage.getItem("ponotai.queue.v1") ?? "{}") as { queue?: Array<{ track?: { title?: string } }> }).queue ?? [])
+    .map((item) => item.track?.title?.trim())
+    .filter((title): title is string => Boolean(title))
+    .slice(0, 10);
+
+  const theme = window.localStorage.getItem("ponotai-theme") ?? undefined;
+  const language = window.localStorage.getItem("ponotai-language") ?? undefined;
+  const tasteProfile = readTasteProfile();
+  const device = typeof navigator !== "undefined" ? sanitizeHeaderValue(navigator.userAgent, 120) : undefined;
+
+  return {
+    ...(queueTitles.length > 0 ? { queueTitles } : {}),
+    ...(theme ? { theme } : {}),
+    ...(language ? { language } : {}),
+    ...(tasteProfile ? { preferences: toAssistantPreferencePayload(tasteProfile) } : {}),
+    ...(device ? { device } : {}),
+  };
+}
+
 export async function sendAssistantMessage(
   conversation: ChatMessage[],
   message: string,
 ): Promise<{ reply: string; actionIntent: ActionIntent | null; meta: AssistantMeta }> {
-  const queueTitles = typeof window === "undefined"
-    ? ""
-    : ((JSON.parse(window.localStorage.getItem("ponotai.queue.v1") ?? "{}") as { queue?: Array<{ track?: { title?: string } }> }).queue ?? [])
-      .map((item) => item.track?.title)
-      .filter(Boolean)
-      .slice(0, 10)
-      .join("|");
-  const theme = typeof window === "undefined" ? undefined : (window.localStorage.getItem("ponotai-theme") ?? undefined);
-  const language = typeof window === "undefined" ? undefined : (window.localStorage.getItem("ponotai-language") ?? undefined);
-  const tasteProfile = typeof window === "undefined" ? null : readTasteProfile();
+  const context = buildAssistantClientContext();
   const response = await fetch(`${getApiBaseUrl()}/api/assistant`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...buildAuthHeaders(),
-      ...(queueTitles ? { "X-Trackly-Queue": queueTitles } : {}),
-      ...(theme ? { "X-Trackly-Theme": theme } : {}),
-      ...(language ? { "X-Trackly-Language": language } : {}),
-      ...(tasteProfile ? { "X-Trackly-Preferences": JSON.stringify(toAssistantPreferencePayload(tasteProfile)) } : {}),
-      ...(typeof navigator !== "undefined" ? { "X-Trackly-Device": navigator.userAgent.slice(0, 120) } : {}),
     },
     body: JSON.stringify({
       message,
       conversation: conversation
         .filter((item) => item.role === "user" || item.role === "assistant")
         .map((item) => ({ role: item.role, content: item.content })),
+      context,
     }),
   });
 

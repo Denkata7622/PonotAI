@@ -30,6 +30,8 @@ title?: string;
 artist?: string;
 album?: string;
 coverUrl?: string;
+albumArtUrl?: string;
+artworkUrl?: string;
 createdAt?: string;
 };
 
@@ -78,7 +80,11 @@ const normalizeSong = (item: any): Song => ({
 
   coverUrl:
     item.coverUrl ??
+    item.artworkUrl ??
+    item.albumArtUrl ??
     item.song?.coverUrl ??
+    item.song?.artworkUrl ??
+    item.song?.albumArtUrl ??
     undefined,
 
   createdAt: item.createdAt ?? undefined,

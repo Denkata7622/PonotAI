@@ -70,7 +70,17 @@ assistantRouter.post("/", async (req, res) => {
     return;
   }
 
-  const body = req.body as { message?: unknown; conversation?: unknown };
+  const body = req.body as {
+    message?: unknown;
+    conversation?: unknown;
+    context?: {
+      queueTitles?: unknown;
+      theme?: unknown;
+      language?: unknown;
+      preferences?: unknown;
+      device?: unknown;
+    };
+  };
 
   if (typeof body.message !== "string" || body.message.length < 1 || body.message.length > 2000) {
     sendError(res, ErrorCatalog.VALIDATION_ERROR, { field: "message", min: 1, max: 2000 });
@@ -94,6 +104,10 @@ assistantRouter.post("/", async (req, res) => {
 
   try {
     const statedPreferences = (() => {
+      if (body.context?.preferences && typeof body.context.preferences === "object") {
+        const parsed = body.context.preferences as { genres?: string[]; artists?: string[]; moods?: string[]; goals?: string[] };
+        return parsed;
+      }
       const raw = req.headers["x-trackly-preferences"];
       if (typeof raw !== "string" || !raw.trim()) return undefined;
       try {
@@ -103,15 +117,33 @@ assistantRouter.post("/", async (req, res) => {
         return undefined;
       }
     })();
+    const queueFromBody = Array.isArray(body.context?.queueTitles)
+      ? body.context?.queueTitles
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 10)
+      : [];
+    const currentTheme = body.context?.theme === "light" || body.context?.theme === "dark" || body.context?.theme === "system"
+      ? body.context.theme
+      : req.headers["x-trackly-theme"] as "light" | "dark" | "system" | undefined;
+    const currentLanguage = body.context?.language === "en" || body.context?.language === "bg"
+      ? body.context.language
+      : req.headers["x-trackly-language"] as "en" | "bg" | undefined;
+    const deviceType = typeof body.context?.device === "string" && body.context.device.trim()
+      ? body.context.device.trim().slice(0, 120)
+      : typeof req.headers["x-trackly-device"] === "string"
+        ? req.headers["x-trackly-device"]
+        : undefined;
     const context = await buildLibraryContext(userId, {
-      currentTheme: req.headers["x-trackly-theme"] as "light" | "dark" | "system" | undefined,
-      currentLanguage: req.headers["x-trackly-language"] as "en" | "bg" | undefined,
-      currentQueue: typeof req.headers["x-trackly-queue"] === "string"
+      currentTheme,
+      currentLanguage,
+      currentQueue: queueFromBody.length > 0
+        ? queueFromBody
+        : typeof req.headers["x-trackly-queue"] === "string"
         ? req.headers["x-trackly-queue"].split("|").filter(Boolean).slice(0, 10)
         : [],
-      deviceType: typeof req.headers["x-trackly-device"] === "string"
-        ? req.headers["x-trackly-device"]
-        : undefined,
+      deviceType,
       statedPreferences,
     });
     if (context.topTracks.length === 0) {

@@ -93,6 +93,7 @@ export function HomeContent() {
   const [isRecording, setIsRecording] = useState(false);
   const [microphoneStream, setMicrophoneStream] = useState<MediaStream | null>(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
+  const [isSavingReviewedSongs, setIsSavingReviewedSongs] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [canRetryRecognition, setCanRetryRecognition] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -577,14 +578,15 @@ export function HomeContent() {
   }
 
   async function handleConfirmSongs(selectedSongs: SongMatch[]) {
-    if (!pendingImageResult) return;
-    const updatedResult = { ...pendingImageResult, songs: selectedSongs, count: selectedSongs.length };
-    setImageResult(updatedResult);
-    setAudioResult(null);
-    // Update local history grid immediately
-    addToHistoryLocal("ocr", selectedSongs);
-    for (const song of selectedSongs) {
-      await addToHistory({
+    if (!pendingImageResult || isSavingReviewedSongs) return;
+    setIsSavingReviewedSongs(true);
+    try {
+      const updatedResult = { ...pendingImageResult, songs: selectedSongs, count: selectedSongs.length };
+      setImageResult(updatedResult);
+      setAudioResult(null);
+      // Update local history grid immediately
+      addToHistoryLocal("ocr", selectedSongs);
+      await Promise.all(selectedSongs.map((song) => addToHistory({
         id: crypto.randomUUID(),
         method: "album-image",
         title: song.songName,
@@ -593,11 +595,16 @@ export function HomeContent() {
         coverUrl: song.albumArtUrl,
         recognized: true,
         createdAt: new Date().toISOString(),
-      });
+      })));
+      setShowReviewModal(false);
+      setPendingImageResult(null);
+      pushToast("success", t("toast_added", language, { count: selectedSongs.length }));
+    } catch (error) {
+      setErrorMessage((error as Error).message || t("toast_image_failed", language));
+      pushToast("error", t("toast_image_failed", language));
+    } finally {
+      setIsSavingReviewedSongs(false);
     }
-    setShowReviewModal(false);
-    setPendingImageResult(null);
-    pushToast("success", t("toast_added", language, { count: selectedSongs.length }));
   }
 
   function saveSong(song: SongMatch) {
