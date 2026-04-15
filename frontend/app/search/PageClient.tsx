@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Clock, Play, Search, SearchX, TrendingUp, WifiOff, X } from "../../lucide-react";
 import SearchInput from "../../components/SearchInput";
 import SearchResultActions from "../../components/SearchResultActions";
@@ -55,13 +55,21 @@ export default function SearchPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isUnavailable, setIsUnavailable] = useState(false);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
-  const [isFocused, setIsFocused] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const blurTimeoutRef = useRef<number | null>(null);
 
 
   useEffect(() => {
     setHistory(readHistory(profile.id));
   }, [profile.id]);
+
+  useEffect(() => () => {
+    if (blurTimeoutRef.current) {
+      window.clearTimeout(blurTimeoutRef.current);
+    }
+  }, []);
+
   useEffect(() => {
     if (!query.trim()) {
       setDebouncedQuery("");
@@ -158,8 +166,11 @@ export default function SearchPage() {
         <div className="mt-4 space-y-4">
           <div className="relative">
             <SmartDropdown
-              isOpen={isFocused && !query.trim()}
-              onOpenChange={setIsFocused}
+              isOpen={showSearchDropdown && !query.trim()}
+              onOpenChange={(open) => {
+                setShowSearchDropdown(open);
+                if (!open) setOpenActionsId(null);
+              }}
               placement="bottom-start"
               matchTriggerWidth
               className="w-full rounded-2xl p-2"
@@ -170,8 +181,16 @@ export default function SearchPage() {
                   onChange={setQuery}
                   onClear={() => setQuery("")}
                   placeholder={t("search_placeholder", language)}
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => window.setTimeout(() => setIsFocused(false), 200)}
+                  onFocus={() => {
+                    if (blurTimeoutRef.current) window.clearTimeout(blurTimeoutRef.current);
+                    setShowSearchDropdown(true);
+                  }}
+                  onBlur={() => {
+                    blurTimeoutRef.current = window.setTimeout(() => {
+                      setShowSearchDropdown(false);
+                      setOpenActionsId(null);
+                    }, 200);
+                  }}
                 />
               )}
             >

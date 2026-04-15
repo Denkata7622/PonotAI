@@ -61,7 +61,14 @@ export default function SearchResultActions({
           <button
             type="button"
             className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
-            onMouseDown={(event) => event.preventDefault()}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
             aria-label={t("track_more_options", language)}
           >
             <Plus className="w-4 h-4 text-[var(--text)]" />

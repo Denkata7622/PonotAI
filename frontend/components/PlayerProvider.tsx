@@ -184,54 +184,57 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentIndex((previous) => Math.max(previous - 1, 0));
   }, []);
 
+  const initializePlayer = useCallback(() => {
+    if (typeof window === "undefined") return false;
+    const ytWindow = window as YouTubeWindow;
+    if (!ytWindow.YT?.Player || playerRef.current) return false;
+    if (!document.getElementById("ponotai-yt-player")) return false;
+
+    playerRef.current = new ytWindow.YT.Player("ponotai-yt-player", {
+      width: "100%",
+      height: "100%",
+      playerVars: { autoplay: 0, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1 },
+      events: {
+        onReady: (event: { target: YTPlayerLike }) => {
+          playerRef.current = event.target;
+          isPlayerReadyRef.current = true;
+          safePlayerCall((player) => player.setVolume?.(volume));
+          if (pendingVideoIdRef.current) {
+            const queuedVideoId = pendingVideoIdRef.current;
+            safePlayerCall((player) => player.loadVideoById?.(queuedVideoId));
+            pendingVideoIdRef.current = null;
+          }
+          if (requestedPlaybackRef.current === "play") {
+            safePlayerCall((player) => player.playVideo?.());
+          } else if (requestedPlaybackRef.current === "pause") {
+            safePlayerCall((player) => player.pauseVideo?.());
+          }
+          setIsInitializing(false);
+          setPlayerError(null);
+        },
+        onError: (event: { data: number }) => {
+          setPlayerError(`Playback error (${event.data}).`);
+        },
+        onStateChange: (event: { data: number }) => {
+          const state = ytWindow.YT?.PlayerState;
+          if (!state) return;
+          const snapshot = mapYouTubeState(event.data, state);
+          setIsPlaying(snapshot.isPlaying);
+          setIsBuffering(snapshot.isBuffering);
+          if (snapshot.ended) {
+            setIsPlaying(false);
+            setCurrentTime(0);
+            playNext();
+          }
+        },
+      },
+    });
+    return true;
+  }, [playNext, safePlayerCall, volume]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const ytWindow = window as YouTubeWindow;
-    const setupPlayer = () => {
-      if (!ytWindow.YT?.Player || playerRef.current) return;
-      if (!document.getElementById("ponotai-yt-player")) return;
-
-      playerRef.current = new ytWindow.YT.Player("ponotai-yt-player", {
-        width: "100%",
-        height: "100%",
-        playerVars: { autoplay: 0, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1 },
-        events: {
-          onReady: (event: { target: YTPlayerLike }) => {
-            playerRef.current = event.target;
-            isPlayerReadyRef.current = true;
-            safePlayerCall((player) => player.setVolume?.(volume));
-            if (pendingVideoIdRef.current) {
-              const queuedVideoId = pendingVideoIdRef.current;
-              safePlayerCall((player) => player.loadVideoById?.(queuedVideoId));
-              pendingVideoIdRef.current = null;
-            }
-            if (requestedPlaybackRef.current === "play") {
-              safePlayerCall((player) => player.playVideo?.());
-            } else if (requestedPlaybackRef.current === "pause") {
-              safePlayerCall((player) => player.pauseVideo?.());
-            }
-            setIsInitializing(false);
-            setPlayerError(null);
-          },
-          onError: (event: { data: number }) => {
-            setPlayerError(`Playback error (${event.data}).`);
-          },
-          onStateChange: (event: { data: number }) => {
-            const state = ytWindow.YT?.PlayerState;
-            if (!state) return;
-            const snapshot = mapYouTubeState(event.data, state);
-            setIsPlaying(snapshot.isPlaying);
-            setIsBuffering(snapshot.isBuffering);
-            if (snapshot.ended) {
-              setIsPlaying(false);
-              setCurrentTime(0);
-              playNext();
-            }
-          },
-        },
-      });
-    };
-
     if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
       const script = document.createElement("script");
       script.src = "https://www.youtube.com/iframe_api";
@@ -243,12 +246,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const previousHandler = ytWindow.onYouTubeIframeAPIReady;
     ytWindow.onYouTubeIframeAPIReady = () => {
       previousHandler?.();
-      setupPlayer();
+      initializePlayer();
     };
 
-    if (ytWindow.YT?.Player) setupPlayer();
+    if (ytWindow.YT?.Player) initializePlayer();
     return () => {
       ytWindow.onYouTubeIframeAPIReady = previousHandler;
+    };
+  }, [initializePlayer]);
+
+  useEffect(() => {
+    if (!currentVideoId || playerRef.current) return;
+    initializePlayer();
+  }, [currentVideoId, initializePlayer]);
+
+  useEffect(() => {
+    return () => {
       isPlayerReadyRef.current = false;
       pendingVideoIdRef.current = null;
       if (playerRef.current?.destroy) {
@@ -260,7 +273,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       playerRef.current = null;
     };
-  }, [playNext, safePlayerCall]);
+  }, []);
 
   useEffect(() => {
     safePlayerCall((player) => player.setVolume?.(volume));
