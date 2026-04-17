@@ -20,6 +20,10 @@ export type Placement = "bottom-start" | "bottom" | "top-start" | "top";
 type FloatingContext = {
   open: boolean;
   onOpenChange?: (open: boolean) => void;
+  refs: {
+    reference: MutableRefObject<HTMLElement | null>;
+    floating: MutableRefObject<HTMLElement | null>;
+  };
 };
 
 type MiddlewareState = {
@@ -148,7 +152,11 @@ export function useFloating(options: {
     },
   };
 
-  const context: FloatingContext = { open: options.open, onOpenChange: options.onOpenChange };
+  const context: FloatingContext = {
+    open: options.open,
+    onOpenChange: options.onOpenChange,
+    refs: { reference: referenceRef, floating: floatingRef },
+  };
   return { refs, floatingStyles, context };
 }
 
@@ -165,6 +173,32 @@ export function useClick(context: FloatingContext) {
 }
 
 export function useDismiss(context: FloatingContext, _opts?: { outsidePressEvent?: string }) {
+  useEffect(() => {
+    if (!context.open) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      const reference = context.refs.reference.current;
+      const floating = context.refs.floating.current;
+      if (!target || !reference || !floating) return;
+      if (reference.contains(target) || floating.contains(target)) return;
+      context.onOpenChange?.(false);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        context.onOpenChange?.(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [context]);
+
   return {
     getFloatingProps: <T extends HTMLProps<Element>>(props: T) => props,
     getReferenceProps: <T extends HTMLProps<Element>>(props: T) => props,
