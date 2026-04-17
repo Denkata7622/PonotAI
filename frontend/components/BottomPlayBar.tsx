@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Keyboard, ListMusic, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, X } from "lucide-react";
+import { Keyboard, ListMusic, Music, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, X } from "lucide-react";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -17,14 +17,12 @@ function formatTime(seconds: number) {
 export default function BottomPlayBar() {
   const { language } = useLanguage();
   const isBg = language === "bg";
-  const [isExpanded, setIsExpanded] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [lastVolume, setLastVolume] = useState(70);
   const playerBarRef = useRef<HTMLDivElement | null>(null);
 
   const {
     queue,
-    currentIndex,
     currentTrack,
     currentVideoId,
     isPlaying,
@@ -77,11 +75,6 @@ export default function BottomPlayBar() {
 
   return (
     <>
-      {isExpanded && (
-        <button className="fixed inset-0 z-40 bg-black/40 md:hidden" aria-label={isBg ? "Затвори плейъра" : "Close player"} onClick={() => setIsExpanded(false)} />
-      )}
-
-
       {isShortcutsOpen && (
         <div className="fixed inset-0 z-50 bg-black/60" onClick={() => setIsShortcutsOpen(false)}>
           <div className="mx-auto mt-24 w-[92%] max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5" onClick={(event) => event.stopPropagation()}>
@@ -110,7 +103,7 @@ export default function BottomPlayBar() {
       <div
         ref={playerBarRef}
         data-player-bar
-        className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] pt-3 backdrop-blur-xl transition-all duration-300 ease-in-out sm:px-5"
+        className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/80 bg-[color:color-mix(in_oklab,var(--surface)_92%,black_8%)] px-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] pt-3 shadow-[0_-10px_40px_rgba(2,6,23,0.14)] backdrop-blur-2xl transition-all duration-300 ease-in-out sm:px-5"
       >
         <div className="mx-auto max-w-7xl">
           {!currentTrack || !currentVideoId ? (
@@ -126,53 +119,129 @@ export default function BottomPlayBar() {
             </div>
           ) : (
             <div className="space-y-3">
-              <div className={`flex ${isExpanded ? "flex-col" : "flex-row items-center gap-3"} transition-all duration-300 ease-in-out`}>
-                <div className={`overflow-hidden rounded-xl border border-border bg-black/60 shrink-0 transition-all duration-300 ease-in-out ${isExpanded ? "w-full aspect-video" : "w-[120px] h-[68px] sm:w-40 sm:h-[90px]"}`}>
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1.7fr)_minmax(0,1.15fr)] md:items-center">
+                <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-border/80 bg-[var(--surface)] px-3 py-2.5">
+                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-border bg-[var(--surface-raised)]">
+                    {currentTrack.artworkUrl ? (
+                      <img
+                        src={currentTrack.artworkUrl}
+                        alt={`${currentTrack.title} cover`}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="grid h-full w-full place-items-center text-[var(--muted)]">
+                        <Music className="h-4 w-4" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold tracking-[0.01em] text-[var(--text)] sm:text-[15px]">
+                      {currentTrack.title}
+                    </p>
+                    <p className="truncate pt-0.5 text-xs text-text-muted sm:text-[13px]">{currentTrack.artist}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border/80 bg-[var(--surface)] px-3 py-2.5 sm:px-4">
+                  <div className="mx-auto flex w-full max-w-[360px] items-center justify-center gap-2.5">
+                    <button
+                      onClick={skipPrevious}
+                      className="grid h-10 w-10 place-items-center rounded-full border border-border transition-colors hover:bg-[var(--surface-raised)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+                      aria-label="Previous"
+                    >
+                      <SkipBack className="h-4 w-4 text-[var(--text)]" />
+                    </button>
+                    <button
+                      onClick={togglePlayPause}
+                      className="grid h-11 w-11 place-items-center rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] shadow-[0_0_0_1px_var(--accent-border),0_10px_22px_rgba(15,23,42,0.18)] transition-all hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+                      aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}
+                    >
+                      {isPlaying ? <Pause className="h-4 w-4 text-[var(--text)]" /> : <Play className="h-4 w-4 text-[var(--text)]" />}
+                    </button>
+                    <button
+                      onClick={skipNext}
+                      className="grid h-10 w-10 place-items-center rounded-full border border-border transition-colors hover:bg-[var(--surface-raised)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+                      aria-label="Next"
+                    >
+                      <SkipForward className="h-4 w-4 text-[var(--text)]" />
+                    </button>
+                  </div>
+                  <div className="mt-2.5 grid grid-cols-[40px_1fr_40px] items-center gap-2 text-xs tabular-nums text-text-muted">
+                    <span>{formatTime(currentTime)}</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      value={progress}
+                      onChange={(event) => seekToPercent(Number(event.target.value))}
+                      className="w-full themed-progress"
+                      aria-label={isBg ? "Прогрес" : "Track progress"}
+                    />
+                    <span className="text-right">{formatTime(duration)}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[auto_auto_1fr_auto] items-center gap-2 rounded-2xl border border-border/80 bg-[var(--surface)] px-3 py-2.5">
+                  <button
+                    onClick={() => togglePanel("queue")}
+                    data-testid="queue-toggle"
+                    className="relative grid h-10 w-10 place-items-center rounded-full border border-border transition-colors hover:bg-[var(--surface-raised)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+                    aria-label="Queue"
+                  >
+                    <ListMusic className={`h-4 w-4 ${isQueueOpen ? "text-[var(--accent)]" : "text-[var(--text)]"}`} />
+                    {queue.length > 0 ? (
+                      <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">
+                        {queue.length}
+                      </span>
+                    ) : null}
+                  </button>
+                  <button
+                    onClick={toggleMute}
+                    className="grid h-10 w-10 place-items-center rounded-full border border-border transition-colors hover:bg-[var(--surface-raised)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+                    aria-label={volume === 0 ? "Unmute" : "Mute"}
+                  >
+                    {volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}
+                  </button>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={volume}
+                    onChange={(event) => setVolume(Number(event.target.value))}
+                    className="w-full themed-progress"
+                    aria-label={isBg ? "Сила на звука" : "Volume"}
+                  />
+                  <button
+                    onClick={() => setIsShortcutsOpen(true)}
+                    className="grid h-10 w-10 place-items-center rounded-full border border-border transition-colors hover:bg-[var(--surface-raised)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+                    aria-label="Keyboard shortcuts"
+                  >
+                    <Keyboard className="h-4 w-4 text-[var(--text)]" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-2 rounded-2xl border border-border/80 bg-[var(--surface)] p-2 md:grid-cols-[minmax(0,180px)_1fr] md:items-center">
+                <div className="overflow-hidden rounded-xl border border-border bg-black/70">
                   <iframe
                     id="ponotai-yt-player"
                     title={`${currentTrack.title} by ${currentTrack.artist}`}
                     src={`https://www.youtube.com/embed/${currentVideoId}?enablejsapi=1&autoplay=1&controls=1&rel=0&modestbranding=1`}
-                    className="h-full w-full"
+                    className="aspect-video h-full w-full"
                     allow="autoplay; encrypted-media; picture-in-picture"
                     allowFullScreen
                   />
                 </div>
-
-                <button type="button" onClick={() => setIsExpanded((v) => !v)} className={`text-left ${isExpanded ? "mt-2" : "flex-1"}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-[var(--text)]">{currentTrack.title}</p>
-                      <p className="truncate text-xs text-text-muted">{currentTrack.artist}</p>
-                    </div>
-                    <span className="text-lg text-[var(--muted)]">{isExpanded ? "↓" : "↑"}</span>
-                  </div>
-
-                  {isExpanded && (
-                    <span
-                      aria-label="Collapse player"
-                      className="mt-2 inline-flex rounded-full bg-[var(--accent)] p-2 text-[var(--accent-foreground)] shadow-md"
-                    >
-                      <span className="text-lg leading-none">↓</span>
-                    </span>
-                  )}
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button onClick={skipPrevious} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Previous"><SkipBack className="w-4 h-4 text-[var(--text)]" /></button>
-                <button onClick={togglePlayPause} className="h-10 w-10 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] grid place-items-center" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="w-4 h-4 text-[var(--text)]" /> : <Play className="w-4 h-4 text-[var(--text)]" />}</button>
-                <button onClick={skipNext} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Next"><SkipForward className="w-4 h-4 text-[var(--text)]" /></button>
-                <button onClick={toggleMute} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="w-4 h-4 text-[var(--muted)]" /> : <Volume2 className="w-4 h-4 text-[var(--text)]" />}</button>
-                <button data-testid="queue-toggle" onClick={() => togglePanel("queue")} className="relative h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Queue"><ListMusic className={`w-4 h-4 ${isQueueOpen ? "text-[var(--accent)]" : "text-[var(--text)]"}`} />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
-                <button onClick={() => setIsShortcutsOpen(true)} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Keyboard shortcuts"><Keyboard className="w-4 h-4 text-[var(--text)]" /></button>
-
-                <div className="ml-auto min-w-0 flex-1">
-                  <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2 text-xs text-text-muted">
-                    <span>{formatTime(currentTime)}</span>
-                    <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="w-full themed-progress" aria-label={isBg ? "Прогрес" : "Track progress"} />
-                    <span className="text-right">{formatTime(duration)}</span>
-                  </div>
-                  <input type="range" min={0} max={100} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="mt-2 w-full themed-progress" aria-label={isBg ? "Сила на звука" : "Volume"} />
+                <div className="min-w-0 px-1">
+                  <p className="truncate text-xs uppercase tracking-[0.18em] text-text-muted">
+                    {isBg ? "YouTube връзка" : "YouTube session"}
+                  </p>
+                  <p className="truncate pt-1 text-sm text-[var(--text)]">
+                    {isBg
+                      ? "Плеърът остава видим за съвместимост и контроли."
+                      : "Player remains visible for compliance and direct controls."}
+                  </p>
                 </div>
               </div>
 
