@@ -15,6 +15,8 @@ export type PlaybackSnapshot = {
   ended: boolean;
 };
 
+export type RepeatMode = "normal" | "queue" | "track";
+
 export function mapYouTubeState(playerState: number, stateMap: { PLAYING: number; PAUSED: number; ENDED: number; CUED: number; BUFFERING: number }): PlaybackSnapshot {
   if (playerState === stateMap.PLAYING) return { isPlaying: true, isBuffering: false, ended: false };
   if (playerState === stateMap.BUFFERING) return { isPlaying: false, isBuffering: true, ended: false };
@@ -34,4 +36,16 @@ export function upsertTrack(
 
   const nextQueue = [...queue, track];
   return { queue: nextQueue, activeIndex: nextQueue.length - 1, added: true };
+}
+
+export function getNextQueueIndex(
+  currentIndex: number,
+  queueLength: number,
+  repeatMode: RepeatMode,
+): number | null {
+  if (queueLength <= 0 || currentIndex < 0 || currentIndex >= queueLength) return null;
+  if (repeatMode === "track") return currentIndex;
+  if (currentIndex + 1 < queueLength) return currentIndex + 1;
+  if (repeatMode === "queue") return 0;
+  return null;
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { upsertTrack } from "../features/player/state.ts";
+import { getNextQueueIndex, upsertTrack } from "../features/player/state.ts";
 
 const trackA = { id: "a", title: "A", artist: "AA", query: "A AA" };
 const trackB = { id: "b", title: "B", artist: "BB", query: "B BB" };
@@ -22,4 +22,17 @@ test("upsertTrack prevents duplicates and focuses existing item", () => {
   assert.equal(first.queue.length, 2);
   assert.equal(first.activeIndex, 0);
   assert.equal(first.added, false);
+});
+
+test("getNextQueueIndex handles normal queue ending", () => {
+  assert.equal(getNextQueueIndex(0, 2, "normal"), 1);
+  assert.equal(getNextQueueIndex(1, 2, "normal"), null);
+});
+
+test("getNextQueueIndex loops queue when repeat queue is active", () => {
+  assert.equal(getNextQueueIndex(1, 2, "queue"), 0);
+});
+
+test("getNextQueueIndex repeats current track when repeat track is active", () => {
+  assert.equal(getNextQueueIndex(1, 2, "track"), 1);
 });
