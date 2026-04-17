@@ -62,7 +62,7 @@ export default function SearchPage() {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { addToQueue } = usePlayer();
-  const { addFavorite, addToHistory, favorites, token } = useUser();
+  const { addFavorite, addToHistory, favorites, token, saveToLibrary } = useUser();
   const { playlists, addSongToPlaylist, favoritesSet, toggleFavorite } = useLibrary(profile.id);
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
@@ -466,8 +466,13 @@ export default function SearchPage() {
                           onAddToQueue={() => queueResult(result)}
                           onSaveToRecent={() => saveResultToRecent(result)}
                           onSaveToLibrary={() => {
-                            saveResultToRecent(result);
-                            addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl });
+                            void saveToLibrary({
+                              title: result.title,
+                              artist: result.artist,
+                              coverUrl: result.thumbnailUrl,
+                              method: "youtube-search",
+                              recognized: true,
+                            });
                           }}
                           onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
                           onAddToPlaylist={(playlistId) =>
@@ -507,8 +512,13 @@ export default function SearchPage() {
                             onAddToQueue={() => queueResult(result)}
                             onSaveToRecent={() => saveResultToRecent(result)}
                             onSaveToLibrary={() => {
-                              saveResultToRecent(result);
-                              addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl });
+                              void saveToLibrary({
+                                title: result.title,
+                                artist: result.artist,
+                                coverUrl: result.thumbnailUrl,
+                                method: "youtube-search",
+                                recognized: true,
+                              });
                             }}
                             onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
                             onAddToPlaylist={(playlistId) =>
