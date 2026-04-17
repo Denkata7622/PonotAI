@@ -170,16 +170,18 @@ export function useClick(context: FloatingContext) {
   };
 }
 
-export function useDismiss(context: FloatingContext, _opts?: { outsidePressEvent?: string }) {
+export function useDismiss(context: FloatingContext, opts?: { outsidePressEvent?: "pointerdown" | "click" }) {
   useEffect(() => {
     if (!context.open) return;
 
-    const onPointerDown = (event: PointerEvent) => {
+    const outsidePressEvent = opts?.outsidePressEvent ?? "pointerdown";
+
+    const onOutsidePress = (event: PointerEvent | MouseEvent) => {
       const target = event.target as Node | null;
       const reference = context.refs.reference.current;
       const floating = context.refs.floating.current;
-      if (!target || !reference || !floating) return;
-      if (reference.contains(target) || floating.contains(target)) return;
+      if (!target) return;
+      if (reference?.contains(target) || floating?.contains(target)) return;
       context.onOpenChange?.(false);
     };
 
@@ -189,13 +191,13 @@ export function useDismiss(context: FloatingContext, _opts?: { outsidePressEvent
       }
     };
 
-    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener(outsidePressEvent, onOutsidePress);
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener(outsidePressEvent, onOutsidePress);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [context]);
+  }, [context.open, context.onOpenChange, context.refs, opts?.outsidePressEvent]);
 
   return {
     getFloatingProps: <T extends HTMLProps<Element>>(props: T) => props,

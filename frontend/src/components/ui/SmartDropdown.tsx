@@ -96,7 +96,7 @@ export function SmartDropdown({
 
   const click = useClick(context);
   const dismiss = useDismiss(context, {
-    outsidePressEvent: 'pointerdown',
+    outsidePressEvent: 'click',
   });
 
   const interactions = enableClickTrigger ? [click, dismiss] : [dismiss];
