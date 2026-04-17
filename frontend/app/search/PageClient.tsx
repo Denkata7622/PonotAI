@@ -7,6 +7,7 @@ import {
   Clock,
   Camera,
   Mic,
+  Play,
   Search,
   SearchX,
   Sparkles,
@@ -26,6 +27,7 @@ import { useRouter } from "next/navigation";
 import { useRecentSearches } from "../../lib/useRecentSearches";
 import { formatArtist } from "../../lib/formatArtist";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
+import SearchResultActions from "../../components/SearchResultActions";
 import { runUnifiedSearch } from "../../lib/searchClient";
 import SongRow from "../../components/SongRow";
 import { normalizeTrackKey } from "../../lib/dedupe";
@@ -64,13 +66,8 @@ export default function SearchPage() {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { addToQueue } = usePlayer();
-<<<<<<< codex/fix-data-consistency-for-favorites-and-saves
-  const { addFavorite, addToHistory, favorites, token, saveToLibrary } = useUser();
-  const { playlists, addSongToPlaylist, favoritesSet, toggleFavorite } = useLibrary(profile.id);
-=======
-  const { addToHistory, favorites, history: userHistory, token } = useUser();
+  const { addFavorite, addToHistory, favorites, history: userHistory, token, saveToLibrary } = useUser();
   const { playlists, addSongToPlaylist, favoritesSet, favoritesList, toggleFavorite } = useLibrary(profile.id);
->>>>>>> main
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
   const [activeTab, setActiveTab] = useState<"discover" | "history">("discover");
@@ -82,6 +79,7 @@ export default function SearchPage() {
   const [isUnavailable, setIsUnavailable] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const blurTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -528,7 +526,6 @@ export default function SearchPage() {
                 </div>
                 <div className="space-y-2">
                   {groupedResults.songs.map((result) => (
-<<<<<<< codex/fix-data-consistency-for-favorites-and-saves
                     <article key={result.videoId} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2.5">
                       <img src={result.thumbnailUrl} alt={result.title} className="h-14 w-14 shrink-0 rounded-lg object-cover" />
                       <div className="min-w-0 flex-1">
@@ -563,27 +560,6 @@ export default function SearchPage() {
                         />
                       </div>
                     </article>
-=======
-                    <SongRow
-                      key={result.videoId}
-                      id={result.videoId}
-                      title={result.title}
-                      artist={result.artist}
-                      artworkUrl={result.thumbnailUrl}
-                      videoId={result.videoId}
-                      onPlay={() => queueResult(result)}
-                      onFavorite={() => {
-                        saveResultToRecent(result);
-                        toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId);
-                      }}
-                      isFavorite={favoritesSet.has(normalizeTrackKey(result.title, result.artist))}
-                      showMoreMenu
-                      playlists={playlists}
-                      onAddToPlaylist={(playlistId) =>
-                        addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
-                      }
-                    />
->>>>>>> main
                   ))}
                 </div>
               </section>
@@ -596,7 +572,6 @@ export default function SearchPage() {
                   </div>
                   <div className="space-y-2">
                     {groupedResults.channels.map((result) => (
-<<<<<<< codex/fix-data-consistency-for-favorites-and-saves
                       <article key={result.videoId} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2.5">
                         <img src={result.thumbnailUrl} alt={result.title} className="h-14 w-14 shrink-0 rounded-lg object-cover" />
                         <div className="min-w-0 flex-1">
@@ -631,27 +606,6 @@ export default function SearchPage() {
                           />
                         </div>
                       </article>
-=======
-                      <SongRow
-                        key={result.videoId}
-                        id={result.videoId}
-                        title={result.title}
-                        artist={result.artist}
-                        artworkUrl={result.thumbnailUrl}
-                        videoId={result.videoId}
-                        onPlay={() => queueResult(result)}
-                        onFavorite={() => {
-                          saveResultToRecent(result);
-                          toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId);
-                        }}
-                        isFavorite={favoritesSet.has(normalizeTrackKey(result.title, result.artist))}
-                        showMoreMenu
-                        playlists={playlists}
-                        onAddToPlaylist={(playlistId) =>
-                          addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
-                        }
-                      />
->>>>>>> main
                     ))}
                   </div>
                 </section>
