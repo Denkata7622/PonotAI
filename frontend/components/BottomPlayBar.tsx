@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Keyboard, ListMusic, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, X } from "lucide-react";
+import { ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
-import { t } from "../lib/translations";
 import { useDualSidebar } from "@/src/components/sidebars/DualSidebarContext";
 
 function formatTime(seconds: number) {
@@ -18,13 +17,11 @@ export default function BottomPlayBar() {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [lastVolume, setLastVolume] = useState(70);
   const playerBarRef = useRef<HTMLDivElement | null>(null);
 
   const {
     queue,
-    currentIndex,
     currentTrack,
     currentVideoId,
     isPlaying,
@@ -39,6 +36,10 @@ export default function BottomPlayBar() {
     setVolume,
     skipNext,
     skipPrevious,
+    shuffleEnabled,
+    repeatMode,
+    toggleShuffle,
+    cycleRepeatMode,
   } = usePlayer();
 
   const { state: sidebarState, togglePanel } = useDualSidebar();
@@ -81,31 +82,6 @@ export default function BottomPlayBar() {
         <button className="fixed inset-0 z-40 bg-black/40 md:hidden" aria-label={isBg ? "Затвори плейъра" : "Close player"} onClick={() => setIsExpanded(false)} />
       )}
 
-
-      {isShortcutsOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60" onClick={() => setIsShortcutsOpen(false)}>
-          <div className="mx-auto mt-24 w-[92%] max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5" onClick={(event) => event.stopPropagation()}>
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-base font-semibold">{t("shortcuts_title", language)}</h3>
-              <button onClick={() => setIsShortcutsOpen(false)} aria-label="Close shortcuts"><X className="w-5 h-5 text-[var(--muted)]" /></button>
-            </div>
-            <div className="space-y-2 text-sm">
-              {[
-                { key: "Space", label: t("shortcut_play_pause", language) },
-                { key: "→", label: t("shortcut_next", language) },
-                { key: "←", label: t("shortcut_previous", language) },
-                { key: "M", label: t("shortcut_mute", language) },
-                { key: "/", label: t("shortcut_focus_search", language) },
-              ].map((item) => (
-                <div key={item.key} className="flex items-center justify-between rounded-lg border border-border bg-[var(--surface-raised)] px-3 py-2">
-                  <kbd className="rounded border border-border bg-[var(--surface)] px-2 py-1 text-xs">{item.key}</kbd>
-                  <span>{item.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       <div
         ref={playerBarRef}
@@ -158,21 +134,45 @@ export default function BottomPlayBar() {
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button onClick={skipPrevious} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Previous"><SkipBack className="w-4 h-4 text-[var(--text)]" /></button>
-                <button onClick={togglePlayPause} className="h-10 w-10 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] grid place-items-center" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="w-4 h-4 text-[var(--text)]" /> : <Play className="w-4 h-4 text-[var(--text)]" />}</button>
-                <button onClick={skipNext} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Next"><SkipForward className="w-4 h-4 text-[var(--text)]" /></button>
-                <button onClick={toggleMute} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="w-4 h-4 text-[var(--muted)]" /> : <Volume2 className="w-4 h-4 text-[var(--text)]" />}</button>
-                <button data-testid="queue-toggle" onClick={() => togglePanel("queue")} className="relative h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Queue"><ListMusic className={`w-4 h-4 ${isQueueOpen ? "text-[var(--accent)]" : "text-[var(--text)]"}`} />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
-                <button onClick={() => setIsShortcutsOpen(true)} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Keyboard shortcuts"><Keyboard className="w-4 h-4 text-[var(--text)]" /></button>
+              <div className="space-y-2">
+                <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2 text-xs text-text-muted">
+                  <span>{formatTime(currentTime)}</span>
+                  <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="w-full themed-progress" aria-label={isBg ? "Прогрес" : "Track progress"} />
+                  <span className="text-right">{formatTime(duration)}</span>
+                </div>
 
-                <div className="ml-auto min-w-0 flex-1">
-                  <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2 text-xs text-text-muted">
-                    <span>{formatTime(currentTime)}</span>
-                    <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="w-full themed-progress" aria-label={isBg ? "Прогрес" : "Track progress"} />
-                    <span className="text-right">{formatTime(duration)}</span>
-                  </div>
-                  <input type="range" min={0} max={100} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="mt-2 w-full themed-progress" aria-label={isBg ? "Сила на звука" : "Volume"} />
+                <div className="flex items-center justify-center gap-3">
+                  <button onClick={skipPrevious} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Previous"><SkipBack className="w-4 h-4 text-[var(--text)]" /></button>
+                  <button onClick={togglePlayPause} className="h-11 w-11 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] grid place-items-center" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="w-5 h-5 text-[var(--text)]" /> : <Play className="w-5 h-5 text-[var(--text)]" />}</button>
+                  <button onClick={skipNext} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Next"><SkipForward className="w-4 h-4 text-[var(--text)]" /></button>
+                </div>
+
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={toggleShuffle}
+                    className={`h-10 w-10 rounded-full border grid place-items-center ${shuffleEnabled ? "border-[var(--accent-border)] bg-[var(--accent-soft)]" : "border-border"}`}
+                    aria-label={isBg ? "Разбъркано възпроизвеждане" : "Shuffle"}
+                  >
+                    <Sparkles className={`h-4 w-4 ${shuffleEnabled ? "text-[var(--accent)]" : "text-[var(--text)]"}`} />
+                  </button>
+                  <button
+                    onClick={cycleRepeatMode}
+                    className={`h-10 w-10 rounded-full border grid place-items-center ${
+                      repeatMode === "off" ? "border-border" : "border-[var(--accent-border)] bg-[var(--accent-soft)]"
+                    }`}
+                    aria-label={repeatMode === "off" ? (isBg ? "Повтаряне изключено" : "Repeat off") : repeatMode === "all" ? (isBg ? "Повтаряне на опашката" : "Repeat queue") : (isBg ? "Повтаряне на текущата песен" : "Repeat current track")}
+                  >
+                    <span className="relative grid place-items-center">
+                      <RotateCcw className={`h-4 w-4 ${repeatMode === "off" ? "text-[var(--text)]" : "text-[var(--accent)]"}`} />
+                      {repeatMode === "one" && <span className="absolute -bottom-1 -right-1 text-[9px] font-bold leading-none text-[var(--accent)]">1</span>}
+                    </span>
+                  </button>
+                  <button data-testid="queue-toggle" onClick={() => togglePanel("queue")} className="relative h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Queue"><ListMusic className={`w-4 h-4 ${isQueueOpen ? "text-[var(--accent)]" : "text-[var(--text)]"}`} />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button onClick={toggleMute} className="h-10 w-10 shrink-0 rounded-full border border-border grid place-items-center" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="w-4 h-4 text-[var(--muted)]" /> : <Volume2 className="w-4 h-4 text-[var(--text)]" />}</button>
+                  <input type="range" min={0} max={100} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="w-full themed-progress" aria-label={isBg ? "Сила на звука" : "Volume"} />
                 </div>
               </div>
 
