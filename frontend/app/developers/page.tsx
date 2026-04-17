@@ -12,11 +12,12 @@ export default function DevelopersPage() {
   const { language } = useLanguage();
 
   const endpointRows = useMemo(() => [
-    { method: "POST", path: "/api/developer/keys", auth: "session", desc: t("dev_endpoint_create_key", language) },
-    { method: "GET", path: "/api/developer/keys", auth: "session", desc: t("dev_endpoint_list_keys", language) },
-    { method: "DELETE", path: "/api/developer/keys/:id", auth: "session", desc: t("dev_endpoint_revoke_key", language) },
-    { method: "POST", path: "/api/developer/v1/recognition/audio", auth: "x-api-key", desc: t("dev_endpoint_recognize_audio", language) },
-    { method: "GET", path: "/api/developer/v1/recommendations?seed=", auth: "x-api-key", desc: t("dev_endpoint_recommendations", language) },
+    { method: "POST", path: "/api/developer/keys", auth: t("dev_auth_session", language), desc: t("dev_endpoint_create_key", language) },
+    { method: "GET", path: "/api/developer/keys", auth: t("dev_auth_session", language), desc: t("dev_endpoint_list_keys", language) },
+    { method: "DELETE", path: "/api/developer/keys/:id", auth: t("dev_auth_session", language), desc: t("dev_endpoint_revoke_key", language) },
+    { method: "POST", path: "/api/developer/v1/recognition/audio", auth: t("dev_auth_api_key", language), desc: t("dev_endpoint_recognize_audio", language) },
+    { method: "GET", path: "/api/developer/v1/recommendations?seed=", auth: t("dev_auth_api_key", language), desc: t("dev_endpoint_recommendations", language) },
+    { method: "GET", path: "/api/search/fuzzy?q=", auth: t("dev_auth_bearer", language), desc: t("dev_endpoint_search_fuzzy", language) },
   ], [language]);
 
   async function createKey() {
@@ -71,7 +72,12 @@ export default function DevelopersPage() {
 
       <h2 className="pt-2 text-lg font-semibold">{t("dev_examples", language)}</h2>
       <pre className="overflow-auto rounded-lg border border-[var(--border)] bg-[var(--input-bg)] p-3 text-xs">curl -X POST "$API/api/developer/v1/recognition/audio" -H "x-api-key: trk_..." -F "audio=@clip.webm" -F "mode=standard"</pre>
+      <pre className="overflow-auto rounded-lg border border-[var(--border)] bg-[var(--input-bg)] p-3 text-xs">{`{"data":{"title":"Song","artist":"Artist"},"mode":"standard"}`}</pre>
       <pre className="overflow-auto rounded-lg border border-[var(--border)] bg-[var(--input-bg)] p-3 text-xs">curl "$API/api/developer/v1/recommendations?seed=weeknd" -H "x-api-key: trk_..."</pre>
+      <pre className="overflow-auto rounded-lg border border-[var(--border)] bg-[var(--input-bg)] p-3 text-xs">curl "$API/api/search/fuzzy?q=weeknd" -H "Authorization: Bearer &lt;jwt&gt;"</pre>
+
+      <h2 className="pt-2 text-lg font-semibold">{t("dev_docs_runtime", language)}</h2>
+      <p className="text-sm text-[var(--muted)]">{t("dev_docs_runtime_desc", language)}</p>
 
       <h2 className="pt-2 text-lg font-semibold">{t("dev_external_services", language)}</h2>
       <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--muted)]">

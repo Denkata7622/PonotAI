@@ -51,6 +51,7 @@ export function SmartDropdown({
   const [hasReferenceNode, setHasReferenceNode] = useState(false);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
     const value = Number.parseInt(
       window.getComputedStyle(document.documentElement).getPropertyValue('--player-bar-height') || '0',
       10,

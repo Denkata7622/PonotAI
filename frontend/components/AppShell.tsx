@@ -104,14 +104,21 @@ function AppShellContent({ children }: { children: ReactNode }) {
       document.documentElement.style.setProperty("--mobile-nav-height", `${Math.round(navHeight)}px`);
     };
     updateMobileNavHeight();
-    const observer = new ResizeObserver(updateMobileNavHeight);
-    if (mobileNavRef.current) observer.observe(mobileNavRef.current);
+    const ResizeObserverCtor = window.ResizeObserver;
+    const observer = ResizeObserverCtor ? new ResizeObserverCtor(updateMobileNavHeight) : null;
+    if (observer && mobileNavRef.current) observer.observe(mobileNavRef.current);
     window.addEventListener("resize", updateMobileNavHeight);
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       window.removeEventListener("resize", updateMobileNavHeight);
       document.documentElement.style.setProperty("--mobile-nav-height", "0px");
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (blurTimeoutRef.current) {
+      window.clearTimeout(blurTimeoutRef.current);
+    }
   }, []);
 
   const isNavItemActive = (href: string) => {
