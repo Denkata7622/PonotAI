@@ -63,8 +63,7 @@ export default function SearchResultActions({
             <button
               type="button"
               className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
-              onMouseDown={(event) => {
-                event.preventDefault();
+              onClick={(event) => {
                 event.stopPropagation();
               }}
             aria-label={t("track_more_options", language)}
@@ -76,8 +75,7 @@ export default function SearchResultActions({
         <button
           type="button"
           className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-          onMouseDown={(event) => {
-            event.preventDefault();
+          onClick={(event) => {
             event.stopPropagation();
             onPlayNow();
             setShowPlaylists(false);
@@ -90,8 +88,7 @@ export default function SearchResultActions({
         <button
           type="button"
           className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-          onMouseDown={(event) => {
-            event.preventDefault();
+          onClick={(event) => {
             event.stopPropagation();
             onAddToQueue();
             setShowPlaylists(false);
@@ -104,8 +101,7 @@ export default function SearchResultActions({
         <button
           type="button"
           className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-          onMouseDown={(event) => {
-            event.preventDefault();
+          onClick={(event) => {
             event.stopPropagation();
             onSaveToRecent();
             setShowPlaylists(false);
@@ -118,8 +114,7 @@ export default function SearchResultActions({
         <button
           type="button"
           className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-          onMouseDown={(event) => {
-            event.preventDefault();
+          onClick={(event) => {
             event.stopPropagation();
             onSaveToLibrary();
             setShowPlaylists(false);
@@ -132,8 +127,7 @@ export default function SearchResultActions({
         <button
           type="button"
           className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-          onMouseDown={(event) => {
-            event.preventDefault();
+          onClick={(event) => {
             event.stopPropagation();
             onAddToFavorites();
             setJustFavorited(true);
@@ -146,8 +140,7 @@ export default function SearchResultActions({
         <button
           type="button"
           className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-          onMouseDown={(event) => {
-            event.preventDefault();
+          onClick={(event) => {
             event.stopPropagation();
             setShowPlaylists((prev) => !prev);
           }}
@@ -161,8 +154,7 @@ export default function SearchResultActions({
               <button
                 type="button"
                 className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-[var(--muted)]"
-                onMouseDown={(event) => {
-                  event.preventDefault();
+                onClick={(event) => {
                   event.stopPropagation();
                   onGoToLibrary();
                   onClose();
@@ -178,8 +170,7 @@ export default function SearchResultActions({
                   type="button"
                   disabled={playlistSubmitId === playlist.id}
                   className="dropdown-item block w-full rounded-lg px-3 py-2 text-left text-sm"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
+                  onClick={(event) => {
                     event.stopPropagation();
                     if (playlistSubmitId) return;
                     setPlaylistSubmitId(playlist.id);
