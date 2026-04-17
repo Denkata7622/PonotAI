@@ -4,6 +4,8 @@ import {
   ReactNode,
   CSSProperties,
   useEffect,
+  useMemo,
+  useRef,
   useState,
   useCallback,
   useLayoutEffect,
@@ -48,7 +50,7 @@ export function SmartDropdown({
   enableClickTrigger = true,
 }: SmartDropdownProps) {
   const [playerBarPadding, setPlayerBarPadding] = useState(0);
-  const [hasReferenceNode, setHasReferenceNode] = useState(false);
+  const referenceNodeRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -59,39 +61,41 @@ export function SmartDropdown({
     setPlayerBarPadding(value);
   }, []);
 
-  const viewportPadding = {
+  const viewportPadding = useMemo(() => ({
     top: 12,
     left: 12,
     right: 12,
     bottom: (bottomPadding ?? playerBarPadding) + 12,
-  };
+  }), [bottomPadding, playerBarPadding]);
+
+  const middleware = useMemo(() => [
+    offset(6),
+    flip({
+      fallbackAxisSideDirection: 'start' as const,
+      padding: viewportPadding,
+    }),
+    shift({ padding: viewportPadding }),
+    size({
+      apply({ rects, elements }) {
+        const w = matchTriggerWidth
+          ? rects.reference.width
+          : minWidth
+          ? Math.max(minWidth, rects.floating.width)
+          : undefined;
+        if (w) {
+          Object.assign(elements.floating.style, { width: `${w}px` });
+        }
+      },
+      padding: 12,
+    }),
+  ], [matchTriggerWidth, minWidth, viewportPadding]);
 
   const { refs, floatingStyles, context } = useFloating({
     open: isOpen,
     onOpenChange,
     placement,
     whileElementsMounted: autoUpdate,
-    middleware: [
-      offset(6),
-      flip({
-        fallbackAxisSideDirection: 'start',
-        padding: viewportPadding,
-      }),
-      shift({ padding: viewportPadding }),
-      size({
-        apply({ rects, elements }) {
-          const w = matchTriggerWidth
-            ? rects.reference.width
-            : minWidth
-            ? Math.max(minWidth, rects.floating.width)
-            : undefined;
-          if (w) {
-            Object.assign(elements.floating.style, { width: `${w}px` });
-          }
-        },
-        padding: 12,
-      }),
-    ],
+    middleware,
   });
 
   const click = useClick(context);
@@ -103,8 +107,8 @@ export function SmartDropdown({
   const { getReferenceProps, getFloatingProps } = useInteractions(interactions);
 
   const referenceRef = useCallback((node: HTMLSpanElement | null) => {
+    referenceNodeRef.current = node;
     refs.setReference(node);
-    setHasReferenceNode(Boolean(node));
   }, [refs]);
 
   const floatingRef = useCallback((node: HTMLDivElement | null) => {
@@ -113,9 +117,9 @@ export function SmartDropdown({
 
 
   useLayoutEffect(() => {
-    if (!isOpen || hasReferenceNode) return;
+    if (!isOpen || referenceNodeRef.current) return;
     onOpenChange(false);
-  }, [hasReferenceNode, isOpen, onOpenChange]);
+  }, [isOpen, onOpenChange]);
 
   const dropdownStyle: CSSProperties = {
     ...floatingStyles,
@@ -142,7 +146,7 @@ export function SmartDropdown({
         {trigger}
       </span>
 
-      {isOpen && hasReferenceNode && (
+      {isOpen && referenceNodeRef.current && (
         <FloatingPortal>
           <div
             ref={floatingRef}
