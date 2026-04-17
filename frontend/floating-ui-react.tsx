@@ -31,6 +31,7 @@ type MiddlewareState = {
   y: number;
   referenceRect: DOMRect;
   floatingRect: DOMRect;
+  floatingEl: HTMLElement;
   viewportWidth: number;
   viewportHeight: number;
 };
@@ -71,12 +72,7 @@ export function shift(options?: { padding?: number | { top?: number; right?: num
 
 export function size(options: { apply: (args: { rects: { reference: DOMRect; floating: DOMRect }; elements: { floating: HTMLElement } }) => void; padding?: number }): MiddlewareFn {
   return (state) => {
-    if (typeof document !== "undefined") {
-      const floatingEl = document.querySelector("[data-smart-dropdown-floating]") as HTMLElement | null;
-      if (floatingEl) {
-        options.apply({ rects: { reference: state.referenceRect, floating: state.floatingRect }, elements: { floating: floatingEl } });
-      }
-    }
+    options.apply({ rects: { reference: state.referenceRect, floating: state.floatingRect }, elements: { floating: state.floatingEl } });
     return state;
   };
 }
@@ -90,13 +86,14 @@ export function autoUpdate(
   const onScroll = () => update();
   window.addEventListener("resize", onResize, { passive: true });
   window.addEventListener("scroll", onScroll, { passive: true, capture: true });
-  const ro = new ResizeObserver(() => update());
-  ro.observe(reference);
-  ro.observe(floating);
+  const ResizeObserverCtor = window.ResizeObserver;
+  const ro = ResizeObserverCtor ? new ResizeObserverCtor(() => update()) : null;
+  ro?.observe(reference);
+  ro?.observe(floating);
   return () => {
     window.removeEventListener("resize", onResize);
     window.removeEventListener("scroll", onScroll, true);
-    ro.disconnect();
+    ro?.disconnect();
   };
 }
 
@@ -123,6 +120,7 @@ export function useFloating(options: {
         y: options.placement?.startsWith("top") ? referenceRect.top - floatingRect.height - 6 : referenceRect.bottom + 6,
         referenceRect,
         floatingRect,
+        floatingEl: floating,
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
       };

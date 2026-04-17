@@ -22,6 +22,8 @@ tags:
 - name: Playlists
 - name: Stats
 - name: Search
+- name: Developer
+- name: AI
 paths:
   "/health":
     get:
@@ -914,18 +916,24 @@ paths:
         '200': { description: Fuzzy search results }
   "/api/developer/keys":
     get:
-      tags: [Auth]
+      tags: [Developer]
+      security:
+      - bearerAuth: []
       summary: List developer API keys
       responses:
         '200': { description: API key list }
     post:
-      tags: [Auth]
+      tags: [Developer]
+      security:
+      - bearerAuth: []
       summary: Create developer API key
       responses:
         '201': { description: API key created }
   "/api/developer/keys/{id}":
     delete:
-      tags: [Auth]
+      tags: [Developer]
+      security:
+      - bearerAuth: []
       summary: Revoke developer API key
       parameters:
         - in: path
@@ -937,15 +945,17 @@ paths:
         '404': { description: API key not found }
   "/api/developer/v1/recognition/audio":
     post:
-      tags: [Recognition]
-      security: []
+      tags: [Developer]
+      security:
+      - apiKeyAuth: []
       summary: Developer recognition endpoint (x-api-key)
       responses:
         '200': { description: Recognition result }
   "/api/developer/v1/recommendations":
     get:
-      tags: [Search]
-      security: []
+      tags: [Developer]
+      security:
+      - apiKeyAuth: []
       summary: Developer recommendations endpoint (x-api-key)
       responses:
         '200': { description: Recommendations }
@@ -1088,6 +1098,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: token
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
   responses:
     BadRequest:
       description: Invalid request

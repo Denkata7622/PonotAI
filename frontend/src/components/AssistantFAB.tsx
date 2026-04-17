@@ -5,12 +5,15 @@ import { usePathname, useRouter } from "next/navigation";
 import { useDualSidebar } from "./sidebars/DualSidebarContext";
 import { Sparkles } from "../../lucide-react";
 import { useUser } from "@/src/context/UserContext";
+import { useLanguage } from "@/lib/LanguageContext";
+import { t } from "@/lib/translations";
 
 export default function AssistantFAB() {
   const pathname = usePathname();
   const router = useRouter();
   const { openPanel } = useDualSidebar();
   const { isAuthenticated } = useUser();
+  const { language } = useLanguage();
   const [pulse, setPulse] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [bottom, setBottom] = useState("24px");
@@ -64,7 +67,7 @@ export default function AssistantFAB() {
         }
         openPanel("assistant");
       }}
-      aria-label="Music Assistant"
+      aria-label={t("nav_assistant", language)}
     >
       <span className="assistant-fab__halo" aria-hidden="true" />
       <span className="assistant-fab__shell" aria-hidden="true">
