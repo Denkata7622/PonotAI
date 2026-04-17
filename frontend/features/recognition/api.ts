@@ -45,6 +45,15 @@ export class RecognitionError extends Error {
 let activeController: AbortController | null = null;
 const recentRequestKeys = new Map<string, number>();
 
+function buildApiUrl(endpoint: string): string {
+  const baseUrl = getApiBaseUrl().replace(/\/$/, "");
+  const normalizedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  if (baseUrl.endsWith("/api") && normalizedEndpoint.startsWith("/api/")) {
+    return `${baseUrl}${normalizedEndpoint.slice(4)}`;
+  }
+  return `${baseUrl}${normalizedEndpoint}`;
+}
+
 function markAndCheckDuplicate(requestKey: string): boolean {
   const now = Date.now();
   for (const [key, ts] of recentRequestKeys.entries()) {
@@ -67,7 +76,7 @@ async function postMultipart<T>(endpoint: string, fieldName: string, file: Blob,
   formData.append(fieldName, file, filename);
   if (extraFields) for (const [key, value] of Object.entries(extraFields)) formData.append(key, value);
 
-  const response = await fetch(`${getApiBaseUrl()}${endpoint}`, {
+  const response = await fetch(buildApiUrl(endpoint), {
     method: "POST",
     body: formData,
     signal: activeController.signal

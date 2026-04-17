@@ -92,6 +92,12 @@ function AppShellContent({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
+    setShowUserMenu(false);
+    setShowSearchDropdown(false);
+    setOpenActionsId(null);
+  }, [pathname]);
+
+  useEffect(() => {
     const updateMobileNavHeight = () => {
       const isMobile = window.matchMedia("(max-width: 767px)").matches;
       const navHeight = isMobile ? (mobileNavRef.current?.getBoundingClientRect().height ?? 0) : 0;
@@ -627,6 +633,10 @@ function AppShellContent({ children }: { children: ReactNode }) {
                               onPlayNow={() => queueTrack(result, true)}
                               onAddToQueue={() => queueTrack(result, false, false)}
                               onSaveToRecent={() => saveResultToRecent(result)}
+                              onSaveToLibrary={() => {
+                                saveResultToRecent(result);
+                                addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl });
+                              }}
                               onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
                               onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })}
                               playlists={playlists}
@@ -661,7 +671,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                   }}
                                   aria-label={t("btn_play", language)}
                                 ><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToRecent={() => saveResultToRecent(result)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
+                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToRecent={() => saveResultToRecent(result)} onSaveToLibrary={() => { saveResultToRecent(result); addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl }); }} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
                               </li>
                             ))}
                           </ul>

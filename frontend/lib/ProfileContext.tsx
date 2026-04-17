@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 const ACTIVE_PROFILE_ID_KEY = "ponotai.profile.active";
 const PROFILES_KEY = "ponotai.profiles";
@@ -53,14 +53,6 @@ function safeParseProfiles(raw: string | null): Profile[] {
   }
 }
 
-function readInitialState(): { profiles: Profile[]; activeId: string } {
-  if (typeof window === "undefined") return { profiles: [defaultProfile], activeId: defaultProfile.id };
-  const profiles = safeParseProfiles(window.localStorage.getItem(PROFILES_KEY));
-  const activeId = window.localStorage.getItem(ACTIVE_PROFILE_ID_KEY) ?? profiles[0]?.id ?? defaultProfile.id;
-  const hasActive = profiles.some((p) => p.id === activeId);
-  return { profiles, activeId: hasActive ? activeId : profiles[0]?.id ?? defaultProfile.id };
-}
-
 const ProfileContext = createContext<ProfileContextValue | null>(null);
 
 export function scopedKey(baseKey: string, profileId: string): string {
@@ -68,7 +60,20 @@ export function scopedKey(baseKey: string, profileId: string): string {
 }
 
 export function ProfileProvider({ children }: { children: ReactNode }) {
-  const [{ profiles, activeId }, setState] = useState(readInitialState);
+  const [{ profiles, activeId }, setState] = useState<{ profiles: Profile[]; activeId: string }>({
+    profiles: [defaultProfile],
+    activeId: defaultProfile.id,
+  });
+
+  useEffect(() => {
+    const nextProfiles = safeParseProfiles(window.localStorage.getItem(PROFILES_KEY));
+    const storedActiveId = window.localStorage.getItem(ACTIVE_PROFILE_ID_KEY) ?? nextProfiles[0]?.id ?? defaultProfile.id;
+    const hasActive = nextProfiles.some((candidate) => candidate.id === storedActiveId);
+    setState({
+      profiles: nextProfiles,
+      activeId: hasActive ? storedActiveId : nextProfiles[0]?.id ?? defaultProfile.id,
+    });
+  }, []);
 
   const profile = useMemo(() => profiles.find((p) => p.id === activeId) ?? profiles[0] ?? defaultProfile, [activeId, profiles]);
 

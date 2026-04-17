@@ -15,6 +15,7 @@ type SearchResultActionsProps = {
   onPlayNow: () => void;
   onAddToQueue: () => void;
   onSaveToRecent: () => void;
+  onSaveToLibrary: () => void;
   onAddToFavorites: () => void;
   onAddToPlaylist: (playlistId: string) => void;
   playlists: Playlist[];
@@ -29,6 +30,7 @@ export default function SearchResultActions({
   onPlayNow,
   onAddToQueue,
   onSaveToRecent,
+  onSaveToLibrary,
   onAddToFavorites,
   onAddToPlaylist,
   playlists,
@@ -58,17 +60,13 @@ export default function SearchResultActions({
         placement="bottom-start"
         className="min-w-48 p-1"
         trigger={(
-          <button
-            type="button"
-            className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
-            onMouseDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
+            <button
+              type="button"
+              className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
             aria-label={t("track_more_options", language)}
           >
             <Plus className="w-4 h-4 text-[var(--text)]" />
@@ -116,6 +114,20 @@ export default function SearchResultActions({
         >
           <Clock className="w-4 h-4 text-[var(--muted)]" />
           {t("search_save_to_recent", language)}
+        </button>
+        <button
+          type="button"
+          className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onSaveToLibrary();
+            setShowPlaylists(false);
+            onClose();
+          }}
+        >
+          <Heart className="w-4 h-4 text-[var(--muted)]" />
+          {t("btn_save", language)}
         </button>
         <button
           type="button"

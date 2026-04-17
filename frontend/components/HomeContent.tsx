@@ -647,7 +647,7 @@ export function HomeContent() {
 
   return (
     <main className="min-h-screen w-full overflow-x-hidden transition-colors">
-      <div className="w-full px-3 py-6 sm:px-4 sm:py-8">
+      <div className="mx-auto w-full max-w-7xl px-3 py-6 sm:px-4 sm:py-8">
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-6">
             {!isAuthenticated && history.length === 0 && !demoSeen && (
