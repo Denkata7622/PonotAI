@@ -15,6 +15,10 @@ import { useRecentSearches } from "../../lib/useRecentSearches";
 import { formatArtist } from "../../lib/formatArtist";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
 import { runUnifiedSearch } from "../../lib/searchClient";
+import SongRow from "../../components/SongRow";
+import { normalizeTrackKey } from "../../lib/dedupe";
+import { getHomeRecommendations } from "../../features/recommendations/homeRecommendations";
+import { readTasteProfile } from "../../src/features/onboarding/tasteProfile";
 
 type HistoryItem = {
   id: string;
@@ -43,8 +47,8 @@ export default function SearchPage() {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { addToQueue } = usePlayer();
-  const { addFavorite, addToHistory, token } = useUser();
-  const { playlists, addSongToPlaylist } = useLibrary(profile.id);
+  const { addFavorite, addToHistory, favorites, token } = useUser();
+  const { playlists, addSongToPlaylist, favoritesSet, toggleFavorite } = useLibrary(profile.id);
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
   const [activeTab, setActiveTab] = useState<"discover" | "history">("discover");
@@ -129,6 +133,32 @@ export default function SearchPage() {
     songs: discoverResults.filter((result) => !result.isTopicChannel),
     channels: discoverResults.filter((result) => result.isTopicChannel),
   }), [discoverResults]);
+  const tasteProfile = useMemo(() => readTasteProfile(), []);
+  const recommendationHistory = useMemo(
+    () =>
+      history.filter(
+        (item): item is { id: string; song: { songName: string; artist: string; albumArtUrl?: string; youtubeVideoId?: string } } =>
+          Boolean(item.song?.songName && item.song?.artist),
+      ),
+    [history],
+  );
+  const homeBrowse = useMemo(
+    () =>
+      getHomeRecommendations({
+        language,
+        userId: profile.id,
+        history: recommendationHistory,
+        favorites: favorites.map((favorite) => ({
+          key: normalizeTrackKey(favorite.title, favorite.artist),
+          title: favorite.title,
+          artist: favorite.artist,
+          artworkUrl: favorite.coverUrl ?? undefined,
+        })),
+        tasteProfile,
+        limit: 8,
+      }),
+    [favorites, recommendationHistory, language, profile.id, tasteProfile],
+  );
 
   function queueResult(result: SearchResult) {
     addToQueue({
@@ -229,6 +259,54 @@ export default function SearchPage() {
               <SearchX className="w-8 h-8 text-[var(--muted)]" />
               <p className="cardText">{t("search_no_results_for", language)} "{debouncedQuery}"</p>
             </div>
+          )}
+          {!query.trim() && (
+            <section className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{t("search_from_home", language)}</p>
+                <h2 className="text-lg font-semibold">{homeBrowse.title}</h2>
+                <p className="text-sm text-[var(--muted)]">{homeBrowse.description}</p>
+              </div>
+              <div className="space-y-2">
+                {homeBrowse.tracks.map((track) => {
+                  const favoriteKey = normalizeTrackKey(track.title, track.artistName);
+                  return (
+                    <SongRow
+                      key={track.id}
+                      id={track.id}
+                      title={track.title}
+                      artist={track.artistName}
+                      artworkUrl={track.artworkUrl}
+                      videoId={track.youtubeVideoId}
+                      onPlay={() =>
+                        addToQueue({
+                          id: track.id,
+                          title: track.title,
+                          artist: track.artistName,
+                          artistId: track.artistId,
+                          artworkUrl: track.artworkUrl,
+                          videoId: track.youtubeVideoId,
+                          query: `${track.title} ${track.artistName}`,
+                          license: track.license,
+                        })
+                      }
+                      onFavorite={() => toggleFavorite(track.id, track.title, track.artistName, track.artworkUrl, track.youtubeVideoId)}
+                      isFavorite={favoritesSet.has(favoriteKey)}
+                      showMoreMenu
+                      playlists={playlists}
+                      onAddToPlaylist={(playlistId) =>
+                        addSongToPlaylist(playlistId, {
+                          title: track.title,
+                          artist: track.artistName,
+                          coverUrl: track.artworkUrl,
+                          videoId: track.youtubeVideoId,
+                        })
+                      }
+                    />
+                  );
+                })}
+              </div>
+            </section>
           )}
 
           {discoverResults.length > 0 && (

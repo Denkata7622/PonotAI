@@ -7,7 +7,7 @@ import { useUser } from "../../src/context/UserContext";
 
 export function useLibrary(profileId: string) {
   const [libraryState, setLibraryState] = useState<LibraryState>(() => loadLibraryState(profileId));
-  const { isAuthenticated } = useUser();
+  const { isAuthenticated, favorites, addFavorite, removeFavorite } = useUser();
 
   useEffect(() => {
     setLibraryState(loadLibraryState(profileId));
@@ -35,20 +35,31 @@ export function useLibrary(profileId: string) {
     };
   }, [isAuthenticated]);
 
-  const favoritesSet = useMemo(() => new Set(libraryState.favorites.map((favorite) => favorite.key)), [libraryState.favorites]);
-  const favoritesList: StoredFavorite[] = libraryState.favorites;
+  const favoritesList: StoredFavorite[] = useMemo(
+    () =>
+      favorites.map((favorite) => ({
+        key: normalizeTrackKey(favorite.title, favorite.artist),
+        title: favorite.title,
+        artist: favorite.artist,
+        artworkUrl: favorite.coverUrl ?? undefined,
+      })),
+    [favorites],
+  );
+  const favoritesSet = useMemo(() => new Set(favoritesList.map((favorite) => favorite.key)), [favoritesList]);
 
-  function toggleFavorite(trackId: string, title?: string, artist?: string, artworkUrl?: string, videoId?: string) {
+  function toggleFavorite(trackId: string, title?: string, artist?: string, artworkUrl?: string, _videoId?: string) {
     const favoriteKey = normalizeTrackKey(title ?? trackId, artist ?? "");
-    setLibraryState((prev) => {
-      const exists = prev.favorites.some((favorite) => favorite.key === favoriteKey);
-      if (exists) {
-        return { ...prev, favorites: prev.favorites.filter((favorite) => favorite.key !== favoriteKey) };
-      }
-      return {
-        ...prev,
-        favorites: [...prev.favorites, { key: favoriteKey, title: title ?? trackId, artist: artist ?? "", artworkUrl, videoId }],
-      };
+    const existing = favorites.find((favorite) => normalizeTrackKey(favorite.title, favorite.artist) === favoriteKey);
+
+    if (existing) {
+      void removeFavorite(existing.id);
+      return;
+    }
+
+    void addFavorite({
+      title: title ?? trackId,
+      artist: artist ?? "",
+      coverUrl: artworkUrl,
     });
   }
 

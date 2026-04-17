@@ -135,7 +135,8 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
     case "CLEAR_HISTORY":
       return { ...state, history: [] };
     case "ADD_FAVORITE": {
-      const exists = state.favorites.some((f) => f.id === action.payload.id);
+      const incomingKey = normalizeTrackKey(action.payload.title, action.payload.artist);
+      const exists = state.favorites.some((favorite) => normalizeTrackKey(favorite.title, favorite.artist) === incomingKey);
       return exists ? state : { ...state, favorites: [action.payload, ...state.favorites] };
     }
     case "REMOVE_FAVORITE":
@@ -457,7 +458,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setServerFavorites(serverFavorites.filter((f) => f.id !== resolvedId));
       return;
     }
-    dispatchGuest({ type: "REMOVE_FAVORITE", payload: id });
+    const resolvedId = guest.favorites.find((favorite) => favorite.id === id)?.id
+      ?? guest.favorites.find((favorite) => normalizeTrackKey(favorite.title, favorite.artist) === id)?.id;
+    if (!resolvedId) return;
+    dispatchGuest({ type: "REMOVE_FAVORITE", payload: resolvedId });
   }
 
   async function shareSong(song: { title: string; artist: string; album?: string; coverUrl?: string }) {
