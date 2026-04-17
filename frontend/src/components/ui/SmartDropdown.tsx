@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useLayoutEffect,
 } from 'react';
 import {
   useFloating,
@@ -47,6 +48,7 @@ export function SmartDropdown({
   enableClickTrigger = true,
 }: SmartDropdownProps) {
   const [playerBarPadding, setPlayerBarPadding] = useState(0);
+  const [hasReferenceNode, setHasReferenceNode] = useState(false);
 
   useEffect(() => {
     const value = Number.parseInt(
@@ -101,11 +103,18 @@ export function SmartDropdown({
 
   const referenceRef = useCallback((node: HTMLSpanElement | null) => {
     refs.setReference(node);
+    setHasReferenceNode(Boolean(node));
   }, [refs]);
 
   const floatingRef = useCallback((node: HTMLDivElement | null) => {
     refs.setFloating(node);
   }, [refs]);
+
+
+  useLayoutEffect(() => {
+    if (!isOpen || hasReferenceNode) return;
+    onOpenChange(false);
+  }, [hasReferenceNode, isOpen, onOpenChange]);
 
   const dropdownStyle: CSSProperties = {
     ...floatingStyles,
@@ -132,7 +141,7 @@ export function SmartDropdown({
         {trigger}
       </span>
 
-      {isOpen && (
+      {isOpen && hasReferenceNode && (
         <FloatingPortal>
           <div
             ref={floatingRef}

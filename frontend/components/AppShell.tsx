@@ -247,7 +247,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
 
   function handleSelectSearchResult(result: SearchResult) {
     queueTrack(result, true);
-    window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Now playing: ${result.title}` } }));
+    window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `${t("toast_now_playing", language)}: ${result.title}` } }));
   }
 
   function saveResultToRecent(result: SearchResult) {
@@ -338,7 +338,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
             <button
               className="navItem !p-2 text-sm"
               onClick={() => setIsCollapsed((prev) => !prev)}
-              aria-label={language === "bg" ? "Свий страничното меню" : "Collapse sidebar"}
+              aria-label={t("sidebar_collapse", language)}
             >
               {isCollapsed ? <ChevronRight className="w-4 h-4 text-[var(--muted)]" /> : <ChevronLeft className="w-4 h-4 text-[var(--muted)]" />}
             </button>
@@ -374,39 +374,39 @@ function AppShellContent({ children }: { children: ReactNode }) {
                     className="dropdown-item block rounded-lg px-3 py-2 text-sm text-[var(--text)]"
                     onClick={() => setShowUserMenu(false)}
                   >
-                    <span className="inline-flex items-center gap-2"><User className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Профил" : "Profile"}</span>
+                    <span className="inline-flex items-center gap-2"><User className="w-4 h-4 text-[var(--muted)]" />{t("nav_profile", language)}</span>
                   </Link>
                   <Link
                     href="/settings"
                     className="dropdown-item block rounded-lg px-3 py-2 text-sm text-[var(--text)]"
                     onClick={() => setShowUserMenu(false)}
                   >
-                    <span className="inline-flex items-center gap-2"><Settings className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Настройки" : "Settings"}</span>
+                    <span className="inline-flex items-center gap-2"><Settings className="w-4 h-4 text-[var(--muted)]" />{t("nav_settings", language)}</span>
                   </Link>
                   <button
                     className="dropdown-item status-danger w-full rounded-lg px-3 py-2 text-left text-sm"
                     onClick={handleLogout}
                   >
-                    <span className="inline-flex items-center gap-2"><LogOut className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Изход" : "Sign out"}</span>
+                    <span className="inline-flex items-center gap-2"><LogOut className="w-4 h-4 text-[var(--muted)]" />{t("auth_sign_out", language)}</span>
                   </button>
                 </SmartDropdown>
               ) : (
                 <div className="flex flex-col gap-2">
                   <p className="text-[var(--muted)]">
-                    {language === "bg" ? "Не си влязъл" : "Not signed in"}
+                    {t("auth_not_signed_in", language)}
                   </p>
                   <div className="flex gap-2">
                     <Link
                       href="/auth"
                       className="flex-1 rounded-lg border border-[var(--accent)] bg-[var(--active-bg)] px-2 py-1.5 text-center text-xs font-semibold text-[var(--text)] hover:bg-[var(--accent)]/30"
                     >
-                      {language === "bg" ? "Влез" : "Sign in"}
+                      {t("auth_sign_in", language)}
                     </Link>
                     <Link
                       href="/auth?tab=signup"
                       className="flex-1 rounded-lg border border-[var(--border)] px-2 py-1.5 text-center text-xs hover:bg-[var(--hover-bg)]"
                     >
-                      {language === "bg" ? "Регистрация" : "Sign up"}
+                      {t("auth_sign_up", language)}
                     </Link>
                   </div>
                 </div>
@@ -581,7 +581,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                     </p>
                   ) : personalizedResults.length > 0 && searchResults.length === 0 ? (
                     <div className="space-y-2 px-3 py-2">
-                      <p className="text-xs uppercase tracking-wider text-[var(--muted)]">Your Library</p>
+                      <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{t("library_your_library", language)}</p>
                       <ul className="space-y-1">
                         {personalizedResults.map((item) => (
                           <li key={item.id} className="text-sm text-[var(--text)]">
@@ -597,7 +597,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <p className="px-2 text-xs uppercase tracking-wider text-[var(--muted)]">Songs</p>
+                      <p className="px-2 text-xs uppercase tracking-wider text-[var(--muted)]">{t("songs_heading", language)}</p>
                       <ul className="space-y-1">
                         {groupedSearchResults.songs.map((result, index) => (
                           <li
@@ -648,7 +648,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                       {groupedSearchResults.channels.length > 0 && (
                         <>
                           <hr className="border-[var(--border)]" />
-                          <p className="px-2 text-xs uppercase tracking-wider text-[var(--muted)]">Artists & Channels</p>
+                          <p className="px-2 text-xs uppercase tracking-wider text-[var(--muted)]">{t("search_artists_channels", language)}</p>
                           <ul className="space-y-1">
                             {groupedSearchResults.channels.map((result) => (
                               <li
@@ -695,7 +695,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
           </div>
         </main>
       </div>
-      {showMobileMenu ? <button type="button" className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setShowMobileMenu(false)} aria-label="Close mobile menu" /> : null}
+      {showMobileMenu ? <button type="button" className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setShowMobileMenu(false)} aria-label={t("mobile_close_menu", language)} /> : null}
       <nav
         ref={mobileNavRef}
         className="fixed bottom-[calc(var(--player-bar-height,88px)+env(safe-area-inset-bottom,0px)+8px)] left-2 right-2 z-[45] rounded-2xl border border-border bg-surface/95 p-2 shadow-xl backdrop-blur md:hidden"
@@ -717,7 +717,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
             <item.icon className="w-4 h-4 text-[var(--muted)]" />
           </Link>
         ))}
-          <button type="button" className={`flex h-full flex-col items-center justify-center px-2 py-1 text-xs ${showMobileMenu ? "navItemActive" : "navItem"}`} onClick={() => setShowMobileMenu((prev) => !prev)} aria-label="Open menu">
+          <button type="button" className={`flex h-full flex-col items-center justify-center px-2 py-1 text-xs ${showMobileMenu ? "navItemActive" : "navItem"}`} onClick={() => setShowMobileMenu((prev) => !prev)} aria-label={t("mobile_open_menu", language)}>
             <EllipsisVertical className="w-4 h-4 text-[var(--muted)]" />
           </button>
         </div>
@@ -729,7 +729,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
               { href: "/stats", label: t("nav_stats", language), icon: BarChart2 },
               { href: "/about", label: t("nav_about", language), icon: Info },
               { href: "/how-to-use", label: t("nav_how_to_use", language), icon: HelpCircle },
-              ...(user?.role === "admin" ? [{ href: "/admin", label: "Admin", icon: Settings }] : []),
+              ...(user?.role === "admin" ? [{ href: "/admin", label: t("nav_admin", language), icon: Settings }] : []),
             ].map((item) => (
                 <Link key={`mobile-menu-${item.href}`} href={item.href} className={isNavItemActive(item.href) ? "navItemActive text-xs" : "navItem text-xs"} onClick={() => setShowMobileMenu(false)}>
                   <item.icon className="h-4 w-4 text-[var(--muted)]" />

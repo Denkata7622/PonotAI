@@ -1,65 +1,77 @@
 # API Contract
 
-## Health
-### GET /health
-Returns backend health status.
+This document is a developer-facing quick reference. For the full machine-readable contract, use `backend/openapi.yaml` and Swagger UI at `GET /docs`.
 
-**Response**
-```json
-{ "ok": true }
-```
+## Base
+- Backend base URL: `${API_BASE_URL}`
+- Health checks:
+  - `GET /health`
+  - `GET /api/health`
 
-## Recognition
-### POST /api/recognition/audio
-Recognizes a song from an uploaded audio clip (`multipart/form-data`, field: `audio`).
+## Authentication models
+- **Session/Bearer endpoints**: require logged-in user token (`Authorization: Bearer <token>`).
+- **Developer key endpoints**: require `x-api-key: trk_...`.
 
-**Success response**
+## Core app endpoints used by frontend
+- Auth: `GET /api/auth/me`, `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, `PATCH /api/auth/me`, `POST /api/auth/change-password`, `DELETE /api/auth/me`
+- History: `GET /api/history`, `POST /api/history`, `DELETE /api/history`, `DELETE /api/history/:id`
+- Favorites: `GET /api/favorites`, `POST /api/favorites`, `DELETE /api/favorites/:id`
+- Playlists/library:
+  - `GET /api/playlists`, `POST /api/playlists`, `DELETE /api/playlists/:id`
+  - `POST /api/playlists/:id/songs`, `PATCH /api/playlists/:id/songs`, `DELETE /api/playlists/:id/songs`
+  - `POST /api/library/sync`, `GET /api/library/report`
+- Search & share:
+  - `GET /api/search/fuzzy?q=`
+  - `POST /api/share`, `POST /api/share/song`, `POST /api/share/playlist/:playlistId`, `POST /api/share/recognition`, `GET /api/share/:shareCode`
+- Recognition:
+  - `POST /api/recognition/audio`
+  - `POST /api/recognition/audio/live`
+  - `POST /api/recognition/audio/humming`
+  - `POST /api/recognition/video`
+  - `POST /api/recognition/image`
+- AI/assistant:
+  - `POST /api/assistant`
+  - `GET /api/ai/insights/weekly|monthly|trends|daily|activity`
+  - `POST /api/ai/playlists/generate|update`
+  - `GET /api/ai/recommendations/mood|contextual|cross-artist`
+  - `GET /api/ai/discovery/daily|surprise|similar-artists`
+  - `POST /api/ai/tags/suggest|apply`
+
+## Developer API endpoints
+### Session-authenticated key management
+- `GET /api/developer/keys` — list API keys for current user.
+- `POST /api/developer/keys` — create API key.
+- `DELETE /api/developer/keys/:id` — revoke API key.
+
+Example response for create:
 ```json
 {
-  "songName": "Blinding Lights",
-  "artist": "The Weeknd",
-  "album": "After Hours",
-  "genre": "Pop",
-  "platformLinks": {
-    "youtube": "https://www.youtube.com/watch?v=4NRXx6U8ABQ",
-    "appleMusic": "https://music.apple.com/...",
-    "spotify": "https://open.spotify.com/...",
-    "preview": "https://..."
-  },
-  "youtubeVideoId": "4NRXx6U8ABQ",
-  "releaseYear": 2020,
-  "source": "provider",
-  "verificationStatus": "verified"
+  "apiKey": "trk_...",
+  "keyPrefix": "trk_abc123...",
+  "label": "My App",
+  "warning": "Store this key securely. It will not be shown again."
 }
 ```
 
-**Verification failure**
-- Status: `404`
-```json
-{
-  "message": "Recognition succeeded but no verified YouTube result was found.",
-  "code": "NO_VERIFIED_RESULT"
-}
+### x-api-key endpoints
+- `POST /api/developer/v1/recognition/audio`
+  - Content type: `multipart/form-data`
+  - Required field: `audio`
+  - Optional field: `mode` (`standard` | `live` | `humming`)
+  - Optional header: `x-recognition-attempt-id`
+- `GET /api/developer/v1/recommendations?seed=`
+
+Example:
+```bash
+curl -X POST "$API/api/developer/v1/recognition/audio" \
+  -H "x-api-key: trk_..." \
+  -F "audio=@clip.webm" \
+  -F "mode=standard"
 ```
 
-### POST /api/recognition/image
-Recognizes a song candidate from uploaded image text (`multipart/form-data`, field: `image`) and verifies it on YouTube.
-
-Response shape is the same as `/api/recognition/audio`.
-
-## 2026-04 Expansion Endpoints
-
-- `POST /api/share` → canonical song share-create endpoint.
-- `POST /api/share/song` → compatibility alias that delegates to the canonical song share handler.
-- `POST /api/share/playlist/:playlistId` → create public playlist share link.
-- `POST /api/share/recognition` → create public recognition-result share link.
-- `GET /api/share/:shareCode` → returns `type: song | recognition | playlist` with sanitized public payload.
-- `POST /api/recognition/audio/live` → live recording recognition path.
-- `POST /api/recognition/audio/humming` → experimental humming/singing recognition path.
-- `POST /api/recognition/video` → video upload recognition path (audio extraction workflow).
-- `GET /api/achievements` → server-tracked achievements list.
-- `GET /api/search/fuzzy?q=` → typo-tolerant internal search.
-- `GET /api/library/report` → versioned listening report export.
-- `GET/POST/DELETE /api/developer/keys...` → API key management.
-- `POST /api/developer/v1/recognition/audio` + `GET /api/developer/v1/recommendations` with `x-api-key`.
-- `GET /api/admin/overview`, `POST /api/admin/demo-account` (admin only).
+## External APIs and relevant env vars
+- YouTube Data API (`YOUTUBE_API_KEY`) for metadata verification.
+- Recognition providers (at least one):
+  - AuDD (`AUDD_API_TOKEN` or `AUDD_API_KEY`, optional `AUDD_API_URL`)
+  - ACRCloud (`ACRCLOUD_ACCESS_KEY`, `ACRCLOUD_ACCESS_SECRET`, `ACRCLOUD_HOST`)
+- Gemini (`GEMINI_API_KEY`, optional `GEMINI_MODEL`) for assistant and OCR-enhanced flows.
