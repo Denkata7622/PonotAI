@@ -1,7 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Clock, Play, Search, SearchX, TrendingUp, WifiOff, X } from "../../lucide-react";
+import {
+  ChevronRight,
+  Library,
+  Clock,
+  Camera,
+  Mic,
+  Play,
+  Search,
+  SearchX,
+  Sparkles,
+  TrendingUp,
+  Upload,
+  WifiOff,
+  X,
+} from "../../lucide-react";
 import SearchInput from "../../components/SearchInput";
 import SearchResultActions from "../../components/SearchResultActions";
 import { usePlayer } from "../../components/PlayerProvider";
@@ -22,7 +36,8 @@ import { readTasteProfile } from "../../src/features/onboarding/tasteProfile";
 
 type HistoryItem = {
   id: string;
-  song?: { songName?: string; artist?: string };
+  song?: { songName?: string; artist?: string; albumArtUrl?: string; youtubeVideoId?: string };
+  createdAt?: string;
 };
 
 type SearchResult = {
@@ -62,7 +77,6 @@ export default function SearchPage() {
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const blurTimeoutRef = useRef<number | null>(null);
-
 
   useEffect(() => {
     setHistory(readHistory(profile.id));
@@ -129,10 +143,13 @@ export default function SearchPage() {
     });
   }, [history, historyQuery]);
 
-  const groupedResults = useMemo(() => ({
-    songs: discoverResults.filter((result) => !result.isTopicChannel),
-    channels: discoverResults.filter((result) => result.isTopicChannel),
-  }), [discoverResults]);
+  const groupedResults = useMemo(
+    () => ({
+      songs: discoverResults.filter((result) => !result.isTopicChannel),
+      channels: discoverResults.filter((result) => result.isTopicChannel),
+    }),
+    [discoverResults],
+  );
   const tasteProfile = useMemo(() => readTasteProfile(), []);
   const recommendationHistory = useMemo(
     () =>
@@ -159,6 +176,15 @@ export default function SearchPage() {
       }),
     [favorites, recommendationHistory, language, profile.id, tasteProfile],
   );
+  const recentCaptures = useMemo(
+    () =>
+      history
+        .filter((item) => item.song?.songName && item.song?.artist)
+        .slice(0, 4),
+    [history],
+  );
+
+  const hasActiveQuery = debouncedQuery.trim().length >= 2;
 
   function queueResult(result: SearchResult) {
     addToQueue({
@@ -184,8 +210,103 @@ export default function SearchPage() {
   }
 
   return (
-    <section className="card p-4 sm:p-6">
-      <h1 className="cardTitle text-xl font-bold sm:text-2xl">{t("nav_search", language)}</h1>
+    <section className="card p-3 sm:p-6">
+      <header className="rounded-2xl border border-[var(--border)] bg-[color:color-mix(in_srgb,var(--surface)_88%,var(--accent)_12%)] p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="cardTitle text-xl font-bold sm:text-2xl">{t("nav_search", language)}</h1>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              {hasActiveQuery
+                ? (language === "bg" ? "Резултати за текущата заявка" : "Results for your current query")
+                : (language === "bg" ? "Откривай, улавяй и запазвай музика по-бързо" : "Discover, capture, and save music faster")}
+            </p>
+          </div>
+          {hasActiveQuery ? (
+            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-xs text-[var(--muted)]">
+              <Search className="h-3.5 w-3.5" />
+              {language === "bg" ? `Търсене: ${debouncedQuery}` : `Searching: ${debouncedQuery}`}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="mt-4 relative">
+          <SmartDropdown
+            isOpen={showSearchDropdown && !query.trim()}
+            onOpenChange={(open) => {
+              setShowSearchDropdown(open);
+              if (!open) setOpenActionsId(null);
+            }}
+            placement="bottom-start"
+            matchTriggerWidth
+            className="w-full rounded-2xl p-2"
+            enableClickTrigger={false}
+            trigger={(
+              <SearchInput
+                value={query}
+                onChange={setQuery}
+                onClear={() => setQuery("")}
+                placeholder={t("search_placeholder", language)}
+                className="py-3"
+                onFocus={() => {
+                  if (blurTimeoutRef.current) window.clearTimeout(blurTimeoutRef.current);
+                  setShowSearchDropdown(true);
+                }}
+                onBlur={() => {
+                  blurTimeoutRef.current = window.setTimeout(() => {
+                    setShowSearchDropdown(false);
+                    setOpenActionsId(null);
+                  }, 200);
+                }}
+              />
+            )}
+          >
+            {recentSearches.length > 0 ? (
+              <>
+                <div className="mb-1 flex items-center justify-between px-2 py-1">
+                  <p className="inline-flex items-center gap-2 text-sm text-[var(--muted)]"><Clock className="w-4 h-4 text-[var(--muted)]" />{t("search_recent", language)}</p>
+                  <button type="button" className="text-xs text-[var(--muted)] hover:text-[var(--text)]" onMouseDown={(event) => event.preventDefault()} onClick={clearRecent}>{t("search_clear_recent", language)}</button>
+                </div>
+                <ul className="space-y-1">
+                  {recentSearches.map((item) => (
+                    <li key={item} className="dropdown-item flex items-center gap-2 rounded-lg px-2 py-2">
+                      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}><Clock className="w-4 h-4 text-[var(--muted)]" /><span className="truncate text-sm">{item}</span></button>
+                      <button type="button" className="rounded-full p-1 hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => removeRecent(item)}><X className="w-3 h-3 text-[var(--muted)]" /></button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <>
+                <p className="mb-2 inline-flex items-center gap-2 px-2 text-sm text-[var(--muted)]"><TrendingUp className="w-4 h-4 text-[var(--muted)]" />{t("search_suggested", language)}</p>
+                <div className="flex flex-wrap gap-2 px-2 pb-1">
+                  {suggestedQueries.map((item) => (
+                    <button key={item} type="button" className="dropdown-item rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}>{item}</button>
+                  ))}
+                </div>
+              </>
+            )}
+          </SmartDropdown>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <button type="button" onClick={() => setQuery("")} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
+            <Search className="mb-1.5 h-4 w-4 text-[var(--muted)]" />
+            <p className="text-sm font-medium">{language === "bg" ? "Търси песни" : "Search songs"}</p>
+          </button>
+          <button type="button" onClick={() => router.push("/")} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
+            <Mic className="mb-1.5 h-4 w-4 text-[var(--muted)]" />
+            <p className="text-sm font-medium">{language === "bg" ? "Разпознай аудио" : "Recognize audio"}</p>
+          </button>
+          <button type="button" onClick={() => router.push("/")} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
+            <Upload className="mb-1.5 h-4 w-4 text-[var(--muted)]" />
+            <p className="text-sm font-medium">{language === "bg" ? "Качи screenshot" : "Upload screenshot"}</p>
+          </button>
+          <button type="button" onClick={() => router.push("/assistant")} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
+            <Sparkles className="mb-1.5 h-4 w-4 text-[var(--muted)]" />
+            <p className="text-sm font-medium">{language === "bg" ? "Отвори асистент" : "Open assistant"}</p>
+          </button>
+        </div>
+      </header>
 
       <div className="mt-4 app-tabs w-full max-w-full overflow-x-auto sm:w-auto">
         <button type="button" className={`app-tab ${activeTab === "discover" ? "app-tab-active" : ""}`} onClick={() => setActiveTab("discover")}>{t("search_discover", language)}</button>
@@ -194,167 +315,224 @@ export default function SearchPage() {
 
       {activeTab === "discover" ? (
         <div className="mt-4 space-y-4">
-          <div className="relative">
-            <SmartDropdown
-              isOpen={showSearchDropdown && !query.trim()}
-              onOpenChange={(open) => {
-                setShowSearchDropdown(open);
-                if (!open) setOpenActionsId(null);
-              }}
-              placement="bottom-start"
-              matchTriggerWidth
-              className="w-full rounded-2xl p-2"
-              enableClickTrigger={false}
-              trigger={(
-                <SearchInput
-                  value={query}
-                  onChange={setQuery}
-                  onClear={() => setQuery("")}
-                  placeholder={t("search_placeholder", language)}
-                  onFocus={() => {
-                    if (blurTimeoutRef.current) window.clearTimeout(blurTimeoutRef.current);
-                    setShowSearchDropdown(true);
-                  }}
-                  onBlur={() => {
-                    blurTimeoutRef.current = window.setTimeout(() => {
-                      setShowSearchDropdown(false);
-                      setOpenActionsId(null);
-                    }, 200);
-                  }}
-                />
-              )}
-            >
-              {recentSearches.length > 0 ? (
-                <>
-                  <div className="mb-1 flex items-center justify-between px-2 py-1">
-                    <p className="inline-flex items-center gap-2 text-sm text-[var(--muted)]"><Clock className="w-4 h-4 text-[var(--muted)]" />{t("search_recent", language)}</p>
-                    <button type="button" className="text-xs text-[var(--muted)] hover:text-[var(--text)]" onMouseDown={(event) => event.preventDefault()} onClick={clearRecent}>{t("search_clear_recent", language)}</button>
-                  </div>
-                  <ul className="space-y-1">
-                    {recentSearches.map((item) => (
-                      <li key={item} className="dropdown-item flex items-center gap-2 rounded-lg px-2 py-2">
-                        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}><Clock className="w-4 h-4 text-[var(--muted)]" /><span className="truncate text-sm">{item}</span></button>
-                        <button type="button" className="rounded-full p-1 hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => removeRecent(item)}><X className="w-3 h-3 text-[var(--muted)]" /></button>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : (
-                <>
-                  <p className="mb-2 inline-flex items-center gap-2 px-2 text-sm text-[var(--muted)]"><TrendingUp className="w-4 h-4 text-[var(--muted)]" />{t("search_suggested", language)}</p>
-                  <div className="flex flex-wrap gap-2 px-2 pb-1">
-                    {suggestedQueries.map((item) => (
-                      <button key={item} type="button" className="dropdown-item rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}>{item}</button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </SmartDropdown>
-          </div>
-
           {isUnavailable && <p className="cardText inline-flex items-center gap-2"><WifiOff className="w-4 h-4 text-[var(--muted)]" />{t("search_unavailable", language)}</p>}
-          {!isUnavailable && (query !== debouncedQuery || isLoading) && <Search className="h-5 w-5 animate-spin text-[var(--muted)]" />}
-          {!isUnavailable && !isLoading && query === debouncedQuery && query.trim().length > 0 && discoverResults.length === 0 && (
+          {!isUnavailable && (query !== debouncedQuery || isLoading) && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-sm text-[var(--muted)]">
+              <span className="inline-flex items-center gap-2"><Search className="h-4 w-4 animate-spin" />{language === "bg" ? "Търсим резултати..." : "Searching for matches..."}</span>
+            </div>
+          )}
+
+          {!hasActiveQuery && (
+            <div className="space-y-4">
+              {recentSearches.length > 0 && (
+                <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="inline-flex items-center gap-2 text-sm font-semibold"><Clock className="h-4 w-4 text-[var(--muted)]" />{t("search_recent", language)}</p>
+                    <button type="button" onClick={clearRecent} className="text-xs text-[var(--muted)] hover:text-[var(--text)]">{t("search_clear_recent", language)}</button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {recentSearches.slice(0, 8).map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => setQuery(item)}
+                        className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-sm transition hover:bg-[var(--hover-bg)]"
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {recentCaptures.length > 0 && (
+                <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="inline-flex items-center gap-2 text-sm font-semibold"><Library className="h-4 w-4 text-[var(--muted)]" />{language === "bg" ? "Скорошни находки" : "Recent captures"}</p>
+                    <button type="button" onClick={() => setActiveTab("history")} className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--text)]">
+                      {language === "bg" ? "Виж история" : "View history"}
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {recentCaptures.map((item) => {
+                      const song = item.song;
+                      const canQueue = Boolean(song?.songName && song?.artist);
+                      return (
+                        <SongRow
+                          key={item.id}
+                          id={item.id}
+                          title={song?.songName ?? t("unknown_song", language)}
+                          artist={song?.artist ?? "-"}
+                          artworkUrl={song?.albumArtUrl}
+                          videoId={song?.youtubeVideoId}
+                          onPlay={canQueue && song ? () => addToQueue({
+                            id: item.id,
+                            title: song.songName ?? "",
+                            artist: song.artist ?? "",
+                            artistId: item.id,
+                            artworkUrl: song.albumArtUrl ?? "https://picsum.photos/seed/trackly-search/80",
+                            videoId: song.youtubeVideoId,
+                            query: `${song.songName ?? ""} ${song.artist ?? ""}`,
+                            license: "COPYRIGHTED",
+                          }) : undefined}
+                          showMoreMenu={false}
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              <section className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                <div>
+                  <p className="inline-flex items-center gap-2 text-xs uppercase tracking-wider text-[var(--muted)]"><Camera className="h-3.5 w-3.5" />{t("search_from_home", language)}</p>
+                  <h2 className="mt-1 text-lg font-semibold">{homeBrowse.title}</h2>
+                  <p className="text-sm text-[var(--muted)]">{homeBrowse.description}</p>
+                </div>
+                <div className="space-y-2">
+                  {homeBrowse.tracks.slice(0, 5).map((track) => {
+                    const favoriteKey = normalizeTrackKey(track.title, track.artistName);
+                    return (
+                      <SongRow
+                        key={track.id}
+                        id={track.id}
+                        title={track.title}
+                        artist={track.artistName}
+                        artworkUrl={track.artworkUrl}
+                        videoId={track.youtubeVideoId}
+                        onPlay={() =>
+                          addToQueue({
+                            id: track.id,
+                            title: track.title,
+                            artist: track.artistName,
+                            artistId: track.artistId,
+                            artworkUrl: track.artworkUrl,
+                            videoId: track.youtubeVideoId,
+                            query: `${track.title} ${track.artistName}`,
+                            license: track.license,
+                          })
+                        }
+                        onFavorite={() => toggleFavorite(track.id, track.title, track.artistName, track.artworkUrl, track.youtubeVideoId)}
+                        isFavorite={favoritesSet.has(favoriteKey)}
+                        showMoreMenu
+                        playlists={playlists}
+                        onAddToPlaylist={(playlistId) =>
+                          addSongToPlaylist(playlistId, {
+                            title: track.title,
+                            artist: track.artistName,
+                            coverUrl: track.artworkUrl,
+                            videoId: track.youtubeVideoId,
+                          })
+                        }
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {!isUnavailable && !isLoading && hasActiveQuery && discoverResults.length === 0 && (
             <div className="flex flex-col items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] py-8 text-center">
               <SearchX className="w-8 h-8 text-[var(--muted)]" />
               <p className="cardText">{t("search_no_results_for", language)} "{debouncedQuery}"</p>
             </div>
           )}
-          {!query.trim() && (
-            <section className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-              <div>
-                <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{t("search_from_home", language)}</p>
-                <h2 className="text-lg font-semibold">{homeBrowse.title}</h2>
-                <p className="text-sm text-[var(--muted)]">{homeBrowse.description}</p>
-              </div>
-              <div className="space-y-2">
-                {homeBrowse.tracks.map((track) => {
-                  const favoriteKey = normalizeTrackKey(track.title, track.artistName);
-                  return (
-                    <SongRow
-                      key={track.id}
-                      id={track.id}
-                      title={track.title}
-                      artist={track.artistName}
-                      artworkUrl={track.artworkUrl}
-                      videoId={track.youtubeVideoId}
-                      onPlay={() =>
-                        addToQueue({
-                          id: track.id,
-                          title: track.title,
-                          artist: track.artistName,
-                          artistId: track.artistId,
-                          artworkUrl: track.artworkUrl,
-                          videoId: track.youtubeVideoId,
-                          query: `${track.title} ${track.artistName}`,
-                          license: track.license,
-                        })
-                      }
-                      onFavorite={() => toggleFavorite(track.id, track.title, track.artistName, track.artworkUrl, track.youtubeVideoId)}
-                      isFavorite={favoritesSet.has(favoriteKey)}
-                      showMoreMenu
-                      playlists={playlists}
-                      onAddToPlaylist={(playlistId) =>
-                        addSongToPlaylist(playlistId, {
-                          title: track.title,
-                          artist: track.artistName,
-                          coverUrl: track.artworkUrl,
-                          videoId: track.youtubeVideoId,
-                        })
-                      }
-                    />
-                  );
-                })}
-              </div>
-            </section>
-          )}
 
-          {discoverResults.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{t("songs_heading", language)}</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {groupedResults.songs.map((result) => (
-                  <article key={result.videoId} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
-                    <img src={result.thumbnailUrl} alt={result.title} className="h-32 w-full rounded-lg object-cover" />
-                    <p className="mt-2 line-clamp-2 text-sm font-semibold">{result.title}</p>
-                    <p className="text-xs text-[var(--muted)]">{result.artist}</p>
-                    <div className="mt-3 flex items-center gap-2">
-                      <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                      <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => prev === result.videoId ? null : result.videoId)} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueResult(result)} onAddToQueue={() => queueResult(result)} onSaveToRecent={() => saveResultToRecent(result)} onSaveToLibrary={() => { saveResultToRecent(result); addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl }); }} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
-                    </div>
-                  </article>
-                ))}
-              </div>
+          {hasActiveQuery && discoverResults.length > 0 && (
+            <div className="space-y-4">
+              <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{t("songs_heading", language)}</p>
+                  <p className="text-xs text-[var(--muted)]">{groupedResults.songs.length}</p>
+                </div>
+                <div className="space-y-2">
+                  {groupedResults.songs.map((result) => (
+                    <article key={result.videoId} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2.5">
+                      <img src={result.thumbnailUrl} alt={result.title} className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">{result.title}</p>
+                        <p className="truncate text-xs text-[var(--muted)]">{result.artist}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
+                        <SearchResultActions
+                          resultId={result.videoId}
+                          isOpen={openActionsId === result.videoId}
+                          onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))}
+                          onClose={() => setOpenActionsId(null)}
+                          onPlayNow={() => queueResult(result)}
+                          onAddToQueue={() => queueResult(result)}
+                          onSaveToRecent={() => saveResultToRecent(result)}
+                          onSaveToLibrary={() => {
+                            saveResultToRecent(result);
+                            addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl });
+                          }}
+                          onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
+                          onAddToPlaylist={(playlistId) =>
+                            addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
+                          }
+                          playlists={playlists}
+                          onGoToLibrary={() => router.push("/library")}
+                        />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
 
               {groupedResults.channels.length > 0 && (
-                <>
-                  <hr className="border-[var(--border)]" />
-                  <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{t("search_artists_channels", language)}</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{t("search_artists_channels", language)}</p>
+                    <p className="text-xs text-[var(--muted)]">{groupedResults.channels.length}</p>
+                  </div>
+                  <div className="space-y-2">
                     {groupedResults.channels.map((result) => (
-                      <article key={result.videoId} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
-                        <img src={result.thumbnailUrl} alt={result.title} className="h-32 w-full rounded-lg object-cover" />
-                        <p className="mt-2 line-clamp-2 text-sm font-semibold">{result.title}</p>
-                        <p className="text-xs text-[var(--muted)]">{result.artist}</p>
-                        <div className="mt-3 flex items-center gap-2">
+                      <article key={result.videoId} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2.5">
+                        <img src={result.thumbnailUrl} alt={result.title} className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">{result.title}</p>
+                          <p className="truncate text-xs text-[var(--muted)]">{result.artist}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
                           <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                          <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => prev === result.videoId ? null : result.videoId)} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueResult(result)} onAddToQueue={() => queueResult(result)} onSaveToRecent={() => saveResultToRecent(result)} onSaveToLibrary={() => { saveResultToRecent(result); addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl }); }} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
+                          <SearchResultActions
+                            resultId={result.videoId}
+                            isOpen={openActionsId === result.videoId}
+                            onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))}
+                            onClose={() => setOpenActionsId(null)}
+                            onPlayNow={() => queueResult(result)}
+                            onAddToQueue={() => queueResult(result)}
+                            onSaveToRecent={() => saveResultToRecent(result)}
+                            onSaveToLibrary={() => {
+                              saveResultToRecent(result);
+                              addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl });
+                            }}
+                            onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
+                            onAddToPlaylist={(playlistId) =>
+                              addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
+                            }
+                            playlists={playlists}
+                            onGoToLibrary={() => router.push("/library")}
+                          />
                         </div>
                       </article>
                     ))}
                   </div>
-                </>
+                </section>
               )}
             </div>
           )}
         </div>
       ) : (
-        <div className="mt-4">
+        <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
           <SearchInput value={historyQuery} onChange={setHistoryQuery} onClear={() => setHistoryQuery("")} placeholder={t("history_search_placeholder", language)} />
           <div className="mt-4 space-y-2">
             {historyResults.length === 0 && <p className="cardText">{t("history_empty", language)}</p>}
             {historyResults.map((item) => (
-              <div key={item.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+              <div key={item.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
                 <p className="font-medium">{item.song?.songName ?? t("unknown_song", language)}</p>
                 <p className="cardText text-sm">{item.song?.artist ?? "-"}</p>
               </div>
