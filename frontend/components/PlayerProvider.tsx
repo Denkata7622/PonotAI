@@ -19,8 +19,6 @@ export type QueuedTrack = {
   source: "manual" | "playlist" | "assistant";
 };
 
-export type RepeatMode = "off" | "all" | "one";
-
 type PlayerContextValue = {
   queue: QueuedTrack[];
   currentIndex: number;
@@ -33,8 +31,6 @@ type PlayerContextValue = {
   isBuffering: boolean;
   playerError: string | null;
   currentVideoId: string | null;
-  shuffleEnabled: boolean;
-  repeatMode: RepeatMode;
   addToQueue: (track: Omit<QueueTrack, "id"> & { id?: string }, source?: QueuedTrack["source"]) => void;
   playNow: (track: Omit<QueueTrack, "id"> & { id?: string }, source?: QueuedTrack["source"]) => void;
   addManyToQueue: (tracks: Array<Omit<QueueTrack, "id"> & { id?: string }>, source?: QueuedTrack["source"]) => void;
@@ -49,8 +45,6 @@ type PlayerContextValue = {
   skipPrevious: () => void;
   seekToPercent: (percent: number) => void;
   setVolume: (volume: number) => void;
-  toggleShuffle: () => void;
-  cycleRepeatMode: () => void;
 };
 
 type YTPlayerLike = {
@@ -154,8 +148,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(false);
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
-  const [shuffleEnabled, setShuffleEnabled] = useState(false);
-  const [repeatMode, setRepeatMode] = useState<RepeatMode>("off");
   const lastVolumeBeforeMuteRef = useRef(initial.volume || 70);
   const playerRef = useRef<YTPlayerLike | null>(null);
   const isPlayerReadyRef = useRef(false);
@@ -184,22 +176,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(VOLUME_STORAGE_KEY, String(volume));
   }, [queue, currentIndex, volume]);
 
-  const playNext = useCallback((reason: "manual" | "ended" = "manual") => {
-    setCurrentIndex((previous) => {
-      if (queue.length <= 1) return previous;
-      if (shuffleEnabled) {
-        const availableIndexes = Array.from({ length: queue.length }, (_, index) => index).filter((index) => index !== previous);
-        return availableIndexes[Math.floor(Math.random() * availableIndexes.length)] ?? previous;
-      }
-      const nextIndex = previous + 1;
-      if (nextIndex < queue.length) return nextIndex;
-      if (repeatMode === "all") return 0;
-      return previous;
-    });
-    if (reason === "ended" && repeatMode === "off" && currentIndex + 1 >= queue.length) {
-      setIsPlaying(false);
-    }
-  }, [currentIndex, queue.length, repeatMode, shuffleEnabled]);
+  const playNext = useCallback(() => {
+    setCurrentIndex((previous) => (previous + 1 < queue.length ? previous + 1 : previous));
+  }, [queue.length]);
 
   const playPrevious = useCallback(() => {
     setCurrentIndex((previous) => Math.max(previous - 1, 0));
@@ -243,23 +222,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           setIsPlaying(snapshot.isPlaying);
           setIsBuffering(snapshot.isBuffering);
           if (snapshot.ended) {
-            setCurrentTime(0);
-            if (repeatMode === "one") {
-              safePlayerCall((player) => {
-                player.seekTo?.(0, true);
-                player.playVideo?.();
-              });
-              setIsPlaying(true);
-              return;
-            }
             setIsPlaying(false);
-            playNext("ended");
+            setCurrentTime(0);
+            playNext();
           }
         },
       },
     });
     return true;
-  }, [playNext, repeatMode, safePlayerCall, volume]);
+  }, [playNext, safePlayerCall, volume]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -481,18 +452,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     safePlayerCall((player) => player.setVolume?.(normalized));
   }, [safePlayerCall]);
 
-  const toggleShuffle = useCallback(() => {
-    setShuffleEnabled((previous) => !previous);
-  }, []);
-
-  const cycleRepeatMode = useCallback(() => {
-    setRepeatMode((previous) => {
-      if (previous === "off") return "all";
-      if (previous === "all") return "one";
-      return "off";
-    });
-  }, []);
-
   useEffect(() => {
     function isTypingTarget(target: EventTarget | null) {
       const element = target as HTMLElement | null;
@@ -535,8 +494,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     isBuffering,
     playerError,
     currentVideoId,
-    shuffleEnabled,
-    repeatMode,
     addToQueue,
     playNow,
     addManyToQueue,
@@ -551,8 +508,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     skipPrevious: playPrevious,
     seekToPercent,
     setVolume,
-    toggleShuffle,
-    cycleRepeatMode,
   }), [
     queue,
     currentIndex,
@@ -565,8 +520,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     isBuffering,
     playerError,
     currentVideoId,
-    shuffleEnabled,
-    repeatMode,
     addToQueue,
     playNow,
     addManyToQueue,
@@ -579,8 +532,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     togglePlayPause,
     seekToPercent,
     setVolume,
-    toggleShuffle,
-    cycleRepeatMode,
   ]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
