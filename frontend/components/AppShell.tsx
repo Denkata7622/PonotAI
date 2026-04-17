@@ -77,6 +77,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [todayIsoDate, setTodayIsoDate] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const blurTimeoutRef = useRef<number | null>(null);
   const mobileNavRef = useRef<HTMLElement | null>(null);
@@ -85,6 +86,10 @@ function AppShellContent({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    setTodayIsoDate(new Date().toISOString().slice(0, 10));
   }, []);
 
   useEffect(() => {
@@ -134,9 +139,9 @@ function AppShellContent({ children }: { children: ReactNode }) {
   );
 
   const recognizedToday = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return recentHistory.filter((item) => item.createdAt?.startsWith(today)).length;
-  }, [recentHistory]);
+    if (!todayIsoDate) return 0;
+    return recentHistory.filter((item) => item.createdAt?.startsWith(todayIsoDate)).length;
+  }, [recentHistory, todayIsoDate]);
 
   function executeSearchQuery(value: string) {
     setQuery(value);
