@@ -47,7 +47,7 @@ export default function NewPlaylistModal({
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { createPlaylist, addSongsToPlaylist } = useLibrary(profile.id);
-  const { token } = useUser();
+  const { token, favorites } = useUser();
 
   const [name, setName] = useState(initialName);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -60,7 +60,6 @@ export default function NewPlaylistModal({
   const [selectedSongs, setSelectedSongs] = useState<Map<string, ModalTrack>>(new Map());
 
   const historyKey = profile?.id ? scopedKey("ponotai-history", profile.id) : "ponotai-history";
-  const favoritesKey = profile?.id ? scopedKey("ponotai.library.favorites", profile.id) : "ponotai.library.favorites";
 
   useEffect(() => {
     setName(initialName);
@@ -77,18 +76,19 @@ export default function NewPlaylistModal({
       videoId: item.videoId ?? item.song?.videoId,
     }));
     setHistorySongs(normalizedHistory);
+  }, [historyKey, language]);
 
-    const favoritesRaw = parseStorage<any[]>(favoritesKey, []);
-    const normalizedFavorites = favoritesRaw.map((item, index) => ({
-      id: item.id ?? `favorite-${index}-${item.title ?? item.songName ?? "song"}`,
-      title: item.title ?? item.songName ?? item.song?.songName ?? t("unknown_song", language),
-      artist: item.artist ?? item.song?.artist ?? "-",
-      album: item.album ?? item.song?.album,
-      coverUrl: item.coverUrl ?? item.song?.coverUrl,
-      videoId: item.videoId ?? item.song?.videoId,
+  useEffect(() => {
+    const normalizedFavorites = favorites.map((item, index) => ({
+      id: item.id ?? `favorite-${index}-${item.title ?? "song"}`,
+      title: item.title ?? t("unknown_song", language),
+      artist: item.artist ?? "-",
+      album: item.album ?? undefined,
+      coverUrl: item.coverUrl ?? undefined,
+      videoId: undefined,
     }));
     setFavoriteSongs(normalizedFavorites);
-  }, [favoritesKey, historyKey, language]);
+  }, [favorites, language]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {

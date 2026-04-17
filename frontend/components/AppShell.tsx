@@ -61,7 +61,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { language } = useLanguage();
   const { profile } = useProfile();
-  const { user, token, isAuthenticated, logout, addFavorite, addToHistory, history, favorites } = useUser();
+  const { user, token, isAuthenticated, logout, addFavorite, addToHistory, history, favorites, saveToLibrary } = useUser();
   const { playlists } = useLibrary(profile.id);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -646,8 +646,13 @@ function AppShellContent({ children }: { children: ReactNode }) {
                               onAddToQueue={() => queueTrack(result, false, false)}
                               onSaveToRecent={() => saveResultToRecent(result)}
                               onSaveToLibrary={() => {
-                                saveResultToRecent(result);
-                                addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl });
+                                void saveToLibrary({
+                                  title: result.title,
+                                  artist: result.artist,
+                                  coverUrl: result.thumbnailUrl,
+                                  method: "youtube-search",
+                                  recognized: true,
+                                });
                               }}
                               onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
                               onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })}
@@ -683,7 +688,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                   }}
                                   aria-label={t("btn_play", language)}
                                 ><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToRecent={() => saveResultToRecent(result)} onSaveToLibrary={() => { saveResultToRecent(result); addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl }); }} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
+                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToRecent={() => saveResultToRecent(result)} onSaveToLibrary={() => { void saveToLibrary({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, method: "youtube-search", recognized: true }); }} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
                               </li>
                             ))}
                           </ul>

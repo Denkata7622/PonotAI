@@ -64,8 +64,13 @@ export default function SearchPage() {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { addToQueue } = usePlayer();
+<<<<<<< codex/fix-data-consistency-for-favorites-and-saves
+  const { addFavorite, addToHistory, favorites, token, saveToLibrary } = useUser();
+  const { playlists, addSongToPlaylist, favoritesSet, toggleFavorite } = useLibrary(profile.id);
+=======
   const { addToHistory, favorites, history: userHistory, token } = useUser();
   const { playlists, addSongToPlaylist, favoritesSet, favoritesList, toggleFavorite } = useLibrary(profile.id);
+>>>>>>> main
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
   const [activeTab, setActiveTab] = useState<"discover" | "history">("discover");
@@ -523,6 +528,42 @@ export default function SearchPage() {
                 </div>
                 <div className="space-y-2">
                   {groupedResults.songs.map((result) => (
+<<<<<<< codex/fix-data-consistency-for-favorites-and-saves
+                    <article key={result.videoId} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2.5">
+                      <img src={result.thumbnailUrl} alt={result.title} className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">{result.title}</p>
+                        <p className="truncate text-xs text-[var(--muted)]">{result.artist}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
+                        <SearchResultActions
+                          resultId={result.videoId}
+                          isOpen={openActionsId === result.videoId}
+                          onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))}
+                          onClose={() => setOpenActionsId(null)}
+                          onPlayNow={() => queueResult(result)}
+                          onAddToQueue={() => queueResult(result)}
+                          onSaveToRecent={() => saveResultToRecent(result)}
+                          onSaveToLibrary={() => {
+                            void saveToLibrary({
+                              title: result.title,
+                              artist: result.artist,
+                              coverUrl: result.thumbnailUrl,
+                              method: "youtube-search",
+                              recognized: true,
+                            });
+                          }}
+                          onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
+                          onAddToPlaylist={(playlistId) =>
+                            addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
+                          }
+                          playlists={playlists}
+                          onGoToLibrary={() => router.push("/library")}
+                        />
+                      </div>
+                    </article>
+=======
                     <SongRow
                       key={result.videoId}
                       id={result.videoId}
@@ -542,6 +583,7 @@ export default function SearchPage() {
                         addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
                       }
                     />
+>>>>>>> main
                   ))}
                 </div>
               </section>
@@ -554,6 +596,42 @@ export default function SearchPage() {
                   </div>
                   <div className="space-y-2">
                     {groupedResults.channels.map((result) => (
+<<<<<<< codex/fix-data-consistency-for-favorites-and-saves
+                      <article key={result.videoId} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2.5">
+                        <img src={result.thumbnailUrl} alt={result.title} className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">{result.title}</p>
+                          <p className="truncate text-xs text-[var(--muted)]">{result.artist}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
+                          <SearchResultActions
+                            resultId={result.videoId}
+                            isOpen={openActionsId === result.videoId}
+                            onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))}
+                            onClose={() => setOpenActionsId(null)}
+                            onPlayNow={() => queueResult(result)}
+                            onAddToQueue={() => queueResult(result)}
+                            onSaveToRecent={() => saveResultToRecent(result)}
+                            onSaveToLibrary={() => {
+                              void saveToLibrary({
+                                title: result.title,
+                                artist: result.artist,
+                                coverUrl: result.thumbnailUrl,
+                                method: "youtube-search",
+                                recognized: true,
+                              });
+                            }}
+                            onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
+                            onAddToPlaylist={(playlistId) =>
+                              addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
+                            }
+                            playlists={playlists}
+                            onGoToLibrary={() => router.push("/library")}
+                          />
+                        </div>
+                      </article>
+=======
                       <SongRow
                         key={result.videoId}
                         id={result.videoId}
@@ -573,6 +651,7 @@ export default function SearchPage() {
                           addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
                         }
                       />
+>>>>>>> main
                     ))}
                   </div>
                 </section>

@@ -47,8 +47,9 @@ export function useLibrary(profileId: string) {
   );
   const favoritesSet = useMemo(() => new Set(favoritesList.map((favorite) => favorite.key)), [favoritesList]);
 
-  function toggleFavorite(trackId: string, title?: string, artist?: string, artworkUrl?: string, _videoId?: string) {
-    const favoriteKey = normalizeTrackKey(title ?? trackId, artist ?? "");
+  function toggleFavorite(_trackId: string, title?: string, artist?: string, artworkUrl?: string, _videoId?: string) {
+    const favoriteKey = normalizeTrackKey(title ?? "", artist ?? "");
+    if (!title || !artist) return;
     const existing = favorites.find((favorite) => normalizeTrackKey(favorite.title, favorite.artist) === favoriteKey);
 
     if (existing) {
@@ -57,8 +58,8 @@ export function useLibrary(profileId: string) {
     }
 
     void addFavorite({
-      title: title ?? trackId,
-      artist: artist ?? "",
+      title,
+      artist,
       coverUrl: artworkUrl,
     });
   }

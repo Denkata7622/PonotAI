@@ -46,6 +46,16 @@ export type FavoriteItem = {
   savedAt?: string;
 };
 
+export type SaveSongInput = {
+  title: string;
+  artist: string;
+  album?: string;
+  coverUrl?: string;
+  method?: string;
+  recognized?: boolean;
+  createdAt?: string;
+};
+
 export type ManualSubmission = {
   id: string;
   title: string;
@@ -175,6 +185,7 @@ type UserContextValue = {
   clearHistory: () => Promise<void>;
   addFavorite: (song: Omit<FavoriteItem, "id"> & { id?: string }) => Promise<void>;
   removeFavorite: (id: string) => Promise<void>;
+  saveToLibrary: (song: SaveSongInput) => Promise<void>;
   addManualSubmission: (submission: ManualSubmission) => void;
   shareSong: (song: { title: string; artist: string; album?: string; coverUrl?: string }) => Promise<string | null>;
   setPreferences: (prefs: Partial<Preferences>) => void;
@@ -464,6 +475,24 @@ export function UserProvider({ children }: { children: ReactNode }) {
     dispatchGuest({ type: "REMOVE_FAVORITE", payload: resolvedId });
   }
 
+  async function saveToLibrary(song: SaveSongInput) {
+    await addToHistory({
+      title: song.title,
+      artist: song.artist,
+      album: song.album,
+      coverUrl: song.coverUrl,
+      method: song.method ?? "library-save",
+      recognized: song.recognized ?? true,
+      createdAt: song.createdAt ?? new Date().toISOString(),
+    });
+    await addFavorite({
+      title: song.title,
+      artist: song.artist,
+      album: song.album,
+      coverUrl: song.coverUrl,
+    });
+  }
+
   async function shareSong(song: { title: string; artist: string; album?: string; coverUrl?: string }) {
     if (!isAuthenticated) {
       alert("Влез в профила си, за да споделяш песни.");
@@ -506,6 +535,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       clearHistory,
       addFavorite,
       removeFavorite,
+      saveToLibrary,
       addManualSubmission,
       shareSong,
       setPreferences,

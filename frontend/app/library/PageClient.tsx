@@ -47,7 +47,7 @@ return fallback;
 export default function LibraryPage() {
 const { language } = useLanguage();
 const { addToQueue, addManyToQueue, clearQueue, playNow } = usePlayer();
-const { favorites: userFavorites, removeFavorite, addFavorite, deleteHistoryItem, isAuthenticated, isLoading } = useUser();
+const { favorites: userFavorites, deleteHistoryItem, isAuthenticated, isLoading } = useUser();
 const { profile } = useProfile();
 
 const getScoped = (key: string) => (profile?.id ? scopedKey(key, profile.id) : key);
@@ -557,19 +557,6 @@ return ( <section className="space-y-5 sm:space-y-6"> <div className="card p-4 s
                   onPlay={() => handlePlaySong(item)}
                   onDelete={() => void handleDeleteHistoryItem(item.id)}
                   onFavorite={() => {
-                    if (isAuthenticated) {
-                      if (isFavorite) {
-                        void removeFavorite(favoriteKey);
-                      } else {
-                        void addFavorite({
-                          title: item.title ?? t("unknown_song", language),
-                          artist: item.artist ?? "-",
-                          coverUrl: item.coverUrl,
-                          album: item.album,
-                        });
-                      }
-                      return;
-                    }
                     toggleFavorite(favoriteKey, item.title, item.artist, item.coverUrl);
                   }}
                   isFavorite={isFavorite}
@@ -616,10 +603,6 @@ return ( <section className="space-y-5 sm:space-y-6"> <div className="card p-4 s
                 isFavorite
                 onFavorite={() => {
                   const favoriteKey = normalizeTrackKey(fav.title ?? "", fav.artist ?? "");
-                  if (isAuthenticated) {
-                    void removeFavorite(favoriteKey);
-                    return;
-                  }
                   toggleFavorite(favoriteKey, fav.title, fav.artist, fav.coverUrl);
                 }}
               />

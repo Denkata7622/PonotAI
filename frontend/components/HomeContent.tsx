@@ -82,7 +82,7 @@ function toRecognizedTrack(result: SongRecognitionResult): Track {
 }
 
 export function HomeContent() {
-  const { addToHistory, addFavorite, addManualSubmission, isAuthenticated } = useUser();
+  const { addToHistory, addFavorite, addManualSubmission, isAuthenticated, saveToLibrary } = useUser();
   const [audioResult, setAudioResult] = useState<AudioRecognitionResult | null>(null);
   const [imageResult, setImageResult] = useState<ImageRecognitionResult | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -609,16 +609,24 @@ export function HomeContent() {
 
   function saveSong(song: SongMatch) {
     addToHistoryLocal("audio", [song]);
-    void addFavorite({ title: song.songName, artist: song.artist, album: song.album, coverUrl: song.albumArtUrl });
-    const favoriteKey = normalizeTrackKey(song.songName, song.artist);
-    if (!favoritesSet.has(favoriteKey)) {
-      toggleFavorite(song.songName, song.songName, song.artist, song.albumArtUrl, song.youtubeVideoId);
-    }
+    void saveToLibrary({
+      title: song.songName,
+      artist: song.artist,
+      album: song.album,
+      coverUrl: song.albumArtUrl,
+      method: "audio-recognition",
+      recognized: true,
+    });
     pushToast("success", t("toast_saved", language, { song: song.songName }));
   }
 
   function favoriteSong(song: SongMatch) {
-    addFavorite({
+    const favoriteKey = normalizeTrackKey(song.songName, song.artist);
+    if (favoritesSet.has(favoriteKey)) {
+      toggleFavorite(favoriteKey, song.songName, song.artist, song.albumArtUrl, song.youtubeVideoId);
+      return;
+    }
+    void addFavorite({
       id: `${song.songName}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
       savedAt: new Date().toISOString(),
       title: song.songName,
@@ -626,10 +634,6 @@ export function HomeContent() {
       album: song.album,
       coverUrl: song.albumArtUrl,
     });
-    const favoriteKey = normalizeTrackKey(song.songName, song.artist);
-    if (!favoritesSet.has(favoriteKey)) {
-      toggleFavorite(song.songName, song.songName, song.artist, song.albumArtUrl, song.youtubeVideoId);
-    }
     pushToast("success", `Added ${song.songName} to favorites`);
   }
 
