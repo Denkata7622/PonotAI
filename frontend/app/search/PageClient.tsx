@@ -7,7 +7,6 @@ import {
   Clock,
   Camera,
   Mic,
-  Play,
   Search,
   SearchX,
   Sparkles,
@@ -17,7 +16,6 @@ import {
   X,
 } from "../../lucide-react";
 import SearchInput from "../../components/SearchInput";
-import SearchResultActions from "../../components/SearchResultActions";
 import { usePlayer } from "../../components/PlayerProvider";
 import { scopedKey, useProfile } from "../../lib/ProfileContext";
 import { useLanguage } from "../../lib/LanguageContext";
@@ -36,6 +34,10 @@ import { readTasteProfile } from "../../src/features/onboarding/tasteProfile";
 
 type HistoryItem = {
   id: string;
+  title?: string;
+  artist?: string;
+  coverUrl?: string;
+  youtubeVideoId?: string;
   song?: { songName?: string; artist?: string; albumArtUrl?: string; youtubeVideoId?: string };
   createdAt?: string;
 };
@@ -62,8 +64,8 @@ export default function SearchPage() {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { addToQueue } = usePlayer();
-  const { addFavorite, addToHistory, favorites, token } = useUser();
-  const { playlists, addSongToPlaylist, favoritesSet, toggleFavorite } = useLibrary(profile.id);
+  const { addToHistory, favorites, history: userHistory, token } = useUser();
+  const { playlists, addSongToPlaylist, favoritesSet, favoritesList, toggleFavorite } = useLibrary(profile.id);
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
   const [activeTab, setActiveTab] = useState<"discover" | "history">("discover");
@@ -73,7 +75,6 @@ export default function SearchPage() {
   const [discoverResults, setDiscoverResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUnavailable, setIsUnavailable] = useState(false);
-  const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const blurTimeoutRef = useRef<number | null>(null);
@@ -176,13 +177,30 @@ export default function SearchPage() {
       }),
     [favorites, recommendationHistory, language, profile.id, tasteProfile],
   );
-  const recentCaptures = useMemo(
-    () =>
-      history
-        .filter((item) => item.song?.songName && item.song?.artist)
-        .slice(0, 4),
-    [history],
-  );
+  const recentCaptures = useMemo(() => {
+    const mapped = userHistory
+      .filter((item) => item.title && item.artist)
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        artist: item.artist,
+        coverUrl: item.coverUrl ?? undefined,
+        youtubeVideoId: undefined,
+      }));
+
+    if (mapped.length > 0) return mapped.slice(0, 4);
+
+    return history
+      .map((item) => ({
+        id: item.id,
+        title: item.song?.songName ?? item.title,
+        artist: item.song?.artist ?? item.artist,
+        coverUrl: item.song?.albumArtUrl ?? item.coverUrl,
+        youtubeVideoId: item.song?.youtubeVideoId ?? item.youtubeVideoId,
+      }))
+      .filter((item) => item.title && item.artist)
+      .slice(0, 4);
+  }, [history, userHistory]);
 
   const hasActiveQuery = debouncedQuery.trim().length >= 2;
 
@@ -232,10 +250,7 @@ export default function SearchPage() {
         <div className="mt-4 relative">
           <SmartDropdown
             isOpen={showSearchDropdown && !query.trim()}
-            onOpenChange={(open) => {
-              setShowSearchDropdown(open);
-              if (!open) setOpenActionsId(null);
-            }}
+            onOpenChange={setShowSearchDropdown}
             placement="bottom-start"
             matchTriggerWidth
             className="w-full rounded-2xl p-2"
@@ -254,7 +269,6 @@ export default function SearchPage() {
                 onBlur={() => {
                   blurTimeoutRef.current = window.setTimeout(() => {
                     setShowSearchDropdown(false);
-                    setOpenActionsId(null);
                   }, 200);
                 }}
               />
@@ -293,11 +307,11 @@ export default function SearchPage() {
             <Search className="mb-1.5 h-4 w-4 text-[var(--muted)]" />
             <p className="text-sm font-medium">{language === "bg" ? "Търси песни" : "Search songs"}</p>
           </button>
-          <button type="button" onClick={() => router.push("/")} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
+          <button type="button" onClick={() => router.push("/?intent=recognize-audio")} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
             <Mic className="mb-1.5 h-4 w-4 text-[var(--muted)]" />
             <p className="text-sm font-medium">{language === "bg" ? "Разпознай аудио" : "Recognize audio"}</p>
           </button>
-          <button type="button" onClick={() => router.push("/")} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
+          <button type="button" onClick={() => router.push("/?intent=recognize-ocr")} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
             <Upload className="mb-1.5 h-4 w-4 text-[var(--muted)]" />
             <p className="text-sm font-medium">{language === "bg" ? "Качи screenshot" : "Upload screenshot"}</p>
           </button>
@@ -356,27 +370,87 @@ export default function SearchPage() {
                   </div>
                   <div className="space-y-2">
                     {recentCaptures.map((item) => {
-                      const song = item.song;
-                      const canQueue = Boolean(song?.songName && song?.artist);
+                      const canQueue = Boolean(item.title && item.artist);
+                      const favoriteKey = normalizeTrackKey(item.title ?? "", item.artist ?? "");
                       return (
                         <SongRow
                           key={item.id}
                           id={item.id}
-                          title={song?.songName ?? t("unknown_song", language)}
-                          artist={song?.artist ?? "-"}
-                          artworkUrl={song?.albumArtUrl}
-                          videoId={song?.youtubeVideoId}
-                          onPlay={canQueue && song ? () => addToQueue({
+                          title={item.title ?? t("unknown_song", language)}
+                          artist={item.artist ?? "-"}
+                          artworkUrl={item.coverUrl}
+                          videoId={item.youtubeVideoId}
+                          onPlay={canQueue ? () => addToQueue({
                             id: item.id,
-                            title: song.songName ?? "",
-                            artist: song.artist ?? "",
+                            title: item.title ?? "",
+                            artist: item.artist ?? "",
                             artistId: item.id,
-                            artworkUrl: song.albumArtUrl ?? "https://picsum.photos/seed/trackly-search/80",
-                            videoId: song.youtubeVideoId,
-                            query: `${song.songName ?? ""} ${song.artist ?? ""}`,
+                            artworkUrl: item.coverUrl ?? "https://picsum.photos/seed/trackly-search/80",
+                            videoId: item.youtubeVideoId,
+                            query: `${item.title ?? ""} ${item.artist ?? ""}`,
                             license: "COPYRIGHTED",
                           }) : undefined}
-                          showMoreMenu={false}
+                          onFavorite={() => toggleFavorite(item.id, item.title, item.artist, item.coverUrl, item.youtubeVideoId)}
+                          isFavorite={favoritesSet.has(favoriteKey)}
+                          showMoreMenu
+                          playlists={playlists}
+                          onAddToPlaylist={(playlistId) =>
+                            addSongToPlaylist(playlistId, {
+                              title: item.title ?? "",
+                              artist: item.artist ?? "",
+                              coverUrl: item.coverUrl,
+                              videoId: item.youtubeVideoId,
+                            })
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {favoritesList.length > 0 && (
+                <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="inline-flex items-center gap-2 text-sm font-semibold"><Library className="h-4 w-4 text-[var(--muted)]" />{language === "bg" ? "Любими песни" : "Favorite songs"}</p>
+                    <button type="button" onClick={() => router.push("/library?tab=favorites")} className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--text)]">
+                      {language === "bg" ? "Към любими" : "Open favorites"}
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {favoritesList.slice(0, 4).map((favorite) => {
+                      const [title, artist] = [favorite.title, favorite.artist];
+                      const id = favorite.key;
+                      return (
+                        <SongRow
+                          key={id}
+                          id={id}
+                          title={title}
+                          artist={artist}
+                          artworkUrl={favorite.artworkUrl}
+                          onPlay={() =>
+                            addToQueue({
+                              id,
+                              title,
+                              artist,
+                              artistId: `artist-${artist}`.toLowerCase().replace(/\s+/g, "-"),
+                              artworkUrl: favorite.artworkUrl ?? "https://picsum.photos/seed/trackly-search-favorite/80",
+                              query: `${title} ${artist}`,
+                              license: "COPYRIGHTED",
+                            })
+                          }
+                          onFavorite={() => toggleFavorite(id, title, artist, favorite.artworkUrl)}
+                          isFavorite={favoritesSet.has(favorite.key)}
+                          showMoreMenu
+                          playlists={playlists}
+                          onAddToPlaylist={(playlistId) =>
+                            addSongToPlaylist(playlistId, {
+                              title,
+                              artist,
+                              coverUrl: favorite.artworkUrl,
+                            })
+                          }
                         />
                       );
                     })}
@@ -449,35 +523,25 @@ export default function SearchPage() {
                 </div>
                 <div className="space-y-2">
                   {groupedResults.songs.map((result) => (
-                    <article key={result.videoId} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2.5">
-                      <img src={result.thumbnailUrl} alt={result.title} className="h-14 w-14 shrink-0 rounded-lg object-cover" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold">{result.title}</p>
-                        <p className="truncate text-xs text-[var(--muted)]">{result.artist}</p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                        <SearchResultActions
-                          resultId={result.videoId}
-                          isOpen={openActionsId === result.videoId}
-                          onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))}
-                          onClose={() => setOpenActionsId(null)}
-                          onPlayNow={() => queueResult(result)}
-                          onAddToQueue={() => queueResult(result)}
-                          onSaveToRecent={() => saveResultToRecent(result)}
-                          onSaveToLibrary={() => {
-                            saveResultToRecent(result);
-                            addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl });
-                          }}
-                          onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
-                          onAddToPlaylist={(playlistId) =>
-                            addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
-                          }
-                          playlists={playlists}
-                          onGoToLibrary={() => router.push("/library")}
-                        />
-                      </div>
-                    </article>
+                    <SongRow
+                      key={result.videoId}
+                      id={result.videoId}
+                      title={result.title}
+                      artist={result.artist}
+                      artworkUrl={result.thumbnailUrl}
+                      videoId={result.videoId}
+                      onPlay={() => queueResult(result)}
+                      onFavorite={() => {
+                        saveResultToRecent(result);
+                        toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId);
+                      }}
+                      isFavorite={favoritesSet.has(normalizeTrackKey(result.title, result.artist))}
+                      showMoreMenu
+                      playlists={playlists}
+                      onAddToPlaylist={(playlistId) =>
+                        addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
+                      }
+                    />
                   ))}
                 </div>
               </section>
@@ -490,35 +554,25 @@ export default function SearchPage() {
                   </div>
                   <div className="space-y-2">
                     {groupedResults.channels.map((result) => (
-                      <article key={result.videoId} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2.5">
-                        <img src={result.thumbnailUrl} alt={result.title} className="h-14 w-14 shrink-0 rounded-lg object-cover" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold">{result.title}</p>
-                          <p className="truncate text-xs text-[var(--muted)]">{result.artist}</p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                          <SearchResultActions
-                            resultId={result.videoId}
-                            isOpen={openActionsId === result.videoId}
-                            onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))}
-                            onClose={() => setOpenActionsId(null)}
-                            onPlayNow={() => queueResult(result)}
-                            onAddToQueue={() => queueResult(result)}
-                            onSaveToRecent={() => saveResultToRecent(result)}
-                            onSaveToLibrary={() => {
-                              saveResultToRecent(result);
-                              addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl });
-                            }}
-                            onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
-                            onAddToPlaylist={(playlistId) =>
-                              addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
-                            }
-                            playlists={playlists}
-                            onGoToLibrary={() => router.push("/library")}
-                          />
-                        </div>
-                      </article>
+                      <SongRow
+                        key={result.videoId}
+                        id={result.videoId}
+                        title={result.title}
+                        artist={result.artist}
+                        artworkUrl={result.thumbnailUrl}
+                        videoId={result.videoId}
+                        onPlay={() => queueResult(result)}
+                        onFavorite={() => {
+                          saveResultToRecent(result);
+                          toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId);
+                        }}
+                        isFavorite={favoritesSet.has(normalizeTrackKey(result.title, result.artist))}
+                        showMoreMenu
+                        playlists={playlists}
+                        onAddToPlaylist={(playlistId) =>
+                          addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
+                        }
+                      />
                     ))}
                   </div>
                 </section>
