@@ -191,13 +191,13 @@ export function useDismiss(context: FloatingContext, opts?: { outsidePressEvent?
       }
     };
 
-    document.addEventListener(outsidePressEvent, onOutsidePress);
+    document.addEventListener(outsidePressEvent, onOutsidePress, true);
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener(outsidePressEvent, onOutsidePress);
+      document.removeEventListener(outsidePressEvent, onOutsidePress, true);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [context.open, context.onOpenChange, context.refs, opts?.outsidePressEvent]);
+  }, [context.open, context.onOpenChange, context.refs.reference, context.refs.floating, opts?.outsidePressEvent]);
 
   return {
     getFloatingProps: <T extends HTMLProps<Element>>(props: T) => props,
