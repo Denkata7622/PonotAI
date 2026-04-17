@@ -6,9 +6,12 @@ import QueuePanelContent from '@/src/components/player/QueuePanel';
 import MusicAssistantPage from '@/src/features/assistant/components/MusicAssistantPage';
 import SidebarShell from './SidebarShell';
 import { useDualSidebar } from './DualSidebarContext';
+import { useLanguage } from '@/lib/LanguageContext';
+import { t } from '@/lib/translations';
 
 export default function DualSidebarHost() {
   const { state, closeActive, closePanel } = useDualSidebar();
+  const { language } = useLanguage();
   const anyOpen = state.open.assistant || state.open.queue;
 
   useEffect(() => {
@@ -27,10 +30,10 @@ export default function DualSidebarHost() {
 
   return (
     <>
-      {anyOpen ? <button aria-label="Close active sidebar" className="fixed inset-0 z-[44] bg-black/35" onClick={closeActive} /> : null}
+      {anyOpen ? <button aria-label={t('sidebar_close_active', language)} className="fixed inset-0 z-[44] bg-black/35" onClick={closeActive} /> : null}
       <SidebarShell
         id="assistant"
-        title="AI Assistant"
+        title={t('nav_assistant', language)}
         icon={<Sparkles className="h-4 w-4" />}
         open={state.open.assistant}
         active={state.active === 'assistant'}
@@ -41,7 +44,7 @@ export default function DualSidebarHost() {
       </SidebarShell>
       <SidebarShell
         id="queue"
-        title="Up Next"
+        title={t('sidebar_up_next', language)}
         icon={<ListMusic className="h-4 w-4" />}
         open={state.open.queue}
         active={state.active === 'queue'}

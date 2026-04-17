@@ -3,6 +3,8 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { useDualSidebar, type SidebarPanelId } from './DualSidebarContext';
+import { useLanguage } from '@/lib/LanguageContext';
+import { t } from '@/lib/translations';
 
 type Props = {
   id: SidebarPanelId;
@@ -19,6 +21,7 @@ const focusableSelector = 'a[href],button:not([disabled]),textarea:not([disabled
 
 export default function SidebarShell({ id, title, icon, active, open, stacked, onClose, children }: Props) {
   const { setActive } = useDualSidebar();
+  const { language } = useLanguage();
   const panelRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -74,7 +77,7 @@ export default function SidebarShell({ id, title, icon, active, open, stacked, o
         <header className="flex items-center justify-between border-b border-[var(--panel-border)] px-4 py-3">
           <div className="flex items-center gap-2 font-semibold">{icon}{title}</div>
           <div className="flex items-center gap-1">
-            <button aria-label="Close panel" onClick={onClose} className="rounded-md p-2 hover:bg-[var(--accent-soft)] hover:text-[var(--text)]"><X className="h-4 w-4"/></button>
+            <button aria-label={t('sidebar_close_panel', language)} onClick={onClose} className="rounded-md p-2 hover:bg-[var(--accent-soft)] hover:text-[var(--text)]"><X className="h-4 w-4"/></button>
           </div>
         </header>
         <div className="min-h-0 flex-1 [--sidebar-bottom-clearance:var(--layout-bottom-offset)]">{children}</div>
