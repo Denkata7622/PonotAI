@@ -645,6 +645,25 @@ export function HomeContent() {
     }, "manual");
   }
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const intent = params.get("intent");
+    if (!intent) return;
+
+    if (intent === "recognize-audio") {
+      void handleRecognizeAudio();
+    } else if (intent === "recognize-ocr") {
+      setIsUploadOpen(true);
+    }
+
+    params.delete("intent");
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", nextUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <main className="min-h-screen w-full overflow-x-hidden transition-colors">
       <div className="mx-auto w-full max-w-7xl px-3 py-6 sm:px-4 sm:py-8">
