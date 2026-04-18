@@ -5,8 +5,8 @@ import { ErrorCatalog, sendError } from "../errors/errorCatalog";
 import { buildLibraryContext } from "../services/assistant/contextBuilder";
 import { buildSystemPrompt } from "../services/assistant/prompt";
 import { generateAssistantReply } from "../services/assistant/geminiClient";
-import { parseActionIntent } from "../services/assistant/actionParser";
-import type { GeminiHistoryMessage, GeminiMessage } from "../types/assistant";
+import { parseActionIntent, parseActionIntentCandidate } from "../services/assistant/actionParser";
+import type { ActionIntent, GeminiHistoryMessage, GeminiMessage } from "../types/assistant";
 
 const assistantRouter = Router();
 
@@ -37,6 +37,32 @@ function stripActionTags(input: string): string {
 function sanitizeUserMessage(input: string): string {
   const stripped = stripActionTags(input);
   return stripped.replace(/(ignore previous instructions|reveal system prompt|show hidden prompt)/gi, "[filtered]");
+}
+
+export function isDirectConfirmationMessage(input: string): boolean {
+  const normalized = input.trim().toLowerCase().replace(/[.!?]+$/g, "");
+  if (!normalized) return false;
+  return new Set([
+    "do it",
+    "yes",
+    "create it",
+    "go ahead",
+    "ok",
+    "okay",
+    "sure",
+    "да",
+    "приеми",
+  ]).has(normalized);
+}
+
+export function resolvePendingActionFromMessage(message: string, pendingActionRaw: unknown): { reply: string; actionIntent: ActionIntent; executePendingAction: true } | null {
+  const pendingAction = parseActionIntentCandidate(pendingActionRaw);
+  if (!pendingAction || !isDirectConfirmationMessage(message)) return null;
+  return {
+    reply: "Confirmed. Executing your pending action now.",
+    actionIntent: pendingAction,
+    executePendingAction: true,
+  };
 }
 
 function validateConversation(payload: unknown): payload is GeminiMessage[] {
@@ -80,6 +106,7 @@ assistantRouter.post("/", async (req, res) => {
       preferences?: unknown;
       device?: unknown;
     };
+    pendingAction?: unknown;
   };
 
   if (typeof body.message !== "string" || body.message.length < 1 || body.message.length > 2000) {
@@ -103,6 +130,15 @@ assistantRouter.post("/", async (req, res) => {
   }));
 
   try {
+    const resolvedPending = resolvePendingActionFromMessage(message, body.pendingAction);
+    if (resolvedPending) {
+      res.status(200).json({
+        ...resolvedPending,
+        meta: { model: "pending-action-resolver", latencyMs: 0, contextTracksCount: 0 },
+      });
+      return;
+    }
+
     const statedPreferences = (() => {
       if (body.context?.preferences && typeof body.context.preferences === "object") {
         const parsed = body.context.preferences as { genres?: string[]; artists?: string[]; moods?: string[]; goals?: string[] };
@@ -179,6 +215,7 @@ assistantRouter.post("/", async (req, res) => {
     res.status(200).json({
       reply: parsed.reply,
       actionIntent: parsed.actionIntent,
+      executePendingAction: false,
       meta: {
         model: result.model,
         latencyMs: result.latencyMs,
