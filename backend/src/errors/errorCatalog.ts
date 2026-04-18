@@ -11,6 +11,7 @@ export const ErrorCatalog = {
   UNAUTHORIZED: { code: "UNAUTHORIZED", message: "Authentication required", httpStatus: 401 },
   FORBIDDEN: { code: "FORBIDDEN", message: "Insufficient permissions", httpStatus: 403 },
   INVALID_CREDENTIALS: { code: "INVALID_CREDENTIALS", message: "Invalid email or password", httpStatus: 401 },
+  EMAIL_NOT_VERIFIED: { code: "EMAIL_NOT_VERIFIED", message: "Email verification required", httpStatus: 403 },
   TOKEN_EXPIRED: { code: "TOKEN_EXPIRED", message: "Session expired, please log in again", httpStatus: 401 },
 
   // Validation
@@ -28,6 +29,7 @@ export const ErrorCatalog = {
   IMAGE_FILE_REQUIRED: { code: "IMAGE_FILE_REQUIRED", message: "Image file is required in field 'image'", httpStatus: 400 },
   USERNAME_TAKEN: { code: "USERNAME_TAKEN", message: "Username is already taken", httpStatus: 409 },
   EMAIL_TAKEN: { code: "EMAIL_TAKEN", message: "Email is already taken", httpStatus: 409 },
+  INVALID_VERIFICATION_TOKEN: { code: "INVALID_VERIFICATION_TOKEN", message: "Verification token is invalid or expired", httpStatus: 400 },
 
   // Recognition
   RECOGNITION_FAILED: { code: "RECOGNITION_FAILED", message: "Could not recognize audio or image", httpStatus: 422 },

@@ -18,6 +18,8 @@ const recognitionBuckets = new Map<string, ClientBucket>();
 const authBuckets = new Map<string, ClientBucket>();
 const apiBuckets = new Map<string, ClientBucket>();
 const assistantBuckets = new Map<string, ClientBucket>();
+const developerBuckets = new Map<string, ClientBucket>();
+const adminBuckets = new Map<string, ClientBucket>();
 
 function resolveClientKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
@@ -89,5 +91,19 @@ export function assistantRateLimit(req: Request, res: Response, next: NextFuncti
   enforceRateLimit(req, res, next, assistantBuckets, {
     windowMs: 60_000,
     maxRequests: 12,
+  });
+}
+
+export function developerSensitiveRateLimit(req: Request, res: Response, next: NextFunction): void {
+  enforceRateLimit(req, res, next, developerBuckets, {
+    windowMs: 60_000,
+    maxRequests: 20,
+  });
+}
+
+export function adminRateLimit(req: Request, res: Response, next: NextFunction): void {
+  enforceRateLimit(req, res, next, adminBuckets, {
+    windowMs: 60_000,
+    maxRequests: 30,
   });
 }

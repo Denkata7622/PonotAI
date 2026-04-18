@@ -4,6 +4,7 @@ import { addHistoryEntry, addUserHistoryEntry } from "../history/history.service
 import { MissingProviderConfigError, NoVerifiedResultError } from "./providers/audd.provider";
 import { recognizeSongFromAudioByMode, recognizeSongFromImage, type RecognitionMode } from "./recognition.service";
 import { recalculateAchievementsForUser } from "../achievements/achievements.service";
+import { validateAudioUpload, validateImageUpload, validateVideoUpload } from "../../middlewares/fileValidation";
 
 function handleRecognitionError(
   res: Response,
@@ -73,12 +74,12 @@ export async function recognizeAudioController(req: Request, res: Response): Pro
       return;
     }
 
-    if (!req.file.buffer?.length || !req.file.mimetype?.startsWith("audio/")) {
-      sendError(res, ErrorCatalog.INVALID_PAYLOAD, { message: "Audio upload must include a non-empty audio/* file" });
+    const mode = resolveMode(req.body?.mode);
+    if (mode === "video") {
+      if (!validateVideoUpload(req.file, res)) return;
+    } else if (!validateAudioUpload(req.file, res)) {
       return;
     }
-
-    const mode = resolveMode(req.body?.mode);
     const attemptId = typeof req.headers["x-recognition-attempt-id"] === "string" ? req.headers["x-recognition-attempt-id"] : undefined;
     const metadata = await recognizeSongFromAudioByMode(req.file.buffer, req.file.originalname, mode, req.userId, attemptId);
     const persistenceWarnings = await safePersistRecognition(req, metadata);
@@ -109,8 +110,7 @@ export async function recognizeImageController(req: Request, res: Response): Pro
       return;
     }
 
-    if (!req.file.buffer?.length || !req.file.mimetype?.startsWith("image/")) {
-      sendError(res, ErrorCatalog.INVALID_PAYLOAD, { message: "Image upload must include a non-empty image/* file" });
+    if (!validateImageUpload(req.file, res)) {
       return;
     }
 

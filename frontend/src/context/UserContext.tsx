@@ -20,6 +20,7 @@ export type User = {
   id: string;
   username: string;
   email: string;
+  emailVerified?: boolean;
   role: "user" | "admin";
   avatarBase64?: string | null;
   bio?: string | null;
@@ -170,6 +171,8 @@ type UserContextValue = {
   isLoading: boolean;
   onboardingRequired: boolean;
   register: (username: string, email: string, password: string) => Promise<void>;
+  verifyEmail: (token: string) => Promise<void>;
+  resendVerification: (email: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (fields: Partial<Pick<User, "username" | "email" | "bio" | "avatarBase64">>) => Promise<void>;
@@ -307,10 +310,31 @@ export function UserProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ username, email, password }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "REGISTER_FAILED");
+    if (!res.ok) throw new Error(data.code || data.error || "REGISTER_FAILED");
+    setOnboardingRequired(false);
+  }
+
+  async function verifyEmail(token: string) {
+    const res = await apiFetch("/api/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.code || "EMAIL_VERIFICATION_FAILED");
     await handleAuthSuccess(data as { token: string; user: User });
     markOnboardingPending();
     setOnboardingRequired(true);
+  }
+
+  async function resendVerification(email: string) {
+    const res = await apiFetch("/api/auth/resend-verification", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.code || "EMAIL_RESEND_FAILED");
+    }
   }
 
   async function login(email: string, password: string) {
@@ -319,7 +343,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "LOGIN_FAILED");
+    if (!res.ok) throw new Error(data.code || data.error || "LOGIN_FAILED");
     await handleAuthSuccess(data as { token: string; user: User });
     markOnboardingDone();
     setOnboardingRequired(false);
@@ -337,7 +361,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   async function updateProfile(fields: Partial<Pick<User, "username" | "email" | "bio" | "avatarBase64">>) {
     const res = await apiFetch("/api/auth/me", { method: "PATCH", body: JSON.stringify(fields) });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "UPDATE_FAILED");
+    if (!res.ok) throw new Error(data.code || data.error || "UPDATE_FAILED");
     setAuthState({ user: data as User });
   }
 
@@ -348,7 +372,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     });
     if (!res.ok) {
       const data = await res.json();
-      throw new Error(data.error || "PASSWORD_CHANGE_FAILED");
+      throw new Error(data.code || data.error || "PASSWORD_CHANGE_FAILED");
     }
   }
 
@@ -502,7 +526,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
     const res = await apiFetch("/api/share", { method: "POST", body: JSON.stringify(song) });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "SHARE_FAILED");
+    if (!res.ok) throw new Error(data.code || data.error || "SHARE_FAILED");
     return (data as { shareUrl: string }).shareUrl;
   }
 
@@ -524,6 +548,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       isLoading: authState.isLoading,
       onboardingRequired,
       register,
+      verifyEmail,
+      resendVerification,
       login,
       logout,
       updateProfile,

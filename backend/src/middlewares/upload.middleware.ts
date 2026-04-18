@@ -1,9 +1,12 @@
 import multer from "multer";
 
 const memoryStorage = multer.memoryStorage();
+const AUDIO_MIME_TYPES = new Set(["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/webm", "audio/ogg", "audio/flac", "audio/mp4", "audio/aac"]);
+const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff"]);
+const VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/mpeg"]);
 
 const audioFileFilter = (_req: any, file: any, cb: any) => {
-  if (file.mimetype.startsWith("audio/")) {
+  if (AUDIO_MIME_TYPES.has(file.mimetype)) {
     cb(null, true);
     return;
   }
@@ -11,7 +14,7 @@ const audioFileFilter = (_req: any, file: any, cb: any) => {
 };
 
 const imageFileFilter = (_req: any, file: any, cb: any) => {
-  if (file.mimetype.startsWith("image/")) {
+  if (IMAGE_MIME_TYPES.has(file.mimetype)) {
     cb(null, true);
     return;
   }
@@ -32,7 +35,7 @@ export const videoUpload = multer({
     fileSize: 40 * 1024 * 1024,
   },
   fileFilter: (_req: any, file: any, cb: any) => {
-    if (file.mimetype.startsWith("video/")) {
+    if (VIDEO_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
       return;
     }

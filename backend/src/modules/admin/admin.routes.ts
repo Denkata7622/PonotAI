@@ -5,6 +5,7 @@ import { createUser, findUserByEmail, getAdminOverviewSnapshot, listApiKeysByUse
 import { requireAuth } from "../../middlewares/auth.middleware";
 import { signAuthToken } from "../../middlewares/auth.middleware";
 import { requireAdmin } from "../../middlewares/admin.middleware";
+import { adminRateLimit } from "../../middlewares/rateLimit.middleware";
 import crypto from "node:crypto";
 import { hashPassword } from "../auth/password";
 import {
@@ -18,6 +19,7 @@ import {
 const adminRouter = Router();
 
 adminRouter.use(requireAuth, requireAdmin);
+adminRouter.use(adminRateLimit);
 adminRouter.use((_req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   next();
