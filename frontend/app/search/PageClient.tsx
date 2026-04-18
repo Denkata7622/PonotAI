@@ -66,7 +66,7 @@ export default function SearchPage() {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { addToQueue } = usePlayer();
-  const { addFavorite, addToHistory, favorites, history: userHistory, token, saveToLibrary } = useUser();
+  const { favorites, history: userHistory, token, saveToLibrary } = useUser();
   const { playlists, addSongToPlaylist, favoritesSet, favoritesList, toggleFavorite } = useLibrary(profile.id);
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
@@ -216,17 +216,6 @@ export default function SearchPage() {
       videoId: result.videoId,
       query: `${result.title} ${result.artist}`,
       license: "COPYRIGHTED",
-    });
-  }
-
-  function saveResultToRecent(result: SearchResult) {
-    void addToHistory({
-      title: result.title,
-      artist: result.artist,
-      coverUrl: result.thumbnailUrl,
-      method: "youtube-search",
-      recognized: true,
-      createdAt: new Date().toISOString(),
     });
   }
 
@@ -537,11 +526,9 @@ export default function SearchPage() {
                         <SearchResultActions
                           resultId={result.videoId}
                           isOpen={openActionsId === result.videoId}
-                          onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))}
-                          onClose={() => setOpenActionsId(null)}
+                          onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)}
                           onPlayNow={() => queueResult(result)}
                           onAddToQueue={() => queueResult(result)}
-                          onSaveToRecent={() => saveResultToRecent(result)}
                           onSaveToLibrary={() => {
                             void saveToLibrary({
                               title: result.title,
@@ -551,12 +538,12 @@ export default function SearchPage() {
                               recognized: true,
                             });
                           }}
-                          onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
+                          onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
+                          isFavorite={favoritesSet.has(normalizeTrackKey(result.title, result.artist))}
                           onAddToPlaylist={(playlistId) =>
                             addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
                           }
                           playlists={playlists}
-                          onGoToLibrary={() => router.push("/library")}
                         />
                       </div>
                     </article>
@@ -583,11 +570,9 @@ export default function SearchPage() {
                           <SearchResultActions
                             resultId={result.videoId}
                             isOpen={openActionsId === result.videoId}
-                            onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))}
-                            onClose={() => setOpenActionsId(null)}
+                            onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)}
                             onPlayNow={() => queueResult(result)}
                             onAddToQueue={() => queueResult(result)}
-                            onSaveToRecent={() => saveResultToRecent(result)}
                             onSaveToLibrary={() => {
                               void saveToLibrary({
                                 title: result.title,
@@ -597,12 +582,12 @@ export default function SearchPage() {
                                 recognized: true,
                               });
                             }}
-                            onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
+                            onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
+                            isFavorite={favoritesSet.has(normalizeTrackKey(result.title, result.artist))}
                             onAddToPlaylist={(playlistId) =>
                               addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
                             }
                             playlists={playlists}
-                            onGoToLibrary={() => router.push("/library")}
                           />
                         </div>
                       </article>
