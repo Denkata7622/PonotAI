@@ -61,6 +61,10 @@ export default function SongActionsMenu({
         <button
           type="button"
           className={triggerClassName}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
           onClick={(event) => {
             event.stopPropagation();
           }}

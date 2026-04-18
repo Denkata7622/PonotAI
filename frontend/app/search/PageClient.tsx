@@ -70,12 +70,17 @@ export default function SearchPage() {
   const [isUnavailable, setIsUnavailable] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
+  const [tasteProfile, setTasteProfile] = useState(() => null as ReturnType<typeof readTasteProfile>);
   const blurTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => () => {
     if (blurTimeoutRef.current) {
       window.clearTimeout(blurTimeoutRef.current);
     }
+  }, []);
+
+  useEffect(() => {
+    setTasteProfile(readTasteProfile());
   }, []);
 
   useEffect(() => {
@@ -160,7 +165,6 @@ export default function SearchPage() {
     }),
     [discoverResults],
   );
-  const tasteProfile = useMemo(() => readTasteProfile(), []);
   const recommendationHistory = useMemo(
     () =>
       history.filter(
