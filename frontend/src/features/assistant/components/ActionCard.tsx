@@ -103,7 +103,8 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
       }
 
       if (intent.type === "CREATE_PLAYLIST") {
-        const trackIds = (intent.payload.trackIds as string[]) ?? [];
+        const incomingTrackIds = (intent.payload.trackIds as string[]) ?? [];
+        const trackIds = Array.from(new Set(incomingTrackIds.filter((trackId): trackId is string => typeof trackId === "string" && trackId.trim().length > 0)));
         const baseName = String(intent.payload.name ?? "Assistant Playlist");
         const existingNames = new Set(playlists.map((playlist) => playlist.name.toLowerCase()));
         let name = baseName;
@@ -116,7 +117,7 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
         if (!playlist) {
           throw new Error("Playlist was not created.");
         }
-        if (playlist && trackIds.length) {
+        if (trackIds.length > 0) {
           const songs = trackIds.map(resolveTrack).map((track) => ({
             title: track.title,
             artist: track.artist,
@@ -124,8 +125,14 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
             videoId: track.videoId,
           }));
           const added = await addSongsToPlaylist(playlist.id, songs);
+          if (added === 0) {
+            throw new Error("Playlist tracks were not added.");
+          }
           window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Created ${name} with ${added} songs.` } }));
+        } else {
+          window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Created ${name}.` } }));
         }
+        router.push(`/library?tab=playlists&playlistId=${encodeURIComponent(playlist.id)}`);
       }
 
       if (intent.type === "FAVORITE_TRACK") {

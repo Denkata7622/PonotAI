@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { loadLibraryState, persistLibraryState } from "./storage";
 import type { LibraryState, Playlist, PlaylistSong, StoredFavorite } from "./types";
 import * as playlistApi from "./api";
@@ -8,6 +8,32 @@ import { useUser } from "../../src/context/UserContext";
 export function useLibrary(profileId: string) {
   const [libraryState, setLibraryState] = useState<LibraryState>(() => loadLibraryState(profileId));
   const { isAuthenticated, favorites, addFavorite, removeFavorite } = useUser();
+  const latestMutationAtRef = useRef(0);
+
+  function markMutation() {
+    latestMutationAtRef.current = Date.now();
+  }
+
+  function mergePlaylists(prevPlaylists: Playlist[], remotePlaylists: Playlist[]): Playlist[] {
+    const mergedById = new Map<string, Playlist>();
+
+    for (const remote of remotePlaylists) {
+      mergedById.set(remote.id, remote);
+    }
+
+    for (const local of prevPlaylists) {
+      const existing = mergedById.get(local.id);
+      if (!existing) {
+        mergedById.set(local.id, local);
+        continue;
+      }
+
+      const localHasMoreSongs = local.songs.length > existing.songs.length;
+      mergedById.set(local.id, localHasMoreSongs ? local : existing);
+    }
+
+    return Array.from(mergedById.values());
+  }
 
   useEffect(() => {
     setLibraryState(loadLibraryState(profileId));
@@ -24,10 +50,16 @@ export function useLibrary(profileId: string) {
     }
 
     let isCancelled = false;
+    const fetchStartedAt = Date.now();
     (async () => {
       const playlists = await playlistApi.getPlaylists();
       if (isCancelled) return;
-      setLibraryState((prev) => ({ ...prev, playlists }));
+      setLibraryState((prev) => ({
+        ...prev,
+        playlists: fetchStartedAt < latestMutationAtRef.current
+          ? mergePlaylists(prev.playlists, playlists)
+          : playlists,
+      }));
     })();
 
     return () => {
@@ -70,7 +102,11 @@ export function useLibrary(profileId: string) {
     if (!trimmed) return null;
     const result = await playlistApi.createPlaylist(trimmed);
     if (result) {
-      setLibraryState((prev) => ({ ...prev, playlists: [...prev.playlists, result] }));
+      markMutation();
+      setLibraryState((prev) => ({
+        ...prev,
+        playlists: [...prev.playlists.filter((playlist) => playlist.id !== result.id), result],
+      }));
     }
     return result;
   }
@@ -78,6 +114,7 @@ export function useLibrary(profileId: string) {
   async function deletePlaylist(playlistId: string) {
     if (!isAuthenticated) return;
     await playlistApi.deletePlaylist(playlistId);
+    markMutation();
     setLibraryState((prev) => ({ ...prev, playlists: prev.playlists.filter((playlist) => playlist.id !== playlistId) }));
   }
 
@@ -86,9 +123,12 @@ export function useLibrary(profileId: string) {
     const updatedRemotePlaylist = await playlistApi.addSongToPlaylist(playlistId, song);
     if (!updatedRemotePlaylist) return false;
 
+    markMutation();
     setLibraryState((prev) => ({
       ...prev,
-      playlists: prev.playlists.map((playlist) => (playlist.id === playlistId ? updatedRemotePlaylist : playlist)),
+      playlists: prev.playlists.some((playlist) => playlist.id === playlistId)
+        ? prev.playlists.map((playlist) => (playlist.id === playlistId ? updatedRemotePlaylist : playlist))
+        : [...prev.playlists, updatedRemotePlaylist],
     }));
     return true;
   }
@@ -98,9 +138,12 @@ export function useLibrary(profileId: string) {
     const payload = await playlistApi.addSongsToPlaylist(playlistId, songs);
     if (!payload) return 0;
 
+    markMutation();
     setLibraryState((prev) => ({
       ...prev,
-      playlists: prev.playlists.map((playlist) => (playlist.id === playlistId ? payload.playlist : playlist)),
+      playlists: prev.playlists.some((playlist) => playlist.id === playlistId)
+        ? prev.playlists.map((playlist) => (playlist.id === playlistId ? payload.playlist : playlist))
+        : [...prev.playlists, payload.playlist],
     }));
     return payload.added;
   }
@@ -109,6 +152,7 @@ export function useLibrary(profileId: string) {
     if (isAuthenticated) {
       const updatedRemotePlaylist = await playlistApi.removeSongFromPlaylist(playlistId, title, artist);
       if (!updatedRemotePlaylist) return;
+      markMutation();
       setLibraryState((prev) => ({
         ...prev,
         playlists: prev.playlists.map((playlist) => (playlist.id === playlistId ? updatedRemotePlaylist : playlist)),

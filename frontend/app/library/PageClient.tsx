@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { useProfile } from "../../lib/ProfileContext";
 import { useLanguage } from "../../lib/LanguageContext";
@@ -63,6 +63,7 @@ const [loadError, setLoadError] = useState<string | null>(null);
 
 
 const searchParams = useSearchParams();
+const playlistFocusId = searchParams.get("playlistId");
 const [selectedTab, setSelectedTab] = useState<"favorites" | "playlists" | "history">("history");
 const [searchQuery, setSearchQuery] = useState("");
 const [showNewPlaylistModal, setShowNewPlaylistModal] = useState(false);
@@ -89,30 +90,39 @@ const dedupedHistory = useMemo(
 [history],
 );
 
+const loadPlaylists = useCallback(async () => {
+  if (isAuthenticated) {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const loaded = await getPlaylists();
+      setPlaylists(loaded);
+    } catch {
+      setLoadError(language === "bg" ? "Грешка при зареждане на плейлистите." : "Failed to load playlists.");
+      setPlaylists([]);
+    }
+    setLoading(false);
+    return;
+  }
+
+  setLoadError(null);
+  setPlaylists([]);
+  setLoading(false);
+}, [isAuthenticated, language]);
+
 // load playlists from backend for authenticated users, otherwise from guest library state
 useEffect(() => {
-async function loadPlaylists() {
-if (isAuthenticated) {
-setLoading(true);
-setLoadError(null);
-try {
-const loaded = await getPlaylists();
-setPlaylists(loaded);
-} catch {
-setLoadError(language === "bg" ? "Грешка при зареждане на плейлистите." : "Failed to load playlists.");
-setPlaylists([]);
-}
-setLoading(false);
-return;
-}
+  void loadPlaylists();
+}, [loadPlaylists, playlistFocusId]);
 
-setLoadError(null);
-setPlaylists([]);
-setLoading(false);
-}
-
-void loadPlaylists();
-}, [isAuthenticated, language]);
+useEffect(() => {
+  if (!playlistFocusId) return;
+  const target = playlists.find((playlist) => playlist.id === playlistFocusId);
+  if (!target) return;
+  setSelectedTab("playlists");
+  setSelectedPlaylist(target);
+  setShowPlaylistDetail(true);
+}, [playlistFocusId, playlists]);
 
 // favorites source: cloud for authenticated users, local library state for guests
 const mergedFavorites = useMemo(() => {
