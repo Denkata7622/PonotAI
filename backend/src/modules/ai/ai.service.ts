@@ -12,15 +12,12 @@ import {
   type TrackTagRecord,
 } from "../../db/authStore";
 import { getExternalDiscoveryClient, type ExternalArtistCandidate } from "../../services/assistant/externalDiscovery";
+import { normalizeTrackKey as trackKey } from "../../utils/songIdentity";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function normalize(value?: string): string {
   return (value ?? "").toLowerCase().trim();
-}
-
-function trackKey(title?: string, artist?: string): string {
-  return `${normalize(title)}|||${normalize(artist)}`;
 }
 
 function parseDate(iso?: string): number {

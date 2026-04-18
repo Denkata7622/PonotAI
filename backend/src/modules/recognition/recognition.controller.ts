@@ -5,6 +5,7 @@ import { MissingProviderConfigError, NoVerifiedResultError } from "./providers/a
 import { recognizeSongFromAudioByMode, recognizeSongFromImage, type RecognitionMode } from "./recognition.service";
 import { recalculateAchievementsForUser } from "../achievements/achievements.service";
 import { validateAudioUpload, validateImageUpload, validateVideoUpload } from "../../middlewares/fileValidation";
+import { normalizeTrackKey } from "../../utils/songIdentity";
 
 function handleRecognitionError(
   res: Response,
@@ -124,7 +125,7 @@ export async function recognizeImageController(req: Request, res: Response): Pro
     if (req.userId) {
       const persistedKeys = new Set<string>();
       for (const song of result.songs) {
-        const dedupeKey = `${song.songName.trim().toLowerCase()}|||${song.artist.trim().toLowerCase()}|||${song.youtubeVideoId ?? ""}`;
+        const dedupeKey = `${normalizeTrackKey(song.songName, song.artist)}|||${song.youtubeVideoId ?? ""}`;
         if (persistedKeys.has(dedupeKey)) {
           continue;
         }

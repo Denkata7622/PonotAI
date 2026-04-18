@@ -1,14 +1,6 @@
-export function normalizeTrackKey(title: string, artist: string): string {
-  const normalizePart = (value: string) =>
-    value
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+import { normalizeTrackKey } from "./songIdentity";
 
-  return `${normalizePart(title)}|||${normalizePart(artist)}`;
-}
+export { normalizeTrackKey };
 
 export function dedupeByTrack<T>(
   items: T[],

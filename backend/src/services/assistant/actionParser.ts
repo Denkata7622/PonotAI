@@ -12,6 +12,7 @@ import {
   isTextScaleName,
   isThemeMode,
 } from "./themeCatalog";
+import { normalizeTrackKey } from "../../utils/songIdentity";
 
 const ACTION_TYPES = new Set<ActionIntent["type"]>([
   "ADD_TO_QUEUE",
@@ -45,23 +46,13 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string" && item.length > 0);
 }
 
-function normalizeTrackPart(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/['’`]/g, "")
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function normalizeTrackKeyFromTrackId(trackId: string): string | null {
   const [title, artist] = trackId.split("|||");
   if (!title || !artist) return null;
-  return `${normalizeTrackPart(title)}|||${normalizeTrackPart(artist)}`;
+  return normalizeTrackKey(title, artist);
 }
+
+
 
 function dedupeTrackIds(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
@@ -84,7 +75,7 @@ function dedupeTrackIds(value: unknown): string[] | null {
     if (!key) return null;
     if (seen.has(key)) continue;
     seen.add(key);
-    deduped.push(candidate);
+    deduped.push(key);
   }
 
   return deduped;

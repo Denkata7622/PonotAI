@@ -318,14 +318,14 @@ console.error("Failed to remove song from playlist", { playlistId, title, artist
 setPlaylists((prev) =>
 prev.map((p) =>
 p.id === playlistId
-? { ...p, songs: p.songs.filter((s) => !(s.title === title && s.artist === artist)) }
+? { ...p, songs: p.songs.filter((s) => toSongKey(s) !== toSongKey({ title, artist })) }
 : p
 )
 );
 if (selectedPlaylist?.id === playlistId) {
 setSelectedPlaylist((prev) =>
 prev
-? { ...prev, songs: prev.songs.filter((s) => !(s.title === title && s.artist === artist)) }
+? { ...prev, songs: prev.songs.filter((s) => toSongKey(s) !== toSongKey({ title, artist })) }
 : null
 );
 }

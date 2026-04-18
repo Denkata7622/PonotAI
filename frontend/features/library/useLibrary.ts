@@ -163,7 +163,8 @@ export function useLibrary(profileId: string) {
       ...prev,
       playlists: prev.playlists.map((playlist) => {
         if (playlist.id !== playlistId) return playlist;
-        return { ...playlist, songs: playlist.songs.filter((s) => !(s.title === title && s.artist === artist)) };
+        const targetKey = toSongKey({ title, artist });
+        return { ...playlist, songs: playlist.songs.filter((s) => toSongKey(s) !== targetKey) };
       }),
     }));
   }

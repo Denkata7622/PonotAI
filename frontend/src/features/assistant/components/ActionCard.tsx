@@ -13,6 +13,7 @@ import { useLibrary } from "@/features/library/useLibrary";
 import { runAssistantAction } from "../api";
 import { hasApplicableThemeChange, normalizeThemeActionPayload } from "../themeAction";
 import type { ActionIntent } from "../types";
+import { toSongKey } from "@/lib/songIdentity";
 
 type Props = {
   intent: ActionIntent;
@@ -49,6 +50,11 @@ function parseTrackId(trackId: string): { title: string; artist: string } {
   return { title: title || "Unknown Song", artist: artist || "Unknown Artist" };
 }
 
+function normalizeTrackId(trackId: string): string {
+  const parsed = parseTrackId(trackId);
+  return toSongKey(parsed);
+}
+
 export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDismiss, onApplyFailure, state, autoApply = false }: Props) {
   const router = useRouter();
   const { addManyToQueue } = usePlayer();
@@ -65,7 +71,7 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
   function resolveTrack(trackId: string) {
     const parsed = parseTrackId(trackId);
     for (const playlist of playlists) {
-      const found = playlist.songs.find((song) => `${song.title.toLowerCase().trim()}|||${song.artist.toLowerCase().trim()}` === trackId);
+      const found = playlist.songs.find((song) => toSongKey(song) === normalizeTrackId(trackId));
       if (found) {
         return {
           id: `${found.title}-${found.artist}`.toLowerCase().replace(/\s+/g, "-"),
@@ -138,7 +144,8 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
       if (intent.type === "FAVORITE_TRACK") {
         const trackId = String(intent.payload.trackId ?? "");
         const track = parseTrackId(trackId);
-        const exists = favorites.some((item) => item.title === track.title && item.artist === track.artist);
+        const incomingKey = toSongKey(track);
+        const exists = favorites.some((item) => toSongKey(item) === incomingKey);
         if (!exists) {
           await addFavorite({ title: track.title, artist: track.artist });
         }

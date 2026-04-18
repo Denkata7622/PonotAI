@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "./prisma";
+import { normalizeTrackKey } from "../utils/songIdentity";
 
 export type UserRecord = {
   id: string;
@@ -149,18 +150,6 @@ export type AdminOverviewSnapshot = {
   achievements: AchievementRecord[];
   apiKeys: ApiKeyRecord[];
 };
-
-function normalizeTrackKey(title: string, artist: string): string {
-  const normalizePart = (value: string) =>
-    value
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  return `${normalizePart(title)}|||${normalizePart(artist)}`;
-}
 
 const toIso = (value: Date | string) => (value instanceof Date ? value.toISOString() : new Date(value).toISOString());
 
@@ -624,7 +613,8 @@ export async function addSongToPlaylist(
       include: { tracks: { orderBy: { position: "asc" } } },
     });
     if (!playlist) return null;
-    const exists = playlist.tracks.some((s: any) => s.title === song.title && s.artist === song.artist);
+    const incomingKey = normalizeTrackKey(song.title, song.artist);
+    const exists = playlist.tracks.some((s: any) => normalizeTrackKey(s.title, s.artist) === incomingKey);
     if (!exists) {
       await tx.playlistTrack.create({
         data: {
@@ -660,7 +650,8 @@ export async function removeSongFromPlaylist(
       include: { tracks: { orderBy: { position: "asc" } } },
     });
     if (!playlist) return null;
-    const target = playlist.tracks.find((track: any) => track.title === title && track.artist === artist);
+    const targetKey = normalizeTrackKey(title, artist);
+    const target = playlist.tracks.find((track: any) => normalizeTrackKey(track.title, track.artist) === targetKey);
     if (!target) return mapPlaylist(playlist);
 
     await tx.playlistTrack.delete({ where: { id: target.id } });
