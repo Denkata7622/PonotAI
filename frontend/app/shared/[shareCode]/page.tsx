@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import SharedSongClient from "../../../components/SharedSongClient";
-import { getApiBaseUrl } from "@/lib/apiConfig";
+import { apiFetch } from "@/src/lib/apiFetch";
 import { normalizeVisibleText } from "@/lib/text";
 
 type SharedPayload =
@@ -25,7 +25,7 @@ type SharedPayload =
 
 async function fetchSharedSong(shareCode: string): Promise<SharedPayload | null> {
   try {
-    const response = await fetch(`${getApiBaseUrl()}/api/share/${shareCode}`, { cache: "no-store" });
+    const response = await apiFetch(`/api/share/${encodeURIComponent(shareCode)}`, { cache: "no-store" });
     if (!response.ok) return null;
     return (await response.json()) as SharedPayload;
   } catch {
