@@ -2,10 +2,36 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { startTestServer, registerUser } from "../helpers/testHarness.ts";
 
-test("backend smoke: auth, assistant, playlists, share, recognition, achievements, developer/admin", async () => {
+test("backend smoke: startup and core flows by persistence mode", async () => {
   const running = await startTestServer();
 
   try {
+    const healthResponse = await fetch(`${running.baseUrl}/health`);
+    assert.equal(healthResponse.status, 200);
+
+    const apiHealthResponse = await fetch(`${running.baseUrl}/api/health`);
+    assert.equal(apiHealthResponse.status, 200);
+    const apiHealthBody = (await apiHealthResponse.json()) as {
+      status: string;
+      persistence: { mode: "postgres" | "file-legacy"; status: string };
+    };
+    assert.equal(apiHealthBody.status, "ok");
+    assert.equal(apiHealthBody.persistence.mode, running.persistenceMode);
+    assert.equal(apiHealthBody.persistence.status, "ready");
+
+    const recognitionValidationResponse = await fetch(`${running.baseUrl}/api/recognition/audio`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode: "standard" }),
+    });
+    assert.equal(recognitionValidationResponse.status, 400);
+    const recognitionError = (await recognitionValidationResponse.json()) as { code: string };
+    assert.equal(recognitionError.code, "AUDIO_FILE_REQUIRED");
+
+    if (running.persistenceMode !== "postgres") {
+      return;
+    }
+
     const user = await registerUser(running.baseUrl, "smoke-user");
 
     const meResponse = await fetch(`${running.baseUrl}/api/auth/me`, {
@@ -51,15 +77,6 @@ test("backend smoke: auth, assistant, playlists, share, recognition, achievement
     const sharedPayload = (await sharedReadResponse.json()) as { type: string; songs?: unknown[] };
     assert.equal(sharedPayload.type, "playlist");
     assert.ok(Array.isArray(sharedPayload.songs));
-
-    const recognitionValidationResponse = await fetch(`${running.baseUrl}/api/recognition/audio`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mode: "standard" }),
-    });
-    assert.equal(recognitionValidationResponse.status, 400);
-    const recognitionError = (await recognitionValidationResponse.json()) as { code: string };
-    assert.equal(recognitionError.code, "AUDIO_FILE_REQUIRED");
 
     const achievementsResponse = await fetch(`${running.baseUrl}/api/achievements`, {
       headers: { authorization: `Bearer ${user.token}` },

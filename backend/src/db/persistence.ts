@@ -22,10 +22,13 @@ function resolveDataDir(): string {
 
 function resolvePersistenceMode(): PersistenceMode {
   const configured = process.env.PERSISTENCE_MODE?.trim().toLowerCase();
+  if (!configured || configured === "postgres") {
+    return "postgres";
+  }
   if (configured === "file-legacy") {
     return "file-legacy";
   }
-  return "postgres";
+  throw new Error(`Unsupported persistence mode: ${configured}`);
 }
 
 async function probeFilePersistence(): Promise<PersistenceHealth> {

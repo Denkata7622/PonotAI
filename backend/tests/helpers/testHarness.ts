@@ -6,6 +6,7 @@ import os from "node:os";
 
 export type RunningTestServer = {
   baseUrl: string;
+  persistenceMode: "postgres" | "file-legacy";
   close: () => Promise<void>;
 };
 
@@ -43,6 +44,7 @@ export async function startTestServer(options: StartTestServerOptions = {}): Pro
 
   return {
     baseUrl,
+    persistenceMode,
     close: async () => {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
