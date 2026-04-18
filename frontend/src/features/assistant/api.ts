@@ -1,24 +1,18 @@
 'use client';
 
-import { getApiBaseUrl } from "@/lib/apiConfig";
-import { getToken } from "@/src/lib/apiFetch";
+import { apiFetch } from "@/src/lib/apiFetch";
 import type { AssistantMeta, ChatMessage, ActionIntent } from "./types";
 import { stripAssistantActionMarkup } from "./responseSanitizer";
 import { readTasteProfile, toAssistantPreferencePayload } from "../onboarding/tasteProfile";
 
-async function fetchJsonOrThrow(input: string, init: RequestInit): Promise<unknown> {
-  const response = await fetch(input, init);
+async function fetchJsonOrThrow(path: string, init?: RequestInit): Promise<unknown> {
+  const response = await apiFetch(path, init);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const message = (body as { message?: string }).message ?? `Assistant action failed (HTTP ${response.status})`;
     throw new Error(message);
   }
   return response.json();
-}
-
-function buildAuthHeaders(): Record<string, string> {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 type AssistantClientContext = {
@@ -66,11 +60,10 @@ export async function sendAssistantMessage(
   message: string,
 ): Promise<{ reply: string; actionIntent: ActionIntent | null; meta: AssistantMeta }> {
   const context = buildAssistantClientContext();
-  const response = await fetch(`${getApiBaseUrl()}/api/assistant`, {
+  const response = await apiFetch("/api/assistant", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...buildAuthHeaders(),
     },
     body: JSON.stringify({
       message,
@@ -100,46 +93,42 @@ export async function sendAssistantMessage(
 }
 
 export async function runAssistantAction(intent: ActionIntent): Promise<unknown> {
-  const headers = { "Content-Type": "application/json", ...buildAuthHeaders() };
   switch (intent.type) {
     case "INSIGHT_REQUEST":
       if (intent.payload.kind === "trends") {
-        return fetchJsonOrThrow(`${getApiBaseUrl()}/api/ai/insights/trends`, { headers });
+        return fetchJsonOrThrow("/api/ai/insights/trends");
       }
-      return fetchJsonOrThrow(`${getApiBaseUrl()}/api/ai/insights/${intent.payload.period === "monthly" ? "monthly" : "weekly"}`, { headers });
+      return fetchJsonOrThrow(`/api/ai/insights/${intent.payload.period === "monthly" ? "monthly" : "weekly"}`);
     case "PLAYLIST_GENERATION":
-      return fetchJsonOrThrow(`${getApiBaseUrl()}/api/ai/playlists/generate`, {
+      return fetchJsonOrThrow("/api/ai/playlists/generate", {
         method: "POST",
-        headers,
         body: JSON.stringify({ prompt: intent.payload.prompt, confirmed: true }),
       });
     case "MOOD_RECOMMENDATION":
-      return fetchJsonOrThrow(`${getApiBaseUrl()}/api/ai/recommendations/mood?mood=${encodeURIComponent(String(intent.payload.mood ?? "relax"))}`, { headers });
+      return fetchJsonOrThrow(`/api/ai/recommendations/mood?mood=${encodeURIComponent(String(intent.payload.mood ?? "relax"))}`);
     case "CONTEXT_RECOMMENDATION":
-      return fetchJsonOrThrow(`${getApiBaseUrl()}/api/ai/recommendations/contextual`, { headers });
+      return fetchJsonOrThrow("/api/ai/recommendations/contextual");
     case "TAG_SUGGESTION":
-      return fetchJsonOrThrow(`${getApiBaseUrl()}/api/ai/tags/suggest`, { method: "POST", headers });
+      return fetchJsonOrThrow("/api/ai/tags/suggest", { method: "POST" });
     case "DISCOVERY_REQUEST":
-      return fetchJsonOrThrow(`${getApiBaseUrl()}/api/ai/discovery/${intent.payload.mode === "surprise" ? "surprise" : "daily"}`, { headers });
+      return fetchJsonOrThrow(`/api/ai/discovery/${intent.payload.mode === "surprise" ? "surprise" : "daily"}`);
     case "CROSS_ARTIST_DISCOVERY":
       return fetchJsonOrThrow(
-        `${getApiBaseUrl()}/api/ai/recommendations/cross-artist?differentArtistsOnly=${intent.payload.differentArtistsOnly === false ? "false" : "true"}&limit=${encodeURIComponent(String(intent.payload.limit ?? 8))}`,
-        { headers },
+        `/api/ai/recommendations/cross-artist?differentArtistsOnly=${intent.payload.differentArtistsOnly === false ? "false" : "true"}&limit=${encodeURIComponent(String(intent.payload.limit ?? 8))}`
       );
     case "SHOW_SIMILAR_ARTISTS":
       return fetchJsonOrThrow(
-        `${getApiBaseUrl()}/api/ai/recommendations/cross-artist?differentArtistsOnly=true&limit=8&anchor=${encodeURIComponent(String(intent.payload.anchorArtist ?? ""))}`,
-        { headers },
+        `/api/ai/recommendations/cross-artist?differentArtistsOnly=true&limit=8&anchor=${encodeURIComponent(String(intent.payload.anchorArtist ?? ""))}`
       );
     case "PREVIEW_DISCOVERY_PLAYLIST":
       return fetchJsonOrThrow(
-        `${getApiBaseUrl()}/api/ai/playlists/generate`,
-        { method: "POST", headers, body: JSON.stringify({ prompt: `Discovery playlist: ${(intent.payload.artists as string[] ?? []).join(", ")}` }) },
+        "/api/ai/playlists/generate",
+        { method: "POST", body: JSON.stringify({ prompt: `Discovery playlist: ${(intent.payload.artists as string[] ?? []).join(", ")}` }) },
       );
     case "CREATE_DISCOVERY_PLAYLIST":
       return fetchJsonOrThrow(
-        `${getApiBaseUrl()}/api/ai/playlists/generate`,
-        { method: "POST", headers, body: JSON.stringify({ prompt: `${intent.payload.name}: ${(intent.payload.artists as string[] ?? []).join(", ")}`, confirmed: true }) },
+        "/api/ai/playlists/generate",
+        { method: "POST", body: JSON.stringify({ prompt: `${intent.payload.name}: ${(intent.payload.artists as string[] ?? []).join(", ")}`, confirmed: true }) },
       );
     default:
       throw new Error(`Unsupported assistant action type: ${intent.type}`);
