@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BarChart2, Music, Users } from "lucide-react";
-import { getApiBaseUrl } from "../../lib/apiConfig";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
 import { apiFetch } from "@/src/lib/apiFetch";
@@ -61,7 +60,7 @@ export default function StatsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${getApiBaseUrl()}/api/stats/global`)
+    apiFetch("/api/stats/global")
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Failed"))))
       .then((payload) => setStats(payload as GlobalStats))
       .catch(() => setError("Could not load global stats."));

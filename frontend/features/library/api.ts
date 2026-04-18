@@ -1,23 +1,39 @@
 import type { LibraryState, Playlist } from "./types";
-import { getApiBaseUrl } from "@/lib/apiConfig";
+import { apiFetch } from "@/src/lib/apiFetch";
 
-function getAuthToken(): string | null {
-  if (typeof window === "undefined") return null;
-  // Must match the key used by UserContext (ponotii_token), not the dead tokenStorage.ts key
-  return window.localStorage.getItem("ponotii_token");
+type PlaylistEnvelope = Playlist | { playlist: Playlist };
+
+type ApiErrorPayload = { message?: string };
+
+async function parseJsonSafe<T>(response: Response): Promise<T | null> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function parseErrorMessage(response: Response): Promise<string | undefined> {
+  const payload = await parseJsonSafe<ApiErrorPayload>(response);
+  return payload?.message;
+}
+
+async function fetchPlaylist(path: string, options?: RequestInit): Promise<Playlist | null> {
+  try {
+    const response = await apiFetch(path, options);
+    if (!response.ok) return null;
+    const data = await parseJsonSafe<PlaylistEnvelope>(response);
+    if (!data) return null;
+    return "playlist" in data ? data.playlist : data;
+  } catch {
+    return null;
+  }
 }
 
 export async function syncLibraryState(state: LibraryState): Promise<boolean> {
-  const token = getAuthToken();
-  if (!token) return false;
-
   try {
-    const response = await fetch(`${getApiBaseUrl()}/api/library/sync`, {
+    const response = await apiFetch("/api/library/sync", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
       body: JSON.stringify(state),
     });
     return response.ok;
@@ -28,64 +44,31 @@ export async function syncLibraryState(state: LibraryState): Promise<boolean> {
 
 // Playlist API functions
 export async function getPlaylists(): Promise<Playlist[]> {
-  const token = getAuthToken();
-  if (!token) return [];
-
   try {
-    const response = await fetch(`${getApiBaseUrl()}/api/playlists`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const response = await apiFetch("/api/playlists");
     if (!response.ok) return [];
-    const data = (await response.json()) as { playlists: Playlist[] };
-    return data.playlists;
+    const data = await parseJsonSafe<{ playlists?: Playlist[] }>(response);
+    return Array.isArray(data?.playlists) ? data.playlists : [];
   } catch {
     return [];
   }
 }
 
 export async function createPlaylist(name: string): Promise<Playlist | null> {
-  const token = getAuthToken();
-  if (!token) return null;
-
-  try {
-    const response = await fetch(`${getApiBaseUrl()}/api/playlists`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ name }),
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as Playlist;
-  } catch {
-    return null;
-  }
+  return fetchPlaylist("/api/playlists", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
 }
 
 export async function updatePlaylistName(
   playlistId: string,
   name: string
 ): Promise<Playlist | null> {
-  const token = getAuthToken();
-  if (!token) return null;
-
-  try {
-    const response = await fetch(`${getApiBaseUrl()}/api/playlists/${playlistId}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ name }),
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as Playlist;
-  } catch {
-    return null;
-  }
+  return fetchPlaylist(`/api/playlists/${playlistId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
 }
 
 export async function addSongToPlaylist(
@@ -98,28 +81,21 @@ export async function addSongToPlaylist(
     videoId?: string;
   }
 ): Promise<Playlist | null> {
-  const token = getAuthToken();
-  if (!token) return null;
-
-  const payload = JSON.stringify(song);
-  console.debug("[playlist:addSong] request", { playlistId, body: song, hasAuthToken: Boolean(token) });
+  console.debug("[playlist:addSong] request", { playlistId, body: song });
 
   try {
-    const response = await fetch(`${getApiBaseUrl()}/api/playlists/${playlistId}/songs`, {
+    const response = await apiFetch(`/api/playlists/${playlistId}/songs`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: payload,
+      body: JSON.stringify(song),
     });
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[playlist:addSong] failed", { playlistId, status: response.status, errorText });
+      const errorMessage = await parseErrorMessage(response);
+      console.error("[playlist:addSong] failed", { playlistId, status: response.status, errorMessage });
       return null;
     }
     console.debug("[playlist:addSong] success", { playlistId, status: response.status });
-    const data = (await response.json()) as Playlist | { playlist: Playlist };
+    const data = await parseJsonSafe<PlaylistEnvelope>(response);
+    if (!data) return null;
     return "playlist" in data ? data.playlist : data;
   } catch {
     return null;
@@ -136,20 +112,15 @@ export async function addSongsToPlaylist(
     videoId?: string;
   }>
 ): Promise<{ playlist: Playlist; added: number } | null> {
-  const token = getAuthToken();
-  if (!token || tracks.length === 0) return null;
+  if (tracks.length === 0) return null;
 
   try {
-    const response = await fetch(`${getApiBaseUrl()}/api/playlists/${playlistId}/songs`, {
+    const response = await apiFetch(`/api/playlists/${playlistId}/songs`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
       body: JSON.stringify({ tracks }),
     });
     if (!response.ok) return null;
-    return (await response.json()) as { playlist: Playlist; added: number };
+    return await parseJsonSafe<{ playlist: Playlist; added: number }>(response);
   } catch {
     return null;
   }
@@ -160,35 +131,16 @@ export async function removeSongFromPlaylist(
   title: string,
   artist: string
 ): Promise<Playlist | null> {
-  const token = getAuthToken();
-  if (!token) return null;
-
-  try {
-    const response = await fetch(`${getApiBaseUrl()}/api/playlists/${playlistId}/songs`, {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ title, artist }),
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as Playlist;
-  } catch {
-    return null;
-  }
+  return fetchPlaylist(`/api/playlists/${playlistId}/songs`, {
+    method: "DELETE",
+    body: JSON.stringify({ title, artist }),
+  });
 }
 
 export async function deletePlaylist(playlistId: string): Promise<boolean> {
-  const token = getAuthToken();
-  if (!token) return false;
-
   try {
-    const response = await fetch(`${getApiBaseUrl()}/api/playlists/${playlistId}`, {
+    const response = await apiFetch(`/api/playlists/${playlistId}`, {
       method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
     });
     return response.ok;
   } catch {
