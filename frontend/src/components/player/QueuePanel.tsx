@@ -34,7 +34,7 @@ export default function QueuePanel() {
             title={repeatLabel}
           >
             <RotateCcw className="h-3.5 w-3.5" />
-            <span>{repeatMode === "normal" ? "Off" : repeatMode === "queue" ? "Queue" : "Song"}</span>
+            <span>{repeatMode === "normal" ? "Normal" : repeatMode === "queue" ? "Repeat queue" : "Repeat song"}</span>
           </button>
           <button onClick={clearQueue} className="selectable-card rounded-[var(--radius-sm)] border border-transparent p-2" aria-label={t("queue_clear", language)}><Trash2 className="h-4 w-4" /></button>
         </div>
