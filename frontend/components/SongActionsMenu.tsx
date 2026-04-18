@@ -65,9 +65,6 @@ export default function SongActionsMenu({
             event.preventDefault();
             event.stopPropagation();
           }}
-          onClick={(event) => {
-            event.stopPropagation();
-          }}
           aria-label={t("track_more_options", language)}
           title={t("track_more_options", language)}
         >
