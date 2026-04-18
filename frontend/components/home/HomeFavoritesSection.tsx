@@ -6,6 +6,7 @@ import type { SongMatch } from "../../features/recognition/api";
 import type { Track } from "../../features/tracks/types";
 import { t, type Language } from "../../lib/translations";
 import SongRow from "../SongRow";
+import { toSongKey } from "../../lib/songIdentity";
 
 export default function HomeFavoritesSection({
   language,
@@ -73,7 +74,8 @@ export default function HomeFavoritesSection({
               showMoreMenu
               playlists={playlists}
               onAddToPlaylist={(playlistId) => {
-                const matchingTrack = tracks.find((track) => track.title === favorite.title && track.artistName === favorite.artist);
+                const favoriteKey = toSongKey({ title: favorite.title, artist: favorite.artist });
+                const matchingTrack = tracks.find((track) => toSongKey({ title: track.title, artistName: track.artistName }) === favoriteKey);
                 addToPlaylist(matchingTrack?.id ?? favorite.key, playlistId);
               }}
             />

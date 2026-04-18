@@ -7,6 +7,7 @@ import {
   type SearchHistoryRecord,
 } from "../../db/authStore";
 import type { LibraryContextPayload, LibraryHistoryEntry, LibraryTrack } from "../../types/assistant";
+import { normalizeTrackKey, trackIdFrom } from "../../utils/songIdentity";
 
 type CacheEntry = {
   payload: LibraryContextPayload;
@@ -29,24 +30,6 @@ type ContextHints = {
 const CACHE_TTL_MS = 90_000;
 const MAX_CHARS = 12_000;
 const contextCache = new Map<string, CacheEntry>();
-
-function normalizeTrackKey(title?: string, artist?: string): string {
-  const clean = (value: string) =>
-    value
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/['’`]/g, "")
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  return `${clean(title ?? "unknown")}|||${clean(artist ?? "unknown")}`;
-}
-
-function trackIdFrom(title?: string, artist?: string): string {
-  return normalizeTrackKey(title, artist);
-}
 
 function dedupeTrackIds(trackIds: string[], limit?: number): string[] {
   const seen = new Set<string>();
