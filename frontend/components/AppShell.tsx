@@ -20,6 +20,7 @@ import { addSongToPlaylist as addSongToPlaylistApi } from "../features/library/a
 import { formatArtist } from "../lib/formatArtist";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
 import { runUnifiedSearch, type PersonalizedSearchResult } from "../lib/searchClient";
+import { normalizeTrackKey } from "../lib/dedupe";
 
 type HistoryItem = {
   id: string;
@@ -61,8 +62,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { language } = useLanguage();
   const { profile } = useProfile();
-  const { user, token, isAuthenticated, logout, addFavorite, addToHistory, history, favorites, saveToLibrary } = useUser();
-  const { playlists } = useLibrary(profile.id);
+  const { user, token, isAuthenticated, logout, history, favorites, saveToLibrary } = useUser();
+  const { playlists, favoritesSet, toggleFavorite } = useLibrary(profile.id);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -260,17 +261,6 @@ function AppShellContent({ children }: { children: ReactNode }) {
   function handleSelectSearchResult(result: SearchResult) {
     queueTrack(result, true);
     window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `${t("toast_now_playing", language)}: ${result.title}` } }));
-  }
-
-  function saveResultToRecent(result: SearchResult) {
-    void addToHistory({
-      title: result.title,
-      artist: result.artist,
-      coverUrl: result.thumbnailUrl,
-      method: "youtube-search",
-      recognized: true,
-      createdAt: new Date().toISOString(),
-    });
   }
 
   function handleSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -640,11 +630,9 @@ function AppShellContent({ children }: { children: ReactNode }) {
                             <SearchResultActions
                               resultId={result.videoId}
                               isOpen={openActionsId === result.videoId}
-                              onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))}
-                              onClose={() => setOpenActionsId(null)}
+                              onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)}
                               onPlayNow={() => queueTrack(result, true)}
                               onAddToQueue={() => queueTrack(result, false, false)}
-                              onSaveToRecent={() => saveResultToRecent(result)}
                               onSaveToLibrary={() => {
                                 void saveToLibrary({
                                   title: result.title,
@@ -654,10 +642,10 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                   recognized: true,
                                 });
                               }}
-                              onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
+                              onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
+                              isFavorite={favoritesSet.has(normalizeTrackKey(result.title, result.artist))}
                               onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })}
                               playlists={playlists}
-                              onGoToLibrary={() => router.push('/library')}
                             />
                           </li>
                         ))}
@@ -688,7 +676,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                   }}
                                   aria-label={t("btn_play", language)}
                                 ><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToRecent={() => saveResultToRecent(result)} onSaveToLibrary={() => { void saveToLibrary({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, method: "youtube-search", recognized: true }); }} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
+                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToLibrary={() => { void saveToLibrary({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, method: "youtube-search", recognized: true }); }} onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)} isFavorite={favoritesSet.has(normalizeTrackKey(result.title, result.artist))} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} />
                               </li>
                             ))}
                           </ul>

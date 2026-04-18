@@ -1,193 +1,50 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Clock, Heart, ListMusic, ListPlus, Play, Plus } from "../lucide-react";
+import { Plus } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
-import { useLanguage } from "../lib/LanguageContext";
-import { t } from "../lib/translations";
-import SmartDropdown from "@/src/components/ui/SmartDropdown";
+import SongActionsMenu from "./SongActionsMenu";
 
 type SearchResultActionsProps = {
   resultId: string;
   isOpen: boolean;
-  onToggle: () => void;
-  onClose: () => void;
+  onOpenChange: (open: boolean) => void;
   onPlayNow: () => void;
   onAddToQueue: () => void;
-  onSaveToRecent: () => void;
   onSaveToLibrary: () => void;
-  onAddToFavorites: () => void;
+  onToggleFavorite: () => void;
+  isFavorite: boolean;
   onAddToPlaylist: (playlistId: string) => void;
   playlists: Playlist[];
-  onGoToLibrary: () => void;
 };
 
 export default function SearchResultActions({
   resultId,
   isOpen,
-  onToggle,
-  onClose,
+  onOpenChange,
   onPlayNow,
   onAddToQueue,
-  onSaveToRecent,
   onSaveToLibrary,
-  onAddToFavorites,
+  onToggleFavorite,
+  isFavorite,
   onAddToPlaylist,
   playlists,
-  onGoToLibrary,
 }: SearchResultActionsProps) {
-  const { language } = useLanguage();
-  const [showPlaylists, setShowPlaylists] = useState(false);
-  const [justFavorited, setJustFavorited] = useState(false);
-  const [playlistSubmitId, setPlaylistSubmitId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) setShowPlaylists(false);
-  }, [isOpen]);
-
   return (
     <div className="relative" data-result-actions={resultId}>
-      <SmartDropdown
+      <SongActionsMenu
         isOpen={isOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setShowPlaylists(false);
-            onClose();
-            return;
-          }
-          onToggle();
-        }}
-        placement="bottom-start"
-        className="min-w-48 p-1"
-        trigger={(
-            <button
-              type="button"
-              className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
-              onClick={(event) => {
-                event.stopPropagation();
-              }}
-            aria-label={t("track_more_options", language)}
-          >
-            <Plus className="w-4 h-4 text-[var(--text)]" />
-          </button>
-        )}
-      >
-        <button
-          type="button"
-          className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-          onClick={(event) => {
-            event.stopPropagation();
-            onPlayNow();
-            setShowPlaylists(false);
-            onClose();
-          }}
-        >
-          <Play className="w-4 h-4 text-[var(--muted)]" />
-          {t("search_play_now", language)}
-        </button>
-        <button
-          type="button"
-          className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-          onClick={(event) => {
-            event.stopPropagation();
-            onAddToQueue();
-            setShowPlaylists(false);
-            onClose();
-          }}
-        >
-          <ListMusic className="w-4 h-4 text-[var(--muted)]" />
-          {t("search_add_to_queue", language)}
-        </button>
-        <button
-          type="button"
-          className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-          onClick={(event) => {
-            event.stopPropagation();
-            onSaveToRecent();
-            setShowPlaylists(false);
-            onClose();
-          }}
-        >
-          <Clock className="w-4 h-4 text-[var(--muted)]" />
-          {t("search_save_to_recent", language)}
-        </button>
-        <button
-          type="button"
-          className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-          onClick={(event) => {
-            event.stopPropagation();
-            onSaveToLibrary();
-            setShowPlaylists(false);
-            onClose();
-          }}
-        >
-          <Heart className="w-4 h-4 text-[var(--muted)]" />
-          {t("btn_save", language)}
-        </button>
-        <button
-          type="button"
-          className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-          onClick={(event) => {
-            event.stopPropagation();
-            onAddToFavorites();
-            setJustFavorited(true);
-            window.setTimeout(() => setJustFavorited(false), 800);
-          }}
-        >
-          <Heart className={`w-4 h-4 ${justFavorited ? "fill-current text-rose-500" : "text-[var(--muted)]"}`} />
-          {t("search_add_to_favorites", language)}
-        </button>
-        <button
-          type="button"
-          className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
-          onClick={(event) => {
-            event.stopPropagation();
-            setShowPlaylists((prev) => !prev);
-          }}
-        >
-          <ListPlus className="w-4 h-4 text-[var(--muted)]" />
-          {t("search_add_to_playlist", language)}
-        </button>
-        {showPlaylists && (
-          <div className="mt-1 border-t border-[var(--border)] pt-1">
-            {playlists.length === 0 ? (
-              <button
-                type="button"
-                className="dropdown-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-[var(--muted)]"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onGoToLibrary();
-                  onClose();
-                }}
-              >
-                <Plus className="w-4 h-4 text-[var(--muted)]" />
-                {t("search_no_playlists", language)}
-              </button>
-            ) : (
-              playlists.map((playlist) => (
-                <button
-                  key={playlist.id}
-                  type="button"
-                  disabled={playlistSubmitId === playlist.id}
-                  className="dropdown-item block w-full rounded-lg px-3 py-2 text-left text-sm"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (playlistSubmitId) return;
-                    setPlaylistSubmitId(playlist.id);
-                    Promise.resolve(onAddToPlaylist(playlist.id)).finally(() => {
-                      setPlaylistSubmitId(null);
-                    });
-                    setShowPlaylists(false);
-                    onClose();
-                  }}
-                >
-                  {playlist.name}
-                </button>
-              ))
-            )}
-          </div>
-        )}
-      </SmartDropdown>
+        onOpenChange={onOpenChange}
+        trigger={<Plus className="w-4 h-4 text-[var(--text)]" />}
+        triggerClassName="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
+        menuClassName="min-w-52 p-2"
+        onPlay={onPlayNow}
+        onAddToQueue={onAddToQueue}
+        onSaveToLibrary={onSaveToLibrary}
+        onToggleFavorite={onToggleFavorite}
+        isFavorite={isFavorite}
+        playlists={playlists}
+        onAddToPlaylist={onAddToPlaylist}
+      />
     </div>
   );
 }
