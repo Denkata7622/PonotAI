@@ -71,7 +71,12 @@ export function HomeContent() {
   const [audioResult, setAudioResult] = useState<AudioRecognitionResult | null>(null);
   const [imageResult, setImageResult] = useState<ImageRecognitionResult | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const [pendingImageResult, setPendingImageResult] = useState<ImageRecognitionResult | null>(null);
+  const [pendingReviewPayload, setPendingReviewPayload] = useState<{
+    source: "audio" | "image" | "manual";
+    songs: SongMatch[];
+    imageResult?: ImageRecognitionResult;
+    audioResult?: AudioRecognitionResult;
+  } | null>(null);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [recognitionStage, setRecognitionStage] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -381,21 +386,13 @@ export function HomeContent() {
       setIsRecording(false);
       setRecognitionStage("checking match");
       const recognized = await recognizeFromAudio(audioBlob);
-      setAudioResult(recognized);
-      setImageResult(null);
-      // Update local history grid immediately (source-of-truth: backend is written to first via addToHistory)
-      addToHistoryLocal("audio", [recognized.primaryMatch]);
-      await addToHistory({
-        id: crypto.randomUUID(),
-        method: "audio-record",
-        title: recognized.primaryMatch.songName,
-        artist: recognized.primaryMatch.artist,
-        album: recognized.primaryMatch.album,
-        coverUrl: recognized.primaryMatch.albumArtUrl,
-        recognized: true,
-        createdAt: new Date().toISOString(),
+      setPendingReviewPayload({
+        source: "audio",
+        songs: [recognized.primaryMatch],
+        audioResult: recognized,
       });
-      pushToast("success", t("toast_recognized", language, { song: recognized.primaryMatch.songName }));
+      setShowReviewModal(true);
+      pushToast("info", t("toast_found_review", language, { count: 1 }));
       if (recognized.primaryMatch.resultState === "possible_matches") setRecognitionStage("possible matches");
       else if (recognized.primaryMatch.resultState === "need_better_sample") setRecognitionStage("need a clearer sample");
       else setRecognitionStage("likely match");
@@ -496,7 +493,11 @@ export function HomeContent() {
       const cacheKey = `${uploadFile.name}-${uploadFile.size}-${maxSongs}-${ocrLanguage}`;
       if (imageCache.current.has(cacheKey)) {
         const cachedResult = imageCache.current.get(cacheKey)!;
-        setPendingImageResult(cachedResult);
+        setPendingReviewPayload({
+          source: "image",
+          songs: cachedResult.songs,
+          imageResult: cachedResult,
+        });
         setShowReviewModal(true);
         setIsUploadOpen(false);
         pushToast("info", t("toast_cache_loaded", language));
@@ -505,7 +506,11 @@ export function HomeContent() {
 
       const recognized = await recognizeFromImage(uploadFile, maxSongs, ocrLanguage);
       imageCache.current.set(cacheKey, recognized);
-      setPendingImageResult(recognized);
+      setPendingReviewPayload({
+        source: "image",
+        songs: recognized.songs,
+        imageResult: recognized,
+      });
       setShowReviewModal(true);
       setIsUploadOpen(false);
       pushToast("info", t("toast_found_review", language, { count: recognized.count }));
@@ -518,27 +523,60 @@ export function HomeContent() {
   }
 
   async function handleConfirmSongs(selectedSongs: SongMatch[]) {
-    if (!pendingImageResult || isSavingReviewedSongs) return;
+    if (!pendingReviewPayload || isSavingReviewedSongs) return;
     setIsSavingReviewedSongs(true);
     try {
-      const updatedResult = { ...pendingImageResult, songs: selectedSongs, count: selectedSongs.length };
-      setImageResult(updatedResult);
-      setAudioResult(null);
-      // Update local history grid immediately
-      addToHistoryLocal("ocr", selectedSongs);
-      await Promise.all(selectedSongs.map((song) => addToHistory({
-        id: crypto.randomUUID(),
-        method: "album-image",
-        title: song.songName,
-        artist: song.artist,
-        album: song.album,
-        coverUrl: song.albumArtUrl,
-        recognized: true,
-        createdAt: new Date().toISOString(),
-      })));
+      if (pendingReviewPayload.source === "image" && pendingReviewPayload.imageResult) {
+        const updatedResult = { ...pendingReviewPayload.imageResult, songs: selectedSongs, count: selectedSongs.length };
+        setImageResult(updatedResult);
+        setAudioResult(null);
+        // Update local history grid immediately
+        addToHistoryLocal("ocr", selectedSongs);
+        await Promise.all(selectedSongs.map((song) => addToHistory({
+          id: crypto.randomUUID(),
+          method: "album-image",
+          title: song.songName,
+          artist: song.artist,
+          album: song.album,
+          coverUrl: song.albumArtUrl,
+          recognized: true,
+          createdAt: new Date().toISOString(),
+        })));
+        pushToast("success", t("toast_added", language, { count: selectedSongs.length }));
+      }
+
+      if (pendingReviewPayload.source === "audio" && pendingReviewPayload.audioResult && selectedSongs[0]) {
+        const selectedAudioMatch = selectedSongs[0];
+        setAudioResult({ ...pendingReviewPayload.audioResult, primaryMatch: selectedAudioMatch });
+        setImageResult(null);
+        addToHistoryLocal("audio", [selectedAudioMatch]);
+        await addToHistory({
+          id: crypto.randomUUID(),
+          method: "audio-record",
+          title: selectedAudioMatch.songName,
+          artist: selectedAudioMatch.artist,
+          album: selectedAudioMatch.album,
+          coverUrl: selectedAudioMatch.albumArtUrl,
+          recognized: true,
+          createdAt: new Date().toISOString(),
+        });
+        pushToast("success", t("toast_recognized", language, { song: selectedAudioMatch.songName }));
+      }
+
+      if (pendingReviewPayload.source === "manual" && selectedSongs[0]) {
+        const manualSong = selectedSongs[0];
+        addManualSubmission({
+          id: crypto.randomUUID(),
+          submittedAt: new Date().toISOString(),
+          title: manualSong.songName,
+          artist: manualSong.artist,
+          album: manualSong.album,
+        });
+        pushToast("success", language === "bg" ? "Изпратено за преглед." : "Submitted for review.");
+      }
+
       setShowReviewModal(false);
-      setPendingImageResult(null);
-      pushToast("success", t("toast_added", language, { count: selectedSongs.length }));
+      setPendingReviewPayload(null);
     } catch (error) {
       setErrorMessage((error as Error).message || t("toast_image_failed", language));
       pushToast("error", t("toast_image_failed", language));
@@ -697,13 +735,24 @@ export function HomeContent() {
                   variant="secondary"
                   size="sm"
                   className="mt-3"
-                  onClick={() => addManualSubmission({
-                    id: crypto.randomUUID(),
-                    submittedAt: new Date().toISOString(),
-                    title: latestResult?.songName || "Unknown title",
-                    artist: latestResult?.artist || "Unknown artist",
-                    album: latestResult?.album || "Unknown album",
-                  })}
+                  onClick={() => {
+                    setPendingReviewPayload({
+                      source: "manual",
+                      songs: [{
+                        songName: latestResult?.songName || "Unknown title",
+                        artist: latestResult?.artist || "Unknown artist",
+                        album: latestResult?.album || "Unknown album",
+                        genre: latestResult?.genre || "Unknown Genre",
+                        releaseYear: latestResult?.releaseYear ?? null,
+                        platformLinks: latestResult?.platformLinks ?? {},
+                        youtubeVideoId: latestResult?.youtubeVideoId,
+                        albumArtUrl: latestResult?.albumArtUrl || "https://picsum.photos/seed/recognized/120",
+                        confidence: latestResult?.confidence ?? 0,
+                        durationSec: latestResult?.durationSec ?? 0,
+                      }],
+                    });
+                    setShowReviewModal(true);
+                  }}
                 >
                   Submit pending review
                 </Button>
@@ -895,13 +944,13 @@ export function HomeContent() {
         />
       )}
 
-      {showReviewModal && pendingImageResult && (
+      {showReviewModal && pendingReviewPayload && (
         <SongReviewModal
-          songs={pendingImageResult.songs}
+          songs={pendingReviewPayload.songs}
           onConfirm={handleConfirmSongs}
           onCancel={() => {
             setShowReviewModal(false);
-            setPendingImageResult(null);
+            setPendingReviewPayload(null);
           }}
         />
       )}
