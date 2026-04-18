@@ -58,8 +58,12 @@ function buildAssistantClientContext(): AssistantClientContext {
 export async function sendAssistantMessage(
   conversation: ChatMessage[],
   message: string,
-): Promise<{ reply: string; actionIntent: ActionIntent | null; meta: AssistantMeta }> {
+): Promise<{ reply: string; actionIntent: ActionIntent | null; executePendingAction: boolean; meta: AssistantMeta }> {
   const context = buildAssistantClientContext();
+  const pendingAction = [...conversation]
+    .reverse()
+    .find((item) => item.role === "assistant" && item.actionIntent && item.actionState === "pending")
+    ?.actionIntent ?? null;
   const response = await apiFetch("/api/assistant", {
     method: "POST",
     headers: {
@@ -71,6 +75,7 @@ export async function sendAssistantMessage(
         .filter((item) => item.role === "user" || item.role === "assistant")
         .map((item) => ({ role: item.role, content: item.content })),
       context,
+      pendingAction,
     }),
   });
 
@@ -88,8 +93,8 @@ export async function sendAssistantMessage(
     throw error;
   }
 
-  const payload = await response.json() as { reply: string; actionIntent: ActionIntent | null; meta: AssistantMeta };
-  return { ...payload, reply: stripAssistantActionMarkup(payload.reply ?? "") };
+  const payload = await response.json() as { reply: string; actionIntent: ActionIntent | null; executePendingAction?: boolean; meta: AssistantMeta };
+  return { ...payload, executePendingAction: payload.executePendingAction === true, reply: stripAssistantActionMarkup(payload.reply ?? "") };
 }
 
 export async function runAssistantAction(intent: ActionIntent): Promise<unknown> {

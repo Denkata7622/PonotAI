@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle, Heart, Languages, ListMusic, ListPlus, Search, Sun, X } from "lucide-react";
 import { usePlayer } from "@/components/PlayerProvider";
@@ -21,6 +21,7 @@ type Props = {
   onDismiss: () => void;
   onApplyFailure: () => void;
   state: "pending" | "applying" | "accepted" | "dismissed" | "failed";
+  autoApply?: boolean;
 };
 
 function getActionLabel(type: ActionIntent["type"]) {
@@ -48,7 +49,7 @@ function parseTrackId(trackId: string): { title: string; artist: string } {
   return { title: title || "Unknown Song", artist: artist || "Unknown Artist" };
 }
 
-export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDismiss, onApplyFailure, state }: Props) {
+export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDismiss, onApplyFailure, state, autoApply = false }: Props) {
   const router = useRouter();
   const { addManyToQueue } = usePlayer();
   const { addFavorite, favorites } = useUser();
@@ -59,6 +60,7 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
   const { icon: Icon, text } = getActionLabel(intent.type);
   const [busy, setBusy] = useState(false);
   const inFlightRef = useRef(false);
+  const autoAppliedRef = useRef(false);
 
   function resolveTrack(trackId: string) {
     const parsed = parseTrackId(trackId);
@@ -191,6 +193,12 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!autoApply || autoAppliedRef.current || state !== "pending") return;
+    autoAppliedRef.current = true;
+    void handleAccept();
+  }, [autoApply, state]);
 
   return (
     <div className="assistant-action-card">

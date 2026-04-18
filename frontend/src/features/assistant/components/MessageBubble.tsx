@@ -43,6 +43,7 @@ export default function MessageBubble({ message, onApplyStart, onApplySuccess, o
           onDismiss={onDismiss}
           onApplyFailure={onApplyFailure}
           state={message.actionState}
+          autoApply={message.autoApplyAction}
         />
       ) : null}
     </div>

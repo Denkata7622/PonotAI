@@ -80,3 +80,37 @@ test("assistant route returns structured 503 when configured model is invalid", 
     delete process.env.GEMINI_API_KEY;
   }
 });
+
+test("assistant route executes pending action directly for short confirmation replies", async () => {
+  process.env.GEMINI_API_KEY = "test-key";
+
+  const running = await startTestServer();
+  try {
+    const user = await registerUser(running.baseUrl, "assistant-confirm");
+
+    const response = await fetch(`${running.baseUrl}/api/assistant`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${user.token}` },
+      body: JSON.stringify({
+        message: "Do it",
+        conversation: [],
+        pendingAction: {
+          type: "CREATE_PLAYLIST",
+          confidence: 0.92,
+          payload: { name: "Tonight Mix", trackIds: ["song a|||artist a"], dedupe: true },
+          requiresConfirmation: true,
+          reason: "Create requested playlist",
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { actionIntent: { type: string }; executePendingAction: boolean; reply: string };
+    assert.equal(body.actionIntent?.type, "CREATE_PLAYLIST");
+    assert.equal(body.executePendingAction, true);
+    assert.match(body.reply, /executing your pending action now/i);
+  } finally {
+    await running.close();
+    delete process.env.GEMINI_API_KEY;
+  }
+});

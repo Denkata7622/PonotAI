@@ -90,6 +90,7 @@ export function useMusicAssistant() {
         content: response.reply,
         actionIntent: response.actionIntent,
         actionState: response.actionIntent ? "pending" : undefined,
+        autoApplyAction: Boolean(response.executePendingAction && response.actionIntent),
       });
 
       replaceConversation(updateConversation({ ...activeConversation, messages: nextMessages }, (previous) => [...previous, assistantMessage]));
