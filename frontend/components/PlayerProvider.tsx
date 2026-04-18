@@ -54,6 +54,7 @@ type YTPlayerLike = {
   pauseVideo: () => void;
   getDuration: () => number;
   getCurrentTime: () => number;
+  getPlayerState?: () => number;
   seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
   setVolume: (value: number) => void;
   loadVideoById: (videoId: string) => void;
@@ -73,6 +74,7 @@ type YouTubeWindow = Window & {
   };
   onYouTubeIframeAPIReady?: () => void;
 };
+type YouTubeStateMap = NonNullable<YouTubeWindow["YT"]>["PlayerState"];
 
 const QUEUE_STORAGE_KEY = "ponotai.queue.v1";
 const VOLUME_STORAGE_KEY = "ponotai.player.volume.v1";
@@ -170,6 +172,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const currentIndexRef = useRef(currentIndex);
   const repeatModeRef = useRef(repeatMode);
   const durationRef = useRef(duration);
+  const currentTrackRef = useRef<QueueTrack | null>(null);
 
   useEffect(() => {
     queueRef.current = queue;
@@ -200,6 +203,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const currentTrack = currentEntry?.track ?? null;
 
   useEffect(() => {
+    currentTrackRef.current = currentTrack;
+  }, [currentTrack]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(
       QUEUE_STORAGE_KEY,
@@ -216,6 +223,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setIsPlaying(false);
       setIsBuffering(false);
       setCurrentTime(durationRef.current || 0);
+      safePlayerCall((player) => player.pauseVideo?.());
       return;
     }
     requestedPlaybackRef.current = "play";
@@ -234,8 +242,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playPrevious = useCallback(() => {
     requestedPlaybackRef.current = "play";
-    setCurrentIndex((previous) => Math.max(previous - 1, 0));
-  }, []);
+    setCurrentIndex((previous) => {
+      const nextIndex = Math.max(previous - 1, 0);
+      if (nextIndex === previous) {
+        setCurrentTime(0);
+        safePlayerCall((player) => {
+          player.seekTo?.(0, true);
+          player.playVideo?.();
+        });
+      }
+      return nextIndex;
+    });
+  }, [safePlayerCall]);
 
   const handleTrackEnded = useCallback(() => {
     const nextIndex = getNextQueueIndex(
@@ -268,6 +286,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentTime(0);
     setDuration(0);
   }, [safePlayerCall]);
+
+  const syncFromPlayerState = useCallback((playerState: number | undefined, playerStateMap?: YouTubeStateMap) => {
+    if (typeof playerState !== "number" || !playerStateMap) return;
+    const snapshot = mapYouTubeState(playerState, playerStateMap);
+    setIsPlaying(snapshot.isPlaying);
+    setIsBuffering(snapshot.isBuffering);
+    if (snapshot.ended) {
+      handleTrackEnded();
+    }
+  }, [handleTrackEnded]);
 
   const initializePlayer = useCallback(() => {
     if (typeof window === "undefined") return false;
@@ -302,18 +330,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         },
         onStateChange: (event: { data: number }) => {
           const state = ytWindow.YT?.PlayerState;
-          if (!state) return;
-          const snapshot = mapYouTubeState(event.data, state);
-          setIsPlaying(snapshot.isPlaying);
-          setIsBuffering(snapshot.isBuffering);
-          if (snapshot.ended) {
-            handleTrackEnded();
-          }
+          syncFromPlayerState(event.data, state);
         },
       },
     });
     return true;
-  }, [handleTrackEnded, safePlayerCall, volume]);
+  }, [safePlayerCall, syncFromPlayerState, volume]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -436,12 +458,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const interval = window.setInterval(() => {
       safePlayerCall((player) => {
+        const ytWindow = window as YouTubeWindow;
+        syncFromPlayerState(player.getPlayerState?.(), ytWindow.YT?.PlayerState);
         setCurrentTime(player.getCurrentTime?.() || 0);
         setDuration(player.getDuration?.() || 0);
       });
     }, 500);
     return () => window.clearInterval(interval);
+  }, [safePlayerCall, syncFromPlayerState]);
+
+  const requestPlay = useCallback(() => {
+    if (!currentTrackRef.current) return;
+    requestedPlaybackRef.current = "play";
+    safePlayerCall((player) => player.playVideo?.());
   }, [safePlayerCall]);
+
+  const requestPause = useCallback(() => {
+    requestedPlaybackRef.current = "pause";
+    setIsPlaying(false);
+    setIsBuffering(false);
+    safePlayerCall((player) => player.pauseVideo?.());
+  }, [safePlayerCall]);
+
+  const stopPlayback = useCallback(() => {
+    if (!currentTrackRef.current) return;
+    requestPause();
+    setCurrentTime(0);
+    safePlayerCall((player) => player.seekTo?.(0, true));
+  }, [requestPause, safePlayerCall]);
 
   const addToQueue = useCallback((track: Omit<QueueTrack, "id"> & { id?: string }, source: QueuedTrack["source"] = "manual") => {
     const nextEntry: QueuedTrack = { queueId: crypto.randomUUID(), track: normalizeTrack(track), addedAt: new Date().toISOString(), source };
@@ -524,21 +568,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const togglePlayPause = useCallback(() => {
     if (!currentTrack) return;
-    if (isPlaying) {
-      requestedPlaybackRef.current = "pause";
-      if (!isPlayerReadyRef.current) {
-        setIsPlaying(false);
-        return;
-      }
-      safePlayerCall((player) => player.pauseVideo?.());
+    const playerState = playerRef.current?.getPlayerState?.();
+    const ytState = (typeof window !== "undefined" ? (window as YouTubeWindow).YT?.PlayerState : undefined);
+    const playerReportsPlaying = typeof playerState === "number" && ytState ? playerState === ytState.PLAYING : isPlaying;
+
+    if (playerReportsPlaying) {
+      requestPause();
       return;
     }
-    requestedPlaybackRef.current = "play";
-    if (!isPlayerReadyRef.current) {
-      return;
-    }
-      safePlayerCall((player) => player.playVideo?.());
-  }, [currentTrack, isPlaying, safePlayerCall]);
+    requestPlay();
+  }, [currentTrack, isPlaying, requestPause, requestPlay]);
 
   const seekToPercent = useCallback((percent: number) => {
     if (!duration) return;
@@ -574,9 +613,29 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (event.code === "Space") {
         event.preventDefault();
         togglePlayPause();
+      } else if (event.code === "MediaPlayPause") {
+        event.preventDefault();
+        togglePlayPause();
+      } else if (event.code === "MediaPlay") {
+        event.preventDefault();
+        requestPlay();
+      } else if (event.code === "MediaPause") {
+        event.preventDefault();
+        requestPause();
+      } else if (event.code === "MediaStop") {
+        event.preventDefault();
+        stopPlayback();
       } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        playNext();
+      } else if (event.code === "MediaTrackNext") {
+        event.preventDefault();
         playNext();
       } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        playPrevious();
+      } else if (event.code === "MediaTrackPrevious") {
+        event.preventDefault();
         playPrevious();
       } else if (event.key.toLowerCase() === "m") {
         if (volume === 0) setVolume(lastVolumeBeforeMuteRef.current || 70);
@@ -589,7 +648,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [playNext, playPrevious, setVolume, togglePlayPause, volume]);
+  }, [playNext, playPrevious, requestPause, requestPlay, setVolume, stopPlayback, togglePlayPause, volume]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+
+    navigator.mediaSession.setActionHandler("play", requestPlay);
+    navigator.mediaSession.setActionHandler("pause", requestPause);
+    navigator.mediaSession.setActionHandler("nexttrack", playNext);
+    navigator.mediaSession.setActionHandler("previoustrack", playPrevious);
+    navigator.mediaSession.setActionHandler("stop", stopPlayback);
+
+    return () => {
+      navigator.mediaSession.setActionHandler("play", null);
+      navigator.mediaSession.setActionHandler("pause", null);
+      navigator.mediaSession.setActionHandler("nexttrack", null);
+      navigator.mediaSession.setActionHandler("previoustrack", null);
+      navigator.mediaSession.setActionHandler("stop", null);
+    };
+  }, [playNext, playPrevious, requestPause, requestPlay, stopPlayback]);
 
   const value = useMemo<PlayerContextValue>(() => ({
     queue,
