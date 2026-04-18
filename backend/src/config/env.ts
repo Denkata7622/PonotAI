@@ -55,7 +55,8 @@ export function validateEnvironment(): void {
 
   const isProduction = process.env.NODE_ENV === "production";
   const jwtSecret = process.env.JWT_SECRET?.trim();
-  const persistenceMode = process.env.PERSISTENCE_MODE?.trim().toLowerCase() || "postgres";
+  const configuredPersistenceMode = process.env.PERSISTENCE_MODE?.trim().toLowerCase();
+  const persistenceMode = configuredPersistenceMode || "postgres";
   const databaseUrl = process.env.DATABASE_URL?.trim();
 
   if (jwtSecret) {
@@ -74,6 +75,11 @@ export function validateEnvironment(): void {
   const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];
   if (isProduction && allowedOrigins.length === 0) {
     console.error("FATAL: ALLOWED_ORIGINS is required in production");
+    process.exit(1);
+  }
+
+  if (persistenceMode !== "postgres" && persistenceMode !== "file-legacy") {
+    console.error(`FATAL: Unsupported PERSISTENCE_MODE=${persistenceMode}. Allowed values: postgres, file-legacy.`);
     process.exit(1);
   }
 
