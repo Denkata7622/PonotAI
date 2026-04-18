@@ -30,7 +30,7 @@ import SmartDropdown from "@/src/components/ui/SmartDropdown";
 import SearchResultActions from "../../components/SearchResultActions";
 import { runUnifiedSearch } from "../../lib/searchClient";
 import SongRow from "../../components/SongRow";
-import { normalizeTrackKey } from "../../lib/dedupe";
+import { toCanonicalSong, toSongKey } from "../../lib/songIdentity";
 import { getHomeRecommendations } from "../../features/recommendations/homeRecommendations";
 import { readTasteProfile } from "../../src/features/onboarding/tasteProfile";
 
@@ -52,15 +52,6 @@ type SearchResult = {
   isTopicChannel?: boolean;
 };
 
-function readHistory(profileId: string): HistoryItem[] {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(window.localStorage.getItem(scopedKey("ponotai-history", profileId)) ?? "[]") as HistoryItem[];
-  } catch {
-    return [];
-  }
-}
-
 export default function SearchPage() {
   const router = useRouter();
   const { language } = useLanguage();
@@ -78,13 +69,8 @@ export default function SearchPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isUnavailable, setIsUnavailable] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const blurTimeoutRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    setHistory(readHistory(profile.id));
-  }, [profile.id]);
 
   useEffect(() => () => {
     if (blurTimeoutRef.current) {
@@ -137,6 +123,26 @@ export default function SearchPage() {
     };
   }, [debouncedQuery, saveQuery, token]);
 
+  const history = useMemo<HistoryItem[]>(() => {
+    return userHistory.map((item) => {
+      const song = toCanonicalSong(item);
+      return {
+        id: item.id,
+        title: song.title,
+        artist: song.artist,
+        coverUrl: song.coverUrl,
+        youtubeVideoId: song.videoId,
+        createdAt: item.createdAt,
+        song: {
+          songName: song.title,
+          artist: song.artist,
+          albumArtUrl: song.coverUrl,
+          youtubeVideoId: song.videoId,
+        },
+      };
+    });
+  }, [userHistory]);
+
   const historyResults = useMemo(() => {
     const q = historyQuery.trim().toLowerCase();
     if (!q) return history;
@@ -170,7 +176,7 @@ export default function SearchPage() {
         userId: profile.id,
         history: recommendationHistory,
         favorites: favorites.map((favorite) => ({
-          key: normalizeTrackKey(favorite.title, favorite.artist),
+          key: toSongKey(favorite),
           title: favorite.title,
           artist: favorite.artist,
           artworkUrl: favorite.coverUrl ?? undefined,
@@ -363,7 +369,7 @@ export default function SearchPage() {
                   <div className="space-y-2">
                     {recentCaptures.map((item) => {
                       const canQueue = Boolean(item.title && item.artist);
-                      const favoriteKey = normalizeTrackKey(item.title ?? "", item.artist ?? "");
+                      const favoriteKey = toSongKey({ title: item.title, artist: item.artist });
                       return (
                         <SongRow
                           key={item.id}
@@ -458,7 +464,7 @@ export default function SearchPage() {
                 </div>
                 <div className="space-y-2">
                   {homeBrowse.tracks.slice(0, 5).map((track) => {
-                    const favoriteKey = normalizeTrackKey(track.title, track.artistName);
+                    const favoriteKey = toSongKey({ title: track.title, artist: track.artistName });
                     return (
                       <SongRow
                         key={track.id}
@@ -539,7 +545,7 @@ export default function SearchPage() {
                             });
                           }}
                           onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
-                          isFavorite={favoritesSet.has(normalizeTrackKey(result.title, result.artist))}
+                          isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))}
                           onAddToPlaylist={(playlistId) =>
                             addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
                           }
@@ -583,7 +589,7 @@ export default function SearchPage() {
                               });
                             }}
                             onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
-                            isFavorite={favoritesSet.has(normalizeTrackKey(result.title, result.artist))}
+                            isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))}
                             onAddToPlaylist={(playlistId) =>
                               addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
                             }

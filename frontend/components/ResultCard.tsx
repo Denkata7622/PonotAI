@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, Heart, MicOff, Play, Save, ScrollText, Share2 } from "../lucide-react";
 import type { SongMatch } from "../features/recognition/api";
 import { t, type Language } from "../lib/translations";
-import { normalizeTrackKey } from "../lib/dedupe";
+import { toSongKey } from "../lib/songIdentity";
 import { Card } from "../src/components/ui/Card";
 import { Button } from "../src/components/ui/Button";
 import { Badge } from "../src/components/ui/Badge";
@@ -44,7 +44,7 @@ export default function ResultCard({ language, song, onSave, onPlay, onFavorite,
 
   const currentSong = song;
 
-  const favoriteKey = normalizeTrackKey(song.songName, song.artist);
+  const favoriteKey = toSongKey({ title: song.songName, artist: song.artist });
 
   function confidenceLabel() {
     if ((currentSong.resultState ?? "") === "exact_match") return "Exact match";

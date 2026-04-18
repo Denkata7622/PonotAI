@@ -5,7 +5,7 @@ import type { Playlist } from "../../features/library/types";
 import { t, type Language } from "../../lib/translations";
 import { Clock } from "../icons";
 import SongRow from "../SongRow";
-import { normalizeTrackKey } from "../../lib/dedupe";
+import { toSongKey } from "../../lib/songIdentity";
 
 type HistoryEntry = { id: string; source: "audio" | "ocr"; createdAt: string; song: SongMatch };
 
@@ -42,7 +42,7 @@ export default function HomeHistorySection({
       ) : (
         <div className="mt-5 space-y-2">
           {items.map((entry) => {
-            const key = normalizeTrackKey(entry.song.songName, entry.song.artist);
+            const key = toSongKey({ title: entry.song.songName, artist: entry.song.artist });
             return (
               <SongRow
                 key={entry.id}

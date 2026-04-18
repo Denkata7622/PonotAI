@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { scopedKey, useProfile } from "../lib/ProfileContext";
+import { useProfile } from "../lib/ProfileContext";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
-import { normalizeTrackKey } from "../lib/dedupe";
+import { toSongKey } from "../lib/songIdentity";
 import { useLibrary } from "../features/library/useLibrary";
 import { Button } from "../src/components/ui/Button";
 import Modal from "../src/components/ui/Modal";
@@ -26,15 +26,6 @@ type NewPlaylistModalProps = {
   initialName?: string;
 };
 
-function parseStorage<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    return JSON.parse(window.localStorage.getItem(key) ?? JSON.stringify(fallback)) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 export default function NewPlaylistModal({
   onClose,
   onCreated,
@@ -47,7 +38,7 @@ export default function NewPlaylistModal({
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { createPlaylist, addSongsToPlaylist } = useLibrary(profile.id);
-  const { token, favorites } = useUser();
+  const { token, favorites, history } = useUser();
 
   const [name, setName] = useState(initialName);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -59,24 +50,22 @@ export default function NewPlaylistModal({
   const [searchResults, setSearchResults] = useState<ModalTrack[]>([]);
   const [selectedSongs, setSelectedSongs] = useState<Map<string, ModalTrack>>(new Map());
 
-  const historyKey = profile?.id ? scopedKey("ponotai-history", profile.id) : "ponotai-history";
 
   useEffect(() => {
     setName(initialName);
   }, [initialName]);
 
   useEffect(() => {
-    const historyRaw = parseStorage<any[]>(historyKey, []);
-    const normalizedHistory = historyRaw.map((item, index) => ({
-      id: item.id ?? `history-${index}-${item.title ?? item.songName ?? "song"}`,
-      title: item.title ?? item.songName ?? item.song?.songName ?? t("unknown_song", language),
-      artist: item.artist ?? item.song?.artist ?? "-",
-      album: item.album ?? item.song?.album,
-      coverUrl: item.coverUrl ?? item.song?.coverUrl,
-      videoId: item.videoId ?? item.song?.videoId,
+    const normalizedHistory = history.map((item, index) => ({
+      id: item.id ?? `history-${index}-${item.title ?? "song"}`,
+      title: item.title ?? t("unknown_song", language),
+      artist: item.artist ?? "-",
+      album: item.album ?? undefined,
+      coverUrl: item.coverUrl ?? undefined,
+      videoId: undefined,
     }));
     setHistorySongs(normalizedHistory);
-  }, [historyKey, language]);
+  }, [history, language]);
 
   useEffect(() => {
     const normalizedFavorites = favorites.map((item, index) => ({
@@ -141,7 +130,7 @@ export default function NewPlaylistModal({
   }, [favoriteSongs, historySongs, searchResults, selectedTab]);
 
   function toggleTrackSelection(track: ModalTrack) {
-    const key = normalizeTrackKey(track.title, track.artist);
+    const key = toSongKey(track);
     setSelectedSongs((prev) => {
       const next = new Map(prev);
       if (next.has(key)) {
@@ -249,7 +238,7 @@ export default function NewPlaylistModal({
               <p className="py-8 text-center text-sm text-[var(--muted)]">{t("no_songs_yet", language)}</p>
             ) : (
               tracksByTab.map((track) => {
-                const key = normalizeTrackKey(track.title, track.artist);
+                const key = toSongKey(track);
                 const selected = selectedSongs.has(key);
                 return (
                   <SongRow

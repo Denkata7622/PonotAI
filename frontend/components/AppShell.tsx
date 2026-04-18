@@ -20,7 +20,7 @@ import { addSongToPlaylist as addSongToPlaylistApi } from "../features/library/a
 import { formatArtist } from "../lib/formatArtist";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
 import { runUnifiedSearch, type PersonalizedSearchResult } from "../lib/searchClient";
-import { normalizeTrackKey } from "../lib/dedupe";
+import { toSongKey } from "../lib/songIdentity";
 
 type HistoryItem = {
   id: string;
@@ -643,7 +643,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                 });
                               }}
                               onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
-                              isFavorite={favoritesSet.has(normalizeTrackKey(result.title, result.artist))}
+                              isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))}
                               onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })}
                               playlists={playlists}
                             />
@@ -676,7 +676,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                   }}
                                   aria-label={t("btn_play", language)}
                                 ><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToLibrary={() => { void saveToLibrary({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, method: "youtube-search", recognized: true }); }} onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)} isFavorite={favoritesSet.has(normalizeTrackKey(result.title, result.artist))} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} />
+                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToLibrary={() => { void saveToLibrary({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, method: "youtube-search", recognized: true }); }} onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)} isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} />
                               </li>
                             ))}
                           </ul>
