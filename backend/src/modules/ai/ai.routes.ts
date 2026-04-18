@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware";
 import { assistantRateLimit } from "../../middlewares/rateLimit.middleware";
+import { requireVerifiedEmail } from "../../middlewares/verified.middleware";
 import {
   applyTagsController,
   crossArtistRecommendationsController,
@@ -21,6 +22,7 @@ import {
 const router = Router();
 
 router.use(requireAuth);
+router.use(requireVerifiedEmail);
 router.use(assistantRateLimit);
 
 router.get("/insights/weekly", getWeeklyInsightsController);

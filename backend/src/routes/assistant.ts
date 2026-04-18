@@ -7,6 +7,7 @@ import { buildSystemPrompt } from "../services/assistant/prompt";
 import { generateAssistantReply } from "../services/assistant/geminiClient";
 import { parseActionIntent, parseActionIntentCandidate } from "../services/assistant/actionParser";
 import type { ActionIntent, GeminiHistoryMessage, GeminiMessage } from "../types/assistant";
+import { requireVerifiedEmail } from "../middlewares/verified.middleware";
 
 const assistantRouter = Router();
 
@@ -57,7 +58,15 @@ export function isDirectConfirmationMessage(input: string): boolean {
 
 export function resolvePendingActionFromMessage(message: string, pendingActionRaw: unknown): { reply: string; actionIntent: ActionIntent; executePendingAction: true } | null {
   const pendingAction = parseActionIntentCandidate(pendingActionRaw);
+  const autoExecutableActionTypes = new Set<ActionIntent["type"]>([
+    "ADD_TO_QUEUE",
+    "CREATE_PLAYLIST",
+    "FAVORITE_TRACK",
+    "CHANGE_THEME",
+    "CHANGE_LANGUAGE",
+  ]);
   if (!pendingAction || !isDirectConfirmationMessage(message)) return null;
+  if (!autoExecutableActionTypes.has(pendingAction.type)) return null;
   return {
     reply: "Confirmed. Executing your pending action now.",
     actionIntent: pendingAction,
@@ -81,6 +90,7 @@ function validateConversation(payload: unknown): payload is GeminiMessage[] {
 
 assistantRouter.use(assistantRateLimit);
 assistantRouter.use(requireAuth);
+assistantRouter.use(requireVerifiedEmail);
 
 assistantRouter.post("/", async (req, res) => {
   if (!process.env.GEMINI_API_KEY?.trim()) {

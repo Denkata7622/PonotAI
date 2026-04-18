@@ -12,6 +12,7 @@ model User {
   username     String          @unique
   email        String          @unique
   passwordHash String
+  emailVerifiedAt DateTime?
   role         String          @default("user")
   isDemo       Boolean         @default(false)
   avatarBase64 String?
@@ -28,6 +29,21 @@ model User {
   achievements        Achievement[]
   apiKeys             ApiKey[]
   trackTags           TrackTag[]
+  emailVerificationTokens EmailVerificationToken[]
+}
+
+model EmailVerificationToken {
+  id         String   @id
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
 }
 
 model SearchHistory {

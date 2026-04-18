@@ -151,9 +151,9 @@ function validatePayload(type: ActionIntent["type"], payload: Record<string, unk
     case "INSIGHT_REQUEST":
       return payload.period === "daily" || payload.period === "weekly" || payload.period === "monthly" || payload.kind === "trends" ? payload : null;
     case "PLAYLIST_GENERATION":
-      return typeof payload.prompt === "string" && payload.prompt.length > 0 ? payload : null;
+      return typeof payload.prompt === "string" && payload.prompt.length > 0 && payload.prompt.length <= 240 ? payload : null;
     case "MOOD_RECOMMENDATION":
-      return typeof payload.mood === "string" && payload.mood.length > 0 ? payload : null;
+      return typeof payload.mood === "string" && payload.mood.length > 0 && payload.mood.length <= 60 ? payload : null;
     case "CONTEXT_RECOMMENDATION":
     case "TAG_SUGGESTION":
       return payload;
@@ -163,13 +163,13 @@ function validatePayload(type: ActionIntent["type"], payload: Record<string, unk
       return (payload.differentArtistsOnly === undefined || typeof payload.differentArtistsOnly === "boolean")
         && (payload.limit === undefined || (typeof payload.limit === "number" && payload.limit > 0 && payload.limit <= 20)) ? payload : null;
     case "SHOW_SIMILAR_ARTISTS":
-      return typeof payload.anchorArtist === "string" && payload.anchorArtist.length > 0 ? payload : null;
+      return typeof payload.anchorArtist === "string" && payload.anchorArtist.length > 0 && payload.anchorArtist.length <= 120 ? payload : null;
     case "SEARCH_ARTIST":
-      return typeof payload.artist === "string" && payload.artist.length > 0 ? payload : null;
+      return typeof payload.artist === "string" && payload.artist.length > 0 && payload.artist.length <= 120 ? payload : null;
     case "PREVIEW_DISCOVERY_PLAYLIST":
       return isStringArray(payload.artists) ? payload : null;
     case "CREATE_DISCOVERY_PLAYLIST":
-      return typeof payload.name === "string" && payload.name.length > 0 && isStringArray(payload.artists) ? payload : null;
+      return typeof payload.name === "string" && payload.name.length > 0 && payload.name.length <= 80 && isStringArray(payload.artists) ? payload : null;
     default:
       return null;
   }

@@ -140,4 +140,16 @@ export function validateEnvironment(): void {
   if (!youtubeKey) {
     console.warn("[env] YOUTUBE_API_KEY missing. Verified YouTube links may be unavailable.");
   }
+
+  const mailerApiUrl = process.env.MAILER_API_URL?.trim();
+  const mailerApiToken = process.env.MAILER_API_TOKEN?.trim();
+  if (mailerApiUrl) process.env.MAILER_API_URL = mailerApiUrl;
+  if (mailerApiToken) process.env.MAILER_API_TOKEN = mailerApiToken;
+  const mailerFrom = process.env.MAILER_FROM?.trim();
+  if (mailerFrom) process.env.MAILER_FROM = mailerFrom;
+
+  if (isProduction && (!mailerApiUrl || !mailerApiToken)) {
+    console.error("FATAL: MAILER_API_URL and MAILER_API_TOKEN are required in production for email verification.");
+    process.exit(1);
+  }
 }
