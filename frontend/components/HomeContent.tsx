@@ -26,10 +26,9 @@ import { readTasteProfile } from "../src/features/onboarding/tasteProfile";
 import { useLanguage } from "../lib/LanguageContext";
 import { useTheme } from "../lib/ThemeContext";
 import { t } from "../lib/translations";
-import { normalizeTrackKey } from "../lib/dedupe";
+import { toCanonicalSong, toSongKey } from "../lib/songIdentity";
 import { scopedKey, useProfile } from "../lib/ProfileContext";
 import { useUser } from "../src/context/UserContext";
-import { apiFetch } from "../src/lib/apiFetch";
 import HomeHistorySection from "./home/HomeHistorySection";
 import HomeFavoritesSection from "./home/HomeFavoritesSection";
 import HomePlaylistsSection from "./home/HomePlaylistsSection";
@@ -41,22 +40,8 @@ import { Library, Mic, Music, Play, Sparkles, X } from "../lucide-react";
 
 type Toast = { id: string; kind: "success" | "error" | "info"; message: string };
 type HistoryEntry = { id: string; source: "audio" | "ocr"; createdAt: string; song: SongMatch };
-type BackendHistoryItem = {
-  id: string;
-  method?: string;
-  title?: string;
-  songName?: string;
-  artist?: string;
-  album?: string;
-  coverUrl?: string;
-  youtubeVideoId?: string;
-  recognized?: boolean;
-  createdAt: string;
-};
-
 const IMAGE_MAX_MB = 10;
 const IMAGE_MIME_WHITELIST = ["image/png", "image/jpeg", "image/webp"];
-const HISTORY_KEY = "ponotai-history";
 const MAX_SONGS_KEY = "ponotai.settings.maxSongs";
 const OCR_LANGUAGE_KEY = "ponotai.settings.ocrLanguage";
 const DEMO_SEEN_KEY = "ponotai.demo.seen";
@@ -82,7 +67,7 @@ function toRecognizedTrack(result: SongRecognitionResult): Track {
 }
 
 export function HomeContent() {
-  const { addToHistory, addFavorite, addManualSubmission, isAuthenticated, saveToLibrary } = useUser();
+  const { addToHistory, addFavorite, addManualSubmission, isAuthenticated, saveToLibrary, history: userHistory, deleteHistoryItem } = useUser();
   const [audioResult, setAudioResult] = useState<AudioRecognitionResult | null>(null);
   const [imageResult, setImageResult] = useState<ImageRecognitionResult | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -118,7 +103,6 @@ export function HomeContent() {
   const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const { profile } = useProfile();
-  const profileHistoryKey = scopedKey(HISTORY_KEY, profile.id);
   const profileMaxSongsKey = scopedKey(MAX_SONGS_KEY, profile.id);
   const profileOcrLanguageKey = scopedKey(OCR_LANGUAGE_KEY, profile.id);
   const { playlists, favoritesSet, favoritesList, toggleFavorite, createPlaylist, deletePlaylist, addSongToPlaylist, removeSongFromPlaylist } = useLibrary(profile.id);
@@ -170,6 +154,35 @@ export function HomeContent() {
     }
   }
 
+
+  const canonicalHistory = useMemo<HistoryEntry[]>(() => {
+    return userHistory
+      .filter((item) => item.title || item.artist)
+      .map((item) => {
+        const song = toCanonicalSong(item);
+        return {
+          id: item.id,
+          source: (item.method === "album-image" ? "ocr" : "audio") as "audio" | "ocr",
+          createdAt: item.createdAt ?? new Date().toISOString(),
+          song: {
+            songName: song.title,
+            artist: song.artist,
+            album: song.album ?? "Unknown Album",
+            genre: "Unknown Genre",
+            releaseYear: null,
+            platformLinks: {},
+            youtubeVideoId: song.videoId,
+            albumArtUrl: song.coverUrl ?? "https://picsum.photos/seed/recognized/120",
+            confidence: 0.8,
+            durationSec: 0,
+          },
+        };
+      });
+  }, [userHistory]);
+
+  useEffect(() => {
+    setHistory(canonicalHistory.slice(0, 18));
+  }, [canonicalHistory]);
   const latestResult: SongRecognitionResult | null = useMemo(() => {
     if (audioResult) return songMatchToRecognitionResult(audioResult.primaryMatch, "audio");
     if (imageResult?.songs[0]) return songMatchToRecognitionResult(imageResult.songs[0], "image");
@@ -211,70 +224,11 @@ export function HomeContent() {
   }, [favoritesSet]);
 
   useEffect(() => {
-    // Source-of-truth rule: fetch from backend first, write to localStorage as cache.
-    // Fall back to localStorage silently if backend is unreachable.
-    async function loadHistory() {
-      try {
-        const res = await apiFetch("/api/history?limit=18");
-        if (res.ok) {
-          const data = (await res.json()) as
-            | { items?: BackendHistoryItem[]; total?: number }
-            | BackendHistoryItem[];
-          const rawItems: BackendHistoryItem[] = Array.isArray(data)
-            ? data
-            : (data.items ?? []);
-
-          const mapped: HistoryEntry[] = rawItems
-            .filter((item) => item.title || item.songName)
-            .map((item) => ({
-              id: item.id,
-              source: (item.method === "album-image" ? "ocr" : "audio") as "audio" | "ocr",
-              createdAt: item.createdAt,
-              song: {
-                songName: item.title ?? item.songName ?? "Unknown Song",
-                artist: item.artist ?? "Unknown Artist",
-                album: item.album ?? "Unknown Album",
-                genre: "Unknown Genre",
-                releaseYear: null,
-                platformLinks: {},
-                youtubeVideoId: item.youtubeVideoId,
-                albumArtUrl: item.coverUrl ?? "https://picsum.photos/seed/recognized/120",
-                confidence: 0.8,
-                durationSec: 0,
-              },
-            }));
-
-          setHistory(mapped);
-          // Write backend result into localStorage as offline cache
-          localStorage.setItem(profileHistoryKey, JSON.stringify(mapped));
-          return;
-        }
-      } catch {
-        // Backend unreachable — fall through to localStorage cache
-      }
-
-      // Offline fallback: read from localStorage cache
-      try {
-        const saved = localStorage.getItem(profileHistoryKey);
-        setHistory(saved ? (JSON.parse(saved) as HistoryEntry[]) : []);
-      } catch {
-        setHistory([]);
-      }
-    }
-
-    void loadHistory();
-  }, [profileHistoryKey]);
-
-  useEffect(() => {
     const storedMaxSongs = Number(localStorage.getItem(profileMaxSongsKey) ?? 10);
     const storedOcrLanguage = localStorage.getItem(profileOcrLanguageKey) ?? "eng";
     setMaxSongs(Math.min(20, Math.max(1, storedMaxSongs || 10)));
     setOcrLanguage(storedOcrLanguage);
   }, [profileMaxSongsKey, profileOcrLanguageKey]);
-
-  useEffect(() => {
-    localStorage.setItem(profileHistoryKey, JSON.stringify(history.slice(0, 18)));
-  }, [history, profileHistoryKey]);
 
   useEffect(() => {
     localStorage.setItem(profileMaxSongsKey, String(maxSongs));
@@ -296,26 +250,12 @@ export function HomeContent() {
   }, []);
 
   async function handleDeleteHistoryItem(id: string) {
-    if (isAuthenticated) {
-      try {
-        const response = await apiFetch(`/api/history/${id}`, { method: "DELETE" });
-        if (!response.ok) {
-          pushToast("error", "Failed to remove song from history.");
-          return;
-        }
-      } catch {
-        pushToast("error", "Failed to remove song from history.");
-        return;
-      }
+    try {
+      await deleteHistoryItem(id);
+      setHistory((prev) => prev.filter((entry) => entry.id !== id));
+    } catch {
+      pushToast("error", "Failed to remove song from history.");
     }
-
-    setHistory((prev) => {
-      const updated = prev.filter((entry) => entry.id !== id);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(profileHistoryKey, JSON.stringify(updated));
-      }
-      return updated;
-    });
   }
 
   function handleDemoRecognition() {
@@ -381,12 +321,12 @@ export function HomeContent() {
     setHistory((prev) => {
       let next = [...prev];
       for (const song of songs) {
-        const key = normalizeTrackKey(song.songName, song.artist);
+        const key = toSongKey({ title: song.songName, artist: song.artist });
         const hadDuplicate = next.some(
-          (entry) => normalizeTrackKey(entry.song.songName, entry.song.artist) === key,
+          (entry) => toSongKey({ title: entry.song.songName, artist: entry.song.artist }) === key,
         );
         const filtered = next.filter(
-          (entry) => normalizeTrackKey(entry.song.songName, entry.song.artist) !== key,
+          (entry) => toSongKey({ title: entry.song.songName, artist: entry.song.artist }) !== key,
         );
         if (hadDuplicate) {
           pushToast("info", t("toast_duplicate_history", language));
@@ -621,7 +561,7 @@ export function HomeContent() {
   }
 
   function favoriteSong(song: SongMatch) {
-    const favoriteKey = normalizeTrackKey(song.songName, song.artist);
+    const favoriteKey = toSongKey({ title: song.songName, artist: song.artist });
     if (favoritesSet.has(favoriteKey)) {
       toggleFavorite(favoriteKey, song.songName, song.artist, song.albumArtUrl, song.youtubeVideoId);
       return;
@@ -786,7 +726,7 @@ export function HomeContent() {
                       artworkUrl={song.albumArtUrl}
                       videoId={song.youtubeVideoId}
                       onPlay={() => playSong(song)}
-                      isFavorite={favoritedKeys.has(normalizeTrackKey(song.songName, song.artist))}
+                      isFavorite={favoritedKeys.has(toSongKey({ title: song.songName, artist: song.artist }))}
                       onFavorite={() => favoriteSong(song)}
                       showMoreMenu
                       playlists={playlists}
@@ -860,7 +800,7 @@ export function HomeContent() {
                 </p>
               </Card>
               {recommendationState.tracks.length > 0 ? recommendationState.tracks.map((track) => {
-                const trackKey = normalizeTrackKey(track.title, track.artistName);
+                const trackKey = toSongKey({ title: track.title, artist: track.artistName });
                 return (
                   <TrackCard
                     key={track.id}
@@ -918,8 +858,8 @@ export function HomeContent() {
                     artist={item.song.artist}
                     artworkUrl={item.song.albumArtUrl}
                     onPlay={() => playSong(item.song)}
-                    onFavorite={() => toggleFavorite(normalizeTrackKey(item.song.songName, item.song.artist), item.song.songName, item.song.artist, item.song.albumArtUrl, item.song.youtubeVideoId)}
-                    isFavorite={favoritesSet.has(normalizeTrackKey(item.song.songName, item.song.artist))}
+                    onFavorite={() => toggleFavorite(toSongKey({ title: item.song.songName, artist: item.song.artist }), item.song.songName, item.song.artist, item.song.albumArtUrl, item.song.youtubeVideoId)}
+                    isFavorite={favoritesSet.has(toSongKey({ title: item.song.songName, artist: item.song.artist }))}
                     showMoreMenu
                     playlists={playlists}
                     onAddToPlaylist={(playlistId) => addSongMatchToPlaylist(item.song, playlistId)}

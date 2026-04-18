@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { loadLibraryState, persistLibraryState } from "./storage";
 import type { LibraryState, Playlist, PlaylistSong, StoredFavorite } from "./types";
 import * as playlistApi from "./api";
-import { normalizeTrackKey } from "../../lib/dedupe";
+import { toCanonicalSong, toSongKey } from "../../lib/songIdentity";
 import { useUser } from "../../src/context/UserContext";
 
 export function useLibrary(profileId: string) {
@@ -38,7 +38,7 @@ export function useLibrary(profileId: string) {
   const favoritesList: StoredFavorite[] = useMemo(
     () =>
       favorites.map((favorite) => ({
-        key: normalizeTrackKey(favorite.title, favorite.artist),
+        key: toSongKey(favorite),
         title: favorite.title,
         artist: favorite.artist,
         artworkUrl: favorite.coverUrl ?? undefined,
@@ -48,9 +48,9 @@ export function useLibrary(profileId: string) {
   const favoritesSet = useMemo(() => new Set(favoritesList.map((favorite) => favorite.key)), [favoritesList]);
 
   function toggleFavorite(_trackId: string, title?: string, artist?: string, artworkUrl?: string, _videoId?: string) {
-    const favoriteKey = normalizeTrackKey(title ?? "", artist ?? "");
     if (!title || !artist) return;
-    const existing = favorites.find((favorite) => normalizeTrackKey(favorite.title, favorite.artist) === favoriteKey);
+    const canonical = toCanonicalSong({ title, artist, artworkUrl, videoId: _videoId });
+    const existing = favorites.find((favorite) => toSongKey(favorite) === canonical.key);
 
     if (existing) {
       void removeFavorite(existing.id);

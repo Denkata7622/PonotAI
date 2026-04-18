@@ -1,7 +1,7 @@
 "use client";
 
 import type { SongMatch } from "../features/recognition/api";
-import { normalizeTrackKey } from "../lib/dedupe";
+import { toSongKey } from "../lib/songIdentity";
 import { t, type Language } from "../lib/translations";
 import { Clock } from "./icons";
 import SongRow from "./SongRow";
@@ -36,7 +36,7 @@ export default function HistoryGrid({ language, items, onDelete, onPlay, favorit
       ) : (
         <div className="mt-5 space-y-2">
           {items.map((entry) => {
-            const trackKey = normalizeTrackKey(entry.song.songName, entry.song.artist);
+            const trackKey = toSongKey({ title: entry.song.songName, artist: entry.song.artist });
             return (
               <SongRow
                 key={entry.id}

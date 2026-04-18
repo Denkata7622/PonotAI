@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { apiFetch } from "../lib/apiFetch";
-import { normalizeTrackKey } from "../../lib/dedupe";
+import { toCanonicalSong, toSongKey } from "../../lib/songIdentity";
 import { t } from "../../lib/translations";
 import { isOnboardingPending, markOnboardingDone, markOnboardingPending, writeTasteProfile, type TasteProfile } from "../features/onboarding/tasteProfile";
 
@@ -145,8 +145,8 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
     case "CLEAR_HISTORY":
       return { ...state, history: [] };
     case "ADD_FAVORITE": {
-      const incomingKey = normalizeTrackKey(action.payload.title, action.payload.artist);
-      const exists = state.favorites.some((favorite) => normalizeTrackKey(favorite.title, favorite.artist) === incomingKey);
+      const incomingKey = toSongKey(action.payload);
+      const exists = state.favorites.some((favorite) => toSongKey(favorite) === incomingKey);
       return exists ? state : { ...state, favorites: [action.payload, ...state.favorites] };
     }
     case "REMOVE_FAVORITE":
@@ -379,11 +379,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }
 
   async function addToHistory(item: Omit<HistoryItem, "id"> & { id?: string }) {
-    const incomingKey = normalizeTrackKey(item.title ?? "", item.artist ?? "");
+    const incomingKey = toSongKey(item);
 
     if (isAuthenticated) {
       const duplicate = serverHistory.find(
-        (entry) => normalizeTrackKey(entry.title ?? "", entry.artist ?? "") === incomingKey,
+        (entry) => toSongKey(entry) === incomingKey,
       );
       if (duplicate) {
         await apiFetch(`/api/history/${duplicate.id}`, { method: "DELETE" });
@@ -428,9 +428,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }
 
   async function addFavorite(song: Omit<FavoriteItem, "id"> & { id?: string }) {
-    const incomingKey = normalizeTrackKey(song.title, song.artist);
+    const incomingKey = toSongKey(song);
     const existingFavorite = (isAuthenticated ? serverFavorites : guest.favorites).find(
-      (item) => normalizeTrackKey(item.title, item.artist) === incomingKey,
+      (item) => toSongKey(item) === incomingKey,
     );
     if (existingFavorite) {
       notify("toast_already_favorited");
@@ -453,7 +453,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   async function removeFavorite(id: string) {
     if (isAuthenticated) {
       const resolvedId = serverFavorites.find((favorite) => favorite.id === id)?.id
-        ?? serverFavorites.find((favorite) => normalizeTrackKey(favorite.title, favorite.artist) === id)?.id;
+        ?? serverFavorites.find((favorite) => toSongKey(favorite) === id)?.id;
 
       if (!resolvedId) {
         console.error("Failed to remove favorite: could not resolve backend favorite id", { id });
@@ -470,26 +470,28 @@ export function UserProvider({ children }: { children: ReactNode }) {
       return;
     }
     const resolvedId = guest.favorites.find((favorite) => favorite.id === id)?.id
-      ?? guest.favorites.find((favorite) => normalizeTrackKey(favorite.title, favorite.artist) === id)?.id;
+      ?? guest.favorites.find((favorite) => toSongKey(favorite) === id)?.id;
     if (!resolvedId) return;
     dispatchGuest({ type: "REMOVE_FAVORITE", payload: resolvedId });
   }
 
   async function saveToLibrary(song: SaveSongInput) {
+    const canonical = toCanonicalSong(song);
+
     await addToHistory({
-      title: song.title,
-      artist: song.artist,
-      album: song.album,
-      coverUrl: song.coverUrl,
+      title: canonical.title,
+      artist: canonical.artist,
+      album: canonical.album,
+      coverUrl: canonical.coverUrl,
       method: song.method ?? "library-save",
       recognized: song.recognized ?? true,
       createdAt: song.createdAt ?? new Date().toISOString(),
     });
     await addFavorite({
-      title: song.title,
-      artist: song.artist,
-      album: song.album,
-      coverUrl: song.coverUrl,
+      title: canonical.title,
+      artist: canonical.artist,
+      album: canonical.album,
+      coverUrl: canonical.coverUrl,
     });
   }
 
