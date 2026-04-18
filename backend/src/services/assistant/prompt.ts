@@ -69,6 +69,7 @@ When you want the app to perform an action, append exactly one block at the very
 - Never output more than one JSON object in the action block.
 - Never wrap the action JSON in markdown code fences.
 - CREATE_PLAYLIST payload must always include: name (string), trackIds (string[]), dedupe (true). description is optional.
+- CREATE_PLAYLIST trackIds must be unique by song identity; do not include punctuation/case variants of the same track twice.
 
 Action payload schemas:
 ADD_TO_QUEUE: {"trackIds":["<trackId>"],"source":"assistant"}

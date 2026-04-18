@@ -33,6 +33,9 @@ const contextCache = new Map<string, CacheEntry>();
 function normalizeTrackKey(title?: string, artist?: string): string {
   const clean = (value: string) =>
     value
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/['’`]/g, "")
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9\s]/g, " ")
@@ -43,6 +46,18 @@ function normalizeTrackKey(title?: string, artist?: string): string {
 
 function trackIdFrom(title?: string, artist?: string): string {
   return normalizeTrackKey(title, artist);
+}
+
+function dedupeTrackIds(trackIds: string[], limit?: number): string[] {
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const trackId of trackIds) {
+    if (seen.has(trackId)) continue;
+    seen.add(trackId);
+    deduped.push(trackId);
+    if (typeof limit === "number" && deduped.length >= limit) break;
+  }
+  return deduped;
 }
 
 function computeRecencyBonus(lastPlayedAt?: string): number {
@@ -163,17 +178,27 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
   ]);
   const topTracks = buildTracks(history, favorites, playlists);
 
-  const recentHistory: LibraryHistoryEntry[] = history.slice(0, 15).map((item) => ({
-    trackId: trackIdFrom(item.title, item.artist),
-    title: item.title ?? "Unknown Song",
-    artist: item.artist ?? "Unknown Artist",
-    createdAt: item.createdAt,
-  }));
+  const recentHistory: LibraryHistoryEntry[] = [];
+  {
+    const seen = new Set<string>();
+    for (const item of history) {
+      const trackId = trackIdFrom(item.title, item.artist);
+      if (seen.has(trackId)) continue;
+      seen.add(trackId);
+      recentHistory.push({
+        trackId,
+        title: item.title ?? "Unknown Song",
+        artist: item.artist ?? "Unknown Artist",
+        createdAt: item.createdAt,
+      });
+      if (recentHistory.length >= 15) break;
+    }
+  }
 
   const tracksById = new Map(topTracks.map((track) => [track.trackId, track]));
   const playlistsSummary = playlists.map((playlist) => {
     const safeSongs = playlist.songs ?? [];
-    const trackIds = safeSongs.map((song) => trackIdFrom(song.title, song.artist));
+    const trackIds = dedupeTrackIds(safeSongs.map((song) => trackIdFrom(song.title, song.artist)));
     const tracks = trackIds.slice(0, 10).map((trackId) => {
       const resolved = tracksById.get(trackId);
       if (resolved) return { trackId, title: resolved.title, artist: resolved.artist };

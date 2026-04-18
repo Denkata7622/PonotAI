@@ -45,6 +45,51 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string" && item.length > 0);
 }
 
+function normalizeTrackPart(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/['’`]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeTrackKeyFromTrackId(trackId: string): string | null {
+  const [title, artist] = trackId.split("|||");
+  if (!title || !artist) return null;
+  return `${normalizeTrackPart(title)}|||${normalizeTrackPart(artist)}`;
+}
+
+function dedupeTrackIds(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+
+  for (const item of value) {
+    let candidate: string | null = null;
+    if (typeof item === "string") {
+      const trimmed = item.trim();
+      candidate = trimmed.length > 0 ? trimmed : null;
+    } else if (isRecord(item) && typeof item.title === "string" && typeof item.artist === "string") {
+      const title = item.title.trim();
+      const artist = item.artist.trim();
+      candidate = title && artist ? `${title}|||${artist}` : null;
+    }
+
+    if (!candidate) return null;
+    const key = normalizeTrackKeyFromTrackId(candidate);
+    if (!key) return null;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(candidate);
+  }
+
+  return deduped;
+}
+
 function normalizeThemePayload(payload: Record<string, unknown>): Record<string, unknown> | null {
   const template = isTemplateId(payload.template) ? THEME_TEMPLATE_BY_ID.get(payload.template) : null;
   if (payload.template !== undefined && !template) return null;
@@ -79,15 +124,22 @@ function normalizeThemePayload(payload: Record<string, unknown>): Record<string,
 function validatePayload(type: ActionIntent["type"], payload: Record<string, unknown>): Record<string, unknown> | null {
   switch (type) {
     case "ADD_TO_QUEUE":
-      return isStringArray(payload.trackIds) && payload.source === "assistant" ? payload : null;
+      if (payload.source !== "assistant") return null;
+      {
+        const trackIds = dedupeTrackIds(payload.trackIds);
+        return trackIds && trackIds.length > 0 ? { ...payload, trackIds } : null;
+      }
     case "CREATE_PLAYLIST":
-      return (
-        typeof payload.name === "string"
-        && payload.name.length > 0
-        && isStringArray(payload.trackIds)
-        && payload.dedupe === true
-        && (payload.description === undefined || typeof payload.description === "string")
-      ) ? payload : null;
+      {
+        const trackIds = dedupeTrackIds(payload.trackIds);
+        return (
+          typeof payload.name === "string"
+          && payload.name.length > 0
+          && Boolean(trackIds && trackIds.length > 0)
+          && payload.dedupe === true
+          && (payload.description === undefined || typeof payload.description === "string")
+        ) ? { ...payload, trackIds } : null;
+      }
     case "FAVORITE_TRACK":
       return typeof payload.trackId === "string" && payload.trackId.length > 0 && payload.source === "assistant" ? payload : null;
     case "SEARCH_AND_SUGGEST":

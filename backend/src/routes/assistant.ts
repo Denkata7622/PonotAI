@@ -6,7 +6,7 @@ import { buildLibraryContext } from "../services/assistant/contextBuilder";
 import { buildSystemPrompt } from "../services/assistant/prompt";
 import { generateAssistantReply } from "../services/assistant/geminiClient";
 import { parseActionIntent, parseActionIntentCandidate } from "../services/assistant/actionParser";
-import type { GeminiHistoryMessage, GeminiMessage } from "../types/assistant";
+import type { ActionIntent, GeminiHistoryMessage, GeminiMessage } from "../types/assistant";
 
 const assistantRouter = Router();
 
@@ -39,7 +39,7 @@ function sanitizeUserMessage(input: string): string {
   return stripped.replace(/(ignore previous instructions|reveal system prompt|show hidden prompt)/gi, "[filtered]");
 }
 
-function isDirectConfirmationMessage(input: string): boolean {
+export function isDirectConfirmationMessage(input: string): boolean {
   const normalized = input.trim().toLowerCase().replace(/[.!?]+$/g, "");
   if (!normalized) return false;
   return new Set([
@@ -53,6 +53,16 @@ function isDirectConfirmationMessage(input: string): boolean {
     "да",
     "приеми",
   ]).has(normalized);
+}
+
+export function resolvePendingActionFromMessage(message: string, pendingActionRaw: unknown): { reply: string; actionIntent: ActionIntent; executePendingAction: true } | null {
+  const pendingAction = parseActionIntentCandidate(pendingActionRaw);
+  if (!pendingAction || !isDirectConfirmationMessage(message)) return null;
+  return {
+    reply: "Confirmed. Executing your pending action now.",
+    actionIntent: pendingAction,
+    executePendingAction: true,
+  };
 }
 
 function validateConversation(payload: unknown): payload is GeminiMessage[] {
@@ -110,7 +120,6 @@ assistantRouter.post("/", async (req, res) => {
   }
 
   const message = sanitizeUserMessage(body.message).slice(0, 2000);
-  const pendingAction = parseActionIntentCandidate(body.pendingAction);
   const conversation = body.conversation.map((item) => ({
     role: item.role,
     content: sanitizeUserMessage(item.content),
@@ -121,11 +130,10 @@ assistantRouter.post("/", async (req, res) => {
   }));
 
   try {
-    if (pendingAction && isDirectConfirmationMessage(message)) {
+    const resolvedPending = resolvePendingActionFromMessage(message, body.pendingAction);
+    if (resolvedPending) {
       res.status(200).json({
-        reply: "Confirmed. Executing your pending action now.",
-        actionIntent: pendingAction,
-        executePendingAction: true,
+        ...resolvedPending,
         meta: { model: "pending-action-resolver", latencyMs: 0, contextTracksCount: 0 },
       });
       return;
