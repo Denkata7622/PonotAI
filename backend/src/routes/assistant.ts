@@ -5,8 +5,9 @@ import { ErrorCatalog, sendError } from "../errors/errorCatalog";
 import { buildLibraryContext } from "../services/assistant/contextBuilder";
 import { buildSystemPrompt } from "../services/assistant/prompt";
 import { generateAssistantReply } from "../services/assistant/geminiClient";
-import { parseActionIntent } from "../services/assistant/actionParser";
-import type { GeminiHistoryMessage, GeminiMessage } from "../types/assistant";
+import { parseActionIntent, parseActionIntentCandidate } from "../services/assistant/actionParser";
+import type { ActionIntent, GeminiHistoryMessage, GeminiMessage } from "../types/assistant";
+import { requireVerifiedEmail } from "../middlewares/verified.middleware";
 
 const assistantRouter = Router();
 
@@ -39,6 +40,40 @@ function sanitizeUserMessage(input: string): string {
   return stripped.replace(/(ignore previous instructions|reveal system prompt|show hidden prompt)/gi, "[filtered]");
 }
 
+export function isDirectConfirmationMessage(input: string): boolean {
+  const normalized = input.trim().toLowerCase().replace(/[.!?]+$/g, "");
+  if (!normalized) return false;
+  return new Set([
+    "do it",
+    "yes",
+    "create it",
+    "go ahead",
+    "ok",
+    "okay",
+    "sure",
+    "да",
+    "приеми",
+  ]).has(normalized);
+}
+
+export function resolvePendingActionFromMessage(message: string, pendingActionRaw: unknown): { reply: string; actionIntent: ActionIntent; executePendingAction: true } | null {
+  const pendingAction = parseActionIntentCandidate(pendingActionRaw);
+  const autoExecutableActionTypes = new Set<ActionIntent["type"]>([
+    "ADD_TO_QUEUE",
+    "CREATE_PLAYLIST",
+    "FAVORITE_TRACK",
+    "CHANGE_THEME",
+    "CHANGE_LANGUAGE",
+  ]);
+  if (!pendingAction || !isDirectConfirmationMessage(message)) return null;
+  if (!autoExecutableActionTypes.has(pendingAction.type)) return null;
+  return {
+    reply: "Confirmed. Executing your pending action now.",
+    actionIntent: pendingAction,
+    executePendingAction: true,
+  };
+}
+
 function validateConversation(payload: unknown): payload is GeminiMessage[] {
   if (!Array.isArray(payload) || payload.length > 15) return false;
 
@@ -55,6 +90,7 @@ function validateConversation(payload: unknown): payload is GeminiMessage[] {
 
 assistantRouter.use(assistantRateLimit);
 assistantRouter.use(requireAuth);
+assistantRouter.use(requireVerifiedEmail);
 
 assistantRouter.post("/", async (req, res) => {
   if (!process.env.GEMINI_API_KEY?.trim()) {
@@ -70,7 +106,18 @@ assistantRouter.post("/", async (req, res) => {
     return;
   }
 
-  const body = req.body as { message?: unknown; conversation?: unknown };
+  const body = req.body as {
+    message?: unknown;
+    conversation?: unknown;
+    context?: {
+      queueTitles?: unknown;
+      theme?: unknown;
+      language?: unknown;
+      preferences?: unknown;
+      device?: unknown;
+    };
+    pendingAction?: unknown;
+  };
 
   if (typeof body.message !== "string" || body.message.length < 1 || body.message.length > 2000) {
     sendError(res, ErrorCatalog.VALIDATION_ERROR, { field: "message", min: 1, max: 2000 });
@@ -93,7 +140,20 @@ assistantRouter.post("/", async (req, res) => {
   }));
 
   try {
+    const resolvedPending = resolvePendingActionFromMessage(message, body.pendingAction);
+    if (resolvedPending) {
+      res.status(200).json({
+        ...resolvedPending,
+        meta: { model: "pending-action-resolver", latencyMs: 0, contextTracksCount: 0 },
+      });
+      return;
+    }
+
     const statedPreferences = (() => {
+      if (body.context?.preferences && typeof body.context.preferences === "object") {
+        const parsed = body.context.preferences as { genres?: string[]; artists?: string[]; moods?: string[]; goals?: string[] };
+        return parsed;
+      }
       const raw = req.headers["x-trackly-preferences"];
       if (typeof raw !== "string" || !raw.trim()) return undefined;
       try {
@@ -103,15 +163,33 @@ assistantRouter.post("/", async (req, res) => {
         return undefined;
       }
     })();
+    const queueFromBody = Array.isArray(body.context?.queueTitles)
+      ? body.context?.queueTitles
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 10)
+      : [];
+    const currentTheme = body.context?.theme === "light" || body.context?.theme === "dark" || body.context?.theme === "system"
+      ? body.context.theme
+      : req.headers["x-trackly-theme"] as "light" | "dark" | "system" | undefined;
+    const currentLanguage = body.context?.language === "en" || body.context?.language === "bg"
+      ? body.context.language
+      : req.headers["x-trackly-language"] as "en" | "bg" | undefined;
+    const deviceType = typeof body.context?.device === "string" && body.context.device.trim()
+      ? body.context.device.trim().slice(0, 120)
+      : typeof req.headers["x-trackly-device"] === "string"
+        ? req.headers["x-trackly-device"]
+        : undefined;
     const context = await buildLibraryContext(userId, {
-      currentTheme: req.headers["x-trackly-theme"] as "light" | "dark" | "system" | undefined,
-      currentLanguage: req.headers["x-trackly-language"] as "en" | "bg" | undefined,
-      currentQueue: typeof req.headers["x-trackly-queue"] === "string"
+      currentTheme,
+      currentLanguage,
+      currentQueue: queueFromBody.length > 0
+        ? queueFromBody
+        : typeof req.headers["x-trackly-queue"] === "string"
         ? req.headers["x-trackly-queue"].split("|").filter(Boolean).slice(0, 10)
         : [],
-      deviceType: typeof req.headers["x-trackly-device"] === "string"
-        ? req.headers["x-trackly-device"]
-        : undefined,
+      deviceType,
       statedPreferences,
     });
     if (context.topTracks.length === 0) {
@@ -147,6 +225,7 @@ assistantRouter.post("/", async (req, res) => {
     res.status(200).json({
       reply: parsed.reply,
       actionIntent: parsed.actionIntent,
+      executePendingAction: false,
       meta: {
         model: result.model,
         latencyMs: result.latencyMs,

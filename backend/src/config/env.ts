@@ -55,7 +55,8 @@ export function validateEnvironment(): void {
 
   const isProduction = process.env.NODE_ENV === "production";
   const jwtSecret = process.env.JWT_SECRET?.trim();
-  const persistenceMode = process.env.PERSISTENCE_MODE?.trim().toLowerCase() || "postgres";
+  const configuredPersistenceMode = process.env.PERSISTENCE_MODE?.trim().toLowerCase();
+  const persistenceMode = configuredPersistenceMode || "postgres";
   const databaseUrl = process.env.DATABASE_URL?.trim();
 
   if (jwtSecret) {
@@ -74,6 +75,11 @@ export function validateEnvironment(): void {
   const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];
   if (isProduction && allowedOrigins.length === 0) {
     console.error("FATAL: ALLOWED_ORIGINS is required in production");
+    process.exit(1);
+  }
+
+  if (persistenceMode !== "postgres" && persistenceMode !== "file-legacy") {
+    console.error(`FATAL: Unsupported PERSISTENCE_MODE=${persistenceMode}. Allowed values: postgres, file-legacy.`);
     process.exit(1);
   }
 
@@ -133,5 +139,17 @@ export function validateEnvironment(): void {
 
   if (!youtubeKey) {
     console.warn("[env] YOUTUBE_API_KEY missing. Verified YouTube links may be unavailable.");
+  }
+
+  const mailerApiUrl = process.env.MAILER_API_URL?.trim();
+  const mailerApiToken = process.env.MAILER_API_TOKEN?.trim();
+  if (mailerApiUrl) process.env.MAILER_API_URL = mailerApiUrl;
+  if (mailerApiToken) process.env.MAILER_API_TOKEN = mailerApiToken;
+  const mailerFrom = process.env.MAILER_FROM?.trim();
+  if (mailerFrom) process.env.MAILER_FROM = mailerFrom;
+
+  if (isProduction && (!mailerApiUrl || !mailerApiToken)) {
+    console.error("FATAL: MAILER_API_URL and MAILER_API_TOKEN are required in production for email verification.");
+    process.exit(1);
   }
 }

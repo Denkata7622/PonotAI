@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
-import { Heart, EllipsisVertical, Music, Play, Trash2, ListPlus, Share2 } from "../lucide-react";
+import { Heart, EllipsisVertical, Music, Play, Trash2 } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { formatArtist } from "../lib/formatArtist";
 import { usePlayer } from "./PlayerProvider";
-import SmartDropdown from "@/src/components/ui/SmartDropdown";
 import { useUser } from "../src/context/UserContext";
 import { normalizeVisibleText } from "@/lib/text";
+import SongActionsMenu from "./SongActionsMenu";
 
 type SongRowProps = {
   id: string;
@@ -56,13 +56,6 @@ export default function SongRow({
   const [isSharing, setIsSharing] = useState(false);
   const safeTitle = normalizeVisibleText(title) || title;
   const safeArtist = normalizeVisibleText(artist) || artist;
-
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent("trackly-song-menu-toggle", { detail: { open: menuOpen } }));
-    return () => {
-      window.dispatchEvent(new CustomEvent("trackly-song-menu-toggle", { detail: { open: false } }));
-    };
-  }, [menuOpen]);
 
   return (
     <article
@@ -126,124 +119,50 @@ export default function SongRow({
         )}
 
         {showMoreMenu && (
-          <SmartDropdown
+          <SongActionsMenu
             isOpen={menuOpen}
             onOpenChange={setMenuOpen}
-            placement="bottom-start"
-            className="min-w-52 p-2"
-            trigger={(
-              <button
-                type="button"
-                className="rounded-lg p-2 hover:bg-[var(--hover-bg)]"
-                aria-label={t("track_more_options", language)}
-                title={t("track_more_options", language)}
-              >
-                <EllipsisVertical className="w-4 h-4 text-[var(--muted)]" />
-              </button>
-            )}
-          >
-            {onPlay && (
-              <button
-                type="button"
-                className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onPlay();
-                  setMenuOpen(false);
-                }}
-              >
-                <Play className="h-[15px] w-[15px]" /> {t("song_row_play", language)}
-              </button>
-            )}
-            <button
-              type="button"
-              className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-              onMouseDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                addToQueue({
-                  id,
-                  title: safeTitle,
-                  artist: safeArtist,
-                  artistId: `artist-${safeArtist}`.toLowerCase().replace(/\s+/g, "-"),
-                  artworkUrl: artworkUrl || "https://picsum.photos/seed/song-row/80",
-                  videoId,
-                  license: "COPYRIGHTED",
-                  query: `${safeTitle} ${safeArtist}`,
-                }, "manual");
-                window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: "Added to queue" } }));
+            trigger={<EllipsisVertical className="w-4 h-4 text-[var(--muted)]" />}
+            onPlay={onPlay}
+            onAddToQueue={() => {
+              addToQueue({
+                id,
+                title: safeTitle,
+                artist: safeArtist,
+                artistId: `artist-${safeArtist}`.toLowerCase().replace(/\s+/g, "-"),
+                artworkUrl: artworkUrl || "https://picsum.photos/seed/song-row/80",
+                videoId,
+                license: "COPYRIGHTED",
+                query: `${safeTitle} ${safeArtist}`,
+              }, "manual");
+              window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: "Added to queue" } }));
+            }}
+            onToggleFavorite={onFavorite}
+            isFavorite={isFavorite}
+            playlists={playlists}
+            onAddToPlaylist={onAddToPlaylist}
+            onShare={() => {
+              if (!isAuthenticated) {
+                window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Влез, за да споделяш песни." : "Sign in to share songs." } }));
                 setMenuOpen(false);
-              }}
-            >
-              <ListPlus className="h-[15px] w-[15px]" /> {t("btn_add_to_queue", language)}
-            </button>
-            {onFavorite && (
-              <button
-                type="button"
-                className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onFavorite();
-                  setMenuOpen(false);
-                }}
-              >
-                <Heart className={`h-[15px] w-[15px] ${isFavorite ? "fill-current text-[var(--accent)]" : ""}`} />
-                {isFavorite ? t("song_row_unfavorite", language) : t("song_row_favorite", language)}
-              </button>
-            )}
-            <div className="my-1 h-px bg-[var(--border)]" />
-            <p className="px-2 py-1 text-xs text-[var(--muted)]">{t("song_row_add_to_playlist", language)}</p>
-            {playlists.length === 0 && (
-              <p className="px-2 py-1 text-xs text-[var(--muted)]">{t("no_playlists_created", language)}</p>
-            )}
-            {playlists.map((playlist) => (
-              <button
-                key={playlist.id}
-                type="button"
-                className="block w-full rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onAddToPlaylist?.(playlist.id);
-                  setMenuOpen(false);
-                }}
-              >
-                {playlist.name}
-              </button>
-            ))}
-            <div className="my-1 h-px bg-[var(--border)]" />
-            <button
-              type="button"
-              disabled={isSharing}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)] disabled:opacity-60"
-              onMouseDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (!isAuthenticated) {
-                  window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Влез, за да споделяш песни." : "Sign in to share songs." } }));
-                  setMenuOpen(false);
-                  return;
+                return;
+              }
+              if (isSharing) return;
+              setIsSharing(true);
+              void shareSong({ title: safeTitle, artist: safeArtist, coverUrl: artworkUrl }).then((url) => {
+                if (url) {
+                  void navigator.clipboard.writeText(url);
+                  window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Линкът е копиран." : "Share link copied." } }));
                 }
-                if (isSharing) return;
-                setIsSharing(true);
-                void shareSong({ title: safeTitle, artist: safeArtist, coverUrl: artworkUrl }).then((url) => {
-                  if (url) {
-                    void navigator.clipboard.writeText(url);
-                    window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Линкът е копиран." : "Share link copied." } }));
-                  }
-                }).catch(() => {
-                  window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Споделянето е неуспешно." : "Sharing failed." } }));
-                }).finally(() => {
-                  setIsSharing(false);
-                  setMenuOpen(false);
-                });
-              }}
-            >
-              <Share2 className="h-[15px] w-[15px]" /> {t("track_share_song", language)}
-            </button>
-          </SmartDropdown>
+              }).catch(() => {
+                window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Споделянето е неуспешно." : "Sharing failed." } }));
+              }).finally(() => {
+                setIsSharing(false);
+                setMenuOpen(false);
+              });
+            }}
+            isSharing={isSharing}
+          />
         )}
       </div>
     </article>

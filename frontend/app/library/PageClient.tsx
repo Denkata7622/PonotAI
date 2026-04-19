@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { scopedKey, useProfile } from "../../lib/ProfileContext";
+import { useProfile } from "../../lib/ProfileContext";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
 import { usePlayer } from "../../components/PlayerProvider";
@@ -22,7 +22,8 @@ removeSongFromPlaylist,
 } from "../../features/library/api";
 import { Button } from "../../src/components/ui/Button";
 import { BarChart2, Clock, Heart, ListMusic, Plus } from "../../components/icons";
-import { dedupeByTrack, normalizeTrackKey } from "../../lib/dedupe";
+import { dedupeByTrack } from "../../lib/dedupe";
+import { toCanonicalSong, toSongKey } from "../../lib/songIdentity";
 
 type Song = {
 id: string;
@@ -30,68 +31,39 @@ title?: string;
 artist?: string;
 album?: string;
 coverUrl?: string;
+albumArtUrl?: string;
+artworkUrl?: string;
 createdAt?: string;
 };
-
-function parseStorage<T>(key: string, fallback: T): T {
-if (typeof window === "undefined") return fallback;
-try {
-return JSON.parse(window.localStorage.getItem(key) ?? JSON.stringify(fallback)) as T;
-} catch {
-return fallback;
-}
-}
 
 export default function LibraryPage() {
 const { language } = useLanguage();
 const { addToQueue, addManyToQueue, clearQueue, playNow } = usePlayer();
-const { favorites: userFavorites, removeFavorite, addFavorite, deleteHistoryItem, isAuthenticated, isLoading } = useUser();
+const { favorites: userFavorites, history: userHistory, deleteHistoryItem, isAuthenticated, isLoading } = useUser();
 const { profile } = useProfile();
 
-const getScoped = (key: string) => (profile?.id ? scopedKey(key, profile.id) : key);
-
-const historyKey = getScoped("ponotai-history");
 const { favoritesList, toggleFavorite } = useLibrary(profile.id);
 
-const normalizeSong = (item: any): Song => ({
-  id:
-    item.id ??
-    `${item.title ?? item.songName ?? item.song?.songName ?? "unknown"}-${
-      item.artist ?? item.song?.artist ?? "unknown"
-    }`,
-
-  title:
-    item.title ??
-    item.songName ??
-    item.song?.songName ??
-    t("unknown_song", language),
-
-  artist:
-    item.artist ??
-    item.song?.artist ??
-    "-",
-
-  album:
-    item.album ??
-    item.song?.album ??
-    undefined,
-
-  coverUrl:
-    item.coverUrl ??
-    item.song?.coverUrl ??
-    undefined,
-
+const normalizeSong = (item: any): Song => {
+const canonical = toCanonicalSong(item);
+return {
+  id: item.id ?? canonical.key,
+  title: canonical.title,
+  artist: canonical.artist,
+  album: canonical.album,
+  coverUrl: canonical.coverUrl,
   createdAt: item.createdAt ?? undefined,
-});
+};
+};
 
 
 const [playlists, setPlaylists] = useState<Playlist[]>([]);
 const [loading, setLoading] = useState(true);
 const [loadError, setLoadError] = useState<string | null>(null);
 
-const [history, setHistory] = useState<Song[]>([]);
 
 const searchParams = useSearchParams();
+const playlistFocusId = searchParams.get("playlistId");
 const [selectedTab, setSelectedTab] = useState<"favorites" | "playlists" | "history">("history");
 const [searchQuery, setSearchQuery] = useState("");
 const [showNewPlaylistModal, setShowNewPlaylistModal] = useState(false);
@@ -110,42 +82,47 @@ useEffect(() => {
     setSelectedTab(tabParam);
   }
 }, [searchParams]);
-// refresh local reads when profile or language changes
-useEffect(() => {
-const rawHistory = parseStorage<any[]>(historyKey, []);
-setHistory((rawHistory || []).map(normalizeSong));
 
-}, [historyKey, profile?.id, language]);
+const history = useMemo(() => userHistory.map((item) => normalizeSong(item)), [userHistory, language]);
 
 const dedupedHistory = useMemo(
 () => dedupeByTrack(history, (item) => item.title ?? "", (item) => item.artist ?? ""),
 [history],
 );
 
+const loadPlaylists = useCallback(async () => {
+  if (isAuthenticated) {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const loaded = await getPlaylists();
+      setPlaylists(loaded);
+    } catch {
+      setLoadError(language === "bg" ? "Грешка при зареждане на плейлистите." : "Failed to load playlists.");
+      setPlaylists([]);
+    }
+    setLoading(false);
+    return;
+  }
+
+  setLoadError(null);
+  setPlaylists([]);
+  setLoading(false);
+}, [isAuthenticated, language]);
+
 // load playlists from backend for authenticated users, otherwise from guest library state
 useEffect(() => {
-async function loadPlaylists() {
-if (isAuthenticated) {
-setLoading(true);
-setLoadError(null);
-try {
-const loaded = await getPlaylists();
-setPlaylists(loaded);
-} catch {
-setLoadError(language === "bg" ? "Грешка при зареждане на плейлистите." : "Failed to load playlists.");
-setPlaylists([]);
-}
-setLoading(false);
-return;
-}
+  void loadPlaylists();
+}, [loadPlaylists, playlistFocusId]);
 
-setLoadError(null);
-setPlaylists([]);
-setLoading(false);
-}
-
-void loadPlaylists();
-}, [isAuthenticated, language]);
+useEffect(() => {
+  if (!playlistFocusId) return;
+  const target = playlists.find((playlist) => playlist.id === playlistFocusId);
+  if (!target) return;
+  setSelectedTab("playlists");
+  setSelectedPlaylist(target);
+  setShowPlaylistDetail(true);
+}, [playlistFocusId, playlists]);
 
 // favorites source: cloud for authenticated users, local library state for guests
 const mergedFavorites = useMemo(() => {
@@ -214,16 +191,8 @@ addToQueue({
 }
 
 async function handleDeleteHistoryItem(id: string) {
-if (isAuthenticated) {
-  await deleteHistoryItem(id);
-}
-setHistory((prev) => {
-  const updated = prev.filter((entry) => entry.id !== id);
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(historyKey, JSON.stringify(updated));
-  }
-  return updated;
-});
+if (!isAuthenticated) return;
+await deleteHistoryItem(id);
 }
 
 async function handleCreatePlaylist(name: string) {
@@ -349,14 +318,14 @@ console.error("Failed to remove song from playlist", { playlistId, title, artist
 setPlaylists((prev) =>
 prev.map((p) =>
 p.id === playlistId
-? { ...p, songs: p.songs.filter((s) => !(s.title === title && s.artist === artist)) }
+? { ...p, songs: p.songs.filter((s) => toSongKey(s) !== toSongKey({ title, artist })) }
 : p
 )
 );
 if (selectedPlaylist?.id === playlistId) {
 setSelectedPlaylist((prev) =>
 prev
-? { ...prev, songs: prev.songs.filter((s) => !(s.title === title && s.artist === artist)) }
+? { ...prev, songs: prev.songs.filter((s) => toSongKey(s) !== toSongKey({ title, artist })) }
 : null
 );
 }
@@ -401,8 +370,8 @@ function handleSongsAddedToPlaylist(playlistId: string, songs: Array<{ title: st
       if (playlist.id !== playlistId) return playlist;
       const nextSongs = [...playlist.songs];
       for (const song of songs) {
-        const songKey = normalizeTrackKey(song.title, song.artist);
-        const exists = nextSongs.some((existingSong) => normalizeTrackKey(existingSong.title, existingSong.artist) === songKey);
+        const songKey = toSongKey(song);
+        const exists = nextSongs.some((existingSong) => toSongKey(existingSong) === songKey);
         if (!exists) {
           nextSongs.push(song);
         }
@@ -414,8 +383,8 @@ function handleSongsAddedToPlaylist(playlistId: string, songs: Array<{ title: st
     if (!prev || prev.id !== playlistId) return prev;
     const nextSongs = [...prev.songs];
     for (const song of songs) {
-      const songKey = normalizeTrackKey(song.title, song.artist);
-      const exists = nextSongs.some((existingSong) => normalizeTrackKey(existingSong.title, existingSong.artist) === songKey);
+      const songKey = toSongKey(song);
+      const exists = nextSongs.some((existingSong) => toSongKey(existingSong) === songKey);
       if (!exists) {
         nextSongs.push(song);
       }
@@ -539,8 +508,8 @@ return ( <section className="space-y-5 sm:space-y-6"> <div className="card p-4 s
             <div className="flex flex-col items-center gap-2 py-6 text-center"><Clock className="w-10 h-10 text-[var(--muted)]" /><p className="font-semibold">{t("empty_history_heading", language)}</p><p className="cardText">{t("empty_history_hint", language)}</p></div>
           ) : (
             filteredHistory.map((item) => {
-              const favoriteKey = normalizeTrackKey(item.title ?? "", item.artist ?? "");
-              const isFavorite = mergedFavorites.some((favorite) => normalizeTrackKey(favorite.title ?? "", favorite.artist ?? "") === favoriteKey);
+              const favoriteKey = toSongKey({ title: item.title, artist: item.artist });
+              const isFavorite = mergedFavorites.some((favorite) => toSongKey(favorite) === favoriteKey);
               return (
                 <SongRow
                   key={item.id}
@@ -551,19 +520,6 @@ return ( <section className="space-y-5 sm:space-y-6"> <div className="card p-4 s
                   onPlay={() => handlePlaySong(item)}
                   onDelete={() => void handleDeleteHistoryItem(item.id)}
                   onFavorite={() => {
-                    if (isAuthenticated) {
-                      if (isFavorite) {
-                        void removeFavorite(favoriteKey);
-                      } else {
-                        void addFavorite({
-                          title: item.title ?? t("unknown_song", language),
-                          artist: item.artist ?? "-",
-                          coverUrl: item.coverUrl,
-                          album: item.album,
-                        });
-                      }
-                      return;
-                    }
                     toggleFavorite(favoriteKey, item.title, item.artist, item.coverUrl);
                   }}
                   isFavorite={isFavorite}
@@ -609,11 +565,7 @@ return ( <section className="space-y-5 sm:space-y-6"> <div className="card p-4 s
                 onPlay={() => handlePlaySong(fav)}
                 isFavorite
                 onFavorite={() => {
-                  const favoriteKey = normalizeTrackKey(fav.title ?? "", fav.artist ?? "");
-                  if (isAuthenticated) {
-                    void removeFavorite(favoriteKey);
-                    return;
-                  }
+                  const favoriteKey = toSongKey({ title: fav.title, artist: fav.artist });
                   toggleFavorite(favoriteKey, fav.title, fav.artist, fav.coverUrl);
                 }}
               />

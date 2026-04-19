@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle, Heart, Languages, ListMusic, ListPlus, Search, Sun, X } from "lucide-react";
 import { usePlayer } from "@/components/PlayerProvider";
@@ -13,6 +13,7 @@ import { useLibrary } from "@/features/library/useLibrary";
 import { runAssistantAction } from "../api";
 import { hasApplicableThemeChange, normalizeThemeActionPayload } from "../themeAction";
 import type { ActionIntent } from "../types";
+import { toSongKey } from "@/lib/songIdentity";
 
 type Props = {
   intent: ActionIntent;
@@ -21,6 +22,7 @@ type Props = {
   onDismiss: () => void;
   onApplyFailure: () => void;
   state: "pending" | "applying" | "accepted" | "dismissed" | "failed";
+  autoApply?: boolean;
 };
 
 function getActionLabel(type: ActionIntent["type"]) {
@@ -48,7 +50,12 @@ function parseTrackId(trackId: string): { title: string; artist: string } {
   return { title: title || "Unknown Song", artist: artist || "Unknown Artist" };
 }
 
-export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDismiss, onApplyFailure, state }: Props) {
+function normalizeTrackId(trackId: string): string {
+  const parsed = parseTrackId(trackId);
+  return toSongKey(parsed);
+}
+
+export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDismiss, onApplyFailure, state, autoApply = false }: Props) {
   const router = useRouter();
   const { addManyToQueue } = usePlayer();
   const { addFavorite, favorites } = useUser();
@@ -58,11 +65,13 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
   const { playlists, createPlaylist, addSongsToPlaylist } = useLibrary(profile.id);
   const { icon: Icon, text } = getActionLabel(intent.type);
   const [busy, setBusy] = useState(false);
+  const inFlightRef = useRef(false);
+  const autoAppliedRef = useRef(false);
 
   function resolveTrack(trackId: string) {
     const parsed = parseTrackId(trackId);
     for (const playlist of playlists) {
-      const found = playlist.songs.find((song) => `${song.title.toLowerCase().trim()}|||${song.artist.toLowerCase().trim()}` === trackId);
+      const found = playlist.songs.find((song) => toSongKey(song) === normalizeTrackId(trackId));
       if (found) {
         return {
           id: `${found.title}-${found.artist}`.toLowerCase().replace(/\s+/g, "-"),
@@ -89,7 +98,8 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
   }
 
   async function handleAccept() {
-    if (busy || state === "applying") return;
+    if (busy || state === "applying" || inFlightRef.current) return;
+    inFlightRef.current = true;
     setBusy(true);
     onApplyStart();
     try {
@@ -99,7 +109,8 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
       }
 
       if (intent.type === "CREATE_PLAYLIST") {
-        const trackIds = (intent.payload.trackIds as string[]) ?? [];
+        const incomingTrackIds = (intent.payload.trackIds as string[]) ?? [];
+        const trackIds = Array.from(new Set(incomingTrackIds.filter((trackId): trackId is string => typeof trackId === "string" && trackId.trim().length > 0)));
         const baseName = String(intent.payload.name ?? "Assistant Playlist");
         const existingNames = new Set(playlists.map((playlist) => playlist.name.toLowerCase()));
         let name = baseName;
@@ -112,7 +123,7 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
         if (!playlist) {
           throw new Error("Playlist was not created.");
         }
-        if (playlist && trackIds.length) {
+        if (trackIds.length > 0) {
           const songs = trackIds.map(resolveTrack).map((track) => ({
             title: track.title,
             artist: track.artist,
@@ -120,14 +131,21 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
             videoId: track.videoId,
           }));
           const added = await addSongsToPlaylist(playlist.id, songs);
+          if (added === 0) {
+            throw new Error("Playlist tracks were not added.");
+          }
           window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Created ${name} with ${added} songs.` } }));
+        } else {
+          window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Created ${name}.` } }));
         }
+        router.push(`/library?tab=playlists&playlistId=${encodeURIComponent(playlist.id)}`);
       }
 
       if (intent.type === "FAVORITE_TRACK") {
         const trackId = String(intent.payload.trackId ?? "");
         const track = parseTrackId(trackId);
-        const exists = favorites.some((item) => item.title === track.title && item.artist === track.artist);
+        const incomingKey = toSongKey(track);
+        const exists = favorites.some((item) => toSongKey(item) === incomingKey);
         if (!exists) {
           await addFavorite({ title: track.title, artist: track.artist });
         }
@@ -185,9 +203,16 @@ export default function ActionCard({ intent, onApplyStart, onApplySuccess, onDis
       window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: "Assistant action failed." } }));
       onApplyFailure();
     } finally {
+      inFlightRef.current = false;
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!autoApply || autoAppliedRef.current || state !== "pending") return;
+    autoAppliedRef.current = true;
+    void handleAccept();
+  }, [autoApply, state]);
 
   return (
     <div className="assistant-action-card">

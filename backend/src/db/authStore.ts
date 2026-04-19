@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "./prisma";
+import { normalizeTrackKey } from "../utils/songIdentity";
 
 export type UserRecord = {
   id: string;
   username: string;
   email: string;
   passwordHash: string;
+  emailVerifiedAt?: string | null;
   role?: "user" | "admin";
   isDemo?: boolean;
   avatarBase64?: string;
@@ -87,6 +89,15 @@ export type ApiKeyRecord = {
   revokedAt?: string;
 };
 
+export type EmailVerificationTokenRecord = {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: string;
+  consumedAt?: string;
+  createdAt: string;
+};
+
 export type PlaylistSongRecord = {
   title: string;
   artist: string;
@@ -140,18 +151,6 @@ export type AdminOverviewSnapshot = {
   apiKeys: ApiKeyRecord[];
 };
 
-function normalizeTrackKey(title: string, artist: string): string {
-  const normalizePart = (value: string) =>
-    value
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  return `${normalizePart(title)}|||${normalizePart(artist)}`;
-}
-
 const toIso = (value: Date | string) => (value instanceof Date ? value.toISOString() : new Date(value).toISOString());
 
 function mapUser(user: any): UserRecord {
@@ -160,6 +159,7 @@ function mapUser(user: any): UserRecord {
     username: user.username,
     email: user.email,
     passwordHash: user.passwordHash,
+    emailVerifiedAt: user.emailVerifiedAt ? toIso(user.emailVerifiedAt) : undefined,
     role: user.role,
     isDemo: user.isDemo,
     avatarBase64: user.avatarBase64 ?? undefined,
@@ -275,6 +275,17 @@ function mapApiKey(item: any): ApiKeyRecord {
   };
 }
 
+function mapEmailVerificationToken(item: any): EmailVerificationTokenRecord {
+  return {
+    id: item.id,
+    userId: item.userId,
+    tokenHash: item.tokenHash,
+    expiresAt: toIso(item.expiresAt),
+    consumedAt: item.consumedAt ? toIso(item.consumedAt) : undefined,
+    createdAt: toIso(item.createdAt),
+  };
+}
+
 export async function listUsers() {
   return (await prisma.user.findMany({ orderBy: { createdAt: "asc" } })).map(mapUser);
 }
@@ -286,6 +297,7 @@ export async function createUser(input: Omit<UserRecord, "id" | "createdAt">): P
       username: input.username,
       email: input.email.trim().toLowerCase(),
       passwordHash: input.passwordHash,
+      emailVerifiedAt: input.emailVerifiedAt ? new Date(input.emailVerifiedAt) : undefined,
       role: input.role ?? "user",
       isDemo: Boolean(input.isDemo),
       avatarBase64: input.avatarBase64,
@@ -295,7 +307,10 @@ export async function createUser(input: Omit<UserRecord, "id" | "createdAt">): P
   return mapUser(user);
 }
 
-export async function updateUser(id: string, updates: Partial<Omit<UserRecord, "id" | "createdAt">>): Promise<UserRecord | null> {
+export async function updateUser(
+  id: string,
+  updates: Partial<Omit<UserRecord, "id" | "createdAt">>,
+): Promise<UserRecord | null> {
   const found = await prisma.user.findUnique({ where: { id } });
   if (!found) return null;
   const user = await prisma.user.update({
@@ -304,6 +319,7 @@ export async function updateUser(id: string, updates: Partial<Omit<UserRecord, "
       username: updates.username,
       email: updates.email ? updates.email.trim().toLowerCase() : undefined,
       passwordHash: updates.passwordHash,
+      emailVerifiedAt: updates.emailVerifiedAt ? new Date(updates.emailVerifiedAt) : updates.emailVerifiedAt === null ? null : undefined,
       role: updates.role,
       isDemo: updates.isDemo,
       avatarBase64: updates.avatarBase64,
@@ -328,6 +344,49 @@ export async function findUserByUsername(username: string) {
 export async function findUserById(id: string) {
   const user = await prisma.user.findUnique({ where: { id } });
   return user ? mapUser(user) : null;
+}
+
+export async function createEmailVerificationToken(input: {
+  userId: string;
+  tokenHash: string;
+  expiresAt: string;
+}): Promise<EmailVerificationTokenRecord> {
+  const token = await prisma.emailVerificationToken.create({
+    data: {
+      id: randomUUID(),
+      userId: input.userId,
+      tokenHash: input.tokenHash,
+      expiresAt: new Date(input.expiresAt),
+    },
+  });
+  return mapEmailVerificationToken(token);
+}
+
+export async function consumeEmailVerificationToken(tokenHash: string): Promise<EmailVerificationTokenRecord | null> {
+  const found = await prisma.emailVerificationToken.findFirst({
+    where: {
+      tokenHash,
+      consumedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!found) return null;
+  const consumed = await prisma.emailVerificationToken.update({
+    where: { id: found.id },
+    data: { consumedAt: new Date() },
+  });
+  return mapEmailVerificationToken(consumed);
+}
+
+export async function revokeEmailVerificationTokensForUser(userId: string): Promise<void> {
+  await prisma.emailVerificationToken.updateMany({
+    where: {
+      userId,
+      consumedAt: null,
+    },
+    data: { consumedAt: new Date() },
+  });
 }
 
 export async function createUserHistory(
@@ -554,7 +613,8 @@ export async function addSongToPlaylist(
       include: { tracks: { orderBy: { position: "asc" } } },
     });
     if (!playlist) return null;
-    const exists = playlist.tracks.some((s: any) => s.title === song.title && s.artist === song.artist);
+    const incomingKey = normalizeTrackKey(song.title, song.artist);
+    const exists = playlist.tracks.some((s: any) => normalizeTrackKey(s.title, s.artist) === incomingKey);
     if (!exists) {
       await tx.playlistTrack.create({
         data: {
@@ -590,7 +650,8 @@ export async function removeSongFromPlaylist(
       include: { tracks: { orderBy: { position: "asc" } } },
     });
     if (!playlist) return null;
-    const target = playlist.tracks.find((track: any) => track.title === title && track.artist === artist);
+    const targetKey = normalizeTrackKey(title, artist);
+    const target = playlist.tracks.find((track: any) => normalizeTrackKey(track.title, track.artist) === targetKey);
     if (!target) return mapPlaylist(playlist);
 
     await tx.playlistTrack.delete({ where: { id: target.id } });

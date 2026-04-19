@@ -19,7 +19,7 @@ export type SongMatch = {
   alternatives?: Array<{ songName: string; artist: string; confidenceScore: number }>;
 };
 
-import { getApiBaseUrl } from "@/lib/apiConfig";
+import { apiFetch } from "@/src/lib/apiFetch";
 import { normalizeVisibleText } from "@/lib/text";
 
 export type SongRecognitionResult = SongMatch & {
@@ -67,7 +67,7 @@ async function postMultipart<T>(endpoint: string, fieldName: string, file: Blob,
   formData.append(fieldName, file, filename);
   if (extraFields) for (const [key, value] of Object.entries(extraFields)) formData.append(key, value);
 
-  const response = await fetch(`${getApiBaseUrl()}${endpoint}`, {
+  const response = await apiFetch(endpoint, {
     method: "POST",
     body: formData,
     signal: activeController.signal

@@ -20,6 +20,7 @@ import { addSongToPlaylist as addSongToPlaylistApi } from "../features/library/a
 import { formatArtist } from "../lib/formatArtist";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
 import { runUnifiedSearch, type PersonalizedSearchResult } from "../lib/searchClient";
+import { toSongKey } from "../lib/songIdentity";
 
 type HistoryItem = {
   id: string;
@@ -61,8 +62,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { language } = useLanguage();
   const { profile } = useProfile();
-  const { user, token, isAuthenticated, logout, addFavorite, addToHistory, history, favorites } = useUser();
-  const { playlists } = useLibrary(profile.id);
+  const { user, token, isAuthenticated, logout, history, favorites, saveToLibrary } = useUser();
+  const { playlists, favoritesSet, toggleFavorite } = useLibrary(profile.id);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -77,6 +78,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [todayIsoDate, setTodayIsoDate] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const blurTimeoutRef = useRef<number | null>(null);
   const mobileNavRef = useRef<HTMLElement | null>(null);
@@ -88,7 +90,17 @@ function AppShellContent({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    setTodayIsoDate(new Date().toISOString().slice(0, 10));
+  }, []);
+
+  useEffect(() => {
     setShowMobileMenu(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    setShowUserMenu(false);
+    setShowSearchDropdown(false);
+    setOpenActionsId(null);
   }, [pathname]);
 
   useEffect(() => {
@@ -98,14 +110,21 @@ function AppShellContent({ children }: { children: ReactNode }) {
       document.documentElement.style.setProperty("--mobile-nav-height", `${Math.round(navHeight)}px`);
     };
     updateMobileNavHeight();
-    const observer = new ResizeObserver(updateMobileNavHeight);
-    if (mobileNavRef.current) observer.observe(mobileNavRef.current);
+    const ResizeObserverCtor = window.ResizeObserver;
+    const observer = ResizeObserverCtor ? new ResizeObserverCtor(updateMobileNavHeight) : null;
+    if (observer && mobileNavRef.current) observer.observe(mobileNavRef.current);
     window.addEventListener("resize", updateMobileNavHeight);
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       window.removeEventListener("resize", updateMobileNavHeight);
       document.documentElement.style.setProperty("--mobile-nav-height", "0px");
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (blurTimeoutRef.current) {
+      window.clearTimeout(blurTimeoutRef.current);
+    }
   }, []);
 
   const isNavItemActive = (href: string) => {
@@ -121,9 +140,9 @@ function AppShellContent({ children }: { children: ReactNode }) {
   );
 
   const recognizedToday = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return recentHistory.filter((item) => item.createdAt?.startsWith(today)).length;
-  }, [recentHistory]);
+    if (!todayIsoDate) return 0;
+    return recentHistory.filter((item) => item.createdAt?.startsWith(todayIsoDate)).length;
+  }, [recentHistory, todayIsoDate]);
 
   function executeSearchQuery(value: string) {
     setQuery(value);
@@ -241,18 +260,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
 
   function handleSelectSearchResult(result: SearchResult) {
     queueTrack(result, true);
-    window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `Now playing: ${result.title}` } }));
-  }
-
-  function saveResultToRecent(result: SearchResult) {
-    void addToHistory({
-      title: result.title,
-      artist: result.artist,
-      coverUrl: result.thumbnailUrl,
-      method: "youtube-search",
-      recognized: true,
-      createdAt: new Date().toISOString(),
-    });
+    window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `${t("toast_now_playing", language)}: ${result.title}` } }));
   }
 
   function handleSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -332,7 +340,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
             <button
               className="navItem !p-2 text-sm"
               onClick={() => setIsCollapsed((prev) => !prev)}
-              aria-label={language === "bg" ? "Свий страничното меню" : "Collapse sidebar"}
+              aria-label={t("sidebar_collapse", language)}
             >
               {isCollapsed ? <ChevronRight className="w-4 h-4 text-[var(--muted)]" /> : <ChevronLeft className="w-4 h-4 text-[var(--muted)]" />}
             </button>
@@ -368,39 +376,39 @@ function AppShellContent({ children }: { children: ReactNode }) {
                     className="dropdown-item block rounded-lg px-3 py-2 text-sm text-[var(--text)]"
                     onClick={() => setShowUserMenu(false)}
                   >
-                    <span className="inline-flex items-center gap-2"><User className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Профил" : "Profile"}</span>
+                    <span className="inline-flex items-center gap-2"><User className="w-4 h-4 text-[var(--muted)]" />{t("nav_profile", language)}</span>
                   </Link>
                   <Link
                     href="/settings"
                     className="dropdown-item block rounded-lg px-3 py-2 text-sm text-[var(--text)]"
                     onClick={() => setShowUserMenu(false)}
                   >
-                    <span className="inline-flex items-center gap-2"><Settings className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Настройки" : "Settings"}</span>
+                    <span className="inline-flex items-center gap-2"><Settings className="w-4 h-4 text-[var(--muted)]" />{t("nav_settings", language)}</span>
                   </Link>
                   <button
                     className="dropdown-item status-danger w-full rounded-lg px-3 py-2 text-left text-sm"
                     onClick={handleLogout}
                   >
-                    <span className="inline-flex items-center gap-2"><LogOut className="w-4 h-4 text-[var(--muted)]" />{language === "bg" ? "Изход" : "Sign out"}</span>
+                    <span className="inline-flex items-center gap-2"><LogOut className="w-4 h-4 text-[var(--muted)]" />{t("auth_sign_out", language)}</span>
                   </button>
                 </SmartDropdown>
               ) : (
                 <div className="flex flex-col gap-2">
                   <p className="text-[var(--muted)]">
-                    {language === "bg" ? "Не си влязъл" : "Not signed in"}
+                    {t("auth_not_signed_in", language)}
                   </p>
                   <div className="flex gap-2">
                     <Link
                       href="/auth"
                       className="flex-1 rounded-lg border border-[var(--accent)] bg-[var(--active-bg)] px-2 py-1.5 text-center text-xs font-semibold text-[var(--text)] hover:bg-[var(--accent)]/30"
                     >
-                      {language === "bg" ? "Влез" : "Sign in"}
+                      {t("auth_sign_in", language)}
                     </Link>
                     <Link
                       href="/auth?tab=signup"
                       className="flex-1 rounded-lg border border-[var(--border)] px-2 py-1.5 text-center text-xs hover:bg-[var(--hover-bg)]"
                     >
-                      {language === "bg" ? "Регистрация" : "Sign up"}
+                      {t("auth_sign_up", language)}
                     </Link>
                   </div>
                 </div>
@@ -575,7 +583,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                     </p>
                   ) : personalizedResults.length > 0 && searchResults.length === 0 ? (
                     <div className="space-y-2 px-3 py-2">
-                      <p className="text-xs uppercase tracking-wider text-[var(--muted)]">Your Library</p>
+                      <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{t("library_your_library", language)}</p>
                       <ul className="space-y-1">
                         {personalizedResults.map((item) => (
                           <li key={item.id} className="text-sm text-[var(--text)]">
@@ -591,7 +599,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <p className="px-2 text-xs uppercase tracking-wider text-[var(--muted)]">Songs</p>
+                      <p className="px-2 text-xs uppercase tracking-wider text-[var(--muted)]">{t("songs_heading", language)}</p>
                       <ul className="space-y-1">
                         {groupedSearchResults.songs.map((result, index) => (
                           <li
@@ -622,15 +630,22 @@ function AppShellContent({ children }: { children: ReactNode }) {
                             <SearchResultActions
                               resultId={result.videoId}
                               isOpen={openActionsId === result.videoId}
-                              onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))}
-                              onClose={() => setOpenActionsId(null)}
+                              onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)}
                               onPlayNow={() => queueTrack(result, true)}
                               onAddToQueue={() => queueTrack(result, false, false)}
-                              onSaveToRecent={() => saveResultToRecent(result)}
-                              onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })}
+                              onSaveToLibrary={() => {
+                                void saveToLibrary({
+                                  title: result.title,
+                                  artist: result.artist,
+                                  coverUrl: result.thumbnailUrl,
+                                  method: "youtube-search",
+                                  recognized: true,
+                                });
+                              }}
+                              onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
+                              isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))}
                               onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })}
                               playlists={playlists}
-                              onGoToLibrary={() => router.push('/library')}
                             />
                           </li>
                         ))}
@@ -638,7 +653,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                       {groupedSearchResults.channels.length > 0 && (
                         <>
                           <hr className="border-[var(--border)]" />
-                          <p className="px-2 text-xs uppercase tracking-wider text-[var(--muted)]">Artists & Channels</p>
+                          <p className="px-2 text-xs uppercase tracking-wider text-[var(--muted)]">{t("search_artists_channels", language)}</p>
                           <ul className="space-y-1">
                             {groupedSearchResults.channels.map((result) => (
                               <li
@@ -661,7 +676,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                   }}
                                   aria-label={t("btn_play", language)}
                                 ><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onToggle={() => setOpenActionsId((prev) => (prev === result.videoId ? null : result.videoId))} onClose={() => setOpenActionsId(null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToRecent={() => saveResultToRecent(result)} onAddToFavorites={() => addFavorite({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl })} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} onGoToLibrary={() => router.push('/library')} />
+                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToLibrary={() => { void saveToLibrary({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, method: "youtube-search", recognized: true }); }} onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)} isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} />
                               </li>
                             ))}
                           </ul>
@@ -685,7 +700,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
           </div>
         </main>
       </div>
-      {showMobileMenu ? <button type="button" className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setShowMobileMenu(false)} aria-label="Close mobile menu" /> : null}
+      {showMobileMenu ? <button type="button" className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setShowMobileMenu(false)} aria-label={t("mobile_close_menu", language)} /> : null}
       <nav
         ref={mobileNavRef}
         className="fixed bottom-[calc(var(--player-bar-height,88px)+env(safe-area-inset-bottom,0px)+8px)] left-2 right-2 z-[45] rounded-2xl border border-border bg-surface/95 p-2 shadow-xl backdrop-blur md:hidden"
@@ -707,7 +722,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
             <item.icon className="w-4 h-4 text-[var(--muted)]" />
           </Link>
         ))}
-          <button type="button" className={`flex h-full flex-col items-center justify-center px-2 py-1 text-xs ${showMobileMenu ? "navItemActive" : "navItem"}`} onClick={() => setShowMobileMenu((prev) => !prev)} aria-label="Open menu">
+          <button type="button" className={`flex h-full flex-col items-center justify-center px-2 py-1 text-xs ${showMobileMenu ? "navItemActive" : "navItem"}`} onClick={() => setShowMobileMenu((prev) => !prev)} aria-label={t("mobile_open_menu", language)}>
             <EllipsisVertical className="w-4 h-4 text-[var(--muted)]" />
           </button>
         </div>
@@ -719,7 +734,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
               { href: "/stats", label: t("nav_stats", language), icon: BarChart2 },
               { href: "/about", label: t("nav_about", language), icon: Info },
               { href: "/how-to-use", label: t("nav_how_to_use", language), icon: HelpCircle },
-              ...(user?.role === "admin" ? [{ href: "/admin", label: "Admin", icon: Settings }] : []),
+              ...(user?.role === "admin" ? [{ href: "/admin", label: t("nav_admin", language), icon: Settings }] : []),
             ].map((item) => (
                 <Link key={`mobile-menu-${item.href}`} href={item.href} className={isNavItemActive(item.href) ? "navItemActive text-xs" : "navItem text-xs"} onClick={() => setShowMobileMenu(false)}>
                   <item.icon className="h-4 w-4 text-[var(--muted)]" />

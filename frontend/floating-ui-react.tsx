@@ -20,6 +20,10 @@ export type Placement = "bottom-start" | "bottom" | "top-start" | "top";
 type FloatingContext = {
   open: boolean;
   onOpenChange?: (open: boolean) => void;
+  refs: {
+    reference: MutableRefObject<HTMLElement | null>;
+    floating: MutableRefObject<HTMLElement | null>;
+  };
 };
 
 type MiddlewareState = {
@@ -27,6 +31,7 @@ type MiddlewareState = {
   y: number;
   referenceRect: DOMRect;
   floatingRect: DOMRect;
+  floatingEl: HTMLElement;
   viewportWidth: number;
   viewportHeight: number;
 };
@@ -67,12 +72,7 @@ export function shift(options?: { padding?: number | { top?: number; right?: num
 
 export function size(options: { apply: (args: { rects: { reference: DOMRect; floating: DOMRect }; elements: { floating: HTMLElement } }) => void; padding?: number }): MiddlewareFn {
   return (state) => {
-    if (typeof document !== "undefined") {
-      const floatingEl = document.querySelector("[data-smart-dropdown-floating]") as HTMLElement | null;
-      if (floatingEl) {
-        options.apply({ rects: { reference: state.referenceRect, floating: state.floatingRect }, elements: { floating: floatingEl } });
-      }
-    }
+    options.apply({ rects: { reference: state.referenceRect, floating: state.floatingRect }, elements: { floating: state.floatingEl } });
     return state;
   };
 }
@@ -86,13 +86,14 @@ export function autoUpdate(
   const onScroll = () => update();
   window.addEventListener("resize", onResize, { passive: true });
   window.addEventListener("scroll", onScroll, { passive: true, capture: true });
-  const ro = new ResizeObserver(() => update());
-  ro.observe(reference);
-  ro.observe(floating);
+  const ResizeObserverCtor = window.ResizeObserver;
+  const ro = ResizeObserverCtor ? new ResizeObserverCtor(() => update()) : null;
+  ro?.observe(reference);
+  ro?.observe(floating);
   return () => {
     window.removeEventListener("resize", onResize);
     window.removeEventListener("scroll", onScroll, true);
-    ro.disconnect();
+    ro?.disconnect();
   };
 }
 
@@ -119,6 +120,7 @@ export function useFloating(options: {
         y: options.placement?.startsWith("top") ? referenceRect.top - floatingRect.height - 6 : referenceRect.bottom + 6,
         referenceRect,
         floatingRect,
+        floatingEl: floating,
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
       };
@@ -148,7 +150,11 @@ export function useFloating(options: {
     },
   };
 
-  const context: FloatingContext = { open: options.open, onOpenChange: options.onOpenChange };
+  const context: FloatingContext = {
+    open: options.open,
+    onOpenChange: options.onOpenChange,
+    refs: { reference: referenceRef, floating: floatingRef },
+  };
   return { refs, floatingStyles, context };
 }
 
@@ -164,7 +170,35 @@ export function useClick(context: FloatingContext) {
   };
 }
 
-export function useDismiss(context: FloatingContext, _opts?: { outsidePressEvent?: string }) {
+export function useDismiss(context: FloatingContext, opts?: { outsidePressEvent?: "pointerdown" | "click" }) {
+  useEffect(() => {
+    if (!context.open) return;
+
+    const outsidePressEvent = opts?.outsidePressEvent ?? "pointerdown";
+
+    const onOutsidePress = (event: PointerEvent | MouseEvent) => {
+      const target = event.target as Node | null;
+      const reference = context.refs.reference.current;
+      const floating = context.refs.floating.current;
+      if (!target) return;
+      if (reference?.contains(target) || floating?.contains(target)) return;
+      context.onOpenChange?.(false);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        context.onOpenChange?.(false);
+      }
+    };
+
+    document.addEventListener(outsidePressEvent, onOutsidePress, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener(outsidePressEvent, onOutsidePress, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [context.open, context.onOpenChange, context.refs.reference, context.refs.floating, opts?.outsidePressEvent]);
+
   return {
     getFloatingProps: <T extends HTMLProps<Element>>(props: T) => props,
     getReferenceProps: <T extends HTMLProps<Element>>(props: T) => props,

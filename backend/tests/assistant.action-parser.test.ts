@@ -27,6 +27,27 @@ test("response with no action block keeps text untouched", () => {
   assert.equal(parsed.parseError, false);
 });
 
+test("action block parses when wrapped in markdown json fences", () => {
+  const input = 'Ready.\n<action>```json\n{"type":"DISCOVERY_REQUEST","confidence":0.8,"payload":{"mode":"daily"},"requiresConfirmation":true}\n```</action>';
+  const parsed = parseActionIntent(input);
+  assert.equal(parsed.actionIntent?.type, "DISCOVERY_REQUEST");
+  assert.equal(parsed.parseError, false);
+});
+
+test("action intent defaults requiresConfirmation to true when omitted", () => {
+  const input = '<action>{"type":"INSIGHT_REQUEST","confidence":0.9,"payload":{"kind":"trends"}}</action>';
+  const parsed = parseActionIntent(input);
+  assert.equal(parsed.actionIntent?.requiresConfirmation, true);
+  assert.equal(parsed.parseError, false);
+});
+
+test("create playlist action dedupes near-identical track variants", () => {
+  const input = `<action>{"type":"CREATE_PLAYLIST","confidence":0.96,"payload":{"name":"Night set","trackIds":["I'm Legendary|||Artist X","Im Legendary|||artist x","Another Song|||Artist Y"],"dedupe":true},"requiresConfirmation":true}</action>`;
+  const parsed = parseActionIntent(input);
+  assert.equal(parsed.parseError, false);
+  assert.deepEqual(parsed.actionIntent?.payload.trackIds, ["I'm Legendary|||Artist X", "Another Song|||Artist Y"]);
+});
+
 test("long response with trailing action block preserves full text", () => {
   const body = "A".repeat(2500);
   const input = `${body}\n<action>{"type":"DISCOVERY_REQUEST","confidence":0.8,"payload":{"mode":"daily"},"requiresConfirmation":true}</action>`;

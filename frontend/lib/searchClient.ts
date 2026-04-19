@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "./apiConfig";
+import { apiFetch } from "@/src/lib/apiFetch";
 
 export type DiscoverSearchResult = {
   videoId: string;
@@ -35,7 +35,7 @@ export async function runUnifiedSearch(query: string, token?: string | null): Pr
   });
 
   const personalizedPromise = token
-    ? fetch(`${getApiBaseUrl()}/api/search/fuzzy?q=${encodeURIComponent(trimmed)}`, {
+    ? apiFetch(`/api/search/fuzzy?q=${encodeURIComponent(trimmed)}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(async (response) => {

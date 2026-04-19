@@ -6,14 +6,22 @@ import { hashApiKey, requireDeveloperApiKey } from "../../middlewares/apiKey.mid
 import { recognizeSongFromAudioByMode } from "../recognition/recognition.service";
 import { audioUpload } from "../../middlewares/upload.middleware";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
+import { developerSensitiveRateLimit } from "../../middlewares/rateLimit.middleware";
+import { validateAudioUpload } from "../../middlewares/fileValidation";
+import { requireVerifiedEmail } from "../../middlewares/verified.middleware";
 
 const developerRouter = Router();
+
+developerRouter.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 
 function generateRawKey(): string {
   return `trk_${crypto.randomBytes(18).toString("hex")}`;
 }
 
-developerRouter.get("/keys", requireAuth, async (req, res) => {
+developerRouter.get("/keys", developerSensitiveRateLimit, requireAuth, requireVerifiedEmail, async (req, res) => {
   const keys = await listApiKeysByUser(req.userId!);
   res.status(200).json({
     items: keys.map((key) => ({
@@ -27,7 +35,7 @@ developerRouter.get("/keys", requireAuth, async (req, res) => {
   });
 });
 
-developerRouter.post("/keys", requireAuth, async (req, res) => {
+developerRouter.post("/keys", developerSensitiveRateLimit, requireAuth, requireVerifiedEmail, async (req, res) => {
   const label = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, 60) : "Default App";
   const rawKey = generateRawKey();
   const keyPrefix = rawKey.slice(0, 14);
@@ -40,22 +48,23 @@ developerRouter.post("/keys", requireAuth, async (req, res) => {
   res.status(201).json({ apiKey: rawKey, keyPrefix, label, warning: "Store this key securely. It will not be shown again." });
 });
 
-developerRouter.delete("/keys/:id", requireAuth, async (req, res) => {
+developerRouter.delete("/keys/:id", developerSensitiveRateLimit, requireAuth, requireVerifiedEmail, async (req, res) => {
   const ok = await revokeApiKey(req.userId!, req.params.id);
   if (!ok) return void sendError(res, ErrorCatalog.NOT_FOUND);
   res.status(200).json({ ok: true });
 });
 
 // Public developer API endpoints (x-api-key auth)
-developerRouter.post("/v1/recognition/audio", requireDeveloperApiKey, audioUpload.single("audio"), async (req, res) => {
+developerRouter.post("/v1/recognition/audio", developerSensitiveRateLimit, requireDeveloperApiKey, audioUpload.single("audio"), async (req, res) => {
   if (!req.file) return void sendError(res, ErrorCatalog.AUDIO_FILE_REQUIRED);
+  if (!validateAudioUpload(req.file, res)) return;
   const mode = req.body?.mode === "live" || req.body?.mode === "humming" ? req.body.mode : "standard";
   const attemptId = typeof req.headers["x-recognition-attempt-id"] === "string" ? req.headers["x-recognition-attempt-id"] : undefined;
   const result = await recognizeSongFromAudioByMode(req.file.buffer, req.file.originalname, mode, req.userId, attemptId);
   res.status(200).json({ data: result, mode });
 });
 
-developerRouter.get("/v1/recommendations", requireDeveloperApiKey, async (req, res) => {
+developerRouter.get("/v1/recommendations", developerSensitiveRateLimit, requireDeveloperApiKey, async (req, res) => {
   const seed = typeof req.query.seed === "string" ? req.query.seed.toLowerCase() : "";
   const recommendations = [
     { title: "Blinding Lights", artist: "The Weeknd" },

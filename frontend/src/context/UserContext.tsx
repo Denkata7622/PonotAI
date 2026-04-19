@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { apiFetch } from "../lib/apiFetch";
-import { normalizeTrackKey } from "../../lib/dedupe";
+import { toCanonicalSong, toSongKey } from "../../lib/songIdentity";
 import { t } from "../../lib/translations";
 import { isOnboardingPending, markOnboardingDone, markOnboardingPending, writeTasteProfile, type TasteProfile } from "../features/onboarding/tasteProfile";
 
@@ -20,6 +20,7 @@ export type User = {
   id: string;
   username: string;
   email: string;
+  emailVerified?: boolean;
   role: "user" | "admin";
   avatarBase64?: string | null;
   bio?: string | null;
@@ -44,6 +45,16 @@ export type FavoriteItem = {
   album?: string | null;
   coverUrl?: string | null;
   savedAt?: string;
+};
+
+export type SaveSongInput = {
+  title: string;
+  artist: string;
+  album?: string;
+  coverUrl?: string;
+  method?: string;
+  recognized?: boolean;
+  createdAt?: string;
 };
 
 export type ManualSubmission = {
@@ -135,7 +146,8 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
     case "CLEAR_HISTORY":
       return { ...state, history: [] };
     case "ADD_FAVORITE": {
-      const exists = state.favorites.some((f) => f.id === action.payload.id);
+      const incomingKey = toSongKey(action.payload);
+      const exists = state.favorites.some((favorite) => toSongKey(favorite) === incomingKey);
       return exists ? state : { ...state, favorites: [action.payload, ...state.favorites] };
     }
     case "REMOVE_FAVORITE":
@@ -159,6 +171,8 @@ type UserContextValue = {
   isLoading: boolean;
   onboardingRequired: boolean;
   register: (username: string, email: string, password: string) => Promise<void>;
+  verifyEmail: (token: string) => Promise<void>;
+  resendVerification: (email: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (fields: Partial<Pick<User, "username" | "email" | "bio" | "avatarBase64">>) => Promise<void>;
@@ -174,6 +188,7 @@ type UserContextValue = {
   clearHistory: () => Promise<void>;
   addFavorite: (song: Omit<FavoriteItem, "id"> & { id?: string }) => Promise<void>;
   removeFavorite: (id: string) => Promise<void>;
+  saveToLibrary: (song: SaveSongInput) => Promise<void>;
   addManualSubmission: (submission: ManualSubmission) => void;
   shareSong: (song: { title: string; artist: string; album?: string; coverUrl?: string }) => Promise<string | null>;
   setPreferences: (prefs: Partial<Preferences>) => void;
@@ -295,10 +310,31 @@ export function UserProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ username, email, password }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "REGISTER_FAILED");
+    if (!res.ok) throw new Error(data.code || data.error || "REGISTER_FAILED");
+    setOnboardingRequired(false);
+  }
+
+  async function verifyEmail(token: string) {
+    const res = await apiFetch("/api/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.code || "EMAIL_VERIFICATION_FAILED");
     await handleAuthSuccess(data as { token: string; user: User });
     markOnboardingPending();
     setOnboardingRequired(true);
+  }
+
+  async function resendVerification(email: string) {
+    const res = await apiFetch("/api/auth/resend-verification", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.code || "EMAIL_RESEND_FAILED");
+    }
   }
 
   async function login(email: string, password: string) {
@@ -307,7 +343,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "LOGIN_FAILED");
+    if (!res.ok) throw new Error(data.code || data.error || "LOGIN_FAILED");
     await handleAuthSuccess(data as { token: string; user: User });
     markOnboardingDone();
     setOnboardingRequired(false);
@@ -325,7 +361,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   async function updateProfile(fields: Partial<Pick<User, "username" | "email" | "bio" | "avatarBase64">>) {
     const res = await apiFetch("/api/auth/me", { method: "PATCH", body: JSON.stringify(fields) });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "UPDATE_FAILED");
+    if (!res.ok) throw new Error(data.code || data.error || "UPDATE_FAILED");
     setAuthState({ user: data as User });
   }
 
@@ -336,7 +372,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     });
     if (!res.ok) {
       const data = await res.json();
-      throw new Error(data.error || "PASSWORD_CHANGE_FAILED");
+      throw new Error(data.code || data.error || "PASSWORD_CHANGE_FAILED");
     }
   }
 
@@ -367,11 +403,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }
 
   async function addToHistory(item: Omit<HistoryItem, "id"> & { id?: string }) {
-    const incomingKey = normalizeTrackKey(item.title ?? "", item.artist ?? "");
+    const incomingKey = toSongKey(item);
 
     if (isAuthenticated) {
       const duplicate = serverHistory.find(
-        (entry) => normalizeTrackKey(entry.title ?? "", entry.artist ?? "") === incomingKey,
+        (entry) => toSongKey(entry) === incomingKey,
       );
       if (duplicate) {
         await apiFetch(`/api/history/${duplicate.id}`, { method: "DELETE" });
@@ -416,9 +452,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }
 
   async function addFavorite(song: Omit<FavoriteItem, "id"> & { id?: string }) {
-    const incomingKey = normalizeTrackKey(song.title, song.artist);
+    const incomingKey = toSongKey(song);
     const existingFavorite = (isAuthenticated ? serverFavorites : guest.favorites).find(
-      (item) => normalizeTrackKey(item.title, item.artist) === incomingKey,
+      (item) => toSongKey(item) === incomingKey,
     );
     if (existingFavorite) {
       notify("toast_already_favorited");
@@ -441,7 +477,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   async function removeFavorite(id: string) {
     if (isAuthenticated) {
       const resolvedId = serverFavorites.find((favorite) => favorite.id === id)?.id
-        ?? serverFavorites.find((favorite) => normalizeTrackKey(favorite.title, favorite.artist) === id)?.id;
+        ?? serverFavorites.find((favorite) => toSongKey(favorite) === id)?.id;
 
       if (!resolvedId) {
         console.error("Failed to remove favorite: could not resolve backend favorite id", { id });
@@ -457,7 +493,30 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setServerFavorites(serverFavorites.filter((f) => f.id !== resolvedId));
       return;
     }
-    dispatchGuest({ type: "REMOVE_FAVORITE", payload: id });
+    const resolvedId = guest.favorites.find((favorite) => favorite.id === id)?.id
+      ?? guest.favorites.find((favorite) => toSongKey(favorite) === id)?.id;
+    if (!resolvedId) return;
+    dispatchGuest({ type: "REMOVE_FAVORITE", payload: resolvedId });
+  }
+
+  async function saveToLibrary(song: SaveSongInput) {
+    const canonical = toCanonicalSong(song);
+
+    await addToHistory({
+      title: canonical.title,
+      artist: canonical.artist,
+      album: canonical.album,
+      coverUrl: canonical.coverUrl,
+      method: song.method ?? "library-save",
+      recognized: song.recognized ?? true,
+      createdAt: song.createdAt ?? new Date().toISOString(),
+    });
+    await addFavorite({
+      title: canonical.title,
+      artist: canonical.artist,
+      album: canonical.album,
+      coverUrl: canonical.coverUrl,
+    });
   }
 
   async function shareSong(song: { title: string; artist: string; album?: string; coverUrl?: string }) {
@@ -467,7 +526,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
     const res = await apiFetch("/api/share", { method: "POST", body: JSON.stringify(song) });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "SHARE_FAILED");
+    if (!res.ok) throw new Error(data.code || data.error || "SHARE_FAILED");
     return (data as { shareUrl: string }).shareUrl;
   }
 
@@ -489,6 +548,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       isLoading: authState.isLoading,
       onboardingRequired,
       register,
+      verifyEmail,
+      resendVerification,
       login,
       logout,
       updateProfile,
@@ -502,6 +563,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       clearHistory,
       addFavorite,
       removeFavorite,
+      saveToLibrary,
       addManualSubmission,
       shareSong,
       setPreferences,

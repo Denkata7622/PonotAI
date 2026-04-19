@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { readHistory, writeHistory } from "../../db/client";
+import { appendHistoryEntry, readHistory } from "../../db/client";
 import type { HistoryEntry } from "../../db/models";
 import {
   clearUserHistory as clearUserHistoryInStore,
@@ -55,18 +54,7 @@ export async function addHistoryEntry(input: {
   artist: string;
   youtubeVideoId?: string;
 }): Promise<HistoryEntry> {
-  const all = await readHistory();
-  const entry: HistoryEntry = {
-    id: randomUUID(),
-    songName: input.songName,
-    artist: input.artist,
-    youtubeVideoId: input.youtubeVideoId,
-    createdAt: new Date().toISOString(),
-  };
-
-  const next = [entry, ...all].slice(0, 200);
-  await writeHistory(next);
-  return entry;
+  return appendHistoryEntry(input);
 }
 
 /**

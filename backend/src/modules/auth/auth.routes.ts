@@ -12,6 +12,7 @@ import { requireAuth, signAuthToken } from "../../middlewares/auth.middleware";
 import { authSensitiveRateLimit } from "../../middlewares/rateLimit.middleware";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 import { hashPassword, verifyPassword } from "./password";
+import { issueEmailVerificationForUser, resendVerificationByEmail, verifyEmailToken } from "../../services/emailVerification";
 
 const authRouter = Router();
 
@@ -55,6 +56,7 @@ function toUserPayload(user: {
   avatarBase64?: string;
   bio?: string;
   createdAt: string;
+  emailVerifiedAt?: string | null;
   role?: "user" | "admin";
   isDemo?: boolean;
 }) {
@@ -65,6 +67,7 @@ function toUserPayload(user: {
     avatarBase64: user.avatarBase64 ?? null,
     bio: user.bio ?? null,
     createdAt: user.createdAt,
+    emailVerified: Boolean(user.emailVerifiedAt),
     role: user.role ?? USER_ROLE,
     isDemo: Boolean(user.isDemo),
   };
@@ -85,10 +88,19 @@ authRouter.post("/register", authSensitiveRateLimit, async (req, res) => {
   if (await findUserByUsername(username)) return void sendError(res, ErrorCatalog.USERNAME_TAKEN);
   if (await findUserByEmail(normalizedEmail)) return void sendError(res, ErrorCatalog.EMAIL_TAKEN);
 
-  const user = await createUser({ username, email: normalizedEmail, passwordHash: hashPassword(password), role: USER_ROLE });
+  const user = await createUser({
+    username,
+    email: normalizedEmail,
+    passwordHash: hashPassword(password),
+    role: USER_ROLE,
+    emailVerifiedAt: undefined,
+  });
   const finalUser = await ensureAdminRoleForConfiguredEmail((await findUserById(user.id)) ?? user, "register");
-  const token = signAuthToken(finalUser.id, finalUser.role ?? USER_ROLE);
-  res.status(201).json({ token, user: toUserPayload(finalUser) });
+  await issueEmailVerificationForUser(finalUser);
+  res.status(201).json({
+    requiresEmailVerification: true,
+    user: toUserPayload(finalUser),
+  });
 });
 
 authRouter.post("/login", authSensitiveRateLimit, async (req, res) => {
@@ -99,10 +111,35 @@ authRouter.post("/login", authSensitiveRateLimit, async (req, res) => {
   const user = await findUserByEmail(normalizedEmail);
   if (!user) return void sendError(res, ErrorCatalog.INVALID_CREDENTIALS);
   if (!verifyPassword(password, user.passwordHash)) return void sendError(res, ErrorCatalog.INVALID_CREDENTIALS);
+  if (!user.emailVerifiedAt) return void sendError(res, ErrorCatalog.EMAIL_NOT_VERIFIED);
 
   const finalUser = await ensureAdminRoleForConfiguredEmail(user, "login");
   const token = signAuthToken(finalUser.id, finalUser.role ?? USER_ROLE);
   res.status(200).json({ token, user: toUserPayload(finalUser) });
+});
+
+authRouter.post("/verify-email", authSensitiveRateLimit, async (req, res) => {
+  const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+  if (!token || token.length < 20) {
+    return void sendError(res, ErrorCatalog.INVALID_VERIFICATION_TOKEN);
+  }
+
+  const user = await verifyEmailToken(token);
+  if (!user) {
+    return void sendError(res, ErrorCatalog.INVALID_VERIFICATION_TOKEN);
+  }
+  const finalUser = await ensureAdminRoleForConfiguredEmail(user, "auth_me");
+  const authToken = signAuthToken(finalUser.id, finalUser.role ?? USER_ROLE);
+  res.status(200).json({ token: authToken, user: toUserPayload(finalUser) });
+});
+
+authRouter.post("/resend-verification", authSensitiveRateLimit, async (req, res) => {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  if (!email || !EMAIL_REGEX.test(email)) {
+    return void sendError(res, ErrorCatalog.INVALID_EMAIL);
+  }
+  await resendVerificationByEmail(email);
+  res.status(200).json({ ok: true });
 });
 
 authRouter.post("/logout", (_req, res) => res.status(200).json({ ok: true }));
@@ -142,11 +179,15 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
   const user = await updateUser(req.userId!, {
     ...(username !== undefined ? { username } : {}),
     ...(email !== undefined ? { email: email.toLowerCase() } : {}),
+    ...(email !== undefined ? { emailVerifiedAt: null } : {}),
     ...(bio !== undefined ? { bio } : {}),
     ...(avatarBase64 !== undefined ? { avatarBase64 } : {}),
   });
 
   if (!user) return void sendError(res, ErrorCatalog.NOT_FOUND);
+  if (email !== undefined) {
+    await issueEmailVerificationForUser(user);
+  }
   res.status(200).json(toUserPayload(user));
 });
 

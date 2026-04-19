@@ -11,7 +11,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function AuthPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login, register, isAuthenticated, isLoading, onboardingRequired } = useUser();
+  const { login, register, resendVerification, isAuthenticated, isLoading, onboardingRequired } = useUser();
 
   const [tab, setTab] = useState<"signin" | "signup">(
     searchParams.get("tab") === "signup" ? "signup" : "signin"
@@ -19,6 +19,7 @@ export default function AuthPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [verificationNotice, setVerificationNotice] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,6 +33,7 @@ export default function AuthPage() {
 
   function clearForm() {
     setError(null);
+    setVerificationNotice(null);
     setEmail("");
     setPassword("");
     setUsername("");
@@ -56,6 +58,7 @@ export default function AuthPage() {
     } catch (e) {
       const code = (e as Error).message;
       if (code === "INVALID_CREDENTIALS") setError("Wrong email or password");
+      else if (code === "EMAIL_NOT_VERIFIED") setError("Please verify your email first. Check your inbox.");
       else setError("Sign in failed. Please try again.");
     } finally {
       setLoading(false);
@@ -78,12 +81,30 @@ export default function AuthPage() {
     setLoading(true);
     try {
       await register(username.trim(), email.trim(), password);
-      router.replace("/onboarding");
+      setVerificationNotice("Account created. Verify your email to finish setup.");
+      setTab("signin");
+      setPassword("");
+      setConfirmPassword("");
     } catch (e) {
       const code = (e as Error).message;
       if (code === "USERNAME_TAKEN") setError("That username is already taken");
       else if (code === "EMAIL_TAKEN") setError("That email is already registered");
       else setError("Sign up failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    if (!email.trim()) return setError("Enter your email to resend verification");
+    if (!EMAIL_REGEX.test(email.trim())) return setError("Enter a valid email address");
+    setLoading(true);
+    setError(null);
+    try {
+      await resendVerification(email.trim());
+      setVerificationNotice("Verification email sent if this account exists and is not verified.");
+    } catch {
+      setError("Could not resend verification email.");
     } finally {
       setLoading(false);
     }
@@ -140,6 +161,11 @@ export default function AuthPage() {
             {error}
           </div>
         )}
+        {verificationNotice && (
+          <div className="mb-4 rounded-xl border border-green-400/30 bg-green-500/12 px-4 py-3 text-sm text-green-200">
+            {verificationNotice}
+          </div>
+        )}
 
         {tab === "signin" && (
           <div className="space-y-4" onKeyDown={handleKeyDown}>
@@ -158,6 +184,9 @@ export default function AuthPage() {
             </div>
             <button className="w-full rounded-xl bg-[var(--accent)] py-2.5 font-semibold text-[var(--accent-foreground)] transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50" disabled={loading} onClick={submitSignIn}>
               {loading ? "Signing in…" : "Sign In"}
+            </button>
+            <button className="w-full rounded-xl border border-[var(--border)] py-2.5 text-sm font-semibold text-[var(--text)] transition-all hover:bg-[var(--input-bg)] disabled:cursor-not-allowed disabled:opacity-50" disabled={loading} onClick={handleResendVerification}>
+              Resend verification email
             </button>
           </div>
         )}

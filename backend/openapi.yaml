@@ -22,6 +22,8 @@ tags:
 - name: Playlists
 - name: Stats
 - name: Search
+- name: Developer
+- name: AI
 paths:
   "/health":
     get:
@@ -914,26 +916,46 @@ paths:
         '200': { description: Fuzzy search results }
   "/api/developer/keys":
     get:
-      tags: [Auth]
+      tags: [Developer]
+      security:
+      - bearerAuth: []
       summary: List developer API keys
       responses:
         '200': { description: API key list }
     post:
-      tags: [Auth]
+      tags: [Developer]
+      security:
+      - bearerAuth: []
       summary: Create developer API key
       responses:
         '201': { description: API key created }
+  "/api/developer/keys/{id}":
+    delete:
+      tags: [Developer]
+      security:
+      - bearerAuth: []
+      summary: Revoke developer API key
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: API key revoked }
+        '404': { description: API key not found }
   "/api/developer/v1/recognition/audio":
     post:
-      tags: [Recognition]
-      security: []
+      tags: [Developer]
+      security:
+      - apiKeyAuth: []
       summary: Developer recognition endpoint (x-api-key)
       responses:
         '200': { description: Recognition result }
   "/api/developer/v1/recommendations":
     get:
-      tags: [Search]
-      security: []
+      tags: [Developer]
+      security:
+      - apiKeyAuth: []
       summary: Developer recommendations endpoint (x-api-key)
       responses:
         '200': { description: Recommendations }
@@ -974,6 +996,22 @@ paths:
       responses:
         '200':
           description: Trend analytics.
+  /api/ai/insights/daily:
+    get:
+      tags: [AI]
+      summary: Daily listening insights
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Daily insight summary.
+  /api/ai/insights/activity:
+    get:
+      tags: [AI]
+      summary: Activity summary for dashboard
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Activity summary payload.
   /api/ai/playlists/generate:
     post:
       tags: [AI]
@@ -1006,6 +1044,14 @@ paths:
       responses:
         '200':
           description: Contextual recommendation payload.
+  /api/ai/recommendations/cross-artist:
+    get:
+      tags: [AI]
+      summary: Cross-artist recommendations
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Cross-artist recommendation payload.
   /api/ai/tags/suggest:
     post:
       tags: [AI]
@@ -1038,12 +1084,24 @@ paths:
       responses:
         '200':
           description: Single surprise recommendation.
+  /api/ai/discovery/similar-artists:
+    get:
+      tags: [AI]
+      summary: Similar-artist discovery recommendations
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Similar-artist recommendation payload.
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: token
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
   responses:
     BadRequest:
       description: Invalid request
