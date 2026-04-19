@@ -2,7 +2,6 @@ import type { Request, Response } from "express";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 import { invalidateLibraryContextCache } from "../../services/assistant/contextBuilder";
 import {
-  addHistoryEntry,
   addUserHistoryEntry,
   clearUserHistory,
   deleteUserHistoryItem,
@@ -50,15 +49,13 @@ export async function getHistoryController(req: Request, res: Response): Promise
  * @throws Re-throws unexpected persistence failures.
  */
 export async function createHistoryEntryController(req: Request, res: Response): Promise<void> {
-  const { method, title, artist, album, coverUrl, recognized, songName, youtubeVideoId } = req.body as {
+  const { method, title, artist, album, coverUrl, recognized } = req.body as {
     method?: string;
     title?: string;
     artist?: string;
     album?: string;
     coverUrl?: string;
     recognized?: boolean;
-    songName?: string;
-    youtubeVideoId?: string;
   };
 
   if (req.userId) {
@@ -74,12 +71,6 @@ export async function createHistoryEntryController(req: Request, res: Response):
       album,
       coverUrl,
       recognized: Boolean(recognized),
-    });
-
-    await addHistoryEntry({
-      songName: title || songName || "Unknown Song",
-      artist: artist || "Unknown Artist",
-      youtubeVideoId,
     });
 
     await recalculateAchievementsForUser(req.userId);
