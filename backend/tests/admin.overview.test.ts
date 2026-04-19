@@ -19,7 +19,7 @@ test("admin overview returns expanded operational metrics and no-store caching",
     assert.equal(registerResponse.status, 201);
     const registerBody = (await registerResponse.json()) as { token: string };
 
-    const overviewResponse = await fetch(`${running.baseUrl}/api/admin/overview`, {
+    const overviewResponse = await fetch(`${running.baseUrl}/api/admin/overview?windowDays=1&eventType=assistant`, {
       headers: { authorization: `Bearer ${registerBody.token}` },
     });
     assert.equal(overviewResponse.status, 200);
@@ -32,6 +32,12 @@ test("admin overview returns expanded operational metrics and no-store caching",
       library: { playlistSongCount: number; averages: { favoritesPerUser: number } };
       health: { persistence: { status: string }; recognitionProviders: { availableCount: number } };
       providerAvailability: Record<string, boolean>;
+      monitoring: {
+        filters: { windowDays: number; eventType: string };
+        recognitionActivity: { successRatePctInWindow: number; recentFailures: Array<{ id: string }> };
+        assistantActivity: { requestsInWindow: number; recentRequests: Array<{ id: string }> };
+        recentEvents: Array<{ type: string }>;
+      };
     };
 
     assert.equal(typeof body.totals.favorites, "number");
@@ -46,6 +52,14 @@ test("admin overview returns expanded operational metrics and no-store caching",
     assert.ok(body.health.persistence.status === "ok" || body.health.persistence.status === "degraded");
     assert.equal(typeof body.health.recognitionProviders.availableCount, "number");
     assert.equal(typeof body.providerAvailability.assistantGemini, "boolean");
+    assert.equal(body.monitoring.filters.windowDays, 1);
+    assert.equal(body.monitoring.filters.eventType, "assistant");
+    assert.equal(typeof body.monitoring.recognitionActivity.successRatePctInWindow, "number");
+    assert.ok(Array.isArray(body.monitoring.recognitionActivity.recentFailures));
+    assert.equal(typeof body.monitoring.assistantActivity.requestsInWindow, "number");
+    assert.ok(Array.isArray(body.monitoring.assistantActivity.recentRequests));
+    assert.ok(Array.isArray(body.monitoring.recentEvents));
+    assert.ok(body.monitoring.recentEvents.every((item) => item.type === "assistant"));
   } finally {
     await running.close();
     delete process.env.ADMIN_EMAIL;

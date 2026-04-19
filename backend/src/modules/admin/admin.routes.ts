@@ -31,6 +31,23 @@ function daysAgoIso(days: number): string {
   return date.toISOString();
 }
 
+type ActivityWindowDays = 1 | 7 | 30;
+type AdminEventType = "all" | "recognition" | "assistant" | "playlist" | "favorite" | "share" | "user" | "apiKey";
+
+function parseActivityWindowDays(input: unknown): ActivityWindowDays {
+  if (input === "1" || input === 1) return 1;
+  if (input === "30" || input === 30) return 30;
+  return 7;
+}
+
+function parseAdminEventType(input: unknown): AdminEventType {
+  const allowed = new Set<AdminEventType>(["all", "recognition", "assistant", "playlist", "favorite", "share", "user", "apiKey"]);
+  if (typeof input === "string" && allowed.has(input as AdminEventType)) {
+    return input as AdminEventType;
+  }
+  return "all";
+}
+
 function toUserPayload(user: { id: string; username: string; email: string; createdAt: string; role?: "user" | "admin"; isDemo?: boolean }) {
   return {
     id: user.id,
@@ -46,6 +63,8 @@ function toUserPayload(user: { id: string; username: string; email: string; crea
 
 adminRouter.get("/overview", async (_req, res) => {
   const [stats, snapshot] = await Promise.all([getGlobalStats(), getAdminOverviewSnapshot()]);
+  const windowDays = parseActivityWindowDays(_req.query?.windowDays);
+  const eventType = parseAdminEventType(_req.query?.eventType);
   const recentUsers = [...snapshot.users].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 12);
   const recentPlaylists = [...snapshot.playlists].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 10);
   const recentRecognitions = [...snapshot.searchHistory].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 20);
@@ -60,6 +79,8 @@ adminRouter.get("/overview", async (_req, res) => {
 
   const nowMinus7d = daysAgoIso(7);
   const nowMinus30d = daysAgoIso(30);
+  const nowMinusWindow = daysAgoIso(windowDays);
+  const nowMinus24h = daysAgoIso(1);
   const recentDemoUsers = [...snapshot.users]
     .filter((user) => user.isDemo)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -120,12 +141,94 @@ adminRouter.get("/overview", async (_req, res) => {
   const recognitionLast7d = snapshot.searchHistory.filter((item) => item.createdAt >= nowMinus7d).length;
   const recognitionLast30d = snapshot.searchHistory.filter((item) => item.createdAt >= nowMinus30d).length;
   const sharesLast7d = recentShares.filter((item) => item.createdAt >= nowMinus7d).length;
+  const recognitionsInWindow = snapshot.searchHistory.filter((item) => item.createdAt >= nowMinusWindow);
+  const assistantInWindow = recognitionsInWindow.filter((item) => item.method === "assistant" || item.method === "assistant-theme");
+  const playlistEventsInWindow = snapshot.playlists.filter((item) => item.updatedAt >= nowMinusWindow);
+  const favoritesInWindow = snapshot.favorites.filter((item) => item.savedAt >= nowMinusWindow);
+  const usersInWindow = snapshot.users.filter((item) => item.createdAt >= nowMinusWindow);
+  const sharesInWindow = recentShares.filter((item) => item.createdAt >= nowMinusWindow);
+  const apiKeyCreatesInWindow = snapshot.apiKeys.filter((item) => item.createdAt >= nowMinusWindow);
+  const apiKeyRevocationsInWindow = snapshot.apiKeys.filter((item) => item.revokedAt && item.revokedAt >= nowMinusWindow);
+  const failedRecognitionsInWindow = recognitionsInWindow.filter((item) => !item.recognized);
+  const unresolvedLast24h = snapshot.searchHistory.filter((item) => !item.recognized && item.createdAt >= nowMinus24h).length;
 
   const activeApiKeys = snapshot.apiKeys.filter((key) => !key.revokedAt).length;
   const revokedApiKeys = snapshot.apiKeys.length - activeApiKeys;
   const usedApiKeys7d = snapshot.apiKeys.filter((key) => key.lastUsedAt && key.lastUsedAt >= nowMinus7d).length;
 
   const playlistSongCount = snapshot.playlists.reduce((sum, playlist) => sum + playlist.songs.length, 0);
+  const recognitionWindowSuccessRate = recognitionsInWindow.length > 0
+    ? Number((((recognitionsInWindow.length - failedRecognitionsInWindow.length) / recognitionsInWindow.length) * 100).toFixed(1))
+    : 100;
+
+  const combinedEvents = [
+    ...snapshot.searchHistory.map((item) => ({
+      id: item.id,
+      type: (item.method === "assistant" || item.method === "assistant-theme" ? "assistant" : "recognition") as "assistant" | "recognition",
+      userId: item.userId,
+      createdAt: item.createdAt,
+      status: item.recognized ? "ok" : "failed",
+      summary: item.method === "assistant" || item.method === "assistant-theme"
+        ? `${item.method} request${item.recognized ? "" : " failed"}`
+        : `${item.method} recognition${item.recognized ? "" : " failed"}`,
+    })),
+    ...snapshot.playlists.map((item) => ({
+      id: item.id,
+      type: "playlist" as const,
+      userId: item.userId,
+      createdAt: item.updatedAt,
+      status: "ok" as const,
+      summary: `Playlist updated: ${item.name}`,
+    })),
+    ...snapshot.favorites.map((item) => ({
+      id: item.id,
+      type: "favorite" as const,
+      userId: item.userId,
+      createdAt: item.savedAt,
+      status: "ok" as const,
+      summary: `Favorite saved: ${item.title} — ${item.artist}`,
+    })),
+    ...recentShares.map((item) => ({
+      id: item.id,
+      type: "share" as const,
+      userId: item.userId,
+      createdAt: item.createdAt,
+      status: "ok" as const,
+      summary: `${item.type} shared`,
+    })),
+    ...snapshot.users.map((item) => ({
+      id: item.id,
+      type: "user" as const,
+      userId: item.id,
+      createdAt: item.createdAt,
+      status: "ok" as const,
+      summary: `User signup: ${item.username}`,
+    })),
+    ...snapshot.apiKeys.flatMap((item) => ([
+      {
+        id: `${item.id}:created`,
+        type: "apiKey" as const,
+        userId: item.userId,
+        createdAt: item.createdAt,
+        status: "ok" as const,
+        summary: `API key created: ${item.label}`,
+      },
+      ...(item.revokedAt ? [{
+        id: `${item.id}:revoked`,
+        type: "apiKey" as const,
+        userId: item.userId,
+        createdAt: item.revokedAt,
+        status: "warning" as const,
+        summary: `API key revoked: ${item.label}`,
+      }] : []),
+    ])),
+  ]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .filter((item) => item.createdAt >= nowMinusWindow);
+
+  const recentEvents = combinedEvents
+    .filter((item) => eventType === "all" || item.type === eventType)
+    .slice(0, 40);
 
   res.status(200).json({
     totals: {
@@ -242,6 +345,75 @@ adminRouter.get("/overview", async (_req, res) => {
       personaDistribution: demoPersonaDistribution,
     },
     health: subsystemHealth,
+    monitoring: {
+      filters: {
+        windowDays,
+        eventType,
+        supportedWindowDays: [1, 7, 30],
+        supportedEventTypes: ["all", "recognition", "assistant", "playlist", "favorite", "share", "user", "apiKey"],
+      },
+      userActivity: {
+        signupsInWindow: usersInWindow.length,
+        activeRecognizersInWindow: new Set(recognitionsInWindow.map((item) => item.userId)).size,
+        recentSignups: recentUsers.filter((item) => item.createdAt >= nowMinusWindow).slice(0, 8).map((item) => ({
+          id: item.id,
+          username: item.username,
+          role: item.role ?? "user",
+          createdAt: item.createdAt,
+        })),
+        loginTrackingAvailable: false,
+      },
+      recognitionActivity: {
+        totalInWindow: recognitionsInWindow.length,
+        failedInWindow: failedRecognitionsInWindow.length,
+        successRatePctInWindow: recognitionWindowSuccessRate,
+        unresolvedLast24h,
+        methodBreakdownInWindow: recognitionsInWindow.reduce<Record<string, number>>((acc, item) => {
+          acc[item.method] = (acc[item.method] ?? 0) + 1;
+          return acc;
+        }, {}),
+        recentFailures: failedRecognitionsInWindow
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, 10)
+          .map((item) => ({
+            id: item.id,
+            method: item.method,
+            userId: item.userId,
+            title: item.title,
+            artist: item.artist,
+            createdAt: item.createdAt,
+          })),
+      },
+      assistantActivity: {
+        requestsInWindow: assistantInWindow.length,
+        failedInWindow: assistantInWindow.filter((item) => !item.recognized).length,
+        recentRequests: assistantInWindow
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, 12)
+          .map((item) => ({
+            id: item.id,
+            method: item.method,
+            userId: item.userId,
+            recognized: item.recognized,
+            createdAt: item.createdAt,
+          })),
+      },
+      contentFlows: {
+        playlistUpdatesInWindow: playlistEventsInWindow.length,
+        favoritesSavedInWindow: favoritesInWindow.length,
+        sharesCreatedInWindow: sharesInWindow.length,
+      },
+      apiKeyActivity: {
+        createdInWindow: apiKeyCreatesInWindow.length,
+        revokedInWindow: apiKeyRevocationsInWindow.length,
+      },
+      attentionFlags: {
+        highRecognitionFailureRate: failedRecognitionsInWindow.length >= 5 && recognitionWindowSuccessRate < 75,
+        assistantFailuresPresent: assistantInWindow.some((item) => !item.recognized),
+        unresolvedRecognitionsPresent: unresolvedLast24h > 0,
+      },
+      recentEvents,
+    },
     global: stats,
   });
 });
