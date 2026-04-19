@@ -97,6 +97,48 @@ type AdminOverview = {
     recognitionProviders: { status: "ok" | "degraded"; availableCount: number; providers: Record<string, boolean> };
   };
   ai: { assistantAvailable: boolean; mode: string; recentFailures: number; assistantRequests: number };
+  monitoring: {
+    filters: {
+      windowDays: 1 | 7 | 30;
+      eventType: "all" | "recognition" | "assistant" | "playlist" | "favorite" | "share" | "user" | "apiKey";
+      supportedWindowDays: number[];
+      supportedEventTypes: string[];
+    };
+    userActivity: {
+      signupsInWindow: number;
+      activeRecognizersInWindow: number;
+      recentSignups: Array<{ id: string; username: string; role: string; createdAt: string }>;
+      loginTrackingAvailable: boolean;
+    };
+    recognitionActivity: {
+      totalInWindow: number;
+      failedInWindow: number;
+      successRatePctInWindow: number;
+      unresolvedLast24h: number;
+      methodBreakdownInWindow: Record<string, number>;
+      recentFailures: Array<{ id: string; method: string; userId: string; title?: string; artist?: string; createdAt: string }>;
+    };
+    assistantActivity: {
+      requestsInWindow: number;
+      failedInWindow: number;
+      recentRequests: Array<{ id: string; method: string; userId: string; recognized: boolean; createdAt: string }>;
+    };
+    contentFlows: {
+      playlistUpdatesInWindow: number;
+      favoritesSavedInWindow: number;
+      sharesCreatedInWindow: number;
+    };
+    apiKeyActivity: {
+      createdInWindow: number;
+      revokedInWindow: number;
+    };
+    attentionFlags: {
+      highRecognitionFailureRate: boolean;
+      assistantFailuresPresent: boolean;
+      unresolvedRecognitionsPresent: boolean;
+    };
+    recentEvents: Array<{ id: string; type: string; userId: string; createdAt: string; status: string; summary: string }>;
+  };
 };
 
 type AiObservability = {
@@ -126,6 +168,8 @@ export default function AdminPage() {
   const [demoConfirmed, setDemoConfirmed] = useState(false);
   const [isAdminDemoLoggingIn, setIsAdminDemoLoggingIn] = useState(false);
   const [aiObservability, setAiObservability] = useState<AiObservability | null>(null);
+  const [activityWindowDays, setActivityWindowDays] = useState<1 | 7 | 30>(7);
+  const [eventTypeFilter, setEventTypeFilter] = useState<"all" | "recognition" | "assistant" | "playlist" | "favorite" | "share" | "user" | "apiKey">("all");
 
   const formatUtcDateTime = (value: string) => {
     const parsed = new Date(value);
@@ -133,31 +177,33 @@ export default function AdminPage() {
     return parsed.toISOString().replace("T", " ").slice(0, 19) + " UTC";
   };
 
+  async function loadAdminData(windowDays: 1 | 7 | 30, eventType: "all" | "recognition" | "assistant" | "playlist" | "favorite" | "share" | "user" | "apiKey") {
+    const overviewPath = `/api/admin/overview?windowDays=${windowDays}&eventType=${eventType}`;
+    const [overviewResponse, personasResponse, aiObsResponse] = await Promise.all([
+      apiFetch(overviewPath, { cache: "no-store" }),
+      apiFetch("/api/admin/demo-personas", { cache: "no-store" }),
+      apiFetch("/api/admin/ai-observability", { cache: "no-store" }),
+    ]);
+    if (!overviewResponse.ok || !personasResponse.ok || !aiObsResponse.ok) {
+      throw new Error("Admin access required.");
+    }
+    const overviewPayload = (await overviewResponse.json()) as AdminOverview;
+    const personasPayload = (await personasResponse.json()) as { items: PersonaOption[] };
+    const aiObsPayload = (await aiObsResponse.json()) as AiObservability;
+    setOverview(overviewPayload);
+    setPersonas(personasPayload.items);
+    setAiObservability(aiObsPayload);
+  }
+
   useEffect(() => {
     if (isLoading) return;
     if (!user || user.role !== "admin") {
       setError("Admin access required.");
       return;
     }
-    Promise.all([
-      apiFetch("/api/admin/overview", { cache: "no-store" }),
-      apiFetch("/api/admin/demo-personas", { cache: "no-store" }),
-      apiFetch("/api/admin/ai-observability", { cache: "no-store" }),
-    ])
-      .then(async ([overviewResponse, personasResponse, aiObsResponse]) => {
-        if (!overviewResponse.ok || !personasResponse.ok || !aiObsResponse.ok) {
-          setError("Admin access required.");
-          return;
-        }
-        const overviewPayload = (await overviewResponse.json()) as AdminOverview;
-        const personasPayload = (await personasResponse.json()) as { items: PersonaOption[] };
-        const aiObsPayload = (await aiObsResponse.json()) as AiObservability;
-        setOverview(overviewPayload);
-        setPersonas(personasPayload.items);
-        setAiObservability(aiObsPayload);
-      })
-      .catch(() => setError("Failed to load admin overview."));
-  }, [isLoading, user]);
+    loadAdminData(activityWindowDays, eventTypeFilter)
+      .catch((loadError) => setError((loadError as Error).message || "Failed to load admin overview."));
+  }, [isLoading, user, activityWindowDays, eventTypeFilter]);
 
   async function createDemo() {
     setIsGenerating(true);
@@ -186,7 +232,7 @@ export default function AdminPage() {
     const payload = (await res.json()) as { account: DemoAccount };
     setLastGenerated(payload.account);
     setActionMessage(`Generated ${payload.account.name} (${payload.account.persona}). Password is shown once.`);
-    const overviewResponse = await apiFetch("/api/admin/overview", { cache: "no-store" });
+    const overviewResponse = await apiFetch(`/api/admin/overview?windowDays=${activityWindowDays}&eventType=${eventTypeFilter}`, { cache: "no-store" });
     if (overviewResponse.ok) {
       setOverview((await overviewResponse.json()) as AdminOverview);
     }
@@ -224,6 +270,7 @@ export default function AdminPage() {
   if (!overview) return <section className="card p-4 sm:p-6">Loading admin dashboard...</section>;
 
   const recognitionMethods = Object.entries(overview.recognitions.methodBreakdown).sort((a, b) => b[1] - a[1]);
+  const windowMethods = Object.entries(overview.monitoring.recognitionActivity.methodBreakdownInWindow).sort((a, b) => b[1] - a[1]);
 
   return (
     <section className="space-y-6 pb-[calc(var(--layout-bottom-offset)+20px)]">
@@ -263,6 +310,28 @@ export default function AdminPage() {
       <section className="card p-5">
         <h2 className="text-lg font-semibold">Operational insights</h2>
         <p className="mt-1 text-sm text-[var(--muted)]">User growth, recognition quality, and subsystem readiness at a glance.</p>
+        <div className="mt-4 grid gap-3 rounded-xl border border-[var(--border)] p-4 sm:grid-cols-2">
+          <label className="text-sm">
+            <span className="mb-1 block font-medium">Activity window</span>
+            <select
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2"
+              value={activityWindowDays}
+              onChange={(event) => setActivityWindowDays(Number(event.target.value) as 1 | 7 | 30)}
+            >
+              {[1, 7, 30].map((days) => <option key={days} value={days}>Last {days} day{days === 1 ? "" : "s"}</option>)}
+            </select>
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block font-medium">Event type</span>
+            <select
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2"
+              value={eventTypeFilter}
+              onChange={(event) => setEventTypeFilter(event.target.value as typeof eventTypeFilter)}
+            >
+              {overview.monitoring.filters.supportedEventTypes.map((eventType) => <option key={eventType} value={eventType}>{eventType}</option>)}
+            </select>
+          </label>
+        </div>
         <div className="mt-4 grid gap-4 xl:grid-cols-2">
         <section className="rounded-xl border border-[var(--border)] p-4">
           <h3 className="text-xl font-semibold">User overview</h3>
@@ -296,6 +365,75 @@ export default function AdminPage() {
           </ul>
         </section>
       </div>
+      </section>
+
+      <section className="card p-5">
+        <h2 className="text-lg font-semibold">Activity monitoring</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">Focused monitoring for recognition, assistant, and content flow behavior in the selected window.</p>
+        <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+          <p className="rounded-lg border border-[var(--border)] p-3">Signups: <strong>{overview.monitoring.userActivity.signupsInWindow}</strong></p>
+          <p className="rounded-lg border border-[var(--border)] p-3">Active recognizers: <strong>{overview.monitoring.userActivity.activeRecognizersInWindow}</strong></p>
+          <p className="rounded-lg border border-[var(--border)] p-3">Recognitions: <strong>{overview.monitoring.recognitionActivity.totalInWindow}</strong></p>
+          <p className="rounded-lg border border-[var(--border)] p-3">Recognition failures: <strong>{overview.monitoring.recognitionActivity.failedInWindow}</strong></p>
+          <p className="rounded-lg border border-[var(--border)] p-3">Recognition success rate: <strong>{overview.monitoring.recognitionActivity.successRatePctInWindow}%</strong></p>
+          <p className="rounded-lg border border-[var(--border)] p-3">Assistant requests: <strong>{overview.monitoring.assistantActivity.requestsInWindow}</strong></p>
+          <p className="rounded-lg border border-[var(--border)] p-3">Assistant failures: <strong>{overview.monitoring.assistantActivity.failedInWindow}</strong></p>
+          <p className="rounded-lg border border-[var(--border)] p-3">Unresolved recognitions (24h): <strong>{overview.monitoring.recognitionActivity.unresolvedLast24h}</strong></p>
+        </div>
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <section className="rounded-xl border border-[var(--border)] p-4">
+            <h3 className="font-semibold">Attention flags</h3>
+            <ul className="mt-2 space-y-1 text-sm text-[var(--muted)]">
+              <li>High recognition failure rate: <strong>{overview.monitoring.attentionFlags.highRecognitionFailureRate ? "yes" : "no"}</strong></li>
+              <li>Assistant failures present: <strong>{overview.monitoring.attentionFlags.assistantFailuresPresent ? "yes" : "no"}</strong></li>
+              <li>Unresolved recognitions present: <strong>{overview.monitoring.attentionFlags.unresolvedRecognitionsPresent ? "yes" : "no"}</strong></li>
+              <li>Login tracking available: <strong>{overview.monitoring.userActivity.loginTrackingAvailable ? "yes" : "no"}</strong></li>
+            </ul>
+            <h4 className="mt-3 font-medium">Window method mix</h4>
+            <ul className="mt-1 space-y-1 text-sm text-[var(--muted)]">
+              {windowMethods.length === 0 ? <li>No recognition methods in this window.</li> : windowMethods.map(([method, count]) => <li key={method}>{method}: {count}</li>)}
+            </ul>
+          </section>
+          <section className="rounded-xl border border-[var(--border)] p-4">
+            <h3 className="font-semibold">Content flow counters</h3>
+            <div className="mt-2 grid gap-2 text-sm">
+              <p>Playlist updates: <strong>{overview.monitoring.contentFlows.playlistUpdatesInWindow}</strong></p>
+              <p>Favorites saved: <strong>{overview.monitoring.contentFlows.favoritesSavedInWindow}</strong></p>
+              <p>Shares created: <strong>{overview.monitoring.contentFlows.sharesCreatedInWindow}</strong></p>
+              <p>API keys created: <strong>{overview.monitoring.apiKeyActivity.createdInWindow}</strong></p>
+              <p>API keys revoked: <strong>{overview.monitoring.apiKeyActivity.revokedInWindow}</strong></p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section className="card p-5">
+        <h2 className="text-lg font-semibold">Recent operational events</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">Filtered event stream for operator triage without exposing sensitive payload data.</p>
+        <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--border)]">
+          <table className="min-w-full text-left text-sm">
+            <thead className="border-b border-[var(--border)] text-[var(--muted)]">
+              <tr>
+                <th className="px-3 py-2 font-medium">When (UTC)</th>
+                <th className="px-3 py-2 font-medium">Type</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium">Summary</th>
+              </tr>
+            </thead>
+            <tbody>
+              {overview.monitoring.recentEvents.length === 0 ? (
+                <tr><td className="px-3 py-3 text-[var(--muted)]" colSpan={4}>No events found for this filter and window.</td></tr>
+              ) : overview.monitoring.recentEvents.map((event) => (
+                <tr key={event.id} className="border-b border-[var(--border)]/60">
+                  <td className="px-3 py-2">{formatUtcDateTime(event.createdAt)}</td>
+                  <td className="px-3 py-2">{event.type}</td>
+                  <td className="px-3 py-2">{event.status}</td>
+                  <td className="px-3 py-2">{event.summary}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {aiObservability ? (
