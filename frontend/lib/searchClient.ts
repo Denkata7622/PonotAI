@@ -5,6 +5,10 @@ export type DiscoverSearchResult = {
   title: string;
   artist: string;
   thumbnailUrl: string;
+  durationSec?: number;
+  rankScore?: number;
+  kind?: "song" | "channel" | "other";
+  isTopicChannel?: boolean;
 };
 
 export type PersonalizedSearchResult = {

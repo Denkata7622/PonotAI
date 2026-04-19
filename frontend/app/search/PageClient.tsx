@@ -50,6 +50,9 @@ type SearchResult = {
   artist: string;
   thumbnailUrl: string;
   isTopicChannel?: boolean;
+  kind?: "song" | "channel" | "other";
+  durationSec?: number;
+  rankScore?: number;
 };
 
 export default function SearchPage() {
@@ -106,7 +109,14 @@ export default function SearchPage() {
       .then((response) => {
         if (cancelled) return;
         setIsUnavailable(response.isUnavailable);
-        setDiscoverResults(response.discover.map((item) => ({ ...item, isTopicChannel: item.artist.endsWith("- Topic"), artist: formatArtist(item.artist) })));
+        setDiscoverResults(response.discover.map((item) => ({
+          ...item,
+          isTopicChannel: item.isTopicChannel ?? item.artist.endsWith("- Topic"),
+          kind: item.kind,
+          durationSec: item.durationSec,
+          rankScore: item.rankScore,
+          artist: formatArtist(item.artist),
+        })));
         if (!response.isUnavailable) {
           saveQuery(debouncedQuery);
         }
@@ -160,8 +170,8 @@ export default function SearchPage() {
 
   const groupedResults = useMemo(
     () => ({
-      songs: discoverResults.filter((result) => !result.isTopicChannel),
-      channels: discoverResults.filter((result) => result.isTopicChannel),
+      songs: discoverResults.filter((result) => (result.kind ?? (result.isTopicChannel ? "channel" : "song")) === "song"),
+      channels: discoverResults.filter((result) => (result.kind ?? (result.isTopicChannel ? "channel" : "song")) !== "song"),
     }),
     [discoverResults],
   );
