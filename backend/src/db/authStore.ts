@@ -476,6 +476,14 @@ export async function deleteFavorite(userId: string, id: string): Promise<"ok" |
   return "ok";
 }
 
+export async function deleteFavoriteByTrackKey(userId: string, trackKey: string): Promise<"ok" | "missing"> {
+  const favorites = await prisma.favorite.findMany({ where: { userId } });
+  const target = favorites.find((item: any) => normalizeTrackKey(item.title, item.artist) === trackKey);
+  if (!target) return "missing";
+  await prisma.favorite.delete({ where: { id: target.id } });
+  return "ok";
+}
+
 export async function createSharedSong(item: Omit<SharedSongRecord, "id" | "createdAt" | "shareCode">): Promise<SharedSongRecord> {
   const record = await prisma.sharedSong.create({
     data: {

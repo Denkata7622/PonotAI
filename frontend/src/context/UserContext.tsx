@@ -89,6 +89,23 @@ const defaultGuestState: GuestState = {
   preferences: { theme: "dark", notifications: true },
 };
 
+function dedupeBySongKey<T extends { title?: string; artist?: string; songName?: string; artistName?: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+  for (const item of items) {
+    const hasIdentity = Boolean(item.title ?? item.songName ?? "") || Boolean(item.artist ?? item.artistName ?? "");
+    if (!hasIdentity) {
+      deduped.push(item);
+      continue;
+    }
+    const key = toSongKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(item);
+  }
+  return deduped;
+}
+
 function loadGuestState(): GuestState {
   if (typeof window === "undefined") return defaultGuestState;
   try {
@@ -140,7 +157,10 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
     case "SET_PREFERENCES":
       return { ...state, preferences: { ...state.preferences, ...action.payload } };
     case "ADD_HISTORY":
-      return { ...state, history: [action.payload, ...state.history].slice(0, 300) };
+      return {
+        ...state,
+        history: dedupeBySongKey([action.payload, ...state.history]).slice(0, 300),
+      };
     case "DELETE_HISTORY_ITEM":
       return { ...state, history: state.history.filter((i) => i.id !== action.payload) };
     case "CLEAR_HISTORY":
@@ -263,11 +283,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
     ]);
     if (histRes.ok) {
       const payload = (await histRes.json()) as { items: HistoryItem[] };
-      setServerHistory(payload.items || []);
+      setServerHistory(dedupeBySongKey(payload.items || []));
     }
     if (favRes.ok) {
       const payload = (await favRes.json()) as { items: FavoriteItem[] };
-      setServerFavorites(payload.items || []);
+      setServerFavorites(dedupeBySongKey(payload.items || []));
     }
   }
 
@@ -403,27 +423,28 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }
 
   async function addToHistory(item: Omit<HistoryItem, "id"> & { id?: string }) {
-    const incomingKey = toSongKey(item);
+    const canonical = toCanonicalSong(item);
+    const normalizedItem: Omit<HistoryItem, "id"> = {
+      ...item,
+      title: canonical.title,
+      artist: canonical.artist,
+      album: canonical.album,
+      coverUrl: canonical.coverUrl,
+    };
 
     if (isAuthenticated) {
-      const duplicate = serverHistory.find(
-        (entry) => toSongKey(entry) === incomingKey,
-      );
-      if (duplicate) {
-        await apiFetch(`/api/history/${duplicate.id}`, { method: "DELETE" });
-        notify("toast_duplicate_history");
-      }
-
-      const res = await apiFetch("/api/history", { method: "POST", body: JSON.stringify(item) });
+      const hadDuplicate = serverHistory.some((entry) => toSongKey(entry) === toSongKey(canonical));
+      const res = await apiFetch("/api/history", { method: "POST", body: JSON.stringify(normalizedItem) });
       if (res.ok) {
         const created = (await res.json()) as HistoryItem;
-        setServerHistory([created, ...serverHistory.filter((entry) => entry.id !== duplicate?.id)]);
+        setServerHistory(dedupeBySongKey([created, ...serverHistory.filter((entry) => entry.id !== created.id)]));
+        if (hadDuplicate) notify("toast_duplicate_history");
       }
       return;
     }
     dispatchGuest({
       type: "ADD_HISTORY",
-      payload: { id: item.id ?? crypto.randomUUID(), ...item },
+      payload: { id: item.id ?? crypto.randomUUID(), ...normalizedItem },
     });
   }
 
@@ -452,7 +473,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }
 
   async function addFavorite(song: Omit<FavoriteItem, "id"> & { id?: string }) {
-    const incomingKey = toSongKey(song);
+    const canonical = toCanonicalSong(song);
+    const normalizedSong = {
+      title: canonical.title,
+      artist: canonical.artist,
+      album: canonical.album,
+      coverUrl: canonical.coverUrl,
+    };
+    const incomingKey = toSongKey(normalizedSong);
     const existingFavorite = (isAuthenticated ? serverFavorites : guest.favorites).find(
       (item) => toSongKey(item) === incomingKey,
     );
@@ -462,15 +490,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
 
     if (isAuthenticated) {
-      const res = await apiFetch("/api/favorites", { method: "POST", body: JSON.stringify(song) });
+      const res = await apiFetch("/api/favorites", { method: "POST", body: JSON.stringify(normalizedSong) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "FAVORITE_FAILED");
-      setServerFavorites([data as FavoriteItem, ...serverFavorites]);
+      setServerFavorites(dedupeBySongKey([data as FavoriteItem, ...serverFavorites]));
       return;
     }
     dispatchGuest({
       type: "ADD_FAVORITE",
-      payload: { id: song.id ?? crypto.randomUUID(), title: song.title, artist: song.artist, album: song.album ?? null, coverUrl: song.coverUrl ?? null },
+      payload: { id: song.id ?? crypto.randomUUID(), title: normalizedSong.title, artist: normalizedSong.artist, album: normalizedSong.album ?? null, coverUrl: normalizedSong.coverUrl ?? null },
     });
   }
 
