@@ -67,7 +67,7 @@ function toRecognizedTrack(result: SongRecognitionResult): Track {
 }
 
 export function HomeContent() {
-  const { addToHistory, addFavorite, addManualSubmission, isAuthenticated, saveToLibrary, history: userHistory, deleteHistoryItem } = useUser();
+  const { addToHistory, addManualSubmission, isAuthenticated, saveToLibrary, history: userHistory, deleteHistoryItem } = useUser();
   const [audioResult, setAudioResult] = useState<AudioRecognitionResult | null>(null);
   const [imageResult, setImageResult] = useState<ImageRecognitionResult | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -88,7 +88,6 @@ export function HomeContent() {
   const [canRetryRecognition, setCanRetryRecognition] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [maxSongs, setMaxSongs] = useState(10);
   const [ocrLanguage, setOcrLanguage] = useState("eng");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -160,7 +159,7 @@ export function HomeContent() {
   }
 
 
-  const canonicalHistory = useMemo<HistoryEntry[]>(() => {
+  const history = useMemo<HistoryEntry[]>(() => {
     return userHistory
       .filter((item) => item.title || item.artist)
       .map((item) => {
@@ -182,12 +181,9 @@ export function HomeContent() {
             durationSec: 0,
           },
         };
-      });
+      })
+      .slice(0, 18);
   }, [userHistory]);
-
-  useEffect(() => {
-    setHistory(canonicalHistory.slice(0, 18));
-  }, [canonicalHistory]);
   const latestResult: SongRecognitionResult | null = useMemo(() => {
     if (audioResult) return songMatchToRecognitionResult(audioResult.primaryMatch, "audio");
     if (imageResult?.songs[0]) return songMatchToRecognitionResult(imageResult.songs[0], "image");
@@ -257,7 +253,6 @@ export function HomeContent() {
   async function handleDeleteHistoryItem(id: string) {
     try {
       await deleteHistoryItem(id);
-      setHistory((prev) => prev.filter((entry) => entry.id !== id));
     } catch {
       pushToast("error", "Failed to remove song from history.");
     }
@@ -279,7 +274,16 @@ export function HomeContent() {
     };
     setAudioResult({ primaryMatch: demoSong, alternatives: [] });
     setImageResult(null);
-    addToHistoryLocal("audio", [demoSong]);
+    void addToHistory({
+      id: crypto.randomUUID(),
+      method: "audio-record",
+      title: demoSong.songName,
+      artist: demoSong.artist,
+      album: demoSong.album,
+      coverUrl: demoSong.albumArtUrl,
+      recognized: true,
+      createdAt: new Date().toISOString(),
+    });
     window.localStorage.setItem(scopedKey(DEMO_SEEN_KEY, profile.id), "true");
     setDemoSeen(true);
   }
@@ -319,27 +323,6 @@ export function HomeContent() {
     }
     deletedPlaylistRef.current = null;
     setShowPlaylistUndoToast(false);
-  }
-
-  function addToHistoryLocal(source: HistoryEntry["source"], songs: SongMatch[]) {
-    const createdAt = new Date().toISOString();
-    setHistory((prev) => {
-      let next = [...prev];
-      for (const song of songs) {
-        const key = toSongKey({ title: song.songName, artist: song.artist });
-        const hadDuplicate = next.some(
-          (entry) => toSongKey({ title: entry.song.songName, artist: entry.song.artist }) === key,
-        );
-        const filtered = next.filter(
-          (entry) => toSongKey({ title: entry.song.songName, artist: entry.song.artist }) !== key,
-        );
-        if (hadDuplicate) {
-          pushToast("info", t("toast_duplicate_history", language));
-        }
-        next = [{ id: crypto.randomUUID(), source, createdAt, song }, ...filtered];
-      }
-      return next.slice(0, 18);
-    });
   }
 
   async function runRecognitionCountdown() {
@@ -530,8 +513,6 @@ export function HomeContent() {
         const updatedResult = { ...pendingReviewPayload.imageResult, songs: selectedSongs, count: selectedSongs.length };
         setImageResult(updatedResult);
         setAudioResult(null);
-        // Update local history grid immediately
-        addToHistoryLocal("ocr", selectedSongs);
         await Promise.all(selectedSongs.map((song) => addToHistory({
           id: crypto.randomUUID(),
           method: "album-image",
@@ -549,7 +530,6 @@ export function HomeContent() {
         const selectedAudioMatch = selectedSongs[0];
         setAudioResult({ ...pendingReviewPayload.audioResult, primaryMatch: selectedAudioMatch });
         setImageResult(null);
-        addToHistoryLocal("audio", [selectedAudioMatch]);
         await addToHistory({
           id: crypto.randomUUID(),
           method: "audio-record",
@@ -586,7 +566,6 @@ export function HomeContent() {
   }
 
   function saveSong(song: SongMatch) {
-    addToHistoryLocal("audio", [song]);
     void saveToLibrary({
       title: song.songName,
       artist: song.artist,
@@ -600,19 +579,7 @@ export function HomeContent() {
 
   function favoriteSong(song: SongMatch) {
     const favoriteKey = toSongKey({ title: song.songName, artist: song.artist });
-    if (favoritesSet.has(favoriteKey)) {
-      toggleFavorite(favoriteKey, song.songName, song.artist, song.albumArtUrl, song.youtubeVideoId);
-      return;
-    }
-    void addFavorite({
-      id: `${song.songName}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-      savedAt: new Date().toISOString(),
-      title: song.songName,
-      artist: song.artist,
-      album: song.album,
-      coverUrl: song.albumArtUrl,
-    });
-    pushToast("success", `Added ${song.songName} to favorites`);
+    toggleFavorite(favoriteKey, song.songName, song.artist, song.albumArtUrl, song.youtubeVideoId);
   }
 
   function playSong(song: SongMatch) {
