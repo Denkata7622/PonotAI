@@ -42,7 +42,7 @@ const { addToQueue, addManyToQueue, clearQueue, playNow } = usePlayer();
 const { favorites: userFavorites, history: userHistory, deleteHistoryItem, isAuthenticated, isLoading } = useUser();
 const { profile } = useProfile();
 
-const { favoritesList, toggleFavorite } = useLibrary(profile.id);
+const { toggleFavorite } = useLibrary(profile.id);
 
 const normalizeSong = (item: any): Song => {
 const canonical = toCanonicalSong(item);
@@ -124,21 +124,10 @@ useEffect(() => {
   setShowPlaylistDetail(true);
 }, [playlistFocusId, playlists]);
 
-// favorites source: cloud for authenticated users, local library state for guests
 const mergedFavorites = useMemo(() => {
-const baseFavorites = isAuthenticated
-? (userFavorites || []).map(normalizeSong)
-: favoritesList.map((favorite) =>
-    normalizeSong({
-      id: favorite.key,
-      title: favorite.title,
-      artist: favorite.artist,
-      coverUrl: favorite.artworkUrl,
-    }),
-  );
-
+const baseFavorites = (userFavorites || []).map(normalizeSong);
 return dedupeByTrack(baseFavorites, (item) => item.title ?? "", (item) => item.artist ?? "");
-}, [favoritesList, isAuthenticated, userFavorites, language]);
+}, [userFavorites, language]);
 
 // clear search when switching tabs
 useEffect(() => {

@@ -83,6 +83,8 @@ export function loadLibraryState(profileId: string): LibraryState {
 
 export function persistLibraryState(state: LibraryState, profileId: string): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(scopedKey(FAVORITES_KEY, profileId), JSON.stringify(state.favorites));
+  // Favorites are persisted via UserContext guest/auth canonical flows.
+  // Keep removing stale legacy mirror values so there is one source of truth.
+  window.localStorage.removeItem(scopedKey(FAVORITES_KEY, profileId));
   window.localStorage.setItem(scopedKey(PLAYLISTS_KEY, profileId), JSON.stringify(state.playlists));
 }

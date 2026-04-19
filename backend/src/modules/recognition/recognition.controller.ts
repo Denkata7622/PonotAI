@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
-import { addHistoryEntry, addUserHistoryEntry } from "../history/history.service";
+import { addUserHistoryEntry } from "../history/history.service";
 import { MissingProviderConfigError, NoVerifiedResultError } from "./providers/audd.provider";
 import { recognizeSongFromAudioByMode, recognizeSongFromImage, type RecognitionMode } from "./recognition.service";
 import { recalculateAchievementsForUser } from "../achievements/achievements.service";
@@ -43,20 +43,8 @@ async function persistRecognitionForUser(req: Request, metadata: { songName: str
   await recalculateAchievementsForUser(req.userId);
 }
 
-async function safePersistRecognition(req: Request, metadata: { songName: string; artist: string; album?: string; youtubeVideoId?: string; }): Promise<string[]> {
+async function safePersistRecognition(req: Request, metadata: { songName: string; artist: string; album?: string; }): Promise<string[]> {
   const warnings: string[] = [];
-  if (req.userId) {
-    try {
-      await addHistoryEntry({
-        songName: metadata.songName,
-        artist: metadata.artist,
-        youtubeVideoId: metadata.youtubeVideoId,
-      });
-    } catch (error) {
-      warnings.push("History persistence unavailable; recognition result returned without storage.");
-      console.warn("[recognition] Failed to persist global history", error);
-    }
-  }
 
   try {
     await persistRecognitionForUser(req, metadata);
@@ -126,19 +114,13 @@ export async function recognizeImageController(req: Request, res: Response): Pro
       const persistedKeys = new Set<string>();
       for (const song of result.songs) {
         const dedupeKey = `${normalizeTrackKey(song.songName, song.artist)}|||${song.youtubeVideoId ?? ""}`;
-        if (persistedKeys.has(dedupeKey)) {
-          continue;
-        }
+        if (persistedKeys.has(dedupeKey)) continue;
         persistedKeys.add(dedupeKey);
         try {
-          await addHistoryEntry({
-            songName: song.songName,
-            artist: song.artist,
-            youtubeVideoId: song.youtubeVideoId,
-          });
+          await persistRecognitionForUser(req, { songName: song.songName, artist: song.artist, album: song.album });
         } catch (error) {
-          persistenceWarnings.push("History persistence unavailable; OCR results returned without storage.");
-          console.warn("[recognition] Failed to persist OCR history entry", error);
+          persistenceWarnings.push("User history persistence unavailable; OCR results returned without storage.");
+          console.warn("[recognition] Failed to persist OCR user history entry", error);
           break;
         }
       }

@@ -90,9 +90,9 @@ export function useLibrary(profileId: string) {
     }
 
     void addFavorite({
-      title,
-      artist,
-      coverUrl: artworkUrl,
+      title: canonical.title,
+      artist: canonical.artist,
+      coverUrl: canonical.coverUrl,
     });
   }
 

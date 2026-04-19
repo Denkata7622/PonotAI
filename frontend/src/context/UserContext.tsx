@@ -504,21 +504,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   async function removeFavorite(id: string) {
     if (isAuthenticated) {
-      const resolvedId = serverFavorites.find((favorite) => favorite.id === id)?.id
-        ?? serverFavorites.find((favorite) => toSongKey(favorite) === id)?.id;
-
-      if (!resolvedId) {
-        console.error("Failed to remove favorite: could not resolve backend favorite id", { id });
-        return;
-      }
-
-      const res = await apiFetch(`/api/favorites/${resolvedId}`, { method: "DELETE" });
+      const encodedTarget = encodeURIComponent(id);
+      const res = await apiFetch(`/api/favorites/${encodedTarget}`, { method: "DELETE" });
       if (!res.ok) {
-        console.error("Failed to remove favorite via API", { id, resolvedId, status: res.status });
+        console.error("Failed to remove favorite via API", { id, status: res.status });
         return;
       }
-
-      setServerFavorites(serverFavorites.filter((f) => f.id !== resolvedId));
+      setServerFavorites(serverFavorites.filter((favorite) => favorite.id !== id && toSongKey(favorite) !== id));
       return;
     }
     const resolvedId = guest.favorites.find((favorite) => favorite.id === id)?.id
