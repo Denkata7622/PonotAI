@@ -4,6 +4,7 @@
 
 import { NextResponse } from "next/server";
 import { normalizeVisibleText } from "@/lib/text";
+import { parseIsoDurationToSec, rankYouTubeSearchResults } from "@/lib/youtubeSearchRanking";
 
 type YouTubeSearchItem = {
   id?: { videoId?: string };
@@ -13,6 +14,39 @@ type YouTubeSearchItem = {
     thumbnails?: { medium?: { url?: string } };
   };
 };
+
+type YouTubeVideoDetailsItem = {
+  id?: string;
+  contentDetails?: {
+    duration?: string;
+  };
+};
+
+async function fetchDurationMap(videoIds: string[], apiKey: string): Promise<Record<string, number>> {
+  if (videoIds.length === 0) return {};
+
+  const detailsTarget = new URL("https://www.googleapis.com/youtube/v3/videos");
+  detailsTarget.searchParams.set("part", "contentDetails");
+  detailsTarget.searchParams.set("id", videoIds.join(","));
+  detailsTarget.searchParams.set("key", apiKey);
+
+  const detailsRes = await fetch(detailsTarget.toString(), { cache: "no-store" });
+  if (!detailsRes.ok) {
+    console.error("[search] YouTube video details status", detailsRes.status);
+    return {};
+  }
+
+  const detailsText = await detailsRes.text();
+  const detailsPayload = JSON.parse(detailsText) as { items?: YouTubeVideoDetailsItem[] };
+  const durationMap: Record<string, number> = {};
+  for (const item of detailsPayload.items ?? []) {
+    const id = item.id;
+    if (!id) continue;
+    const durationSec = parseIsoDurationToSec(item.contentDetails?.duration);
+    if (durationSec !== undefined) durationMap[id] = durationSec;
+  }
+  return durationMap;
+}
 
 export async function GET(request: Request) {
   const apiKey = process.env.YOUTUBE_API_KEY;
@@ -40,7 +74,7 @@ export async function GET(request: Request) {
   target.searchParams.set("part", "snippet");
   target.searchParams.set("type", "video");
   target.searchParams.set("videoCategoryId", "10");
-  target.searchParams.set("maxResults", "8");
+  target.searchParams.set("maxResults", "14");
   target.searchParams.set("q", query);
   target.searchParams.set("key", apiKey);
 
@@ -60,19 +94,28 @@ export async function GET(request: Request) {
     }
 
     const payload = JSON.parse(bodyText) as { items?: YouTubeSearchItem[] };
-    const results = (payload.items ?? [])
+    const baseResults = (payload.items ?? [])
       .map((item) => {
         const videoId = item.id?.videoId;
         const title = normalizeVisibleText(item.snippet?.title);
-        const artist = normalizeVisibleText(item.snippet?.channelTitle);
+        const channelTitle = normalizeVisibleText(item.snippet?.channelTitle);
         const thumbnailUrl = item.snippet?.thumbnails?.medium?.url;
-        if (!videoId || !title || !artist || !thumbnailUrl) return null;
+        if (!videoId || !title || !channelTitle || !thumbnailUrl) return null;
 
-        return { videoId, title, artist, thumbnailUrl };
+        return { videoId, title, channelTitle, thumbnailUrl };
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
-    return NextResponse.json(results);
+    const durationMap = await fetchDurationMap(baseResults.map((result) => result.videoId), apiKey);
+    const ranked = rankYouTubeSearchResults(
+      query,
+      baseResults.map((item) => ({
+        ...item,
+        durationSec: durationMap[item.videoId],
+      })),
+    );
+
+    return NextResponse.json(ranked.slice(0, 8));
   } catch (error) {
     console.error("[search] Request failed:", error);
     return NextResponse.json(
