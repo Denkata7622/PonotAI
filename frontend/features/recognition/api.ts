@@ -21,6 +21,8 @@ export type SongMatch = {
 
 import { apiFetch } from "@/src/lib/apiFetch";
 import { normalizeVisibleText } from "@/lib/text";
+import { getApiBaseUrl } from "@/lib/apiConfig";
+import { enrichSongCoverArt } from "./coverArt";
 
 export type SongRecognitionResult = SongMatch & {
   source?: "provider" | "ocr_fallback" | "audio" | "image";
@@ -131,22 +133,30 @@ function normalizeSong(result: SongRecognitionResult): SongRecognitionResult {
 
 export async function recognizeFromAudio(audioBlob: Blob): Promise<AudioRecognitionResult> {
   const primary = await postMultipart<SongRecognitionResult>("/api/recognition/audio", "audio", audioBlob, "recording.webm");
-  return { primaryMatch: normalizeSong(primary), alternatives: [] };
+  const normalized = normalizeSong(primary);
+  const enriched = await enrichSongCoverArt(getApiBaseUrl(), normalized);
+  return { primaryMatch: enriched, alternatives: [] };
 }
 
 export async function recognizeFromHumming(audioBlob: Blob): Promise<AudioRecognitionResult> {
   const primary = await postMultipart<SongRecognitionResult>("/api/recognition/audio/humming", "audio", audioBlob, "humming.webm");
-  return { primaryMatch: normalizeSong(primary), alternatives: [] };
+  const normalized = normalizeSong(primary);
+  const enriched = await enrichSongCoverArt(getApiBaseUrl(), normalized);
+  return { primaryMatch: enriched, alternatives: [] };
 }
 
 export async function recognizeFromLiveRecording(audioBlob: Blob): Promise<AudioRecognitionResult> {
   const primary = await postMultipart<SongRecognitionResult>("/api/recognition/audio/live", "audio", audioBlob, "live.webm");
-  return { primaryMatch: normalizeSong(primary), alternatives: [] };
+  const normalized = normalizeSong(primary);
+  const enriched = await enrichSongCoverArt(getApiBaseUrl(), normalized);
+  return { primaryMatch: enriched, alternatives: [] };
 }
 
 export async function recognizeFromVideo(videoFile: File): Promise<AudioRecognitionResult> {
   const primary = await postMultipart<SongRecognitionResult>("/api/recognition/video", "video", videoFile, videoFile.name);
-  return { primaryMatch: normalizeSong(primary), alternatives: [] };
+  const normalized = normalizeSong(primary);
+  const enriched = await enrichSongCoverArt(getApiBaseUrl(), normalized);
+  return { primaryMatch: enriched, alternatives: [] };
 }
 
 export async function recognizeFromImage(imageFile: File, maxSongs = 1, language = "eng"): Promise<ImageRecognitionResult> {

@@ -7,6 +7,7 @@ import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { RotateCcw } from "../lucide-react";
 import { getApiBaseUrl } from "../lib/apiConfig";
+import { lookupCoverArtUrls } from "../features/recognition/coverArt";
 
 type EditableSong = SongMatch & {
   selected: boolean;
@@ -71,18 +72,15 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
     const target = editableSongs[index];
     if (!target) return;
 
-    const title = encodeURIComponent(target.editedSongName?.trim() || target.songName);
-    const artist = encodeURIComponent(target.editedArtist?.trim() || target.artist);
-    const excludeQuery = useExclude && target.coverOptions.length > 0
-      ? `&exclude=${encodeURIComponent(target.coverOptions.join(","))}`
-      : "";
+    const title = target.editedSongName?.trim() || target.songName;
+    const artist = target.editedArtist?.trim() || target.artist;
 
     setEditableSongs((prev) => prev.map((song, i) => (i === index ? { ...song, loadingCovers: true } : song)));
     try {
-      const response = await fetch(`${apiBaseUrl}/api/cover-art?title=${title}&artist=${artist}${excludeQuery}`);
-      if (!response.ok) return;
-      const payload = (await response.json()) as { covers?: Array<{ url: string }> };
-      const coverUrls = (payload.covers ?? []).map((cover) => cover.url).slice(0, 4);
+      const coverUrls = await lookupCoverArtUrls(apiBaseUrl, title, artist, {
+        exclude: useExclude ? target.coverOptions : [],
+        limit: 4,
+      });
       if (coverUrls.length === 0) return;
 
       setEditableSongs((prev) => prev.map((song, i) => (
