@@ -36,6 +36,11 @@ export type SongTasteAdminFilters = {
   queueStatus?: SongTasteQueueStatus;
 };
 
+type SongTasteAdminActionLookup = {
+  id?: string;
+  trackKey?: string;
+};
+
 function confidenceFromSignal(signal: number): number {
   const clamped = Math.max(0, Math.min(1, signal));
   return Number((0.35 + clamped * 0.6).toFixed(2));
@@ -304,18 +309,22 @@ export async function getSongTasteAdminSnapshot(filters: SongTasteAdminFilters =
 
   const [
     total,
+    stage1NotStarted,
     stage1Completed,
     stage1Failed,
     stage1Queued,
+    stage1Processing,
     queueQueued,
     queueProcessing,
     queueFailed,
     recent,
   ] = await Promise.all([
     prisma.songTaste.count(),
+    prisma.songTaste.count({ where: { stage1Status: SongTasteStageStatus.not_started } }),
     prisma.songTaste.count({ where: { stage1Status: SongTasteStageStatus.completed } }),
     prisma.songTaste.count({ where: { stage1Status: SongTasteStageStatus.failed } }),
     prisma.songTaste.count({ where: { stage1Status: SongTasteStageStatus.queued } }),
+    prisma.songTaste.count({ where: { stage1Status: SongTasteStageStatus.processing } }),
     prisma.songTasteQueue.count({ where: { status: SongTasteQueueStatus.queued } }),
     prisma.songTasteQueue.count({ where: { status: SongTasteQueueStatus.processing } }),
     prisma.songTasteQueue.count({ where: { status: SongTasteQueueStatus.failed } }),
@@ -335,9 +344,11 @@ export async function getSongTasteAdminSnapshot(filters: SongTasteAdminFilters =
   return {
     totals: {
       songs: total,
+      stage1NotStarted,
       stage1Completed,
       stage1Failed,
       stage1Queued,
+      stage1Processing,
       stage2Scaffolded: total,
       stage3Scaffolded: total,
     },
@@ -363,11 +374,127 @@ export async function getSongTasteAdminSnapshot(filters: SongTasteAdminFilters =
           status: item.queue.status,
           attempts: item.queue.attempts,
           availableAt: item.queue.availableAt.toISOString(),
+          startedAt: item.queue.startedAt?.toISOString() ?? null,
+          finishedAt: item.queue.finishedAt?.toISOString() ?? null,
+          createdAt: item.queue.createdAt.toISOString(),
           updatedAt: item.queue.updatedAt.toISOString(),
           lastError: item.queue.lastError,
         }
         : null,
+      createdAt: item.createdAt.toISOString(),
+      lastQueuedAt: item.lastQueuedAt?.toISOString() ?? null,
       updatedAt: item.updatedAt.toISOString(),
     })),
+  };
+}
+
+async function findSongTasteForAdminLookup(input: SongTasteAdminActionLookup) {
+  if (input.id?.trim()) {
+    return prisma.songTaste.findUnique({
+      where: { id: input.id.trim() },
+      include: { queue: true },
+    });
+  }
+
+  if (input.trackKey?.trim()) {
+    return prisma.songTaste.findUnique({
+      where: { trackKey: input.trackKey.trim() },
+      include: { queue: true },
+    });
+  }
+
+  return null;
+}
+
+function toSongTasteAdminItem(item: Awaited<ReturnType<typeof findSongTasteForAdminLookup>>) {
+  if (!item) return null;
+  return {
+    id: item.id,
+    trackKey: item.trackKey,
+    title: item.title,
+    artist: item.artist,
+    status: item.status,
+    stage1Status: item.stage1Status,
+    stage2Status: item.stage2Status,
+    stage3Status: item.stage3Status,
+    stage1Data: item.stage1Data,
+    stage1Confidence: item.stage1Confidence,
+    stage1AnalyzedAt: item.stage1AnalyzedAt?.toISOString() ?? null,
+    stage2AnalyzedAt: item.stage2AnalyzedAt?.toISOString() ?? null,
+    stage3AnalyzedAt: item.stage3AnalyzedAt?.toISOString() ?? null,
+    stage1Error: item.stage1Error,
+    stage2Error: item.stage2Error,
+    stage3Error: item.stage3Error,
+    analysisVersion: item.analysisVersion,
+    createdAt: item.createdAt.toISOString(),
+    lastQueuedAt: item.lastQueuedAt?.toISOString() ?? null,
+    updatedAt: item.updatedAt.toISOString(),
+    queue: item.queue
+      ? {
+        id: item.queue.id,
+        status: item.queue.status,
+        attempts: item.queue.attempts,
+        availableAt: item.queue.availableAt.toISOString(),
+        startedAt: item.queue.startedAt?.toISOString() ?? null,
+        finishedAt: item.queue.finishedAt?.toISOString() ?? null,
+        createdAt: item.queue.createdAt.toISOString(),
+        updatedAt: item.queue.updatedAt.toISOString(),
+        lastError: item.queue.lastError,
+      }
+      : null,
+  };
+}
+
+export async function getSongTasteAdminItem(input: SongTasteAdminActionLookup) {
+  const item = await findSongTasteForAdminLookup(input);
+  return toSongTasteAdminItem(item);
+}
+
+export async function adminAnalyzeSongTasteNow(input: SongTasteAdminActionLookup & { force?: boolean }) {
+  const songTaste = await findSongTasteForAdminLookup(input);
+  if (!songTaste) {
+    return { ok: false as const, code: "NOT_FOUND" as const, message: "Song Taster entry not found." };
+  }
+
+  const result = await queueSongTasteAnalysis({
+    title: songTaste.title?.trim() || "Unknown Song",
+    artist: songTaste.artist?.trim() || "Unknown Artist",
+    force: Boolean(input.force),
+  });
+
+  const fresh = await getSongTasteAdminItem({ id: songTaste.id });
+  return {
+    ok: true as const,
+    queued: result.queued,
+    trackKey: result.trackKey,
+    item: fresh,
+  };
+}
+
+export async function adminRetryFailedSongTaste(input: SongTasteAdminActionLookup) {
+  const songTaste = await findSongTasteForAdminLookup(input);
+  if (!songTaste) {
+    return { ok: false as const, code: "NOT_FOUND" as const, message: "Song Taster entry not found." };
+  }
+
+  const hasFailure = songTaste.stage1Status === SongTasteStageStatus.failed
+    || songTaste.queue?.status === SongTasteQueueStatus.failed;
+
+  if (!hasFailure) {
+    return { ok: false as const, code: "NOT_FAILED" as const, message: "Retry is only available for failed Stage 1 entries." };
+  }
+
+  const result = await queueSongTasteAnalysis({
+    title: songTaste.title?.trim() || "Unknown Song",
+    artist: songTaste.artist?.trim() || "Unknown Artist",
+    force: true,
+  });
+
+  const fresh = await getSongTasteAdminItem({ id: songTaste.id });
+  return {
+    ok: true as const,
+    queued: result.queued,
+    trackKey: result.trackKey,
+    item: fresh,
   };
 }
