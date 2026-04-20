@@ -14,6 +14,7 @@ import { useLibrary } from "../features/library/useLibrary";
 import {
   recognizeFromAudio,
   recognizeFromImage,
+  recognizeFromImages,
   type AudioRecognitionResult,
   type ImageRecognitionResult,
   type SongMatch,
@@ -42,6 +43,7 @@ type Toast = { id: string; kind: "success" | "error" | "info"; message: string }
 type HistoryEntry = { id: string; source: "audio" | "ocr"; createdAt: string; song: SongMatch };
 const IMAGE_MAX_MB = 10;
 const IMAGE_MIME_WHITELIST = ["image/png", "image/jpeg", "image/webp"];
+const MAX_OCR_BATCH_IMAGES = 12;
 const MAX_SONGS_KEY = "ponotai.settings.maxSongs";
 const OCR_LANGUAGE_KEY = "ponotai.settings.ocrLanguage";
 const DEMO_SEEN_KEY = "ponotai.demo.seen";
@@ -92,8 +94,8 @@ export function HomeContent() {
   const [ocrLanguage, setOcrLanguage] = useState("eng");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [showAssistantHints, setShowAssistantHints] = useState(true);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadPreviews, setUploadPreviews] = useState<string[]>([]);
   const [demoSeen, setDemoSeen] = useState(true);
   const [showNewPlaylistModal, setShowNewPlaylistModal] = useState(false);
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
@@ -249,6 +251,10 @@ export function HomeContent() {
       window.clearTimeout(deletePlaylistTimeoutRef.current);
     }
   }, []);
+
+  useEffect(() => () => {
+    uploadPreviews.forEach((preview) => URL.revokeObjectURL(preview));
+  }, [uploadPreviews]);
 
   async function handleDeleteHistoryItem(id: string) {
     try {
@@ -449,31 +455,35 @@ export function HomeContent() {
     return null;
   }
 
-  async function handleSelectUploadFile(file: File) {
-    const validationError = validateImage(file);
-    if (validationError) {
-      setErrorMessage(validationError);
-      pushToast("error", validationError);
-      return;
-    }
-    const readable = await isImageReadable(file);
-    if (!readable) {
-      const warning = language === "bg" ? "Изображението е твърде тъмно за надеждно OCR разчитане." : "Image is too dark/blank for reliable OCR.";
-      setErrorMessage(warning);
-      pushToast("error", warning);
-      return;
+  async function handleSelectUploadFiles(files: File[]) {
+    const validFiles: File[] = [];
+    const firstBatch = files.slice(0, MAX_OCR_BATCH_IMAGES);
+    for (const file of firstBatch) {
+      const validationError = validateImage(file);
+      if (validationError) {
+        pushToast("error", `${file.name}: ${validationError}`);
+        continue;
+      }
+      const readable = await isImageReadable(file);
+      if (!readable) {
+        const warning = language === "bg" ? "Изображението е твърде тъмно за надеждно OCR разчитане." : "Image is too dark/blank for reliable OCR.";
+        pushToast("error", `${file.name}: ${warning}`);
+        continue;
+      }
+      validFiles.push(file);
     }
 
-    setUploadFile(file);
-    setUploadPreview(URL.createObjectURL(file));
-    setErrorMessage(null);
+    uploadPreviews.forEach((preview) => URL.revokeObjectURL(preview));
+    setUploadFiles(validFiles);
+    setUploadPreviews(validFiles.map((file) => URL.createObjectURL(file)));
+    setErrorMessage(validFiles.length > 0 ? null : (language === "bg" ? "Няма валидни изображения за OCR." : "No valid images available for OCR."));
   }
 
   async function handleSubmitUpload() {
-    if (!uploadFile) return;
+    if (uploadFiles.length === 0) return;
     setIsLoadingImage(true);
     try {
-      const cacheKey = `${uploadFile.name}-${uploadFile.size}-${maxSongs}-${ocrLanguage}`;
+      const cacheKey = `${uploadFiles.map((file) => `${file.name}-${file.size}`).join("|")}-${maxSongs}-${ocrLanguage}`;
       if (imageCache.current.has(cacheKey)) {
         const cachedResult = imageCache.current.get(cacheKey)!;
         setPendingReviewPayload({
@@ -487,7 +497,9 @@ export function HomeContent() {
         return;
       }
 
-      const recognized = await recognizeFromImage(uploadFile, maxSongs, ocrLanguage);
+      const recognized = uploadFiles.length === 1
+        ? await recognizeFromImage(uploadFiles[0]!, maxSongs, ocrLanguage)
+        : await recognizeFromImages(uploadFiles, maxSongs, ocrLanguage);
       imageCache.current.set(cacheKey, recognized);
       setPendingReviewPayload({
         source: "image",
@@ -497,6 +509,11 @@ export function HomeContent() {
       setShowReviewModal(true);
       setIsUploadOpen(false);
       pushToast("info", t("toast_found_review", language, { count: recognized.count }));
+      if ((recognized.batch?.failedCount ?? 0) > 0) {
+        pushToast("info", language === "bg"
+          ? `${recognized.batch?.failedCount} изображения не дадоха разпознати резултати.`
+          : `${recognized.batch?.failedCount} images returned no OCR song matches.`);
+      }
     } catch (error) {
       setErrorMessage((error as Error).message || t("error_recognition_failed", language));
       pushToast("error", t("toast_image_failed", language));
@@ -510,10 +527,13 @@ export function HomeContent() {
     setIsSavingReviewedSongs(true);
     try {
       if (pendingReviewPayload.source === "image" && pendingReviewPayload.imageResult) {
-        const updatedResult = { ...pendingReviewPayload.imageResult, songs: selectedSongs, count: selectedSongs.length };
+        const dedupedSelection = selectedSongs.filter((song, index, songs) => (
+          songs.findIndex((candidate) => toSongKey({ title: candidate.songName, artist: candidate.artist }) === toSongKey({ title: song.songName, artist: song.artist })) === index
+        ));
+        const updatedResult = { ...pendingReviewPayload.imageResult, songs: dedupedSelection, count: dedupedSelection.length };
         setImageResult(updatedResult);
         setAudioResult(null);
-        await Promise.all(selectedSongs.map((song) => addToHistory({
+        await Promise.all(dedupedSelection.map((song) => addToHistory({
           id: crypto.randomUUID(),
           method: "album-image",
           title: song.songName,
@@ -523,7 +543,7 @@ export function HomeContent() {
           recognized: true,
           createdAt: new Date().toISOString(),
         })));
-        pushToast("success", t("toast_added", language, { count: selectedSongs.length }));
+        pushToast("success", t("toast_added", language, { count: dedupedSelection.length }));
       }
 
       if (pendingReviewPayload.source === "audio" && pendingReviewPayload.audioResult && selectedSongs[0]) {
@@ -896,9 +916,9 @@ export function HomeContent() {
       <UploadModal
         language={language}
         open={isUploadOpen}
-        previewUrl={uploadPreview}
+        previewUrls={uploadPreviews}
         onClose={() => setIsUploadOpen(false)}
-        onSelectFile={handleSelectUploadFile}
+        onSelectFiles={handleSelectUploadFiles}
         onSubmit={handleSubmitUpload}
         disabled={isLoadingImage}
       />

@@ -31,7 +31,30 @@ export type SongRecognitionResult = SongMatch & {
 };
 
 export type AudioRecognitionResult = { primaryMatch: SongRecognitionResult; alternatives: SongRecognitionResult[] };
-export type ImageRecognitionResult = { songs: SongRecognitionResult[]; count: number; language: string; warnings?: string[]; ocrPath?: "ai_primary" | "tesseract_only" };
+export type ImageRecognitionBatchInfo = {
+  uploadedCount: number;
+  processedCount: number;
+  succeededCount: number;
+  failedCount: number;
+  dedupedCount: number;
+  perImage: Array<{
+    fileName: string;
+    fileIndex: number;
+    accepted: boolean;
+    warning?: string;
+    ocrPath?: "ai_primary" | "tesseract_plus_gemma";
+    songCount?: number;
+  }>;
+};
+
+export type ImageRecognitionResult = {
+  songs: SongRecognitionResult[];
+  count: number;
+  language: string;
+  warnings?: string[];
+  ocrPath?: "ai_primary" | "tesseract_plus_gemma";
+  batch?: ImageRecognitionBatchInfo;
+};
 
 export class RecognitionError extends Error {
   code?: string;
@@ -127,7 +150,36 @@ export async function recognizeFromVideo(videoFile: File): Promise<AudioRecognit
 }
 
 export async function recognizeFromImage(imageFile: File, maxSongs = 1, language = "eng"): Promise<ImageRecognitionResult> {
-  const result = await postMultipart<ImageRecognitionResult>("/api/recognition/image", "image", imageFile, imageFile.name, { maxSongs: String(maxSongs), language });
+  return recognizeFromImages([imageFile], maxSongs, language);
+}
+
+export async function recognizeFromImages(imageFiles: File[], maxSongs = 1, language = "eng"): Promise<ImageRecognitionResult> {
+  const filteredFiles = imageFiles.filter((file) => file.size > 0);
+  if (filteredFiles.length === 0) {
+    throw new RecognitionError("At least one valid image file is required.", "IMAGE_FILE_REQUIRED");
+  }
+  const formData = new FormData();
+  for (const file of filteredFiles) {
+    formData.append("images", file, file.name);
+  }
+  formData.append("maxSongs", String(maxSongs));
+  formData.append("language", language);
+
+  const response = await apiFetch("/api/recognition/image", { method: "POST", body: formData });
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    let code: string | undefined;
+    try {
+      const errorPayload = (await response.json()) as { message?: string; code?: string; details?: { message?: string } };
+      message = errorPayload.details?.message || errorPayload.message || message;
+      code = errorPayload.code;
+    } catch {
+      // ignore
+    }
+    throw new RecognitionError(message, code);
+  }
+
+  const result = (await response.json()) as ImageRecognitionResult;
   const songs = result.songs.map((song) => normalizeSong(song)).slice(0, Math.max(1, maxSongs));
   return {
     songs,
@@ -135,5 +187,6 @@ export async function recognizeFromImage(imageFile: File, maxSongs = 1, language
     language: result.language || language,
     warnings: result.warnings ?? [],
     ocrPath: result.ocrPath,
+    batch: result.batch,
   };
 }

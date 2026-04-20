@@ -19,6 +19,13 @@ recognitionRouter.post("/video", videoUpload.single("video"), (req, _res, next) 
   req.body = { ...(req.body || {}), mode: "video" };
   next();
 }, recognizeAudioController);
-recognitionRouter.post("/image", imageUpload.single("image"), recognizeImageController);
+recognitionRouter.post(
+  "/image",
+  imageUpload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "images", maxCount: 12 },
+  ]),
+  recognizeImageController,
+);
 
 export default recognitionRouter;

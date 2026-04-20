@@ -7,20 +7,20 @@ import Modal from "../src/components/ui/Modal";
 type UploadModalProps = {
   language: Language;
   open: boolean;
-  previewUrl: string | null;
+  previewUrls: string[];
   onClose: () => void;
-  onSelectFile: (file: File) => void;
+  onSelectFiles: (files: File[]) => void;
   onSubmit: () => void;
   disabled?: boolean;
 };
 
-export default function UploadModal({ language, open, previewUrl, onClose, onSelectFile, onSubmit, disabled }: UploadModalProps) {
+export default function UploadModal({ language, open, previewUrls, onClose, onSelectFiles, onSubmit, disabled }: UploadModalProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
-    const file = event.dataTransfer.files?.[0];
-    if (file) onSelectFile(file);
+    const files = Array.from(event.dataTransfer.files ?? []);
+    if (files.length > 0) onSelectFiles(files);
   }
 
   return (
@@ -31,8 +31,12 @@ export default function UploadModal({ language, open, previewUrl, onClose, onSel
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
       >
-        {previewUrl ? (
-          <img src={previewUrl} alt="preview" className="mx-auto h-52 rounded-xl object-cover" />
+        {previewUrls.length > 0 ? (
+          <div className="mx-auto grid max-h-56 grid-cols-3 gap-2 overflow-y-auto">
+            {previewUrls.slice(0, 9).map((url, index) => (
+              <img key={`${url}-${index}`} src={url} alt={`preview-${index + 1}`} className="h-16 w-full rounded-lg object-cover" />
+            ))}
+          </div>
         ) : (
           <p className="text-text-muted">{t("upload_modal_hint", language)}</p>
         )}
@@ -42,16 +46,17 @@ export default function UploadModal({ language, open, previewUrl, onClose, onSel
         ref={inputRef}
         type="file"
         accept="image/png,image/jpeg,image/webp"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onSelectFile(file);
+          const files = Array.from(e.target.files ?? []);
+          if (files.length > 0) onSelectFiles(files);
         }}
       />
 
       <div className="mt-5 flex flex-wrap justify-end gap-3">
         <button onClick={() => inputRef.current?.click()} className="glassBtn">{t("upload_choose_another", language)}</button>
-        <button onClick={onSubmit} disabled={!previewUrl || disabled} className="pillAction disabled:opacity-50">{t("upload_process", language)}</button>
+        <button onClick={onSubmit} disabled={previewUrls.length === 0 || disabled} className="pillAction disabled:opacity-50">{t("upload_process", language)}</button>
       </div>
     </Modal>
   );
