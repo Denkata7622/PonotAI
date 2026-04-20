@@ -7,6 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum SongTasteStageStatus {
+  not_started
+  queued
+  processing
+  completed
+  failed
+}
+
+enum SongTasteQueueStatus {
+  queued
+  processing
+  failed
+}
+
 model User {
   id           String          @id
   username     String          @unique
@@ -205,4 +219,51 @@ model TrackTag {
 
   @@unique([userId, trackKey])
   @@index([userId, updatedAt])
+}
+
+model SongTaste {
+  id                        String              @id
+  trackKey                  String              @unique
+  title                     String?
+  artist                    String?
+  status                    SongTasteStageStatus @default(not_started)
+  stage1Status              SongTasteStageStatus @default(not_started)
+  stage2Status              SongTasteStageStatus @default(not_started)
+  stage3Status              SongTasteStageStatus @default(not_started)
+  stage1Data                Json?
+  stage2Data                Json?
+  stage3Data                Json?
+  stage1Confidence          Json?
+  stage1AnalyzedAt          DateTime?
+  stage2AnalyzedAt          DateTime?
+  stage3AnalyzedAt          DateTime?
+  stage1Error               String?
+  stage2Error               String?
+  stage3Error               String?
+  analysisVersion           String?
+  lastQueuedAt              DateTime?
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  queue SongTasteQueue?
+
+  @@index([status, updatedAt])
+  @@index([stage1Status, updatedAt])
+}
+
+model SongTasteQueue {
+  id            String              @id
+  songTasteId   String              @unique
+  status        SongTasteQueueStatus @default(queued)
+  attempts      Int                 @default(0)
+  availableAt   DateTime            @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  lastError     String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  songTaste SongTaste @relation(fields: [songTasteId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt, updatedAt])
 }

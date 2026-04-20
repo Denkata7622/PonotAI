@@ -6,6 +6,7 @@ import { recognizeSongFromAudioByMode, recognizeSongFromImage, type RecognitionM
 import { recalculateAchievementsForUser } from "../achievements/achievements.service";
 import { validateAudioUpload, validateImageUpload, validateVideoUpload } from "../../middlewares/fileValidation";
 import { normalizeTrackKey } from "../../utils/songIdentity";
+import { queueSongTasteAnalysis } from "../songTaster/songTaster.service";
 
 function handleRecognitionError(
   res: Response,
@@ -41,6 +42,10 @@ async function persistRecognitionForUser(req: Request, metadata: { songName: str
     recognized: true,
   });
   await recalculateAchievementsForUser(req.userId);
+  await queueSongTasteAnalysis({
+    title: metadata.songName,
+    artist: metadata.artist,
+  });
 }
 
 async function safePersistRecognition(req: Request, metadata: { songName: string; artist: string; album?: string; }): Promise<string[]> {
