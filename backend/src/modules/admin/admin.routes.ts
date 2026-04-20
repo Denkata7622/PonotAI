@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { SongTasteQueueStatus, SongTasteStageStatus } from "@prisma/client";
 import { getGlobalStats } from "../stats/stats.service";
 import { getPersistenceHealth } from "../../db/persistence";
 import { createUser, findUserByEmail, getAdminOverviewSnapshot, listApiKeysByUser, updateUser } from "../../db/authStore";
@@ -15,6 +16,7 @@ import {
   type DemoGenerationOptions,
   type DemoPersona,
 } from "../demo/demo.service";
+import { getSongTasteAdminSnapshot } from "../songTaster/songTaster.service";
 
 const adminRouter = Router();
 
@@ -416,6 +418,32 @@ adminRouter.get("/overview", async (_req, res) => {
     },
     global: stats,
   });
+});
+
+function parseSongTasteStageStatus(input: unknown): SongTasteStageStatus | undefined {
+  if (typeof input !== "string") return undefined;
+  const safe = input.trim().toLowerCase();
+  return Object.values(SongTasteStageStatus).includes(safe as SongTasteStageStatus)
+    ? safe as SongTasteStageStatus
+    : undefined;
+}
+
+function parseSongTasteQueueStatus(input: unknown): SongTasteQueueStatus | undefined {
+  if (typeof input !== "string") return undefined;
+  const safe = input.trim().toLowerCase();
+  return Object.values(SongTasteQueueStatus).includes(safe as SongTasteQueueStatus)
+    ? safe as SongTasteQueueStatus
+    : undefined;
+}
+
+adminRouter.get("/song-taster/overview", async (req, res) => {
+  const limit = Number.parseInt(String(req.query?.limit ?? "30"), 10);
+  const snapshot = await getSongTasteAdminSnapshot({
+    limit: Number.isFinite(limit) ? limit : 30,
+    stage1Status: parseSongTasteStageStatus(req.query?.stage1Status),
+    queueStatus: parseSongTasteQueueStatus(req.query?.queueStatus),
+  });
+  res.status(200).json(snapshot);
 });
 
 adminRouter.get("/demo-personas", (_req, res) => {
