@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { recognizeFromImage } from "../features/recognition/api";
+import { recognizeFromImage, recognizeFromImages } from "../features/recognition/api";
 import { getVisibleOcrCandidates } from "../features/recognition/ui";
 
 test("recognizeFromImage sends maxSongs/language and keeps multiple songs", async () => {
@@ -34,6 +34,54 @@ test("recognizeFromImage sends maxSongs/language and keeps multiple songs", asyn
     assert.equal(result.songs.length, 2);
     assert.equal(result.songs[0]?.songName, "One");
     assert.equal(result.songs[1]?.songName, "Two");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("recognizeFromImages appends all files and exposes batch metadata", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ body: FormData }> = [];
+
+  try {
+    globalThis.fetch = (async (_url, init) => {
+      const body = init?.body as FormData;
+      calls.push({ body });
+      return {
+        ok: true,
+        json: async () => ({
+          songs: [
+            { songName: "One", artist: "A", album: "X", genre: "Pop", releaseYear: 2024, platformLinks: {}, albumArtUrl: "", confidence: 0.9, durationSec: 10 },
+            { songName: "Two", artist: "B", album: "Y", genre: "Pop", releaseYear: 2023, platformLinks: {}, albumArtUrl: "", confidence: 0.8, durationSec: 10 },
+          ],
+          language: "eng",
+          warnings: ["OCR_IMAGE_FAILED:1:NO_VERIFIED_RESULT"],
+          batch: {
+            uploadedCount: 2,
+            processedCount: 2,
+            succeededCount: 1,
+            failedCount: 1,
+            dedupedCount: 2,
+            perImage: [
+              { fileName: "one.png", fileIndex: 0, accepted: true, songCount: 2, ocrPath: "ai_primary" },
+              { fileName: "two.png", fileIndex: 1, accepted: false, warning: "OCR_NO_MATCHES" },
+            ],
+          },
+        }),
+      } as Response;
+    }) as typeof fetch;
+
+    const files = [
+      new File(["abc"], "one.png", { type: "image/png" }),
+      new File(["def"], "two.png", { type: "image/png" }),
+    ];
+    const result = await recognizeFromImages(files, 5, "eng");
+
+    assert.equal(calls.length, 1);
+    const submitted = calls[0].body.getAll("images");
+    assert.equal(submitted.length, 2);
+    assert.equal(result.batch?.failedCount, 1);
+    assert.equal(result.songs.length, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }
