@@ -16,7 +16,12 @@ import {
   type DemoGenerationOptions,
   type DemoPersona,
 } from "../demo/demo.service";
-import { getSongTasteAdminSnapshot } from "../songTaster/songTaster.service";
+import {
+  adminAnalyzeSongTasteNow,
+  adminRetryFailedSongTaste,
+  getSongTasteAdminItem,
+  getSongTasteAdminSnapshot,
+} from "../songTaster/songTaster.service";
 
 const adminRouter = Router();
 
@@ -444,6 +449,58 @@ adminRouter.get("/song-taster/overview", async (req, res) => {
     queueStatus: parseSongTasteQueueStatus(req.query?.queueStatus),
   });
   res.status(200).json(snapshot);
+});
+
+adminRouter.get("/song-taster/items/:id", async (req, res) => {
+  const id = req.params.id?.trim();
+  if (!id) {
+    return res.status(400).json({ code: "INVALID_ID", message: "Song Taster id is required." });
+  }
+  const item = await getSongTasteAdminItem({ id });
+  if (!item) {
+    return res.status(404).json({ code: "NOT_FOUND", message: "Song Taster entry not found." });
+  }
+  res.status(200).json(item);
+});
+
+adminRouter.post("/song-taster/analyze-now", async (req, res) => {
+  const id = typeof req.body?.id === "string" ? req.body.id.trim() : "";
+  const trackKey = typeof req.body?.trackKey === "string" ? req.body.trackKey.trim() : "";
+  if (!id && !trackKey) {
+    return res.status(400).json({ code: "INVALID_LOOKUP", message: "Provide id or trackKey." });
+  }
+
+  const result = await adminAnalyzeSongTasteNow({
+    id: id || undefined,
+    trackKey: trackKey || undefined,
+    force: req.body?.force === true,
+  });
+
+  if (!result.ok) {
+    return res.status(404).json({ code: result.code, message: result.message });
+  }
+
+  res.status(200).json(result);
+});
+
+adminRouter.post("/song-taster/retry-failed", async (req, res) => {
+  const id = typeof req.body?.id === "string" ? req.body.id.trim() : "";
+  const trackKey = typeof req.body?.trackKey === "string" ? req.body.trackKey.trim() : "";
+  if (!id && !trackKey) {
+    return res.status(400).json({ code: "INVALID_LOOKUP", message: "Provide id or trackKey." });
+  }
+
+  const result = await adminRetryFailedSongTaste({
+    id: id || undefined,
+    trackKey: trackKey || undefined,
+  });
+
+  if (!result.ok) {
+    const status = result.code === "NOT_FOUND" ? 404 : 409;
+    return res.status(status).json({ code: result.code, message: result.message });
+  }
+
+  res.status(200).json(result);
 });
 
 adminRouter.get("/demo-personas", (_req, res) => {

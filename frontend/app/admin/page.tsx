@@ -141,6 +141,81 @@ type AdminOverview = {
   };
 };
 
+type SongTasteStageStatus = "not_started" | "queued" | "processing" | "completed" | "failed";
+type SongTasteQueueStatus = "queued" | "processing" | "failed";
+
+type SongTasterItem = {
+  id: string;
+  trackKey: string;
+  title: string | null;
+  artist: string | null;
+  status: SongTasteStageStatus;
+  stage1Status: SongTasteStageStatus;
+  stage2Status: SongTasteStageStatus;
+  stage3Status: SongTasteStageStatus;
+  stage1AnalyzedAt: string | null;
+  stage1Error: string | null;
+  analysisVersion: string | null;
+  createdAt: string;
+  lastQueuedAt: string | null;
+  updatedAt: string;
+  queue: null | {
+    status: SongTasteQueueStatus;
+    attempts: number;
+    availableAt: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    lastError: string | null;
+  };
+};
+
+type SongTasterSnapshot = {
+  totals: {
+    songs: number;
+    stage1NotStarted: number;
+    stage1Completed: number;
+    stage1Failed: number;
+    stage1Queued: number;
+    stage1Processing: number;
+    stage2Scaffolded: number;
+    stage3Scaffolded: number;
+  };
+  queue: {
+    queued: number;
+    processing: number;
+    failed: number;
+  };
+  items: SongTasterItem[];
+};
+
+type SongTasterDetail = SongTasterItem & {
+  stage1Data: null | {
+    genreFamily: string;
+    secondaryGenreHint: string;
+    mood: string;
+    energy: string;
+    paceBucket: string;
+    vocalOrInstrumental: string;
+    contextTags: string[];
+  };
+  stage1Confidence: null | {
+    genreFamily: number;
+    secondaryGenreHint: number;
+    mood: number;
+    energy: number;
+    paceBucket: number;
+    vocalOrInstrumental: number;
+    contextTags: number;
+    overall: number;
+  };
+  stage2AnalyzedAt: string | null;
+  stage3AnalyzedAt: string | null;
+  stage2Error: string | null;
+  stage3Error: string | null;
+};
+
 type AiObservability = {
   generatedAt: string;
   assistant: { available: boolean; mode: string; requestsTotal: number; requestsLast7d: number; failuresLast7d: number };
@@ -170,6 +245,11 @@ export default function AdminPage() {
   const [aiObservability, setAiObservability] = useState<AiObservability | null>(null);
   const [activityWindowDays, setActivityWindowDays] = useState<1 | 7 | 30>(7);
   const [eventTypeFilter, setEventTypeFilter] = useState<"all" | "recognition" | "assistant" | "playlist" | "favorite" | "share" | "user" | "apiKey">("all");
+  const [songTasterOverview, setSongTasterOverview] = useState<SongTasterSnapshot | null>(null);
+  const [songTasterStage1Filter, setSongTasterStage1Filter] = useState<"all" | SongTasteStageStatus>("all");
+  const [songTasterQueueFilter, setSongTasterQueueFilter] = useState<"all" | SongTasteQueueStatus>("all");
+  const [songTasterSelected, setSongTasterSelected] = useState<SongTasterDetail | null>(null);
+  const [songTasterActionBusy, setSongTasterActionBusy] = useState<null | { id: string; action: "analyze" | "retry" }>(null);
 
   const formatUtcDateTime = (value: string) => {
     const parsed = new Date(value);
@@ -195,6 +275,52 @@ export default function AdminPage() {
     setAiObservability(aiObsPayload);
   }
 
+  async function loadSongTasterData(stage1Status: "all" | SongTasteStageStatus, queueStatus: "all" | SongTasteQueueStatus) {
+    const params = new URLSearchParams({ limit: "30" });
+    if (stage1Status !== "all") params.set("stage1Status", stage1Status);
+    if (queueStatus !== "all") params.set("queueStatus", queueStatus);
+    const response = await apiFetch(`/api/admin/song-taster/overview?${params.toString()}`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("Failed to load Song Taster admin snapshot.");
+    }
+    setSongTasterOverview((await response.json()) as SongTasterSnapshot);
+  }
+
+  async function inspectSongTasterItem(id: string) {
+    const response = await apiFetch(`/api/admin/song-taster/items/${id}`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("Failed to load Song Taster item.");
+    }
+    setSongTasterSelected((await response.json()) as SongTasterDetail);
+  }
+
+  async function runSongTasterAction(item: SongTasterItem, action: "analyze" | "retry") {
+    setSongTasterActionBusy({ id: item.id, action });
+    setActionMessage(null);
+    const endpoint = action === "analyze" ? "/api/admin/song-taster/analyze-now" : "/api/admin/song-taster/retry-failed";
+    const response = await apiFetch(endpoint, {
+      method: "POST",
+      body: JSON.stringify({ id: item.id }),
+      cache: "no-store",
+    });
+    setSongTasterActionBusy(null);
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+      setActionMessage(payload?.message ?? `Song Taster ${action} action failed.`);
+      return;
+    }
+    const payload = (await response.json()) as { queued: boolean; item?: SongTasterDetail };
+    setActionMessage(
+      action === "analyze"
+        ? payload.queued ? "Analyze now queued successfully." : "Analyze now skipped because item is already in-progress or already complete."
+        : payload.queued ? "Retry failed queued successfully." : "Retry request accepted but queue state did not change."
+    );
+    await loadSongTasterData(songTasterStage1Filter, songTasterQueueFilter);
+    if (songTasterSelected?.id === item.id) {
+      await inspectSongTasterItem(item.id);
+    }
+  }
+
   useEffect(() => {
     if (isLoading) return;
     if (!user || user.role !== "admin") {
@@ -204,6 +330,13 @@ export default function AdminPage() {
     loadAdminData(activityWindowDays, eventTypeFilter)
       .catch((loadError) => setError((loadError as Error).message || "Failed to load admin overview."));
   }, [isLoading, user, activityWindowDays, eventTypeFilter]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!user || user.role !== "admin") return;
+    loadSongTasterData(songTasterStage1Filter, songTasterQueueFilter)
+      .catch((loadError) => setActionMessage((loadError as Error).message || "Failed to load Song Taster data."));
+  }, [isLoading, user, songTasterStage1Filter, songTasterQueueFilter]);
 
   async function createDemo() {
     setIsGenerating(true);
@@ -490,6 +623,121 @@ export default function AdminPage() {
           </ul>
         </section>
       </div>
+      </section>
+
+      <section className="card p-5">
+        <h2 className="text-lg font-semibold">Song Taster queue and controls (Stage 1 active)</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">Operational visibility and admin controls for Song Taster Stage 1. Stage 2 and Stage 3 are scaffold-only and not active yet.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <label className="text-sm">
+            <span className="mb-1 block font-medium">Queue status filter</span>
+            <select
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2"
+              value={songTasterQueueFilter}
+              onChange={(event) => setSongTasterQueueFilter(event.target.value as typeof songTasterQueueFilter)}
+            >
+              {["all", "queued", "processing", "failed"].map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block font-medium">Stage 1 status filter</span>
+            <select
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2"
+              value={songTasterStage1Filter}
+              onChange={(event) => setSongTasterStage1Filter(event.target.value as typeof songTasterStage1Filter)}
+            >
+              {["all", "not_started", "queued", "processing", "completed", "failed"].map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </label>
+        </div>
+        {songTasterOverview ? (
+          <>
+            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+              <p className="rounded-lg border border-[var(--border)] p-3">Queue queued: <strong>{songTasterOverview.queue.queued}</strong></p>
+              <p className="rounded-lg border border-[var(--border)] p-3">Queue processing: <strong>{songTasterOverview.queue.processing}</strong></p>
+              <p className="rounded-lg border border-[var(--border)] p-3">Queue failed: <strong>{songTasterOverview.queue.failed}</strong></p>
+              <p className="rounded-lg border border-[var(--border)] p-3">Stage 1 completed: <strong>{songTasterOverview.totals.stage1Completed}</strong></p>
+              <p className="rounded-lg border border-[var(--border)] p-3">Stage 1 queued: <strong>{songTasterOverview.totals.stage1Queued}</strong></p>
+              <p className="rounded-lg border border-[var(--border)] p-3">Stage 1 processing: <strong>{songTasterOverview.totals.stage1Processing}</strong></p>
+              <p className="rounded-lg border border-[var(--border)] p-3">Stage 1 failed: <strong>{songTasterOverview.totals.stage1Failed}</strong></p>
+              <p className="rounded-lg border border-[var(--border)] p-3">Stage 1 not started: <strong>{songTasterOverview.totals.stage1NotStarted}</strong></p>
+            </div>
+            <div className="mt-4 overflow-x-auto rounded-lg border border-[var(--border)]">
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b border-[var(--border)] text-[var(--muted)]">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Song</th>
+                    <th className="px-3 py-2 font-medium">Queue</th>
+                    <th className="px-3 py-2 font-medium">Stage 1</th>
+                    <th className="px-3 py-2 font-medium">Last queued</th>
+                    <th className="px-3 py-2 font-medium">Updated</th>
+                    <th className="px-3 py-2 font-medium">Error</th>
+                    <th className="px-3 py-2 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {songTasterOverview.items.length === 0 ? (
+                    <tr><td className="px-3 py-3 text-[var(--muted)]" colSpan={7}>No Song Taster items for this filter.</td></tr>
+                  ) : songTasterOverview.items.map((item) => (
+                    <tr key={item.id} className="border-b border-[var(--border)]/60">
+                      <td className="px-3 py-2">{item.title || "Unknown"} · {item.artist || "Unknown"}</td>
+                      <td className="px-3 py-2">{item.queue?.status ?? "none"}</td>
+                      <td className="px-3 py-2">{item.stage1Status}</td>
+                      <td className="px-3 py-2">{item.lastQueuedAt ? formatUtcDateTime(item.lastQueuedAt) : "-"}</td>
+                      <td className="px-3 py-2">{formatUtcDateTime(item.updatedAt)}</td>
+                      <td className="px-3 py-2">{item.stage1Error ?? item.queue?.lastError ?? "-"}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-2">
+                          <button className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs" onClick={() => inspectSongTasterItem(item.id)}>Inspect</button>
+                          <button
+                            className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs"
+                            disabled={Boolean(songTasterActionBusy)}
+                            onClick={() => runSongTasterAction(item, "analyze")}
+                          >
+                            {songTasterActionBusy?.id === item.id && songTasterActionBusy.action === "analyze" ? "Analyzing…" : "Analyze now"}
+                          </button>
+                          <button
+                            className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs"
+                            disabled={Boolean(songTasterActionBusy) || item.stage1Status !== "failed"}
+                            onClick={() => runSongTasterAction(item, "retry")}
+                          >
+                            {songTasterActionBusy?.id === item.id && songTasterActionBusy.action === "retry" ? "Retrying…" : "Retry failed"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {songTasterSelected ? (
+              <section className="mt-4 rounded-xl border border-[var(--border)] p-4">
+                <h3 className="text-base font-semibold">Song Taster inspection</h3>
+                <p className="mt-1 text-sm text-[var(--muted)]">{songTasterSelected.title || "Unknown"} · {songTasterSelected.artist || "Unknown"}</p>
+                <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                  <p>Track key: <code>{songTasterSelected.trackKey}</code></p>
+                  <p>Stage 1 status: <strong>{songTasterSelected.stage1Status}</strong></p>
+                  <p>Analyzed at: <strong>{songTasterSelected.stage1AnalyzedAt ? formatUtcDateTime(songTasterSelected.stage1AnalyzedAt) : "not yet"}</strong></p>
+                  <p>Stage 1 error: <strong>{songTasterSelected.stage1Error ?? "none"}</strong></p>
+                  <p>Stage 2: <strong>{songTasterSelected.stage2Status}</strong> (scaffold-only)</p>
+                  <p>Stage 3: <strong>{songTasterSelected.stage3Status}</strong> (scaffold-only)</p>
+                </div>
+                <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                  <p>Genre family: <strong>{songTasterSelected.stage1Data?.genreFamily ?? "-"}</strong></p>
+                  <p>Secondary genre hint: <strong>{songTasterSelected.stage1Data?.secondaryGenreHint ?? "-"}</strong></p>
+                  <p>Mood: <strong>{songTasterSelected.stage1Data?.mood ?? "-"}</strong></p>
+                  <p>Energy: <strong>{songTasterSelected.stage1Data?.energy ?? "-"}</strong></p>
+                  <p>Pace bucket: <strong>{songTasterSelected.stage1Data?.paceBucket ?? "-"}</strong></p>
+                  <p>Vocal/instrumental: <strong>{songTasterSelected.stage1Data?.vocalOrInstrumental ?? "-"}</strong></p>
+                  <p>Context tags: <strong>{songTasterSelected.stage1Data?.contextTags?.join(", ") || "-"}</strong></p>
+                  <p>Confidence (overall): <strong>{songTasterSelected.stage1Confidence?.overall ?? "-"}</strong></p>
+                </div>
+              </section>
+            ) : null}
+          </>
+        ) : (
+          <p className="mt-4 text-sm text-[var(--muted)]">Loading Song Taster data…</p>
+        )}
       </section>
 
       <section className="card p-5">
