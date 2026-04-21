@@ -21,6 +21,9 @@ const USERNAME_REGEX = /^\w{3,30}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ADMIN_ROLE = "admin" as const;
 const USER_ROLE = "user" as const;
+const RECOMMENDATION_MODES = new Set(["safe_familiar", "balanced", "mostly_discovery"] as const);
+const REPEATED_ARTIST_TOLERANCE = new Set(["lower", "normal", "higher"] as const);
+const ENERGY_PREFERENCES = new Set(["calmer", "mixed", "more_energetic"] as const);
 
 function getAdminEmailSet(): Set<string> {
   const configured = [
@@ -55,6 +58,9 @@ function toUserPayload(user: {
   username: string;
   email: string;
   recommendationDataSharingEnabled?: boolean;
+  recommendationMode?: "safe_familiar" | "balanced" | "mostly_discovery";
+  repeatedArtistTolerance?: "lower" | "normal" | "higher";
+  energyPreference?: "calmer" | "mixed" | "more_energetic";
   avatarBase64?: string;
   bio?: string;
   createdAt: string;
@@ -67,6 +73,9 @@ function toUserPayload(user: {
     username: user.username,
     email: user.email,
     recommendationDataSharingEnabled: Boolean(user.recommendationDataSharingEnabled),
+    recommendationMode: user.recommendationMode ?? "balanced",
+    repeatedArtistTolerance: user.repeatedArtistTolerance ?? "normal",
+    energyPreference: user.energyPreference ?? "mixed",
     avatarBase64: user.avatarBase64 ?? null,
     bio: user.bio ?? null,
     createdAt: user.createdAt,
@@ -96,6 +105,9 @@ authRouter.post("/register", authSensitiveRateLimit, async (req, res) => {
     email: normalizedEmail,
     passwordHash: hashPassword(password),
     recommendationDataSharingEnabled: false,
+    recommendationMode: "balanced",
+    repeatedArtistTolerance: "normal",
+    energyPreference: "mixed",
     role: USER_ROLE,
     emailVerifiedAt: undefined,
   });
@@ -178,12 +190,24 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     bio?: string;
     avatarBase64?: string;
     recommendationDataSharingEnabled?: boolean;
+    recommendationMode?: "safe_familiar" | "balanced" | "mostly_discovery";
+    repeatedArtistTolerance?: "lower" | "normal" | "higher";
+    energyPreference?: "calmer" | "mixed" | "more_energetic";
   };
 
   if (
     req.body?.recommendationDataSharingEnabled !== undefined
     && typeof req.body.recommendationDataSharingEnabled !== "boolean"
   ) {
+    return void sendError(res, ErrorCatalog.VALIDATION_ERROR);
+  }
+  if (req.body?.recommendationMode !== undefined && !RECOMMENDATION_MODES.has(req.body.recommendationMode)) {
+    return void sendError(res, ErrorCatalog.VALIDATION_ERROR);
+  }
+  if (req.body?.repeatedArtistTolerance !== undefined && !REPEATED_ARTIST_TOLERANCE.has(req.body.repeatedArtistTolerance)) {
+    return void sendError(res, ErrorCatalog.VALIDATION_ERROR);
+  }
+  if (req.body?.energyPreference !== undefined && !ENERGY_PREFERENCES.has(req.body.energyPreference)) {
     return void sendError(res, ErrorCatalog.VALIDATION_ERROR);
   }
 
@@ -207,6 +231,9 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     ...(bio !== undefined ? { bio } : {}),
     ...(avatarBase64 !== undefined ? { avatarBase64 } : {}),
     ...(req.body?.recommendationDataSharingEnabled !== undefined ? { recommendationDataSharingEnabled: req.body.recommendationDataSharingEnabled } : {}),
+    ...(req.body?.recommendationMode !== undefined ? { recommendationMode: req.body.recommendationMode } : {}),
+    ...(req.body?.repeatedArtistTolerance !== undefined ? { repeatedArtistTolerance: req.body.repeatedArtistTolerance } : {}),
+    ...(req.body?.energyPreference !== undefined ? { energyPreference: req.body.energyPreference } : {}),
   });
 
   if (!user) return void sendError(res, ErrorCatalog.NOT_FOUND);

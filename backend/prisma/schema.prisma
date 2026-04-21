@@ -27,6 +27,9 @@ model User {
   email        String          @unique
   passwordHash String
   recommendationDataSharingEnabled Boolean @default(false)
+  recommendationMode RecommendationMode @default(balanced)
+  repeatedArtistTolerance RepeatedArtistTolerance @default(normal)
+  energyPreference EnergyPreference @default(mixed)
   emailVerifiedAt DateTime?
   role         String          @default("user")
   isDemo       Boolean         @default(false)
@@ -45,6 +48,24 @@ model User {
   apiKeys             ApiKey[]
   trackTags           TrackTag[]
   emailVerificationTokens EmailVerificationToken[]
+}
+
+enum RecommendationMode {
+  safe_familiar
+  balanced
+  mostly_discovery
+}
+
+enum RepeatedArtistTolerance {
+  lower
+  normal
+  higher
+}
+
+enum EnergyPreference {
+  calmer
+  mixed
+  more_energetic
 }
 
 model EmailVerificationToken {

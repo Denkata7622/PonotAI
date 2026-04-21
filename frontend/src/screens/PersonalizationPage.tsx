@@ -92,6 +92,9 @@ export default function PersonalizationPage() {
   ]), [favoritesDominant, recentHistoryCount, topContexts, topGenres, topMoods]);
 
   const recommendationDataSharingEnabled = Boolean(user?.recommendationDataSharingEnabled);
+  const recommendationMode = user?.recommendationMode ?? "balanced";
+  const repeatedArtistTolerance = user?.repeatedArtistTolerance ?? "normal";
+  const energyPreference = user?.energyPreference ?? "mixed";
   const currentThemeSummary = `${theme} · ${accent} · ${surfaceStyle}`;
   const themeStudioSlots = useMemo<ThemeStudioSlot[]>(() => ([
     {
@@ -148,6 +151,14 @@ export default function PersonalizationPage() {
   async function handleRecommendationDataSharingToggle() {
     if (!isAuthenticated) return;
     await updateProfile({ recommendationDataSharingEnabled: !recommendationDataSharingEnabled });
+  }
+
+  async function handleRecommendationControlChange(
+    field: "recommendationMode" | "repeatedArtistTolerance" | "energyPreference",
+    value: "safe_familiar" | "balanced" | "mostly_discovery" | "lower" | "normal" | "higher" | "calmer" | "mixed" | "more_energetic",
+  ) {
+    if (!isAuthenticated) return;
+    await updateProfile({ [field]: value });
   }
 
   return (
@@ -306,7 +317,7 @@ export default function PersonalizationPage() {
             <Settings className="h-5 w-5 text-[var(--accent)]" />
           </div>
           <p className="text-sm text-[var(--muted)]">
-            Manage recommendation behavior here. More controls (safe ↔ adventurous, novelty depth) arrive in later passes.
+            Set how familiar vs discovery-forward suggestions should feel. These controls are active now and will be reused by discovery and assistant flows in later passes.
           </p>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-4">
             <div className="flex items-start justify-between gap-3">
@@ -325,8 +336,68 @@ export default function PersonalizationPage() {
             </div>
             {!isAuthenticated ? <p className="mt-2 text-xs text-[var(--muted)]">Sign in to change this preference.</p> : null}
           </div>
+          <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-4">
+            {[
+              {
+                key: "recommendationMode" as const,
+                label: "Recommendation mode",
+                description: "Controls how often Trackly should prioritize new discoveries.",
+                options: [
+                  { value: "safe_familiar", label: "Safe & familiar" },
+                  { value: "balanced", label: "Balanced" },
+                  { value: "mostly_discovery", label: "Mostly discovery" },
+                ],
+                active: recommendationMode,
+              },
+              {
+                key: "repeatedArtistTolerance" as const,
+                label: "Repeated artist tolerance",
+                description: "Choose how often recommendations can repeat artists you already like.",
+                options: [
+                  { value: "lower", label: "Lower" },
+                  { value: "normal", label: "Normal" },
+                  { value: "higher", label: "Higher" },
+                ],
+                active: repeatedArtistTolerance,
+              },
+              {
+                key: "energyPreference" as const,
+                label: "Energy preference",
+                description: "Steer overall recommendation energy level.",
+                options: [
+                  { value: "calmer", label: "Calmer" },
+                  { value: "mixed", label: "Mixed" },
+                  { value: "more_energetic", label: "More energetic" },
+                ],
+                active: energyPreference,
+              },
+            ].map((control) => (
+              <div key={control.key}>
+                <p className="text-sm font-medium">{control.label}</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">{control.description}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {control.options.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => void handleRecommendationControlChange(control.key, option.value as "safe_familiar" | "balanced" | "mostly_discovery" | "lower" | "normal" | "higher" | "calmer" | "mixed" | "more_energetic")}
+                      disabled={!isAuthenticated || control.active === option.value}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                        control.active === option.value
+                          ? "border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text)]"
+                          : "border-[var(--border)] bg-transparent text-[var(--muted)] hover:border-[var(--accent-border)] hover:text-[var(--text)]"
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {!isAuthenticated ? <p className="text-xs text-[var(--muted)]">Sign in to change recommendation controls.</p> : null}
+          </div>
           <div className="rounded-xl border border-dashed border-[var(--border)] p-3 text-xs text-[var(--muted)]">
-            Reserved next: Familiar ↔ Discovery balance, energy range controls, and contextual recommendation toggles.
+            These controls are persisted now and intentionally compact. Advanced tuning remains roadmap work.
           </div>
         </Card>
       </section>

@@ -21,6 +21,9 @@ export type User = {
   username: string;
   email: string;
   recommendationDataSharingEnabled?: boolean;
+  recommendationMode?: "safe_familiar" | "balanced" | "mostly_discovery";
+  repeatedArtistTolerance?: "lower" | "normal" | "higher";
+  energyPreference?: "calmer" | "mixed" | "more_energetic";
   emailVerified?: boolean;
   role: "user" | "admin";
   avatarBase64?: string | null;
@@ -196,7 +199,7 @@ type UserContextValue = {
   resendVerification: (email: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (fields: Partial<Pick<User, "username" | "email" | "bio" | "avatarBase64" | "recommendationDataSharingEnabled">>) => Promise<void>;
+  updateProfile: (fields: Partial<Pick<User, "username" | "email" | "bio" | "avatarBase64" | "recommendationDataSharingEnabled" | "recommendationMode" | "repeatedArtistTolerance" | "energyPreference">>) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 
   // Data (works for both guest and authenticated)
@@ -389,7 +392,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setServerFavorites([]);
   }
 
-  async function updateProfile(fields: Partial<Pick<User, "username" | "email" | "bio" | "avatarBase64" | "recommendationDataSharingEnabled">>) {
+  async function updateProfile(fields: Partial<Pick<User, "username" | "email" | "bio" | "avatarBase64" | "recommendationDataSharingEnabled" | "recommendationMode" | "repeatedArtistTolerance" | "energyPreference">>) {
     const res = await apiFetch("/api/auth/me", { method: "PATCH", body: JSON.stringify(fields) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.code || data.error || "UPDATE_FAILED");
