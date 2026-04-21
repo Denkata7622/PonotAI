@@ -1,22 +1,38 @@
 'use client';
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Library, Settings, Sparkles, TrendingUp } from "../../lucide-react";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { useUser } from "../context/UserContext";
 import { useTheme } from "../../lib/ThemeContext";
 import { readTasteProfile } from "../features/onboarding/tasteProfile";
+import { scopedKey, useProfile } from "../../lib/ProfileContext";
 
 function formatListPreview(values: string[], fallback: string) {
   if (!values.length) return fallback;
   return values.slice(0, 3).join(" · ");
 }
 
+function getTopCounts(values: string[], limit = 3): string[] {
+  const counter = new Map<string, number>();
+  values.forEach((value) => {
+    const normalized = value.trim();
+    if (!normalized) return;
+    counter.set(normalized, (counter.get(normalized) ?? 0) + 1);
+  });
+  return [...counter.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([name]) => name);
+}
+
 export default function PersonalizationPage() {
   const { user, favorites, history, isAuthenticated, updateProfile } = useUser();
+  const { profile } = useProfile();
   const { theme, accent, intensity, surfaceStyle, density } = useTheme();
+  const [playlistCount, setPlaylistCount] = useState(0);
 
   const tasteProfile = useMemo(() => readTasteProfile(), []);
   const tasteSnapshot = tasteProfile?.structured;
@@ -24,8 +40,55 @@ export default function PersonalizationPage() {
   const topGenres = tasteSnapshot?.genres ?? tasteProfile?.genres ?? [];
   const topMoods = tasteSnapshot?.moods ?? tasteProfile?.moods ?? [];
   const topContexts = tasteSnapshot?.contexts ?? tasteProfile?.goals ?? [];
+  const topArtists = useMemo(
+    () => getTopCounts([...favorites.map((item) => item.artist ?? ""), ...history.map((item) => item.artist ?? "")], 3),
+    [favorites, history],
+  );
+  const recentHistoryCount = useMemo(() => {
+    const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+    return history.filter((item) => {
+      if (!item.createdAt) return false;
+      const parsed = Date.parse(item.createdAt);
+      return Number.isFinite(parsed) && parsed >= cutoff;
+    }).length;
+  }, [history]);
+  const favoritesDominant = favorites.length > Math.max(2, history.length * 0.4);
+  const sparseData = history.length < 5 && favorites.length < 3;
+
+  const summaryLines = useMemo(() => {
+    const identityLead = topGenres.length
+      ? `You currently lean toward ${topGenres.slice(0, 2).join(" and ")}${topMoods.length ? ` with a ${topMoods[0].toLowerCase()} mood lane` : ""}.`
+      : "We are still shaping your listening identity from your starter profile and early library activity.";
+    const behaviorLead = sparseData
+      ? "Early signal only: this summary is mostly onboarding-based until your recent history and favorites grow."
+      : favoritesDominant
+        ? "Your saved library is growing faster than your play history, so your current profile is favorite-led."
+        : recentHistoryCount >= 4
+          ? "Recent listening activity is active, and your profile is increasingly behavior-driven."
+          : "Your profile blends onboarding anchors with your current history and saved music.";
+    return [identityLead, behaviorLead];
+  }, [favoritesDominant, recentHistoryCount, sparseData, topGenres, topMoods]);
+
+  const tasteSignals = useMemo(() => ([
+    { label: "Genre lean", value: formatListPreview(topGenres, "Not enough genre signal yet") },
+    { label: "Mood lane", value: formatListPreview(topMoods, "Mood signal is still forming") },
+    { label: "Context cues", value: formatListPreview(topContexts, "Add more sessions to shape contexts") },
+    { label: "Library tilt", value: favoritesDominant ? "Favorite-heavy right now" : "Balanced between saves and plays" },
+    { label: "Recent pattern", value: recentHistoryCount > 0 ? `${recentHistoryCount} listens in last 14 days` : "No recent history in last 14 days" },
+  ]), [favoritesDominant, recentHistoryCount, topContexts, topGenres, topMoods]);
 
   const recommendationDataSharingEnabled = Boolean(user?.recommendationDataSharingEnabled);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(scopedKey("ponotai.library.playlists", profile.id)) ?? "[]";
+      const parsed = JSON.parse(raw) as unknown[];
+      setPlaylistCount(Array.isArray(parsed) ? parsed.length : 0);
+    } catch {
+      setPlaylistCount(0);
+    }
+  }, [profile.id]);
 
   async function handleRecommendationDataSharingToggle() {
     if (!isAuthenticated) return;
@@ -55,22 +118,39 @@ export default function PersonalizationPage() {
           <p className="text-sm text-[var(--muted)]">
             A grounded summary from onboarding and listening behavior. This will deepen in a later pass.
           </p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="themed-surface-subtle rounded-xl border border-[var(--border)] p-3">
-              <p className="text-xs text-[var(--muted)]">Core genres</p>
-              <p className="mt-1 text-sm font-medium">{formatListPreview(topGenres, "Complete onboarding to set your first taste anchors")}</p>
-            </div>
-            <div className="themed-surface-subtle rounded-xl border border-[var(--border)] p-3">
-              <p className="text-xs text-[var(--muted)]">Mood lane</p>
-              <p className="mt-1 text-sm font-medium">{formatListPreview(topMoods, "No mood profile yet")}</p>
-            </div>
-            <div className="themed-surface-subtle rounded-xl border border-[var(--border)] p-3 sm:col-span-2">
-              <p className="text-xs text-[var(--muted)]">Context cues</p>
-              <p className="mt-1 text-sm font-medium">{formatListPreview(topContexts, "Focus, workout, commute, and more will appear as you use Trackly")}</p>
-            </div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-4">
+            <p className="text-sm font-medium">{summaryLines[0]}</p>
+            <p className="mt-2 text-xs text-[var(--muted)]">{summaryLines[1]}</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {tasteSignals.map((signal) => (
+              <div key={signal.label} className="themed-surface-subtle rounded-xl border border-[var(--border)] p-3">
+                <p className="text-xs text-[var(--muted)]">{signal.label}</p>
+                <p className="mt-1 text-sm font-medium">{signal.value}</p>
+              </div>
+            ))}
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-3 text-xs text-[var(--muted)]">
-            Signals used now: onboarding taste profile, favorites ({favorites.length}), listening history ({history.length}).
+            <p>
+              Evidence: favorites ({favorites.length}), listening history ({history.length}), playlists ({playlistCount})
+              {topArtists.length ? `, recurring artists (${topArtists.join(" · ")})` : ""}.
+            </p>
+            {sparseData ? (
+              <p className="mt-1">
+                Still learning: signals are currently light, so Trackly is prioritizing onboarding preferences until more behavior data arrives.
+              </p>
+            ) : null}
+            <p className="mt-1">
+              Integration-ready: this block currently uses onboarding + library signals and can layer in Song Taster/UserTasteMemory depth in later passes.
+            </p>
+          </div>
+          <div className="rounded-xl border border-dashed border-[var(--border)] p-3 text-xs text-[var(--muted)]">
+            Signal scope stays curated on purpose. Internal metadata is kept private until richer layers are production-ready.
+          </div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-3 text-xs text-[var(--muted)]">
+            <p>
+              Sharing preference is currently {recommendationDataSharingEnabled ? "enabled" : "disabled"} and supports recommendation quality, but it is not treated as a taste trait.
+            </p>
           </div>
         </Card>
 
