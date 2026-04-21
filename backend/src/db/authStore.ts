@@ -8,12 +8,21 @@ export type UserRecord = {
   email: string;
   passwordHash: string;
   recommendationDataSharingEnabled: boolean;
+  recommendationMode: "safe_familiar" | "balanced" | "mostly_discovery";
+  repeatedArtistTolerance: "lower" | "normal" | "higher";
+  energyPreference: "calmer" | "mixed" | "more_energetic";
   emailVerifiedAt?: string | null;
   role?: "user" | "admin";
   isDemo?: boolean;
   avatarBase64?: string;
   bio?: string;
   createdAt: string;
+};
+
+type CreateUserInput = Omit<UserRecord, "id" | "createdAt" | "recommendationMode" | "repeatedArtistTolerance" | "energyPreference"> & {
+  recommendationMode?: UserRecord["recommendationMode"];
+  repeatedArtistTolerance?: UserRecord["repeatedArtistTolerance"];
+  energyPreference?: UserRecord["energyPreference"];
 };
 
 export type SearchHistoryRecord = {
@@ -161,6 +170,9 @@ function mapUser(user: any): UserRecord {
     email: user.email,
     passwordHash: user.passwordHash,
     recommendationDataSharingEnabled: Boolean(user.recommendationDataSharingEnabled),
+    recommendationMode: user.recommendationMode,
+    repeatedArtistTolerance: user.repeatedArtistTolerance,
+    energyPreference: user.energyPreference,
     emailVerifiedAt: user.emailVerifiedAt ? toIso(user.emailVerifiedAt) : undefined,
     role: user.role,
     isDemo: user.isDemo,
@@ -292,7 +304,7 @@ export async function listUsers() {
   return (await prisma.user.findMany({ orderBy: { createdAt: "asc" } })).map(mapUser);
 }
 
-export async function createUser(input: Omit<UserRecord, "id" | "createdAt">): Promise<UserRecord> {
+export async function createUser(input: CreateUserInput): Promise<UserRecord> {
   const user = await prisma.user.create({
     data: {
       id: randomUUID(),
@@ -300,6 +312,9 @@ export async function createUser(input: Omit<UserRecord, "id" | "createdAt">): P
       email: input.email.trim().toLowerCase(),
       passwordHash: input.passwordHash,
       recommendationDataSharingEnabled: Boolean(input.recommendationDataSharingEnabled),
+      recommendationMode: input.recommendationMode ?? "balanced",
+      repeatedArtistTolerance: input.repeatedArtistTolerance ?? "normal",
+      energyPreference: input.energyPreference ?? "mixed",
       emailVerifiedAt: input.emailVerifiedAt ? new Date(input.emailVerifiedAt) : undefined,
       role: input.role ?? "user",
       isDemo: Boolean(input.isDemo),
@@ -323,6 +338,9 @@ export async function updateUser(
       email: updates.email ? updates.email.trim().toLowerCase() : undefined,
       passwordHash: updates.passwordHash,
       recommendationDataSharingEnabled: updates.recommendationDataSharingEnabled,
+      recommendationMode: updates.recommendationMode,
+      repeatedArtistTolerance: updates.repeatedArtistTolerance,
+      energyPreference: updates.energyPreference,
       emailVerifiedAt: updates.emailVerifiedAt ? new Date(updates.emailVerifiedAt) : updates.emailVerifiedAt === null ? null : undefined,
       role: updates.role,
       isDemo: updates.isDemo,

@@ -50,25 +50,59 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
       body: JSON.stringify({ username: sharingUsername, email: sharingUserEmail, password: sharingPassword }),
     });
     assert.equal(registerSharingResponse.status, 201);
-    const sharingRegisterPayload = (await registerSharingResponse.json()) as { token: string; user: { recommendationDataSharingEnabled?: boolean } };
+    const sharingRegisterPayload = (await registerSharingResponse.json()) as {
+      token: string;
+      user: {
+        recommendationDataSharingEnabled?: boolean;
+        recommendationMode?: string;
+        repeatedArtistTolerance?: string;
+        energyPreference?: string;
+      };
+    };
     const sharingToken = sharingRegisterPayload.token;
     assert.equal(sharingRegisterPayload.user.recommendationDataSharingEnabled, false);
+    assert.equal(sharingRegisterPayload.user.recommendationMode, "balanced");
+    assert.equal(sharingRegisterPayload.user.repeatedArtistTolerance, "normal");
+    assert.equal(sharingRegisterPayload.user.energyPreference, "mixed");
 
     const enableSharingResponse = await fetch(`${running.baseUrl}/api/auth/me`, {
       method: "PATCH",
       headers: { "content-type": "application/json", authorization: `Bearer ${sharingToken}` },
-      body: JSON.stringify({ recommendationDataSharingEnabled: true }),
+      body: JSON.stringify({
+        recommendationDataSharingEnabled: true,
+        recommendationMode: "mostly_discovery",
+        repeatedArtistTolerance: "higher",
+        energyPreference: "more_energetic",
+      }),
     });
     assert.equal(enableSharingResponse.status, 200);
-    const updatedSharingUser = (await enableSharingResponse.json()) as { recommendationDataSharingEnabled?: boolean };
+    const updatedSharingUser = (await enableSharingResponse.json()) as {
+      recommendationDataSharingEnabled?: boolean;
+      recommendationMode?: string;
+      repeatedArtistTolerance?: string;
+      energyPreference?: string;
+    };
     assert.equal(updatedSharingUser.recommendationDataSharingEnabled, true);
+    assert.equal(updatedSharingUser.recommendationMode, "mostly_discovery");
+    assert.equal(updatedSharingUser.repeatedArtistTolerance, "higher");
+    assert.equal(updatedSharingUser.energyPreference, "more_energetic");
 
     const sharingMeResponse = await fetch(`${running.baseUrl}/api/auth/me`, {
       headers: { authorization: `Bearer ${sharingToken}` },
     });
     assert.equal(sharingMeResponse.status, 200);
-    const sharingMeBody = (await sharingMeResponse.json()) as { user: { recommendationDataSharingEnabled?: boolean } };
+    const sharingMeBody = (await sharingMeResponse.json()) as {
+      user: {
+        recommendationDataSharingEnabled?: boolean;
+        recommendationMode?: string;
+        repeatedArtistTolerance?: string;
+        energyPreference?: string;
+      };
+    };
     assert.equal(sharingMeBody.user.recommendationDataSharingEnabled, true);
+    assert.equal(sharingMeBody.user.recommendationMode, "mostly_discovery");
+    assert.equal(sharingMeBody.user.repeatedArtistTolerance, "higher");
+    assert.equal(sharingMeBody.user.energyPreference, "more_energetic");
 
     const reloginResponse = await fetch(`${running.baseUrl}/api/auth/login`, {
       method: "POST",
@@ -76,8 +110,18 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
       body: JSON.stringify({ email: sharingUserEmail, password: sharingPassword }),
     });
     assert.equal(reloginResponse.status, 200);
-    const reloginBody = (await reloginResponse.json()) as { user: { recommendationDataSharingEnabled?: boolean } };
+    const reloginBody = (await reloginResponse.json()) as {
+      user: {
+        recommendationDataSharingEnabled?: boolean;
+        recommendationMode?: string;
+        repeatedArtistTolerance?: string;
+        energyPreference?: string;
+      };
+    };
     assert.equal(reloginBody.user.recommendationDataSharingEnabled, true);
+    assert.equal(reloginBody.user.recommendationMode, "mostly_discovery");
+    assert.equal(reloginBody.user.repeatedArtistTolerance, "higher");
+    assert.equal(reloginBody.user.energyPreference, "more_energetic");
 
     const assistantResponse = await fetch(`${running.baseUrl}/api/assistant`, {
       method: "POST",
