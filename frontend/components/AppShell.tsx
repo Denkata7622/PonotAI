@@ -42,6 +42,7 @@ const PRIMARY_NAV = [
   { href: "/library", key: "nav_library", icon: Library },
   { href: "/search", key: "nav_search", icon: Search },
   { href: "/assistant", key: "nav_assistant", icon: Sparkles },
+  { href: "/personalization", key: "nav_personalization", icon: Music },
   { href: "/profile", key: "nav_profile", icon: User },
   { href: "/settings", key: "nav_settings", icon: Settings },
 ] as const;
@@ -711,6 +712,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
           { href: "/search", key: "nav_search", icon: Search },
           { href: "/library", key: "nav_library", icon: Library },
           { href: "/assistant", key: "nav_assistant", icon: Sparkles },
+          { href: "/personalization", key: "nav_personalization", icon: Music },
         ].map((item) => (
           <Link
             key={`mobile-${item.href}`}
@@ -729,6 +731,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
         {showMobileMenu ? (
           <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border pt-2">
             {[
+              { href: "/personalization", label: t("nav_personalization", language), icon: Music },
               { href: "/profile", label: t("nav_profile", language), icon: User },
               { href: "/settings", label: t("nav_settings", language), icon: Settings },
               { href: "/stats", label: t("nav_stats", language), icon: BarChart2 },
