@@ -296,7 +296,7 @@ export async function generateDemoAccount(persona: DemoPersona = "gym", options?
 
   const temporaryPassword = `${persona}-${crypto.randomBytes(6).toString("hex")}!`;
   const passwordHash = hashPassword(temporaryPassword);
-  const user = await createUser({ username, email, passwordHash, role: "user", isDemo: true });
+  const user = await createUser({ username, email, passwordHash, recommendationDataSharingEnabled: false, role: "user", isDemo: true });
 
   const randSeed = config.seed || `${user.id}:${persona}`;
   const rand = createSeededRng(randSeed);

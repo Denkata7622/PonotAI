@@ -26,6 +26,7 @@ model User {
   username     String          @unique
   email        String          @unique
   passwordHash String
+  recommendationDataSharingEnabled Boolean @default(false)
   emailVerifiedAt DateTime?
   role         String          @default("user")
   isDemo       Boolean         @default(false)

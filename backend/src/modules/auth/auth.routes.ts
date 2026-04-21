@@ -54,6 +54,7 @@ function toUserPayload(user: {
   id: string;
   username: string;
   email: string;
+  recommendationDataSharingEnabled?: boolean;
   avatarBase64?: string;
   bio?: string;
   createdAt: string;
@@ -65,6 +66,7 @@ function toUserPayload(user: {
     id: user.id,
     username: user.username,
     email: user.email,
+    recommendationDataSharingEnabled: Boolean(user.recommendationDataSharingEnabled),
     avatarBase64: user.avatarBase64 ?? null,
     bio: user.bio ?? null,
     createdAt: user.createdAt,
@@ -93,6 +95,7 @@ authRouter.post("/register", authSensitiveRateLimit, async (req, res) => {
     username,
     email: normalizedEmail,
     passwordHash: hashPassword(password),
+    recommendationDataSharingEnabled: false,
     role: USER_ROLE,
     emailVerifiedAt: undefined,
   });
@@ -174,7 +177,15 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     email?: string;
     bio?: string;
     avatarBase64?: string;
+    recommendationDataSharingEnabled?: boolean;
   };
+
+  if (
+    req.body?.recommendationDataSharingEnabled !== undefined
+    && typeof req.body.recommendationDataSharingEnabled !== "boolean"
+  ) {
+    return void sendError(res, ErrorCatalog.VALIDATION_ERROR);
+  }
 
   if (username !== undefined && !USERNAME_REGEX.test(username)) return void sendError(res, ErrorCatalog.INVALID_USERNAME);
   if (email !== undefined && !EMAIL_REGEX.test(email)) return void sendError(res, ErrorCatalog.INVALID_EMAIL);
@@ -195,6 +206,7 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     ...(email !== undefined ? { emailVerifiedAt: null } : {}),
     ...(bio !== undefined ? { bio } : {}),
     ...(avatarBase64 !== undefined ? { avatarBase64 } : {}),
+    ...(req.body?.recommendationDataSharingEnabled !== undefined ? { recommendationDataSharingEnabled: req.body.recommendationDataSharingEnabled } : {}),
   });
 
   if (!user) return void sendError(res, ErrorCatalog.NOT_FOUND);

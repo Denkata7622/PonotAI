@@ -151,6 +151,7 @@ describe("Playlist Database Operations", () => {
       username: "cascadetest",
       email: "cascade@test.com",
       passwordHash: "hash",
+      recommendationDataSharingEnabled: false,
     });
 
     await db.createPlaylist(userId, "Cascade Playlist 1");

@@ -99,6 +99,7 @@ export default function SettingsPage() {
   const [showDangerModal, setShowDangerModal] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [recommendationDataSharingEnabled, setRecommendationDataSharingEnabled] = useState(Boolean(user?.recommendationDataSharingEnabled));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const baseControlKeys = (Object.keys(CONTROL_GROUPS) as Array<keyof typeof CONTROL_GROUPS>).filter((key) => key !== "bodyFont" && key !== "displayFont");
   const controlSetters = {
@@ -128,6 +129,12 @@ export default function SettingsPage() {
     }
   }, [favorites, history, profile.id]);
 
+  useEffect(() => {
+    setDisplayName(user?.username ?? "");
+    setEmail(user?.email ?? "");
+    setRecommendationDataSharingEnabled(Boolean(user?.recommendationDataSharingEnabled));
+  }, [user?.username, user?.email, user?.recommendationDataSharingEnabled]);
+
   const canDelete = confirmText === (user?.username ?? "");
 
   async function handleSaveName() { try { if (isAuthenticated) await updateProfile({ username: displayName }); } catch (e) { setSaveError((e as Error).message); } }
@@ -143,6 +150,19 @@ export default function SettingsPage() {
   function setAssistantHintsPref(next: boolean) {
     setAssistantHints(next);
     window.localStorage.setItem("ponotai-assistant-hints", next ? "on" : "off");
+  }
+
+  async function handleRecommendationDataSharingToggle() {
+    if (!isAuthenticated) return;
+    const nextValue = !recommendationDataSharingEnabled;
+    setRecommendationDataSharingEnabled(nextValue);
+    setSaveError(null);
+    try {
+      await updateProfile({ recommendationDataSharingEnabled: nextValue });
+    } catch (error) {
+      setRecommendationDataSharingEnabled(!nextValue);
+      setSaveError((error as Error).message);
+    }
   }
 
   async function runProgressSteps(steps: string[], minDelay = 130) {
@@ -318,6 +338,16 @@ export default function SettingsPage() {
       <Card variant="settings" className="space-y-4">
         <h2 className="text-xl font-semibold">{t("settings_assistant_behavior", language)}</h2>
         <div className="settings-card flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3"><div><p className="font-medium">{t("settings_show_ai_hints", language)}</p><p className="text-sm text-[var(--muted)]">{t("settings_show_ai_hints_desc", language)}</p></div><Button variant="secondary" onClick={() => setAssistantHintsPref(!assistantHints)}>{assistantHints ? t("settings_on", language) : t("settings_off", language)}</Button></div>
+        <div className="settings-card flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+          <div>
+            <p className="font-medium">Share usage data to improve recommendations</p>
+            <p className="text-sm text-[var(--muted)]">Allow Trackly to use your activity and preferences for better recommendations and personalization.</p>
+          </div>
+          <Button variant="secondary" onClick={() => void handleRecommendationDataSharingToggle()} disabled={!isAuthenticated}>
+            {recommendationDataSharingEnabled ? t("settings_on", language) : t("settings_off", language)}
+          </Button>
+        </div>
+        {!isAuthenticated ? <p className="text-xs text-[var(--muted)]">Sign in to manage recommendation data sharing.</p> : null}
       </Card>
 
       <Card variant="settings" className="space-y-4">
