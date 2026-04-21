@@ -13,6 +13,7 @@ import { authSensitiveRateLimit } from "../../middlewares/rateLimit.middleware";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 import { hashPassword, verifyPassword } from "./password";
 import { issueEmailVerificationForUser, resendVerificationByEmail, verifyEmailToken } from "../../services/emailVerification";
+import { isEmailVerificationBypassEnabled } from "../../config/env";
 
 const authRouter = Router();
 
@@ -96,9 +97,21 @@ authRouter.post("/register", authSensitiveRateLimit, async (req, res) => {
     emailVerifiedAt: undefined,
   });
   const finalUser = await ensureAdminRoleForConfiguredEmail((await findUserById(user.id)) ?? user, "register");
-  await issueEmailVerificationForUser(finalUser);
+  const emailVerificationBypassed = isEmailVerificationBypassEnabled();
+
+  if (!emailVerificationBypassed) {
+    await issueEmailVerificationForUser(finalUser);
+    res.status(201).json({
+      requiresEmailVerification: true,
+      user: toUserPayload(finalUser),
+    });
+    return;
+  }
+
+  const token = signAuthToken(finalUser.id, finalUser.role ?? USER_ROLE);
   res.status(201).json({
-    requiresEmailVerification: true,
+    requiresEmailVerification: false,
+    token,
     user: toUserPayload(finalUser),
   });
 });
@@ -111,7 +124,7 @@ authRouter.post("/login", authSensitiveRateLimit, async (req, res) => {
   const user = await findUserByEmail(normalizedEmail);
   if (!user) return void sendError(res, ErrorCatalog.INVALID_CREDENTIALS);
   if (!verifyPassword(password, user.passwordHash)) return void sendError(res, ErrorCatalog.INVALID_CREDENTIALS);
-  if (!user.emailVerifiedAt) return void sendError(res, ErrorCatalog.EMAIL_NOT_VERIFIED);
+  if (!user.emailVerifiedAt && !isEmailVerificationBypassEnabled()) return void sendError(res, ErrorCatalog.EMAIL_NOT_VERIFIED);
 
   const finalUser = await ensureAdminRoleForConfiguredEmail(user, "login");
   const token = signAuthToken(finalUser.id, finalUser.role ?? USER_ROLE);
@@ -185,7 +198,7 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
   });
 
   if (!user) return void sendError(res, ErrorCatalog.NOT_FOUND);
-  if (email !== undefined) {
+  if (email !== undefined && !isEmailVerificationBypassEnabled()) {
     await issueEmailVerificationForUser(user);
   }
   res.status(200).json(toUserPayload(user));

@@ -27,6 +27,15 @@ function parseEnvFile(content: string): Record<string, string> {
   return parsed;
 }
 
+function parseBooleanEnv(value: string | undefined): boolean {
+  if (!value) return false;
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
+
+export function isEmailVerificationBypassEnabled(): boolean {
+  return parseBooleanEnv(process.env.AUTH_BYPASS_EMAIL_VERIFICATION);
+}
+
 function loadEnvironmentFiles(): void {
   const backendRoot = path.resolve(__dirname, "..", "..");
   const projectRoot = path.resolve(backendRoot, "..");
@@ -58,6 +67,9 @@ export function validateEnvironment(): void {
   const configuredPersistenceMode = process.env.PERSISTENCE_MODE?.trim().toLowerCase();
   const persistenceMode = configuredPersistenceMode || "postgres";
   const databaseUrl = process.env.DATABASE_URL?.trim();
+  const emailVerificationBypass = isEmailVerificationBypassEnabled();
+
+  process.env.AUTH_BYPASS_EMAIL_VERIFICATION = emailVerificationBypass ? "true" : "false";
 
   if (jwtSecret) {
     process.env.JWT_SECRET = jwtSecret;
@@ -148,7 +160,7 @@ export function validateEnvironment(): void {
   const mailerFrom = process.env.MAILER_FROM?.trim();
   if (mailerFrom) process.env.MAILER_FROM = mailerFrom;
 
-  if (isProduction && (!mailerApiUrl || !mailerApiToken)) {
+  if (isProduction && !emailVerificationBypass && (!mailerApiUrl || !mailerApiToken)) {
     console.error("FATAL: MAILER_API_URL and MAILER_API_TOKEN are required in production for email verification.");
     process.exit(1);
   }

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { findApiKeyByPrefix, findUserById, touchApiKey } from "../db/authStore";
 import { ErrorCatalog, sendError } from "../errors/errorCatalog";
+import { isEmailVerificationBypassEnabled } from "../config/env";
 
 export function hashApiKey(rawKey: string): string {
   return crypto.createHash("sha256").update(rawKey).digest("hex");
@@ -31,7 +32,7 @@ export async function requireDeveloperApiKey(req: Request, res: Response, next: 
 
   await touchApiKey(apiKeyRecord.id);
   const user = await findUserById(apiKeyRecord.userId);
-  if (!user || !user.emailVerifiedAt) {
+  if (!user || (!user.emailVerifiedAt && !isEmailVerificationBypassEnabled())) {
     sendError(res, ErrorCatalog.EMAIL_NOT_VERIFIED);
     return;
   }

@@ -9,6 +9,7 @@ import {
   type UserRecord,
 } from "../db/authStore";
 import { sendVerificationEmail } from "./mailer";
+import { isEmailVerificationBypassEnabled } from "../config/env";
 
 const VERIFICATION_TOKEN_TTL_MS = 30 * 60 * 1000;
 
@@ -37,6 +38,10 @@ async function createAndDeliverVerification(user: UserRecord): Promise<void> {
 }
 
 export async function issueEmailVerificationForUser(user: UserRecord): Promise<void> {
+  if (isEmailVerificationBypassEnabled()) {
+    return;
+  }
+
   if (user.emailVerifiedAt) {
     return;
   }
@@ -44,6 +49,10 @@ export async function issueEmailVerificationForUser(user: UserRecord): Promise<v
 }
 
 export async function resendVerificationByEmail(email: string): Promise<void> {
+  if (isEmailVerificationBypassEnabled()) {
+    return;
+  }
+
   const user = await findUserByEmail(email.trim().toLowerCase());
   if (!user || user.emailVerifiedAt) return;
   await createAndDeliverVerification(user);

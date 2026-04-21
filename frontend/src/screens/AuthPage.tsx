@@ -58,7 +58,7 @@ export default function AuthPage() {
     } catch (e) {
       const code = (e as Error).message;
       if (code === "INVALID_CREDENTIALS") setError("Wrong email or password");
-      else if (code === "EMAIL_NOT_VERIFIED") setError("Please verify your email first. Check your inbox.");
+      else if (code === "EMAIL_NOT_VERIFIED") setError("Email verification is required right now. If this is unexpected, contact support.");
       else setError("Sign in failed. Please try again.");
     } finally {
       setLoading(false);
@@ -80,11 +80,17 @@ export default function AuthPage() {
 
     setLoading(true);
     try {
-      await register(username.trim(), email.trim(), password);
-      setVerificationNotice("Account created. Verify your email to finish setup.");
-      setTab("signin");
-      setPassword("");
-      setConfirmPassword("");
+      const result = await register(username.trim(), email.trim(), password);
+      if (result.requiresEmailVerification) {
+        setVerificationNotice("Account created. Verify your email to finish setup.");
+        setTab("signin");
+        setPassword("");
+        setConfirmPassword("");
+        return;
+      }
+
+      setVerificationNotice("Account created. You can continue immediately during beta.");
+      router.replace("/");
     } catch (e) {
       const code = (e as Error).message;
       if (code === "USERNAME_TAKEN") setError("That username is already taken");
