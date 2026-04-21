@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Library, Settings, Sparkles, TrendingUp } from "../../lucide-react";
+import { ChevronRight, Library, Settings, Sparkles, TrendingUp } from "../../lucide-react";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { useUser } from "../context/UserContext";
@@ -27,6 +27,20 @@ function getTopCounts(values: string[], limit = 3): string[] {
     .slice(0, limit)
     .map(([name]) => name);
 }
+
+type ThemeStudioSlotState = "active" | "available" | "bonus-locked" | "reserved";
+
+type ThemeStudioSlot = {
+  id: number;
+  title: string;
+  state: ThemeStudioSlotState;
+  subtitle: string;
+  details: string;
+  cta?: {
+    label: string;
+    href: string;
+  };
+};
 
 export default function PersonalizationPage() {
   const { user, favorites, history, isAuthenticated, updateProfile } = useUser();
@@ -78,6 +92,47 @@ export default function PersonalizationPage() {
   ]), [favoritesDominant, recentHistoryCount, topContexts, topGenres, topMoods]);
 
   const recommendationDataSharingEnabled = Boolean(user?.recommendationDataSharingEnabled);
+  const currentThemeSummary = `${theme} · ${accent} · ${surfaceStyle}`;
+  const themeStudioSlots = useMemo<ThemeStudioSlot[]>(() => ([
+    {
+      id: 1,
+      title: "Slot 1",
+      state: "active",
+      subtitle: "Active free slot",
+      details: `Current setup is applied here (${currentThemeSummary}).`,
+      cta: { label: "Tune appearance", href: "/settings#appearance" },
+    },
+    {
+      id: 2,
+      title: "Slot 2",
+      state: "available",
+      subtitle: "Free slot",
+      details: "Available for your next saved theme profile once Theme Studio editing ships.",
+    },
+    recommendationDataSharingEnabled
+      ? {
+        id: 3,
+        title: "Slot 3",
+        state: "available",
+        subtitle: "Bonus slot ready",
+        details: "Recommendation data sharing is enabled, so this bonus slot is available.",
+      }
+      : {
+        id: 3,
+        title: "Slot 3",
+        state: "bonus-locked",
+        subtitle: "Bonus slot paused",
+        details: "Enable recommendation data sharing to activate this bonus slot.",
+        cta: { label: "Enable in settings", href: "/settings#recommendation-data-sharing" },
+      },
+    {
+      id: 4,
+      title: "Slot 4",
+      state: "reserved",
+      subtitle: "Reserved roadmap slot",
+      details: "Held for a later beta expansion. No premium or purchase flow is active today.",
+    },
+  ]), [accent, currentThemeSummary, recommendationDataSharingEnabled, surfaceStyle, theme]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -171,6 +226,37 @@ export default function PersonalizationPage() {
               {[`Theme: ${theme}`, `Accent: ${accent}`, `Intensity: ${intensity}`, `Surface: ${surfaceStyle}`, `Density: ${density}`].map((chip) => (
                 <span key={chip} className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1">{chip}</span>
               ))}
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {themeStudioSlots.map((slot) => {
+                const stateClassName = slot.state === "active"
+                  ? "border-[var(--accent-border)] bg-[var(--panel-surface)]"
+                  : slot.state === "available"
+                    ? "border-[var(--border)] bg-[var(--panel-surface)]"
+                    : slot.state === "bonus-locked"
+                      ? "border-[var(--border)] bg-[var(--surface-subtle)]/70"
+                      : "border-[var(--border)] bg-black/35";
+                return (
+                  <div key={slot.id} className={`rounded-xl border p-3 ${stateClassName}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">{slot.title}</p>
+                      {slot.state === "active" ? <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">Live</span> : null}
+                      {slot.state === "bonus-locked" ? <Sparkles className="h-4 w-4 text-[var(--muted)]" /> : null}
+                    </div>
+                    <p className="mt-1 text-xs font-medium text-[var(--muted)]">{slot.subtitle}</p>
+                    <p className="mt-2 text-xs text-[var(--muted)]">{slot.details}</p>
+                    {slot.cta ? (
+                      <div className="mt-3">
+                        <Link href={slot.cta.href}>
+                          <Button variant="ghost" size="sm">
+                            <span className="inline-flex items-center gap-1.5">{slot.cta.label}<ChevronRight className="h-3.5 w-3.5" /></span>
+                          </Button>
+                        </Link>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <Link href="/settings#appearance"><Button variant="secondary" size="sm"><span className="inline-flex items-center gap-2"><TrendingUp className="h-4 w-4" />Open current theme controls</span></Button></Link>

@@ -338,7 +338,7 @@ export default function SettingsPage() {
       <Card variant="settings" className="space-y-4">
         <h2 className="text-xl font-semibold">{t("settings_assistant_behavior", language)}</h2>
         <div className="settings-card flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3"><div><p className="font-medium">{t("settings_show_ai_hints", language)}</p><p className="text-sm text-[var(--muted)]">{t("settings_show_ai_hints_desc", language)}</p></div><Button variant="secondary" onClick={() => setAssistantHintsPref(!assistantHints)}>{assistantHints ? t("settings_on", language) : t("settings_off", language)}</Button></div>
-        <div className="settings-card flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+        <div id="recommendation-data-sharing" className="settings-card flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3">
           <div>
             <p className="font-medium">Share usage data to improve recommendations</p>
             <p className="text-sm text-[var(--muted)]">Allow Trackly to use your activity and preferences for better recommendations and personalization.</p>
