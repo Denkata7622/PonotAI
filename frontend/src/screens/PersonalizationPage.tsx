@@ -100,7 +100,7 @@ export default function PersonalizationPage() {
       state: "active",
       subtitle: "Active free slot",
       details: `Current setup is applied here (${currentThemeSummary}).`,
-      cta: { label: "Tune appearance", href: "/settings#appearance" },
+      cta: { label: "Open Theme Studio", href: "/theme-studio" },
     },
     {
       id: 2,
@@ -218,7 +218,7 @@ export default function PersonalizationPage() {
             <Sparkles className="h-5 w-5 text-[var(--accent)]" />
           </div>
           <p className="text-sm text-[var(--muted)]">
-            Preview your active visual setup. Full Theme Studio editing lands in a dedicated future pass.
+            Preview your active visual setup and jump into Theme Studio for real temporary preview sessions.
           </p>
           <div className="rounded-2xl border border-[var(--accent-border)] bg-[var(--accent-soft)] p-4">
             <p className="text-xs uppercase tracking-[0.1em] text-[var(--muted)]">Current style snapshot</p>
@@ -259,8 +259,8 @@ export default function PersonalizationPage() {
               })}
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
+              <Link href="/theme-studio"><Button variant="primary" size="sm"><span className="inline-flex items-center gap-2"><Sparkles className="h-4 w-4" />Open Theme Studio</span></Button></Link>
               <Link href="/settings#appearance"><Button variant="secondary" size="sm"><span className="inline-flex items-center gap-2"><TrendingUp className="h-4 w-4" />Open current theme controls</span></Button></Link>
-              <Button variant="ghost" size="sm" disabled>Theme Studio (coming in roadmap)</Button>
             </div>
           </div>
         </Card>

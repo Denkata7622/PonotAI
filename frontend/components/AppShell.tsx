@@ -12,6 +12,7 @@ import { useProfile } from "../lib/ProfileContext";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { useUser } from "../src/context/UserContext";
+import { useTheme } from "../lib/ThemeContext";
 import { usePlayer } from "./PlayerProvider";
 import type { QueueTrack } from "../features/player/state";
 import SearchInput from "./SearchInput";
@@ -64,6 +65,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { user, token, isAuthenticated, logout, history, favorites, saveToLibrary } = useUser();
+  const { isPreviewSessionActive, previewSession, discardPreviewSession } = useTheme();
   const { playlists, favoritesSet, toggleFavorite } = useLibrary(profile.id);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -697,6 +699,17 @@ function AppShellContent({ children }: { children: ReactNode }) {
               </button>
             )}
           </div> : null}
+          {isPreviewSessionActive && pathname !== "/theme-studio" ? (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--accent-border)] bg-[var(--accent-soft)] p-3 text-sm">
+              <p>
+                Theme preview is active ({previewSession?.origin ?? "theme-studio"}). Return to Theme Studio to apply or discard.
+              </p>
+              <div className="flex gap-2">
+                <button type="button" className="navItem px-3 py-1.5 text-xs" onClick={discardPreviewSession}>Discard</button>
+                <Link href="/theme-studio" className="navItemActive px-3 py-1.5 text-xs">Return to Theme Studio</Link>
+              </div>
+            </div>
+          ) : null}
           {children}
           </div>
         </main>
