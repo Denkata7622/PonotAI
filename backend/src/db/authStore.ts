@@ -7,6 +7,7 @@ export type UserRecord = {
   username: string;
   email: string;
   passwordHash: string;
+  recommendationDataSharingEnabled: boolean;
   emailVerifiedAt?: string | null;
   role?: "user" | "admin";
   isDemo?: boolean;
@@ -159,6 +160,7 @@ function mapUser(user: any): UserRecord {
     username: user.username,
     email: user.email,
     passwordHash: user.passwordHash,
+    recommendationDataSharingEnabled: Boolean(user.recommendationDataSharingEnabled),
     emailVerifiedAt: user.emailVerifiedAt ? toIso(user.emailVerifiedAt) : undefined,
     role: user.role,
     isDemo: user.isDemo,
@@ -297,6 +299,7 @@ export async function createUser(input: Omit<UserRecord, "id" | "createdAt">): P
       username: input.username,
       email: input.email.trim().toLowerCase(),
       passwordHash: input.passwordHash,
+      recommendationDataSharingEnabled: Boolean(input.recommendationDataSharingEnabled),
       emailVerifiedAt: input.emailVerifiedAt ? new Date(input.emailVerifiedAt) : undefined,
       role: input.role ?? "user",
       isDemo: Boolean(input.isDemo),
@@ -319,6 +322,7 @@ export async function updateUser(
       username: updates.username,
       email: updates.email ? updates.email.trim().toLowerCase() : undefined,
       passwordHash: updates.passwordHash,
+      recommendationDataSharingEnabled: updates.recommendationDataSharingEnabled,
       emailVerifiedAt: updates.emailVerifiedAt ? new Date(updates.emailVerifiedAt) : updates.emailVerifiedAt === null ? null : undefined,
       role: updates.role,
       isDemo: updates.isDemo,

@@ -41,6 +41,44 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
     const meBody = (await meResponse.json()) as { user: { id: string; email: string } };
     assert.equal(meBody.user.id, user.userId);
 
+    const sharingUserEmail = `sharing-${Date.now()}@test.dev`;
+    const sharingUsername = `sharing${Date.now().toString().slice(-8)}`;
+    const sharingPassword = "password123";
+    const registerSharingResponse = await fetch(`${running.baseUrl}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: sharingUsername, email: sharingUserEmail, password: sharingPassword }),
+    });
+    assert.equal(registerSharingResponse.status, 201);
+    const sharingRegisterPayload = (await registerSharingResponse.json()) as { token: string; user: { recommendationDataSharingEnabled?: boolean } };
+    const sharingToken = sharingRegisterPayload.token;
+    assert.equal(sharingRegisterPayload.user.recommendationDataSharingEnabled, false);
+
+    const enableSharingResponse = await fetch(`${running.baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization: `Bearer ${sharingToken}` },
+      body: JSON.stringify({ recommendationDataSharingEnabled: true }),
+    });
+    assert.equal(enableSharingResponse.status, 200);
+    const updatedSharingUser = (await enableSharingResponse.json()) as { recommendationDataSharingEnabled?: boolean };
+    assert.equal(updatedSharingUser.recommendationDataSharingEnabled, true);
+
+    const sharingMeResponse = await fetch(`${running.baseUrl}/api/auth/me`, {
+      headers: { authorization: `Bearer ${sharingToken}` },
+    });
+    assert.equal(sharingMeResponse.status, 200);
+    const sharingMeBody = (await sharingMeResponse.json()) as { user: { recommendationDataSharingEnabled?: boolean } };
+    assert.equal(sharingMeBody.user.recommendationDataSharingEnabled, true);
+
+    const reloginResponse = await fetch(`${running.baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: sharingUserEmail, password: sharingPassword }),
+    });
+    assert.equal(reloginResponse.status, 200);
+    const reloginBody = (await reloginResponse.json()) as { user: { recommendationDataSharingEnabled?: boolean } };
+    assert.equal(reloginBody.user.recommendationDataSharingEnabled, true);
+
     const assistantResponse = await fetch(`${running.baseUrl}/api/assistant`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${user.token}` },

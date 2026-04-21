@@ -608,6 +608,7 @@ adminRouter.post("/demo-login", async (req, res) => {
       : await createUser({
         username,
         email: configuredEmail,
+        recommendationDataSharingEnabled: false,
         role: "admin",
         isDemo: true,
         passwordHash: hashPassword(temporaryPassword),
