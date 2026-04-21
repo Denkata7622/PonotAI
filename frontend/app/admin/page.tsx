@@ -185,6 +185,7 @@ type SongTasterSnapshot = {
   queue: {
     queued: number;
     processing: number;
+    completed: number;
     failed: number;
   };
   items: SongTasterItem[];
@@ -655,6 +656,7 @@ export default function AdminPage() {
             <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
               <p className="rounded-lg border border-[var(--border)] p-3">Queue queued: <strong>{songTasterOverview.queue.queued}</strong></p>
               <p className="rounded-lg border border-[var(--border)] p-3">Queue processing: <strong>{songTasterOverview.queue.processing}</strong></p>
+              <p className="rounded-lg border border-[var(--border)] p-3">Queue completed: <strong>{songTasterOverview.queue.completed}</strong></p>
               <p className="rounded-lg border border-[var(--border)] p-3">Queue failed: <strong>{songTasterOverview.queue.failed}</strong></p>
               <p className="rounded-lg border border-[var(--border)] p-3">Stage 1 completed: <strong>{songTasterOverview.totals.stage1Completed}</strong></p>
               <p className="rounded-lg border border-[var(--border)] p-3">Stage 1 queued: <strong>{songTasterOverview.totals.stage1Queued}</strong></p>
@@ -698,7 +700,7 @@ export default function AdminPage() {
                           </button>
                           <button
                             className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs"
-                            disabled={Boolean(songTasterActionBusy) || item.stage1Status !== "failed"}
+                            disabled={Boolean(songTasterActionBusy) || (item.stage1Status !== "failed" && item.queue?.status !== "failed")}
                             onClick={() => runSongTasterAction(item, "retry")}
                           >
                             {songTasterActionBusy?.id === item.id && songTasterActionBusy.action === "retry" ? "Retrying…" : "Retry failed"}
@@ -719,6 +721,10 @@ export default function AdminPage() {
                   <p>Stage 1 status: <strong>{songTasterSelected.stage1Status}</strong></p>
                   <p>Analyzed at: <strong>{songTasterSelected.stage1AnalyzedAt ? formatUtcDateTime(songTasterSelected.stage1AnalyzedAt) : "not yet"}</strong></p>
                   <p>Stage 1 error: <strong>{songTasterSelected.stage1Error ?? "none"}</strong></p>
+                  <p>Created at: <strong>{formatUtcDateTime(songTasterSelected.createdAt)}</strong></p>
+                  <p>Updated at: <strong>{formatUtcDateTime(songTasterSelected.updatedAt)}</strong></p>
+                  <p>Last queued at: <strong>{songTasterSelected.lastQueuedAt ? formatUtcDateTime(songTasterSelected.lastQueuedAt) : "not yet"}</strong></p>
+                  <p>Queue status: <strong>{songTasterSelected.queue?.status ?? "none"}</strong></p>
                   <p>Stage 2: <strong>{songTasterSelected.stage2Status}</strong> (scaffold-only)</p>
                   <p>Stage 3: <strong>{songTasterSelected.stage3Status}</strong> (scaffold-only)</p>
                 </div>
@@ -731,6 +737,9 @@ export default function AdminPage() {
                   <p>Vocal/instrumental: <strong>{songTasterSelected.stage1Data?.vocalOrInstrumental ?? "-"}</strong></p>
                   <p>Context tags: <strong>{songTasterSelected.stage1Data?.contextTags?.join(", ") || "-"}</strong></p>
                   <p>Confidence (overall): <strong>{songTasterSelected.stage1Confidence?.overall ?? "-"}</strong></p>
+                  <p>Confidence (genre): <strong>{songTasterSelected.stage1Confidence?.genreFamily ?? "-"}</strong></p>
+                  <p>Confidence (mood): <strong>{songTasterSelected.stage1Confidence?.mood ?? "-"}</strong></p>
+                  <p>Confidence (energy): <strong>{songTasterSelected.stage1Confidence?.energy ?? "-"}</strong></p>
                 </div>
               </section>
             ) : null}

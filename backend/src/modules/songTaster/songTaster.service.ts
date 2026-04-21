@@ -355,6 +355,7 @@ export async function getSongTasteAdminSnapshot(filters: SongTasteAdminFilters =
     queue: {
       queued: queueQueued,
       processing: queueProcessing,
+      completed: stage1Completed,
       failed: queueFailed,
     },
     items: recent.map((item) => ({
