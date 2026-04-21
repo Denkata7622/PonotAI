@@ -190,7 +190,7 @@ type UserContextValue = {
   isAuthenticated: boolean;
   isLoading: boolean;
   onboardingRequired: boolean;
-  register: (username: string, email: string, password: string) => Promise<void>;
+  register: (username: string, email: string, password: string) => Promise<{ requiresEmailVerification: boolean }>;
   verifyEmail: (token: string) => Promise<void>;
   resendVerification: (email: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -324,14 +324,24 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   // ─── Auth Actions ────────────────────────────────────────────────────────────
 
-  async function register(username: string, email: string, password: string) {
+  async function register(username: string, email: string, password: string): Promise<{ requiresEmailVerification: boolean }> {
     const res = await apiFetch("/api/auth/register", {
       method: "POST",
       body: JSON.stringify({ username, email, password }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.code || data.error || "REGISTER_FAILED");
+
+    const payload = data as { token?: string; user?: User; requiresEmailVerification?: boolean };
+    if (payload.token && payload.user) {
+      await handleAuthSuccess({ token: payload.token, user: payload.user });
+      markOnboardingDone();
+      setOnboardingRequired(false);
+      return { requiresEmailVerification: false };
+    }
+
     setOnboardingRequired(false);
+    return { requiresEmailVerification: true };
   }
 
   async function verifyEmail(token: string) {
