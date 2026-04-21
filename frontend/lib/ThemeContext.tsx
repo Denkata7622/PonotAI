@@ -66,6 +66,18 @@ type ThemeContextValue = UiPersonalization & {
   setPanelTint: (panelTint: PanelTint) => void;
   setDisplayTextStyle: (displayTextStyle: DisplayTextStyle) => void;
   applyPersonalization: (patch: Partial<UiPersonalization>) => void;
+  previewSession: ThemePreviewSession | null;
+  isPreviewSessionActive: boolean;
+  startPreviewSession: (origin: string, patch?: Partial<UiPersonalization>) => void;
+  applyPreviewSession: () => void;
+  discardPreviewSession: () => void;
+};
+
+export type ThemePreviewSession = {
+  active: true;
+  origin: string;
+  startedAt: string;
+  previewThemePayload: UiPersonalization;
 };
 
 const STORAGE = {
@@ -193,7 +205,7 @@ function legacyToBodyFont(value: string | null): BodyFont {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [ui, setUi] = useState<UiPersonalization>(() => {
+  const [persistedUi, setPersistedUi] = useState<UiPersonalization>(() => {
     if (typeof window === "undefined") return defaults;
     const savedTheme = window.localStorage.getItem(STORAGE.theme);
     const savedAccent = window.localStorage.getItem(STORAGE.accent);
@@ -220,42 +232,77 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } satisfies UiPersonalization;
     return saved;
   });
+  const [previewSession, setPreviewSession] = useState<ThemePreviewSession | null>(null);
+  const ui = previewSession?.previewThemePayload ?? persistedUi;
 
   function updateUiSetting<K extends keyof UiPersonalization>(key: K, value: UiPersonalization[K]) {
-    setUi((prev) => ({ ...prev, [key]: value }));
+    if (previewSession) {
+      setPreviewSession((prev) => (prev ? { ...prev, previewThemePayload: { ...prev.previewThemePayload, [key]: value } } : prev));
+      return;
+    }
+    setPersistedUi((prev) => ({ ...prev, [key]: value }));
   }
 
   const applyPersonalization = (patch: Partial<UiPersonalization>) => {
-    setUi((prev) => ({ ...prev, ...patch }));
+    if (previewSession) {
+      setPreviewSession((prev) => (prev ? { ...prev, previewThemePayload: { ...prev.previewThemePayload, ...patch } } : prev));
+      return;
+    }
+    setPersistedUi((prev) => ({ ...prev, ...patch }));
+  };
+
+  const startPreviewSession = (origin: string, patch?: Partial<UiPersonalization>) => {
+    setPreviewSession({
+      active: true,
+      origin,
+      startedAt: new Date().toISOString(),
+      previewThemePayload: { ...persistedUi, ...(patch ?? {}) },
+    });
+  };
+
+  const applyPreviewSession = () => {
+    setPreviewSession((session) => {
+      if (!session) return session;
+      setPersistedUi(session.previewThemePayload);
+      return null;
+    });
+  };
+
+  const discardPreviewSession = () => {
+    setPreviewSession(null);
   };
 
   useEffect(() => {
     applyUiStateToDocument(ui);
-    window.localStorage.setItem(STORAGE.theme, ui.theme);
-    window.localStorage.setItem(STORAGE.accent, ui.accent);
-    window.localStorage.setItem(STORAGE.density, ui.density);
-    window.localStorage.setItem(STORAGE.intensity, ui.intensity);
-    window.localStorage.setItem(STORAGE.surfaceStyle, ui.surfaceStyle);
-    window.localStorage.setItem(STORAGE.radius, ui.radius);
-    window.localStorage.setItem(STORAGE.chartStyle, ui.chartStyle);
-    window.localStorage.setItem(STORAGE.sidebarStyle, ui.sidebarStyle);
-    window.localStorage.setItem(STORAGE.motionLevel, ui.motionLevel);
-    window.localStorage.setItem(STORAGE.cardEmphasis, ui.cardEmphasis);
-    window.localStorage.setItem(STORAGE.bodyFont, ui.bodyFont);
-    window.localStorage.setItem(STORAGE.displayFont, ui.displayFont);
-    window.localStorage.setItem(STORAGE.textScale, ui.textScale);
-    window.localStorage.setItem(STORAGE.glowLevel, ui.glowLevel);
-    window.localStorage.setItem(STORAGE.panelTint, ui.panelTint);
-    window.localStorage.setItem(STORAGE.displayTextStyle, ui.displayTextStyle);
+  }, [ui]);
 
-    if (ui.theme === "system") {
+  useEffect(() => {
+    if (previewSession) return;
+    window.localStorage.setItem(STORAGE.theme, persistedUi.theme);
+    window.localStorage.setItem(STORAGE.accent, persistedUi.accent);
+    window.localStorage.setItem(STORAGE.density, persistedUi.density);
+    window.localStorage.setItem(STORAGE.intensity, persistedUi.intensity);
+    window.localStorage.setItem(STORAGE.surfaceStyle, persistedUi.surfaceStyle);
+    window.localStorage.setItem(STORAGE.radius, persistedUi.radius);
+    window.localStorage.setItem(STORAGE.chartStyle, persistedUi.chartStyle);
+    window.localStorage.setItem(STORAGE.sidebarStyle, persistedUi.sidebarStyle);
+    window.localStorage.setItem(STORAGE.motionLevel, persistedUi.motionLevel);
+    window.localStorage.setItem(STORAGE.cardEmphasis, persistedUi.cardEmphasis);
+    window.localStorage.setItem(STORAGE.bodyFont, persistedUi.bodyFont);
+    window.localStorage.setItem(STORAGE.displayFont, persistedUi.displayFont);
+    window.localStorage.setItem(STORAGE.textScale, persistedUi.textScale);
+    window.localStorage.setItem(STORAGE.glowLevel, persistedUi.glowLevel);
+    window.localStorage.setItem(STORAGE.panelTint, persistedUi.panelTint);
+    window.localStorage.setItem(STORAGE.displayTextStyle, persistedUi.displayTextStyle);
+
+    if (persistedUi.theme === "system") {
       const media = window.matchMedia("(prefers-color-scheme: light)");
-      const listener = () => applyUiStateToDocument(ui);
+      const listener = () => applyUiStateToDocument(persistedUi);
       media.addEventListener("change", listener);
       return () => media.removeEventListener("change", listener);
     }
     return undefined;
-  }, [ui]);
+  }, [persistedUi, previewSession]);
 
   const value = useMemo(
     () => ({
@@ -279,8 +326,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setPanelTint: (panelTint: PanelTint) => updateUiSetting("panelTint", panelTint),
       setDisplayTextStyle: (displayTextStyle: DisplayTextStyle) => updateUiSetting("displayTextStyle", displayTextStyle),
       applyPersonalization,
+      previewSession,
+      isPreviewSessionActive: Boolean(previewSession),
+      startPreviewSession,
+      applyPreviewSession,
+      discardPreviewSession,
     }),
-    [ui],
+    [ui, previewSession],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
