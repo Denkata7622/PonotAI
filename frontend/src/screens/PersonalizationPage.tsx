@@ -232,7 +232,7 @@ export default function PersonalizationPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 pb-[calc(var(--layout-bottom-offset)+24px)] pt-2 sm:px-6 sm:pt-4">
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-3 pb-[calc(var(--layout-bottom-offset)+24px)] pt-2 sm:px-6 sm:pt-4">
       <header className="space-y-2">
         <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Personalization hub</p>
         <h1 className="display-styled text-3xl font-semibold tracking-tight sm:text-4xl">Personalization</h1>
@@ -243,7 +243,7 @@ export default function PersonalizationPage() {
       </header>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <Card variant="settings" className="space-y-4 p-5">
+        <Card variant="settings" className="order-2 space-y-4 p-4 sm:p-5 lg:order-2">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Taste Identity</p>
@@ -262,7 +262,7 @@ export default function PersonalizationPage() {
             {tasteSignals.map((signal) => (
               <div key={signal.label} className="themed-surface-subtle rounded-xl border border-[var(--border)] p-3">
                 <p className="text-xs text-[var(--muted)]">{signal.label}</p>
-                <p className="mt-1 text-sm font-medium">{signal.value}</p>
+                <p className="mt-1 break-words text-sm font-medium">{signal.value}</p>
               </div>
             ))}
           </div>
@@ -290,7 +290,7 @@ export default function PersonalizationPage() {
           </div>
         </Card>
 
-        <Card variant="settings" className="space-y-4 p-5">
+        <Card variant="settings" className="order-1 space-y-4 p-4 sm:p-5 lg:order-1 lg:col-span-2">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Theme Studio Preview</p>
@@ -301,14 +301,14 @@ export default function PersonalizationPage() {
           <p className="text-sm text-[var(--muted)]">
             Preview your active visual setup and jump into Theme Studio for real temporary preview sessions.
           </p>
-          <div className="rounded-2xl border border-[var(--accent-border)] bg-[var(--accent-soft)] p-4">
+          <div className="rounded-2xl border border-[var(--accent-border)] bg-[var(--accent-soft)] p-3.5 sm:p-4">
             <p className="text-xs uppercase tracking-[0.1em] text-[var(--muted)]">Current style snapshot</p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs">
               {[`Theme: ${theme}`, `Accent: ${accent}`, `Intensity: ${intensity}`, `Surface: ${surfaceStyle}`, `Density: ${density}`].map((chip) => (
-                <span key={chip} className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1">{chip}</span>
+                <span key={chip} className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1 break-words">{chip}</span>
               ))}
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {themeStudioSlots.map((slot) => {
                 const stateClassName = slot.state === "active"
                   ? "border-[var(--accent-border)] bg-[var(--panel-surface)]"
@@ -318,14 +318,14 @@ export default function PersonalizationPage() {
                       ? "border-[var(--border)] bg-[var(--surface-subtle)]/70"
                       : "border-[var(--border)] bg-black/35";
                 return (
-                  <div key={slot.id} className={`rounded-xl border p-3 ${stateClassName}`}>
+                  <div key={slot.id} className={`rounded-xl border p-3.5 ${stateClassName}`}>
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-semibold">{slot.title}</p>
                       {slot.state === "active" ? <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">Live</span> : null}
                       {slot.state === "bonus-locked" ? <Sparkles className="h-4 w-4 text-[var(--muted)]" /> : null}
                     </div>
                     <p className="mt-1 text-xs font-medium text-[var(--muted)]">{slot.subtitle}</p>
-                    <p className="mt-2 text-xs text-[var(--muted)]">{slot.details}</p>
+                    <p className="mt-2 break-words text-xs text-[var(--muted)]">{slot.details}</p>
                     {slot.cta ? (
                       <div className="mt-3">
                         <Link href={slot.cta.href}>
@@ -346,7 +346,7 @@ export default function PersonalizationPage() {
           </div>
         </Card>
 
-        <Card variant="settings" className="space-y-4 p-5">
+        <Card variant="settings" className="order-4 space-y-4 p-4 sm:p-5 lg:order-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Personalized Music Packs</p>
@@ -363,7 +363,7 @@ export default function PersonalizationPage() {
               <span className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1">Pack mode: collectible drops</span>
               <span className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1">{`Signal mode: ${recommendationModeLabel}`}</span>
             </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {musicPackCards.map((pack) => {
                 const cardClassName = pack.state === "available-scaffold"
                   ? "border-[var(--accent-border)] bg-[var(--panel-surface)]"
@@ -390,7 +390,7 @@ export default function PersonalizationPage() {
                         <p className="mt-0.5 font-medium">{pack.identityLabel}</p>
                       </div>
                     </div>
-                    <p className="mt-3 text-xs text-[var(--muted)]">{pack.description}</p>
+                    <p className="mt-3 break-words text-xs text-[var(--muted)]">{pack.description}</p>
                     {pack.note ? <p className="mt-1 text-[11px] text-[var(--muted)]">{pack.note}</p> : null}
                     {pack.ctaLabel ? (
                       <button
@@ -409,7 +409,7 @@ export default function PersonalizationPage() {
           <div className="rounded-xl border border-dashed border-[var(--border)] p-3 text-xs text-[var(--muted)]">
             Integration boundaries set for later: real pack title/artwork identity, open pack reveal, save/discard actions, song preview rows, and engaging-part playback via Song Taster layers.
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {[
               "Open pack reveal flow",
               "Save pack to library",
@@ -424,7 +424,7 @@ export default function PersonalizationPage() {
           </div>
         </Card>
 
-        <Card variant="settings" className="space-y-4 p-5">
+        <Card variant="settings" className="order-3 space-y-4 p-4 sm:p-5 lg:order-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Recommendation Controls</p>
@@ -445,7 +445,7 @@ export default function PersonalizationPage() {
                 type="button"
                 onClick={handleRecommendationDataSharingToggle}
                 disabled={!isAuthenticated}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition ${recommendationDataSharingEnabled ? "border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text)]" : "border-[var(--border)] bg-transparent text-[var(--muted)]"} disabled:cursor-not-allowed disabled:opacity-60`}
+                className={`rounded-full border px-3 py-2 text-xs font-medium transition ${recommendationDataSharingEnabled ? "border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text)]" : "border-[var(--border)] bg-transparent text-[var(--muted)]"} disabled:cursor-not-allowed disabled:opacity-60`}
               >
                 {recommendationDataSharingEnabled ? "Enabled" : "Disabled"}
               </button>
@@ -498,7 +498,7 @@ export default function PersonalizationPage() {
                       type="button"
                       onClick={() => void handleRecommendationControlChange(control.key, option.value as "safe_familiar" | "balanced" | "mostly_discovery" | "lower" | "normal" | "higher" | "calmer" | "mixed" | "more_energetic")}
                       disabled={!isAuthenticated || control.active === option.value}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      className={`rounded-full border px-3 py-2 text-xs font-medium transition ${
                         control.active === option.value
                           ? "border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text)]"
                           : "border-[var(--border)] bg-transparent text-[var(--muted)] hover:border-[var(--accent-border)] hover:text-[var(--text)]"
