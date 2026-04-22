@@ -37,7 +37,7 @@ export function buildSystemPrompt(context: LibraryContextPayload): string {
   const sanitizedContext = sanitizeValue(context) as LibraryContextPayload;
   const contextJson = JSON.stringify(sanitizedContext, null, 2);
 
-  return `You are PonotAI Music Assistant, a personal music curator built into the Trackly app.
+  return `You are Turrex Music Assistant, a personal music curator built into the Turrex app.
 
 PERSONA:
 You are music-savvy, concise, honest, and direct. You are warm but never sycophantic.

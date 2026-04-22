@@ -24,7 +24,7 @@ export default function HowToUsePage() {
   return (
     <main className="min-h-screen px-6 py-14 text-[var(--text)]">
       <section className="mx-auto max-w-5xl rounded-3xl border border-border bg-surface px-10 py-12 backdrop-blur-xl">
-        <h1 className="text-5xl font-semibold tracking-tight">{isBg ? "Как да използваш Trackly" : "How to use Trackly"}</h1>
+        <h1 className="text-5xl font-semibold tracking-tight">{isBg ? "Как да използваш Turrex" : "How to use Turrex"}</h1>
         <p className="mt-5 max-w-2xl text-[var(--muted)] leading-relaxed">
           {isBg ? "Бърз работен поток: разпознаване, проверка, запазване и интелигентни предложения." : "A practical flow: recognize, verify, save, and take action with intelligent suggestions."}
         </p>

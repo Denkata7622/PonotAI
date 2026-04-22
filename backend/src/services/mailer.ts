@@ -6,7 +6,7 @@ function requireEnv(name: string): string | null {
 }
 
 function buildVerificationEmailHtml(verificationUrl: string): string {
-  return `<p>Welcome to Trackly.</p><p>Please verify your email by opening this link:</p><p><a href="${verificationUrl}">${verificationUrl}</a></p><p>This link expires in 30 minutes.</p>`;
+  return `<p>Welcome to Turrex.</p><p>Please verify your email by opening this link:</p><p><a href="${verificationUrl}">${verificationUrl}</a></p><p>This link expires in 30 minutes.</p>`;
 }
 
 export async function sendVerificationEmail(email: string, verificationUrl: string): Promise<void> {
@@ -31,7 +31,7 @@ export async function sendVerificationEmail(email: string, verificationUrl: stri
     body: JSON.stringify({
       to: email,
       from,
-      subject: "Verify your Trackly email",
+      subject: "Verify your Turrex email",
       text: `Verify your email: ${verificationUrl} (expires in 30 minutes)`,
       html: buildVerificationEmailHtml(verificationUrl),
     }),

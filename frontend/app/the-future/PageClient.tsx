@@ -10,12 +10,12 @@ export default function TheFuturePage() {
     <main className="mx-auto max-w-5xl px-6 py-16 text-[var(--text)]">
       <section className="text-center mb-16">
         <h1 className="mt-6 text-5xl font-semibold tracking-tight">
-          {isBg ? "Бъдещето на ПонотИИ" : "The future of PonotAI"}
+          {isBg ? "Бъдещето на Turrex" : "The future of Turrex"}
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-lg text-text-muted leading-relaxed">
           {isBg
-            ? "След демонстрацията целта ни е ПонотИИ да се развие в цялостна музикална платформа с библиотека, профили и препоръки."
-            : "After the demo, our goal is to evolve PonotAI into a complete music platform with library, profiles, and recommendations."}
+            ? "След демонстрацията целта ни е Turrex да се развие в цялостна музикална платформа с библиотека, профили и препоръки."
+            : "After the demo, our goal is to evolve Turrex into a complete music platform with library, profiles, and recommendations."}
         </p>
       </section>
 

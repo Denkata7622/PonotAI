@@ -191,7 +191,7 @@ export default function SettingsPage() {
         <div id="recommendation-data-sharing" className="settings-card flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3">
           <div>
             <p className="font-medium">Share usage data to improve recommendations</p>
-            <p className="text-sm text-[var(--muted)]">Allow Trackly to use your activity and preferences for better recommendations and personalization.</p>
+            <p className="text-sm text-[var(--muted)]">Allow Turrex to use your activity and preferences for better recommendations and personalization.</p>
           </div>
           <Button variant="secondary" onClick={() => void handleRecommendationDataSharingToggle()} disabled={!isAuthenticated}>
             {recommendationDataSharingEnabled ? t("settings_on", language) : t("settings_off", language)}

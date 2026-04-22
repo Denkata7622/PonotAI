@@ -171,7 +171,7 @@ export default function PersonalizationPage() {
         packSizeLabel: "Preview shell",
         identityLabel: `${primaryMood} · ${primaryGenre}`,
         state: "no-pack-yet",
-        description: "Preparing your first collectible pack. Trackly is still calibrating from onboarding and early listening signals.",
+        description: "Preparing your first collectible pack. Turrex is still calibrating from onboarding and early listening signals.",
         note: recommendationDataSharingEnabled
           ? "Listening data sharing is on, so your first drop will unlock as your activity grows."
           : "Enable listening data sharing for stronger pack shaping and faster confidence.",
@@ -273,7 +273,7 @@ export default function PersonalizationPage() {
             </p>
             {sparseData ? (
               <p className="mt-1">
-                Still learning: signals are currently light, so Trackly is prioritizing onboarding preferences until more behavior data arrives.
+                Still learning: signals are currently light, so Turrex is prioritizing onboarding preferences until more behavior data arrives.
               </p>
             ) : null}
             <p className="mt-1">
@@ -428,7 +428,7 @@ export default function PersonalizationPage() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Recommendation Controls</p>
-              <h2 className="text-xl font-semibold">How Trackly tunes suggestions</h2>
+              <h2 className="text-xl font-semibold">How Turrex tunes suggestions</h2>
             </div>
             <Settings className="h-5 w-5 text-[var(--accent)]" />
           </div>
@@ -457,7 +457,7 @@ export default function PersonalizationPage() {
               {
                 key: "recommendationMode" as const,
                 label: "Recommendation mode",
-                description: "Controls how often Trackly should prioritize new discoveries.",
+                description: "Controls how often Turrex should prioritize new discoveries.",
                 options: [
                   { value: "safe_familiar", label: "Safe & familiar" },
                   { value: "balanced", label: "Balanced" },

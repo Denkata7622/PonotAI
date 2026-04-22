@@ -10,12 +10,12 @@ export default function IdeaPage() {
     <main className="mx-auto max-w-5xl px-6 py-16 text-text-primary">
       <section className="mb-16 text-center">
         <h1 className="mt-6 text-5xl font-semibold tracking-tight leading-tight">
-          {isBg ? "Идеята зад ПонотИИ" : "The idea behind PonotAI"}
+          {isBg ? "Идеята зад Turrex" : "The idea behind Turrex"}
         </h1>
         <p className="mx-auto mt-5 max-w-3xl text-lg text-text-muted leading-relaxed">
           {isBg
-            ? "ПонотИИ решава проблема след разпознаването: не само каква е песента, а къде да я слушаш бързо, сигурно и легално."
-            : "PonotAI solves the problem after recognition: not only what song it is, but where to listen quickly, safely, and legally."}
+            ? "Turrex решава проблема след разпознаването: не само каква е песента, а къде да я слушаш бързо, сигурно и легално."
+            : "Turrex solves the problem after recognition: not only what song it is, but where to listen quickly, safely, and legally."}
         </p>
       </section>
 
@@ -32,8 +32,8 @@ export default function IdeaPage() {
             title: isBg ? "Решение" : "Solution",
             heading: isBg ? "Един резултат → легален достъп" : "One result → legal access",
             text: isBg
-              ? "ПонотИИ предлага директни действия към Spotify, YouTube Music и Apple Music."
-              : "PonotAI provides direct actions to Spotify, YouTube Music, and Apple Music.",
+              ? "Turrex предлага директни действия към Spotify, YouTube Music и Apple Music."
+              : "Turrex provides direct actions to Spotify, YouTube Music, and Apple Music.",
           },
           {
             title: isBg ? "Изпълнение" : "Implementation",

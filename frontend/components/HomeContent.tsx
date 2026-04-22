@@ -640,8 +640,8 @@ export function HomeContent() {
           <div className="space-y-6">
             {!isAuthenticated && history.length === 0 && !demoSeen && (
               <Card className="resultEnter mb-6">
-                <p className="text-sm uppercase tracking-[0.22em] text-text-muted">Trackly</p>
-                <h3 className="mt-2 text-2xl font-bold">{language === "bg" ? "Добре дошъл в Trackly" : "Welcome to Trackly"}</h3>
+                <p className="text-sm uppercase tracking-[0.22em] text-text-muted">Turrex</p>
+                <h3 className="mt-2 text-2xl font-bold">{language === "bg" ? "Добре дошъл в Turrex" : "Welcome to Turrex"}</h3>
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   <div className="homeStepCard p-3 text-sm"><Mic className="w-5 h-5 text-[var(--accent)]" /><p className="mt-2">{language === "bg" ? "1. Слушай" : "1. Listen"}</p></div>
                   <div className="homeStepCard p-3 text-sm"><Music className="w-5 h-5 text-[var(--accent)]" /><p className="mt-2">{language === "bg" ? "2. Разпознай" : "2. Identify"}</p></div>
@@ -678,7 +678,7 @@ export function HomeContent() {
             {showAssistantHints ? <Card className="p-5">
               <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">{language === "bg" ? "Асистент" : "Assistant"}</p>
               <h3 className="inline-flex items-center gap-2 text-lg font-semibold"><Sparkles className="h-4 w-4 text-[var(--accent)]" /> AI can do more than chat</h3>
-              <p className="mt-2 text-sm text-[var(--muted)]">Ask Trackly Assistant to generate playlists, summarize your daily/weekly/monthly trends, suggest discovery tracks, and build your queue instantly.</p>
+              <p className="mt-2 text-sm text-[var(--muted)]">Ask Turrex Assistant to generate playlists, summarize your daily/weekly/monthly trends, suggest discovery tracks, and build your queue instantly.</p>
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
                 {["Build playlist", "Analyze trends", "Mood recommendations", "Discovery picks", "Queue actions"].map((item) => (
                   <span key={item} className="rounded-full border border-[var(--border)] px-2 py-1">{item}</span>

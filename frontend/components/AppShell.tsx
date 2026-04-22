@@ -336,7 +336,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
               <h1 className="logoWrapper flex items-center gap-2">
                 <span className="logoDot" />
                 {!isCollapsed && (
-                  <span className="logoText">{language === "bg" ? "ПонотИИ" : "PonotAI"}</span>
+                  <span className="logoText">{language === "bg" ? "Turrex" : "Turrex"}</span>
                 )}
               </h1>
             </Link>
