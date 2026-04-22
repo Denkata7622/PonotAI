@@ -77,6 +77,9 @@ type ThemeContextValue = UiPersonalization & {
   discardPreviewSession: () => void;
   namedThemeDrafts: NamedThemeDraft[];
   saveNamedThemeDraft: (name: string) => { ok: boolean; reason?: "empty-name" };
+  renameNamedThemeDraft: (id: string, name: string) => { ok: boolean; reason?: "empty-name" | "not-found" };
+  deleteNamedThemeDraft: (id: string) => void;
+  duplicateCurrentThemeAsDraft: (name?: string) => { ok: boolean; reason?: "empty-name" };
   applyNamedThemeDraft: (id: string) => void;
 };
 
@@ -324,6 +327,39 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return { ok: true as const };
   };
 
+  const renameNamedThemeDraft = (id: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return { ok: false as const, reason: "empty-name" as const };
+    let found = false;
+    setNamedThemeDrafts((prev) => {
+      const next = prev
+        .map((item) => {
+          if (item.id !== id) return item;
+          found = true;
+          return { ...item, name: trimmed };
+        })
+        .filter((item, index, arr) => arr.findIndex((entry) => entry.name.toLowerCase() === item.name.toLowerCase()) === index)
+        .slice(0, 20);
+      window.localStorage.setItem(STORAGE.namedThemeDrafts, JSON.stringify(next));
+      return next;
+    });
+    if (!found) return { ok: false as const, reason: "not-found" as const };
+    return { ok: true as const };
+  };
+
+  const deleteNamedThemeDraft = (id: string) => {
+    setNamedThemeDrafts((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      window.localStorage.setItem(STORAGE.namedThemeDrafts, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const duplicateCurrentThemeAsDraft = (name?: string) => {
+    const sourceName = name?.trim() || `Draft ${namedThemeDrafts.length + 1}`;
+    return saveNamedThemeDraft(sourceName);
+  };
+
   const applyNamedThemeDraft = (id: string) => {
     const selected = namedThemeDrafts.find((item) => item.id === id);
     if (!selected) return;
@@ -399,6 +435,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       discardPreviewSession,
       namedThemeDrafts,
       saveNamedThemeDraft,
+      renameNamedThemeDraft,
+      deleteNamedThemeDraft,
+      duplicateCurrentThemeAsDraft,
       applyNamedThemeDraft,
     }),
     [ui, persistedUi, hasPreviewChanges, isComparingWithActiveTheme, previewSession, namedThemeDrafts],
