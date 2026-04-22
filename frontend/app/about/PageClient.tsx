@@ -26,11 +26,11 @@ export default function AboutPage() {
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
       <section className="rounded-3xl border border-border bg-surface p-8">
-        <h1 className="text-3xl font-bold">{isBg ? "За Trackly" : "About Trackly"}</h1>
+        <h1 className="text-3xl font-bold">{isBg ? "За Turrex" : "About Turrex"}</h1>
         <p className="mt-4 max-w-3xl text-[var(--muted)]">
           {isBg
-            ? "Trackly е цялостна музикална платформа за разпознаване, организиране и откриване на песни. Приложението комбинира audio fingerprinting, OCR, персонална библиотека и AI асистент в един свързан продукт."
-            : "Trackly is a full product for recognizing, organizing, and rediscovering music. It combines audio fingerprinting, OCR, personal library workflows, and an AI assistant into one connected experience."}
+            ? "Turrex е цялостна музикална платформа за разпознаване, организиране и откриване на песни. Приложението комбинира audio fingerprinting, OCR, персонална библиотека и AI асистент в един свързан продукт."
+            : "Turrex is a full product for recognizing, organizing, and rediscovering music. It combines audio fingerprinting, OCR, personal library workflows, and an AI assistant into one connected experience."}
         </p>
       </section>
 
@@ -44,7 +44,7 @@ export default function AboutPage() {
       </section>
 
       <section className="rounded-2xl border border-border bg-surface p-6 text-sm text-[var(--muted)] space-y-3">
-        <h3 className="text-xl font-semibold text-[var(--text)]">{isBg ? "Как Trackly помага" : "How Trackly helps"}</h3>
+        <h3 className="text-xl font-semibold text-[var(--text)]">{isBg ? "Как Turrex помага" : "How Turrex helps"}</h3>
         <p>{isBg ? "• За слушатели: намираш песен бързо и я добавяш към колекции без ръчно търсене." : "• For listeners: quickly identify tracks and save them without manual searching."}</p>
         <p>{isBg ? "• За създатели на плейлисти: AI асистентът предлага селекции от реалната ти история, не от случайни шаблони." : "• For playlist builders: AI suggestions are grounded in your actual history, not random templates."}</p>
         <p>{isBg ? "• За екипи и жури: има ясни developer и admin повърхности, демо профили и публични документационни входни точки." : "• For judges and teams: includes developer/admin surfaces, demo profiles, and clear documentation entry points."}</p>

@@ -409,7 +409,7 @@ export default function AdminPage() {
   return (
     <section className="space-y-6 pb-[calc(var(--layout-bottom-offset)+20px)]">
       <header className="card p-4 sm:p-6">
-        <p className="mb-3 inline-flex rounded-full border border-[var(--border)] px-3 py-1 text-xs uppercase tracking-wide text-[var(--muted)]">Trackly control center</p>
+        <p className="mb-3 inline-flex rounded-full border border-[var(--border)] px-3 py-1 text-xs uppercase tracking-wide text-[var(--muted)]">Turrex control center</p>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Admin Operations Dashboard</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">Live operational visibility for users, recognition quality, demos, provider coverage, and subsystem health.</p>
         <div className="mt-4">

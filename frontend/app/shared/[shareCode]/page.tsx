@@ -45,10 +45,10 @@ export async function generateMetadata({ params }: { params: Promise<{ shareCode
 
   return {
       title: `${normalizeVisibleText(data.title)}${data.type === "playlist" ? "" : ` — ${normalizeVisibleText(data.artist)}`}`,
-    description: `Open shared ${data.type} on Trackly`,
+    description: `Open shared ${data.type} on Turrex`,
     openGraph: {
       title: `${normalizeVisibleText(data.title)}${data.type === "playlist" ? "" : ` — ${normalizeVisibleText(data.artist)}`}`,
-      description: `Open shared ${data.type} on Trackly`,
+      description: `Open shared ${data.type} on Turrex`,
       images: "coverUrl" in data && data.coverUrl ? [{ url: data.coverUrl }] : undefined,
     },
   };

@@ -207,7 +207,7 @@ export default function ThemeStudioControls({ ui, onUpdate, onApplyPreset, onApp
           </div>
         </div>
         <p className="text-xs text-[var(--muted)]">Typography preview · EN + BG</p>
-        <h2 className="display-styled type-display text-3xl font-semibold">Trackly Signal Matrix</h2>
+        <h2 className="display-styled type-display text-3xl font-semibold">Turrex Signal Matrix</h2>
         <h3 className="display-styled type-display text-2xl font-semibold">Следващата песен е тук</h3>
       </div>
 
@@ -224,7 +224,7 @@ export default function ThemeStudioControls({ ui, onUpdate, onApplyPreset, onApp
           {selectedSurface === "song-row" ? <div className="flex items-center justify-between"><div><p className="font-medium">Blinding Lights</p><p className="text-xs text-[var(--muted)]">The Weeknd · Synthwave Essentials</p></div><span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-xs">3:21</span></div> : null}
           {selectedSurface === "assistant" ? <div className="rounded-lg border border-[var(--accent-border)] bg-[var(--accent-soft)] p-3"><p className="text-xs text-[var(--muted)]">Assistant</p><p className="text-sm">I noticed your energy is rising tonight. Want a bolder mix?</p></div> : null}
           {selectedSurface === "playlist" ? <div className="space-y-2"><p className="display-styled type-display text-base font-semibold">City Pulse</p><p className="text-xs text-[var(--muted)]">24 songs · updated today</p><div className="h-14 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)]" /></div> : null}
-          {selectedSurface === "profile" ? <div><p className="display-styled type-display text-xl font-semibold">Trackly Profile</p><p className="text-sm text-[var(--muted)]">Top lane: discovery · Accent confidence: vivid</p></div> : null}
+          {selectedSurface === "profile" ? <div><p className="display-styled type-display text-xl font-semibold">Turrex Profile</p><p className="text-sm text-[var(--muted)]">Top lane: discovery · Accent confidence: vivid</p></div> : null}
         </div>
       </div>
 

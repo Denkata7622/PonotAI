@@ -133,7 +133,7 @@ export default function AuthPage() {
           <div className="mb-3 inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--accent-border)] bg-[color:var(--accent-soft)] text-[var(--accent)] shadow-[0_10px_22px_rgba(var(--accent-rgb),0.22)]">
             <Music className="h-7 w-7" strokeWidth={2.1} />
           </div>
-          <h1 className="text-2xl font-bold text-[var(--text)]">PonotAI</h1>
+          <h1 className="text-2xl font-bold text-[var(--text)]">Turrex</h1>
           <p className="mt-1 text-sm text-[var(--muted)]">
             {tab === "signin" ? "Welcome back" : "Create your account"}
           </p>

@@ -14,8 +14,8 @@ export default function ConceptPage() {
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-text-muted">
           {isBg
-            ? "ПонотИИ превръща разпознаването в завършен потребителски поток: откриване, проверен резултат и легален достъп."
-            : "PonotAI turns recognition into a complete user flow: discovery, verified result, and legal access."}
+            ? "Turrex превръща разпознаването в завършен потребителски поток: откриване, проверен резултат и легален достъп."
+            : "Turrex turns recognition into a complete user flow: discovery, verified result, and legal access."}
         </p>
       </section>
 

@@ -121,7 +121,7 @@ export function getHomeRecommendations({
   return {
     mode: "starter",
     title: language === "bg" ? "Започни оттук" : "Start here",
-    description: language === "bg" ? "Подбрани популярни песни за ново начало в Trackly." : "Curated popular tracks to kick off your Trackly library.",
+    description: language === "bg" ? "Подбрани популярни песни за ново начало в Turrex." : "Curated popular tracks to kick off your Turrex library.",
     tracks: starter,
   };
 }

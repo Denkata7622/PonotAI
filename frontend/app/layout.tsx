@@ -9,10 +9,10 @@ import { BODY_FONT_OPTIONS, DISPLAY_FONT_OPTIONS, DISPLAY_TEXT_STYLE_OPTIONS, TE
 
 export const metadata: Metadata = {
   title: {
-    default: "PonotAI",
-    template: "%s | PonotAI",
+    default: "Turrex",
+    template: "%s | Turrex",
   },
-  description: "Trackly (PonotAI) music recognition web app.",
+  description: "Turrex music recognition web app.",
   manifest: "/manifest.json",
 };
 

@@ -10,7 +10,7 @@ export default function FoundersPage() {
     <main className="mx-auto max-w-5xl px-6 py-16 text-text-primary">
       <section className="text-center mb-16">
         <h1 className="mt-6 text-5xl font-semibold tracking-tight leading-tight">
-          {isBg ? "Основатели на ПонотИИ" : "PonotAI Founders"}
+          {isBg ? "Основатели на Turrex" : "Turrex Founders"}
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-lg text-text-muted leading-relaxed">
           {isBg
@@ -23,8 +23,8 @@ export default function FoundersPage() {
         <h2 className="mb-3 text-2xl font-semibold">{isBg ? "Кои сме ние" : "Who we are"}</h2>
         <p className="leading-relaxed text-text-muted">
           {isBg
-            ? "Съчетаваме UX мислене, инженерна дисциплина и бърза итерация. ПонотИИ е нашият общ проект, в който дизайнът и логиката работят като едно."
-            : "We combine UX thinking, engineering discipline, and fast iteration. PonotAI is our shared project where design and logic work as one."}
+            ? "Съчетаваме UX мислене, инженерна дисциплина и бърза итерация. Turrex е нашият общ проект, в който дизайнът и логиката работят като едно."
+            : "We combine UX thinking, engineering discipline, and fast iteration. Turrex is our shared project where design and logic work as one."}
         </p>
       </section>
 
