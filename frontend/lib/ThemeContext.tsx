@@ -66,11 +66,18 @@ type ThemeContextValue = UiPersonalization & {
   setPanelTint: (panelTint: PanelTint) => void;
   setDisplayTextStyle: (displayTextStyle: DisplayTextStyle) => void;
   applyPersonalization: (patch: Partial<UiPersonalization>) => void;
+  persistedUi: UiPersonalization;
+  hasPreviewChanges: boolean;
+  isComparingWithActiveTheme: boolean;
+  setComparingWithActiveTheme: (value: boolean) => void;
   previewSession: ThemePreviewSession | null;
   isPreviewSessionActive: boolean;
   startPreviewSession: (origin: string, patch?: Partial<UiPersonalization>) => void;
   applyPreviewSession: () => void;
   discardPreviewSession: () => void;
+  namedThemeDrafts: NamedThemeDraft[];
+  saveNamedThemeDraft: (name: string) => { ok: boolean; reason?: "empty-name" };
+  applyNamedThemeDraft: (id: string) => void;
 };
 
 export type ThemePreviewSession = {
@@ -78,6 +85,13 @@ export type ThemePreviewSession = {
   origin: string;
   startedAt: string;
   previewThemePayload: UiPersonalization;
+};
+
+export type NamedThemeDraft = {
+  id: string;
+  name: string;
+  savedAt: string;
+  payload: UiPersonalization;
 };
 
 const STORAGE = {
@@ -98,6 +112,7 @@ const STORAGE = {
   glowLevel: "ponotai-glow-level",
   panelTint: "ponotai-panel-tint",
   displayTextStyle: "ponotai-display-text-style",
+  namedThemeDrafts: "ponotai-theme-named-drafts",
 } as const;
 
 const densityVars: Record<DensityMode, Record<string, string>> = {
@@ -124,6 +139,11 @@ const defaults: UiPersonalization = {
   panelTint: "subtle",
   displayTextStyle: "static",
 };
+export const DEFAULT_UI_PERSONALIZATION = defaults;
+
+function areUiPersonalizationsEqual(a: UiPersonalization, b: UiPersonalization): boolean {
+  return (Object.keys(defaults) as Array<keyof UiPersonalization>).every((key) => a[key] === b[key]);
+}
 
 export const ACCENT_TOKENS = THEME_ACCENT_TOKENS;
 
@@ -233,7 +253,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return saved;
   });
   const [previewSession, setPreviewSession] = useState<ThemePreviewSession | null>(null);
+  const [isComparingWithActiveTheme, setComparingWithActiveTheme] = useState(false);
+  const [namedThemeDrafts, setNamedThemeDrafts] = useState<NamedThemeDraft[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(STORAGE.namedThemeDrafts) ?? "[]";
+      const parsed = JSON.parse(raw) as NamedThemeDraft[];
+      return Array.isArray(parsed) ? parsed.slice(0, 20) : [];
+    } catch {
+      return [];
+    }
+  });
   const ui = previewSession?.previewThemePayload ?? persistedUi;
+  const uiForDocument = previewSession && isComparingWithActiveTheme ? persistedUi : ui;
+  const hasPreviewChanges = Boolean(previewSession && !areUiPersonalizationsEqual(previewSession.previewThemePayload, persistedUi));
 
   function updateUiSetting<K extends keyof UiPersonalization>(key: K, value: UiPersonalization[K]) {
     if (previewSession) {
@@ -270,11 +303,40 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const discardPreviewSession = () => {
     setPreviewSession(null);
+    setComparingWithActiveTheme(false);
+  };
+
+  const saveNamedThemeDraft = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return { ok: false as const, reason: "empty-name" as const };
+    const payload = previewSession?.previewThemePayload ?? persistedUi;
+    setNamedThemeDrafts((prev) => {
+      const draft: NamedThemeDraft = {
+        id: `theme-draft-${Date.now()}`,
+        name: trimmed,
+        savedAt: new Date().toISOString(),
+        payload,
+      };
+      const next = [draft, ...prev.filter((item) => item.name.toLowerCase() !== trimmed.toLowerCase())].slice(0, 20);
+      window.localStorage.setItem(STORAGE.namedThemeDrafts, JSON.stringify(next));
+      return next;
+    });
+    return { ok: true as const };
+  };
+
+  const applyNamedThemeDraft = (id: string) => {
+    const selected = namedThemeDrafts.find((item) => item.id === id);
+    if (!selected) return;
+    if (!previewSession) {
+      startPreviewSession("theme-draft", selected.payload);
+      return;
+    }
+    setPreviewSession((prev) => (prev ? { ...prev, previewThemePayload: selected.payload } : prev));
   };
 
   useEffect(() => {
-    applyUiStateToDocument(ui);
-  }, [ui]);
+    applyUiStateToDocument(uiForDocument);
+  }, [uiForDocument]);
 
   useEffect(() => {
     if (previewSession) return;
@@ -326,13 +388,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setPanelTint: (panelTint: PanelTint) => updateUiSetting("panelTint", panelTint),
       setDisplayTextStyle: (displayTextStyle: DisplayTextStyle) => updateUiSetting("displayTextStyle", displayTextStyle),
       applyPersonalization,
+      persistedUi,
+      hasPreviewChanges,
+      isComparingWithActiveTheme,
+      setComparingWithActiveTheme,
       previewSession,
       isPreviewSessionActive: Boolean(previewSession),
       startPreviewSession,
       applyPreviewSession,
       discardPreviewSession,
+      namedThemeDrafts,
+      saveNamedThemeDraft,
+      applyNamedThemeDraft,
     }),
-    [ui, previewSession],
+    [ui, persistedUi, hasPreviewChanges, isComparingWithActiveTheme, previewSession, namedThemeDrafts],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
