@@ -39,11 +39,18 @@ export default function BottomPlayBar() {
     setVolume,
     skipNext,
     skipPrevious,
+    repeatMode,
+    cycleRepeatMode,
   } = usePlayer();
 
   const { state: sidebarState, togglePanel } = useDualSidebar();
   const isQueueOpen = sidebarState.open.queue;
   const progress = useMemo(() => (duration ? Math.min(100, (currentTime / duration) * 100) : 0), [currentTime, duration]);
+  const repeatLabel = repeatMode === "normal"
+    ? (isBg ? "Без повторение" : "Repeat off")
+    : repeatMode === "queue"
+      ? (isBg ? "Повтаряне на опашката" : "Repeat queue")
+      : (isBg ? "Повтаряне на песента" : "Repeat track");
   const youtubeSearchUrl = currentTrack
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
     : "#";
@@ -126,7 +133,7 @@ export default function BottomPlayBar() {
             </div>
           ) : (
             <div className="space-y-3">
-              <div className={`flex ${isExpanded ? "flex-col" : "flex-row items-center gap-3"} transition-all duration-300 ease-in-out`}>
+              <div className={`hidden items-center gap-3 transition-all duration-300 ease-in-out md:flex ${isExpanded ? "flex-col" : "flex-row"}`}>
                 <div className={`overflow-hidden rounded-xl border border-border bg-black/60 shrink-0 transition-all duration-300 ease-in-out ${isExpanded ? "w-full aspect-video" : "w-[120px] h-[68px] sm:w-40 sm:h-[90px]"}`}>
                   <iframe
                     id="ponotai-yt-player"
@@ -158,13 +165,60 @@ export default function BottomPlayBar() {
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button onClick={skipPrevious} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Previous"><SkipBack className="w-4 h-4 text-[var(--text)]" /></button>
-                <button onClick={togglePlayPause} className="h-10 w-10 rounded-full bg-[var(--accent-soft)] border border-[var(--accent-border)] grid place-items-center" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="w-4 h-4 text-[var(--text)]" /> : <Play className="w-4 h-4 text-[var(--text)]" />}</button>
-                <button onClick={skipNext} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Next"><SkipForward className="w-4 h-4 text-[var(--text)]" /></button>
-                <button onClick={toggleMute} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="w-4 h-4 text-[var(--muted)]" /> : <Volume2 className="w-4 h-4 text-[var(--text)]" />}</button>
-                <button data-testid="queue-toggle" onClick={() => togglePanel("queue")} className="relative h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Queue"><ListMusic className={`w-4 h-4 ${isQueueOpen ? "text-[var(--accent)]" : "text-[var(--text)]"}`} />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
-                <button onClick={() => setIsShortcutsOpen(true)} className="h-10 w-10 rounded-full border border-border grid place-items-center" aria-label="Keyboard shortcuts"><Keyboard className="w-4 h-4 text-[var(--text)]" /></button>
+              <div className="space-y-3 md:hidden">
+                <div className="flex items-center gap-3">
+                  <div className="h-[74px] w-[132px] shrink-0 overflow-hidden rounded-xl border border-border bg-black/60">
+                    <iframe
+                      id="ponotai-yt-player-mobile"
+                      title={`${currentTrack.title} by ${currentTrack.artist} mobile`}
+                      src={`https://www.youtube.com/embed/${currentVideoId}?enablejsapi=1&autoplay=1&controls=1&rel=0&modestbranding=1`}
+                      className="h-full w-full"
+                      allow="autoplay; encrypted-media; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-[var(--text)]">{currentTrack.title}</p>
+                    <p className="truncate text-xs text-text-muted">{currentTrack.artist}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button data-testid="queue-toggle" onClick={() => togglePanel("queue")} className="relative inline-flex h-9 items-center gap-1.5 rounded-full border border-border px-3 text-xs font-medium" aria-label="Queue"><ListMusic className={`h-4 w-4 ${isQueueOpen ? "text-[var(--accent)]" : "text-[var(--text)]"}`} /><span>Queue</span>{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
+                      <button onClick={cycleRepeatMode} className={`inline-flex h-9 items-center rounded-full border px-3 text-xs font-medium ${repeatMode === "normal" ? "border-border text-[var(--muted)]" : "border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel}>{repeatMode === "normal" ? "Repeat off" : repeatMode === "queue" ? "Repeat queue" : "Repeat track"}</button>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                  <div className="flex justify-end">
+                    <button onClick={skipPrevious} className="grid h-12 w-12 place-items-center rounded-full border border-border" aria-label="Previous"><SkipBack className="h-5 w-5 text-[var(--text)]" /></button>
+                  </div>
+                  <button onClick={togglePlayPause} className="grid h-14 w-14 place-items-center rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)]" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="h-6 w-6 text-[var(--text)]" /> : <Play className="h-6 w-6 text-[var(--text)]" />}</button>
+                  <div className="flex justify-start">
+                    <button onClick={skipNext} className="grid h-12 w-12 place-items-center rounded-full border border-border" aria-label="Next"><SkipForward className="h-5 w-5 text-[var(--text)]" /></button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-[1fr_auto] items-center gap-3">
+                  <div className="min-w-0">
+                    <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2 text-xs text-text-muted">
+                      <span>{formatTime(currentTime)}</span>
+                      <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="h-7 w-full themed-progress" aria-label={isBg ? "Прогрес" : "Track progress"} />
+                      <span className="text-right">{formatTime(duration)}</span>
+                    </div>
+                    <input type="range" min={0} max={100} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="mt-1.5 h-7 w-full themed-progress" aria-label={isBg ? "Сила на звука" : "Volume"} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={toggleMute} className="grid h-11 w-11 place-items-center rounded-full border border-border" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
+                    <button onClick={() => setIsShortcutsOpen(true)} className="grid h-11 w-11 place-items-center rounded-full border border-border" aria-label="Keyboard shortcuts"><Keyboard className="h-4 w-4 text-[var(--text)]" /></button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="hidden items-center gap-2 md:flex">
+                <button onClick={skipPrevious} className="grid h-10 w-10 place-items-center rounded-full border border-border" aria-label="Previous"><SkipBack className="h-4 w-4 text-[var(--text)]" /></button>
+                <button onClick={togglePlayPause} className="grid h-10 w-10 place-items-center rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)]" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="h-4 w-4 text-[var(--text)]" /> : <Play className="h-4 w-4 text-[var(--text)]" />}</button>
+                <button onClick={skipNext} className="grid h-10 w-10 place-items-center rounded-full border border-border" aria-label="Next"><SkipForward className="h-4 w-4 text-[var(--text)]" /></button>
+                <button onClick={toggleMute} className="grid h-10 w-10 place-items-center rounded-full border border-border" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
+                <button data-testid="queue-toggle" onClick={() => togglePanel("queue")} className="relative grid h-10 w-10 place-items-center rounded-full border border-border" aria-label="Queue"><ListMusic className={`h-4 w-4 ${isQueueOpen ? "text-[var(--accent)]" : "text-[var(--text)]"}`} />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
+                <button onClick={cycleRepeatMode} className={`inline-flex h-10 items-center rounded-full border px-3 text-xs font-medium ${repeatMode === "normal" ? "border-border text-[var(--muted)]" : "border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel}>{repeatMode === "normal" ? "Repeat off" : repeatMode === "queue" ? "Repeat queue" : "Repeat track"}</button>
+                <button onClick={() => setIsShortcutsOpen(true)} className="grid h-10 w-10 place-items-center rounded-full border border-border" aria-label="Keyboard shortcuts"><Keyboard className="h-4 w-4 text-[var(--text)]" /></button>
 
                 <div className="ml-auto min-w-0 flex-1">
                   <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2 text-xs text-text-muted">
