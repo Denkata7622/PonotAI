@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, Library, Settings, Sparkles, TrendingUp } from "../../lucide-react";
+import { ChevronRight, Clock, Library, Settings, Sparkles, TrendingUp } from "../../lucide-react";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { useUser } from "../context/UserContext";
@@ -40,6 +40,21 @@ type ThemeStudioSlot = {
     label: string;
     href: string;
   };
+};
+
+type MusicPackState = "no-pack-yet" | "available-scaffold" | "future-cadence-locked";
+
+type MusicPackCard = {
+  id: string;
+  title: string;
+  cadenceLabel: string;
+  packSizeLabel: string;
+  identityLabel: string;
+  state: MusicPackState;
+  description: string;
+  note?: string;
+  ctaLabel?: string;
+  ctaDisabled?: boolean;
 };
 
 export default function PersonalizationPage() {
@@ -95,6 +110,11 @@ export default function PersonalizationPage() {
   const recommendationMode = user?.recommendationMode ?? "balanced";
   const repeatedArtistTolerance = user?.repeatedArtistTolerance ?? "normal";
   const energyPreference = user?.energyPreference ?? "mixed";
+  const recommendationModeLabel = recommendationMode === "safe_familiar"
+    ? "Safe & familiar"
+    : recommendationMode === "mostly_discovery"
+      ? "Mostly discovery"
+      : "Balanced";
   const currentThemeSummary = `${theme} · ${accent} · ${surfaceStyle}`;
   const themeStudioSlots = useMemo<ThemeStudioSlot[]>(() => ([
     {
@@ -136,6 +156,56 @@ export default function PersonalizationPage() {
       details: "Held for a later beta expansion. No premium or purchase flow is active today.",
     },
   ]), [accent, currentThemeSummary, recommendationDataSharingEnabled, surfaceStyle, theme]);
+
+  const musicPackCards = useMemo<MusicPackCard[]>(() => {
+    const primaryMood = topMoods[0] ?? "Adaptive";
+    const primaryGenre = topGenres[0] ?? "Cross-genre";
+    const learning = sparseData || !recommendationDataSharingEnabled;
+    const packSize = recommendationMode === "safe_familiar" ? "8 songs" : recommendationMode === "mostly_discovery" ? "12 songs" : "10 songs";
+
+    const featured: MusicPackCard = learning
+      ? {
+        id: "featured-learning",
+        title: "First Identity Drop",
+        cadenceLabel: "Weekly free drop",
+        packSizeLabel: "Preview shell",
+        identityLabel: `${primaryMood} · ${primaryGenre}`,
+        state: "no-pack-yet",
+        description: "Preparing your first collectible pack. Trackly is still calibrating from onboarding and early listening signals.",
+        note: recommendationDataSharingEnabled
+          ? "Listening data sharing is on, so your first drop will unlock as your activity grows."
+          : "Enable listening data sharing for stronger pack shaping and faster confidence.",
+        ctaLabel: "Preparing",
+        ctaDisabled: true,
+      }
+      : {
+        id: "featured-scaffold",
+        title: "Identity Drop 001",
+        cadenceLabel: "Weekly free drop",
+        packSizeLabel: packSize,
+        identityLabel: `${primaryMood} · ${primaryGenre}`,
+        state: "available-scaffold",
+        description: "Scaffolded pack shell is ready with your current taste direction. Real generation, open/save/discard, and preview flow ship in later passes.",
+        note: `Current recommendation mode: ${recommendationModeLabel}.`,
+        ctaLabel: "Open pack shell",
+        ctaDisabled: true,
+      };
+
+    const nextDrop: MusicPackCard = {
+      id: "next-drop",
+      title: "Next Drop Slot",
+      cadenceLabel: "Next weekly slot",
+      packSizeLabel: "Pending",
+      identityLabel: "Cadence placeholder",
+      state: "future-cadence-locked",
+      description: "Next pack appears on the free weekly cadence once generation is active.",
+      note: "Later roadmap includes more frequent cadence for eligible plans. No billing or upgrade flow is active today.",
+      ctaLabel: "Locked for later cadence",
+      ctaDisabled: true,
+    };
+
+    return [featured, nextDrop];
+  }, [recommendationDataSharingEnabled, recommendationMode, recommendationModeLabel, sparseData, topGenres, topMoods]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -280,29 +350,75 @@ export default function PersonalizationPage() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Personalized Music Packs</p>
-              <h2 className="text-xl font-semibold">Curated bundles scaffold</h2>
+              <h2 className="text-xl font-semibold">Collectible recommendation drops</h2>
             </div>
             <Library className="h-5 w-5 text-[var(--accent)]" />
           </div>
           <p className="text-sm text-[var(--muted)]">
-            This area will host reusable packs tuned to your identity and moments. The full packs engine is not active yet.
+            Music Packs are structured as collectible song drops, not generic playlists. This block is now scaffolded for real pack generation and preview playback logic in later passes.
           </p>
-          <div className="rounded-xl border border-dashed border-[var(--accent-border)] bg-[var(--accent-soft)]/60 p-4">
-            <p className="text-sm font-medium">No packs generated yet</p>
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              Planned categories: Daily Focus, Rediscovered Favorites, Mood Boost, and New Horizon.
-            </p>
+          <div className="rounded-2xl border border-[var(--accent-border)] bg-[var(--accent-soft)] p-4">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">
+              <span className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1">Free cadence: weekly</span>
+              <span className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1">Pack mode: collectible drops</span>
+              <span className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1">{`Signal mode: ${recommendationModeLabel}`}</span>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {musicPackCards.map((pack) => {
+                const cardClassName = pack.state === "available-scaffold"
+                  ? "border-[var(--accent-border)] bg-[var(--panel-surface)]"
+                  : pack.state === "future-cadence-locked"
+                    ? "border-[var(--border)] bg-black/30"
+                    : "border-[var(--border)] bg-[var(--panel-surface)]";
+                return (
+                  <div key={pack.id} className={`rounded-xl border p-3 ${cardClassName}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold">{pack.title}</p>
+                        <p className="text-[11px] text-[var(--muted)]">{pack.cadenceLabel}</p>
+                      </div>
+                      {pack.state === "future-cadence-locked" ? <Clock className="mt-0.5 h-4 w-4 text-[var(--muted)]" /> : null}
+                      {pack.state === "available-scaffold" ? <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">Scaffold ready</span> : null}
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]/60 p-2">
+                        <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Pack size</p>
+                        <p className="mt-0.5 font-medium">{pack.packSizeLabel}</p>
+                      </div>
+                      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]/60 p-2">
+                        <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Identity lane</p>
+                        <p className="mt-0.5 font-medium">{pack.identityLabel}</p>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs text-[var(--muted)]">{pack.description}</p>
+                    {pack.note ? <p className="mt-1 text-[11px] text-[var(--muted)]">{pack.note}</p> : null}
+                    {pack.ctaLabel ? (
+                      <button
+                        type="button"
+                        disabled={pack.ctaDisabled}
+                        className="mt-3 rounded-full border border-[var(--border)] bg-transparent px-3 py-1 text-xs font-medium text-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {pack.ctaLabel}
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="rounded-xl border border-dashed border-[var(--border)] p-3 text-xs text-[var(--muted)]">
+            Integration boundaries set for later: real pack title/artwork identity, open pack reveal, save/discard actions, song preview rows, and engaging-part playback via Song Taster layers.
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
             {[
-              { title: "Daily Focus", state: "Preview slot" },
-              { title: "Rediscovered Favorites", state: "Preview slot" },
-              { title: "Mood Boost", state: "Preview slot" },
-              { title: "New Horizon", state: "Preview slot" },
-            ].map((item) => (
-              <div key={item.title} className="rounded-lg border border-[var(--border)] bg-[var(--panel-surface)] p-3">
-                <p className="text-sm font-medium">{item.title}</p>
-                <p className="text-xs text-[var(--muted)]">{item.state}</p>
+              "Open pack reveal flow",
+              "Save pack to library",
+              "Discard and refresh slot",
+              "Preview top song moments",
+            ].map((step) => (
+              <div key={step} className="rounded-lg border border-[var(--border)] bg-[var(--panel-surface)] p-3">
+                <p className="text-sm font-medium">{step}</p>
+                <p className="text-xs text-[var(--muted)]">Roadmap boundary prepared</p>
               </div>
             ))}
           </div>
