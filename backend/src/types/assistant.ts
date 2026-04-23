@@ -124,6 +124,12 @@ export interface LibraryContextPayload {
         confidence: number;
       };
       sparseBoost: number;
+      reasoningBasis?: {
+        primaryReasonType: "identity_led" | "behavior_led" | "discovery_led" | "mixed" | "seed_led" | "sparse_honest";
+        explanationText: string;
+        explanationSignals: string[];
+        confidenceState: "sparse" | "growing" | "rich";
+      };
     };
   };
   statedPreferences?: {

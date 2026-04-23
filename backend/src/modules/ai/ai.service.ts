@@ -13,7 +13,11 @@ import {
   type TrackTagRecord,
 } from "../../db/authStore";
 import { getExternalDiscoveryClient, type ExternalArtistCandidate } from "../../services/assistant/externalDiscovery";
-import { blendSignalScores, buildRecommendationSignalModel } from "../../services/recommendation/signalWeighting";
+import {
+  blendSignalScores,
+  buildAssistantRecommendationReasoning,
+  buildRecommendationSignalModel,
+} from "../../services/recommendation/signalWeighting";
 import { normalizeTrackKey as trackKey } from "../../utils/songIdentity";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -462,7 +466,16 @@ export async function getMoodRecommendations(userId: string, moodInput: string) 
       return true;
     })
     .slice(0, 20)
-    .map(({ _score, ...track }) => track);
+    .map(({ _score, ...track }) => {
+      const recommendationReasoning = buildAssistantRecommendationReasoning(signalModel, {
+        candidateArtist: track.artist,
+        allowSeedFallback: true,
+      });
+      return {
+        ...track,
+        recommendationReasoning,
+      };
+    });
   const topArtists = topCounts(aggregateBase(history, favorites, []).artistCounts, 3).map((item) => item.name);
   const sourceBasis = {
     fromHistory: recentHistory.length,
@@ -485,6 +498,7 @@ export async function getMoodRecommendations(userId: string, moodInput: string) 
       basis: tracks.length > 0
         ? `Ranked from ${recentHistory.length} recent plays plus ${favorites.length} favorites, then adjusted by identity anchors and recommendation controls.`
         : "No substantial history/favorites signal yet; using fallback ordering.",
+      recommendationReasoning: tracks[0]?.recommendationReasoning ?? buildAssistantRecommendationReasoning(signalModel, { allowSeedFallback: true }),
       recentEvents: recentHistory.length,
       favoritesCount: favorites.length,
       knownTopArtists: topArtists,
@@ -951,12 +965,19 @@ export async function getCrossArtistRecommendations(
         recentlySuggested: recentlySuggested.has(artistKey),
         knownArtist: knownArtists.has(artistKey),
       });
+      const recommendationReasoning = buildAssistantRecommendationReasoning(signalModel, {
+        candidateArtist: item.artist,
+        explorationCandidate: true,
+        allowSeedFallback: true,
+      });
       return {
         artist: item.artist,
         source: "external-discovery" as const,
         score: scored.score,
         confidence: scored.confidence,
+        recommendationReasoning,
         reasons: [
+          recommendationReasoning.explanationText,
           ...scored.reasons,
           profile.topGenres[0]?.[0] ? `Aligned with your ${profile.topGenres[0][0]} profile.` : "Aligned with your listening patterns.",
         ],
@@ -969,7 +990,17 @@ export async function getCrossArtistRecommendations(
 
   const recommendations = ranked.length > 0
     ? ranked.map((entry) => ({ ...entry, isInLibrary: false }))
-    : fallbackLibrary;
+    : fallbackLibrary.map((entry) => {
+      const recommendationReasoning = buildAssistantRecommendationReasoning(signalModel, {
+        candidateArtist: entry.artist,
+        allowSeedFallback: true,
+      });
+      return {
+        ...entry,
+        recommendationReasoning,
+        reasons: [recommendationReasoning.explanationText, ...entry.reasons],
+      };
+    });
 
   const recommendationBasis = {
     fromListeningHistory: history.length,
@@ -1015,6 +1046,8 @@ export async function getCrossArtistRecommendations(
       interpretation: recommendationBasis.sparseFallback
         ? "Sparse library fallback: suggestions prioritize your known artists until broader signals appear."
         : "Personalized blend: identity anchors, recency behavior, controls, and diversity guardrails all shape ranking.",
+      recommendationReasoning: recommendations[0]?.recommendationReasoning
+        ?? buildAssistantRecommendationReasoning(signalModel, { explorationCandidate: true, allowSeedFallback: true }),
     },
   };
 }
