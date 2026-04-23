@@ -82,6 +82,26 @@ type GeneratedMusicPackResponse = {
   };
 };
 
+type MusicPackLifecycleRecord = {
+  packId: string;
+  title: string;
+  status: "generated" | "saved" | "discarded";
+  generatedAt: string;
+  outcomeAt?: string;
+  nextDropAt: string;
+};
+
+type MusicPackLifecycleResponse = {
+  generatedAt: string;
+  current: MusicPackLifecycleRecord | null;
+  history: MusicPackLifecycleRecord[];
+  nextDrop: {
+    state: "current_pack_available" | "pending";
+    nextDropAt: string;
+    secondsUntilNextDrop: number;
+  };
+};
+
 type TasteIdentitySummaryResponse = {
   generatedAt: string;
   sparseState: "sparse" | "growing" | "rich";
@@ -110,7 +130,7 @@ export default function PersonalizationPage() {
   const [packModalOpen, setPackModalOpen] = useState(false);
   const [packSaving, setPackSaving] = useState(false);
   const [packNotice, setPackNotice] = useState<string | null>(null);
-  const [discardedPackId, setDiscardedPackId] = useState<string | null>(null);
+  const [packLifecycle, setPackLifecycle] = useState<MusicPackLifecycleResponse | null>(null);
   const [selectedTrackKeys, setSelectedTrackKeys] = useState<string[]>([]);
   const [tasteIdentitySummary, setTasteIdentitySummary] = useState<TasteIdentitySummaryResponse | null>(null);
 
@@ -262,22 +282,27 @@ export default function PersonalizationPage() {
             ctaDisabled: true,
           };
 
+    const nextDropDateLabel = packLifecycle?.nextDrop?.nextDropAt
+      ? new Date(packLifecycle.nextDrop.nextDropAt).toLocaleString()
+      : "Pending";
     const nextDrop: MusicPackCard = {
       id: "next-drop",
       title: "Next Drop Slot",
       cadenceLabel: "Next weekly slot",
-      packSizeLabel: "Pending",
-      identityLabel: "Cadence placeholder",
+      packSizeLabel: packLifecycle?.nextDrop?.state === "current_pack_available" ? "Current pack active" : "Pending",
+      identityLabel: nextDropDateLabel,
       state: "future-cadence-locked",
-      description: "Next pack appears on the free weekly cadence once generation is active.",
-      note: "Later roadmap includes more frequent cadence for eligible plans. No billing or upgrade flow is active today.",
-      ctaLabel: "Locked for later cadence",
+      description: packLifecycle?.nextDrop?.state === "current_pack_available"
+        ? "You currently have an active featured pack. Next drop unlocks on weekly cadence."
+        : "No active featured pack right now. Next drop remains on weekly cadence.",
+      note: "Next-drop timing is computed from your latest generated pack lifecycle.",
+      ctaLabel: "Cadence tracked",
       ctaDisabled: true,
       ctaMode: "passive",
     };
 
     return [featured, nextDrop];
-  }, [generatedPack, isAuthenticated, musicPackLoading, recommendationDataSharingEnabled, recommendationModeLabel, sparseData, topGenres, topMoods]);
+  }, [generatedPack, isAuthenticated, musicPackLoading, packLifecycle, recommendationDataSharingEnabled, recommendationModeLabel, sparseData, topGenres, topMoods]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -290,15 +315,17 @@ export default function PersonalizationPage() {
     }
   }, [profile.id]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  async function loadPackLifecycle() {
+    if (!isAuthenticated) return;
     try {
-      const dismissed = window.localStorage.getItem(scopedKey("ponotai.music-packs.featured.discarded", profile.id));
-      setDiscardedPackId(dismissed && dismissed.trim() ? dismissed : null);
+      const response = await apiFetch("/api/ai/music-packs/featured/lifecycle");
+      if (!response.ok) throw new Error(`Music pack lifecycle fetch failed (${response.status})`);
+      const payload = await response.json() as MusicPackLifecycleResponse;
+      setPackLifecycle(payload);
     } catch {
-      setDiscardedPackId(null);
+      setPackLifecycle(null);
     }
-  }, [profile.id]);
+  }
 
   async function loadFeaturedPack() {
     if (!isAuthenticated) return;
@@ -318,6 +345,7 @@ export default function PersonalizationPage() {
       if (!response.ok) throw new Error(`Music pack generation failed (${response.status})`);
       const payload = await response.json() as GeneratedMusicPackResponse;
       setGeneratedPack(payload);
+      await loadPackLifecycle();
     } catch {
       setGeneratedPack(null);
       setPackNotice("Could not generate a featured pack right now.");
@@ -329,6 +357,7 @@ export default function PersonalizationPage() {
   useEffect(() => {
     if (!isAuthenticated) {
       setGeneratedPack(null);
+      setPackLifecycle(null);
       return;
     }
 
@@ -375,7 +404,11 @@ export default function PersonalizationPage() {
     };
   }, [isAuthenticated, topArtists, topContexts, topGenres, topMoods]);
 
-  const featuredPackHiddenByDiscard = Boolean(generatedPack?.pack?.id && discardedPackId === generatedPack.pack.id);
+  const featuredPackHiddenByDiscard = Boolean(
+    generatedPack?.pack?.id
+      && packLifecycle?.current?.packId === generatedPack.pack.id
+      && packLifecycle.current.status === "discarded",
+  );
   const allTrackKeys = generatedPack?.pack?.tracks.map((track) => track.trackKey) ?? [];
   const selectedCount = selectedTrackKeys.length;
   const allSelected = allTrackKeys.length > 0 && selectedCount === allTrackKeys.length;
@@ -428,6 +461,7 @@ export default function PersonalizationPage() {
       setPackNotice(`Saved this pack as a playlist (${payload.savedTracks ?? keysToSave.length} tracks).`);
       setPackModalOpen(false);
       setPlaylistCount((value) => value + 1);
+      await loadPackLifecycle();
     } catch {
       setPackNotice("Could not save this pack right now.");
     } finally {
@@ -435,22 +469,28 @@ export default function PersonalizationPage() {
     }
   }
 
-  function handleDiscardFeaturedPack() {
+  async function handleDiscardFeaturedPack() {
     if (!generatedPack?.pack) return;
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(scopedKey("ponotai.music-packs.featured.discarded", profile.id), generatedPack.pack.id);
-    }
-    setDiscardedPackId(generatedPack.pack.id);
+    void apiFetch("/api/ai/music-packs/featured/lifecycle", {
+      method: "POST",
+      body: JSON.stringify({ packId: generatedPack.pack.id, action: "discard" }),
+    }).then(() => loadPackLifecycle()).catch(() => null);
     setPackModalOpen(false);
-    setPackNotice("Pack discarded for now. You can generate again any time.");
+    setPackNotice("Pack discarded. This outcome now stays in your recent pack lifecycle.");
   }
 
-  function handleBringBackPack() {
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(scopedKey("ponotai.music-packs.featured.discarded", profile.id));
+  async function handleBringBackPack() {
+    if (!generatedPack?.pack) return;
+    try {
+      await apiFetch("/api/ai/music-packs/featured/lifecycle", {
+        method: "POST",
+        body: JSON.stringify({ packId: generatedPack.pack.id, action: "bring_back" }),
+      });
+      await loadPackLifecycle();
+      setPackNotice("Discard cleared. The pack is active again.");
+    } catch {
+      setPackNotice("Could not clear discard right now.");
     }
-    setDiscardedPackId(null);
-    setPackNotice("Discard was cleared. Open the pack to inspect it again.");
   }
 
   function handleTrackSelectionToggle(trackKey: string) {
@@ -467,6 +507,16 @@ export default function PersonalizationPage() {
 
   function handleClearTrackSelection() {
     setSelectedTrackKeys([]);
+  }
+
+  function handleOpenPackModal() {
+    if (generatedPack?.pack?.id) {
+      void apiFetch("/api/ai/music-packs/featured/lifecycle", {
+        method: "POST",
+        body: JSON.stringify({ packId: generatedPack.pack.id, action: "opened" }),
+      }).catch(() => null);
+    }
+    setPackModalOpen(true);
   }
 
   return (
@@ -629,7 +679,7 @@ export default function PersonalizationPage() {
                     {pack.ctaLabel ? (
                       <button
                         type="button"
-                        onClick={pack.ctaMode === "open" ? () => setPackModalOpen(true) : undefined}
+                        onClick={pack.ctaMode === "open" ? handleOpenPackModal : undefined}
                         disabled={pack.ctaDisabled}
                         className="mt-3 rounded-full border border-[var(--border)] bg-transparent px-3 py-1 text-xs font-medium text-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-70"
                       >
@@ -653,6 +703,19 @@ export default function PersonalizationPage() {
               </div>
             ) : null}
             {packNotice ? <p className="mt-3 text-xs text-[var(--muted)]">{packNotice}</p> : null}
+            {packLifecycle?.history?.length ? (
+              <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-3">
+                <p className="text-xs uppercase tracking-[0.08em] text-[var(--muted)]">Recent pack outcomes</p>
+                <ul className="mt-2 space-y-1 text-xs text-[var(--muted)]">
+                  {packLifecycle.history.slice(0, 4).map((entry) => (
+                    <li key={`${entry.packId}-${entry.generatedAt}`} className="flex items-center justify-between gap-2">
+                      <span className="truncate">{entry.title}</span>
+                      <span>{entry.status}{entry.outcomeAt ? ` · ${new Date(entry.outcomeAt).toLocaleDateString()}` : ""}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
           <div className="rounded-xl border border-dashed border-[var(--border)] p-3 text-xs text-[var(--muted)]">
             This pass keeps the flow intentionally small: open and inspect the generated pack, save it as a playlist, or discard it from the current featured slot.

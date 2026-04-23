@@ -48,6 +48,13 @@ model User {
   apiKeys             ApiKey[]
   trackTags           TrackTag[]
   emailVerificationTokens EmailVerificationToken[]
+  musicPackDrops       MusicPackDrop[]
+}
+
+enum MusicPackDropStatus {
+  generated
+  saved
+  discarded
 }
 
 enum RecommendationMode {
@@ -291,4 +298,26 @@ model SongTasteQueue {
   songTaste SongTaste @relation(fields: [songTasteId], references: [id], onDelete: Cascade)
 
   @@index([status, availableAt, updatedAt])
+}
+
+model MusicPackDrop {
+  id          String             @id
+  userId      String
+  packId      String
+  title       String
+  status      MusicPackDropStatus @default(generated)
+  songCount   Int
+  generatedAt DateTime
+  openedAt    DateTime?
+  outcomeAt   DateTime?
+  savedPlaylistId String?
+  nextDropAt  DateTime
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, packId])
+  @@index([userId, generatedAt])
+  @@index([userId, updatedAt])
 }

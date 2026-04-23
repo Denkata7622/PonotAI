@@ -6,6 +6,7 @@ import {
   getTasteIdentitySummary,
   generateSmartPlaylist,
   generateFeaturedMusicPack,
+  getFeaturedMusicPackLifecycle,
   getContextualRecommendations,
   getDailyDiscovery,
   getListeningInsights,
@@ -15,6 +16,7 @@ import {
   getSurpriseDiscovery,
   saveGeneratedPlaylist,
   saveFeaturedMusicPack,
+  updateFeaturedMusicPackLifecycle,
   suggestTags,
 } from "./ai.service";
 
@@ -306,6 +308,40 @@ export async function saveFeaturedMusicPackController(req: Request, res: Respons
       return;
     }
     console.error("music pack save error", error);
+    sendError(res, ErrorCatalog.INTERNAL_ERROR);
+  }
+}
+
+export async function getFeaturedMusicPackLifecycleController(req: Request, res: Response): Promise<void> {
+  try {
+    const data = await getFeaturedMusicPackLifecycle(req.userId!);
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("music pack lifecycle fetch error", error);
+    sendError(res, ErrorCatalog.INTERNAL_ERROR);
+  }
+}
+
+export async function updateFeaturedMusicPackLifecycleController(req: Request, res: Response): Promise<void> {
+  const payload = req.body && typeof req.body === "object" ? req.body as {
+    packId?: string;
+    action?: "discard" | "bring_back" | "opened";
+  } : {};
+  const packId = typeof payload.packId === "string" ? payload.packId.trim() : "";
+  const action = payload.action;
+  if (!packId || !action || !["discard", "bring_back", "opened"].includes(action)) {
+    sendError(res, ErrorCatalog.VALIDATION_ERROR, { field: "musicPackLifecycle" });
+    return;
+  }
+  try {
+    const data = await updateFeaturedMusicPackLifecycle(req.userId!, { packId, action });
+    res.status(200).json(data);
+  } catch (error) {
+    if ((error as Error).message === "MUSIC_PACK_NOT_FOUND") {
+      sendError(res, ErrorCatalog.VALIDATION_ERROR, { field: "packId", reason: "Unknown pack lifecycle record." });
+      return;
+    }
+    console.error("music pack lifecycle update error", error);
     sendError(res, ErrorCatalog.INTERNAL_ERROR);
   }
 }
