@@ -78,6 +78,7 @@ type GeneratedMusicPackResponse = {
       album?: string;
       coverUrl?: string;
       reason: string;
+      reasonSignals?: string[];
     }>;
     explanation: {
       summary: string;
@@ -97,6 +98,7 @@ export default function PersonalizationPage() {
   const [packSaving, setPackSaving] = useState(false);
   const [packNotice, setPackNotice] = useState<string | null>(null);
   const [discardedPackId, setDiscardedPackId] = useState<string | null>(null);
+  const [selectedTrackKeys, setSelectedTrackKeys] = useState<string[]>([]);
 
   const tasteProfile = useMemo(() => readTasteProfile(), []);
   const tasteSnapshot = tasteProfile?.structured;
@@ -333,6 +335,17 @@ export default function PersonalizationPage() {
   }, [isAuthenticated, topArtists, topContexts, topGenres, topMoods]);
 
   const featuredPackHiddenByDiscard = Boolean(generatedPack?.pack?.id && discardedPackId === generatedPack.pack.id);
+  const allTrackKeys = generatedPack?.pack?.tracks.map((track) => track.trackKey) ?? [];
+  const selectedCount = selectedTrackKeys.length;
+  const allSelected = allTrackKeys.length > 0 && selectedCount === allTrackKeys.length;
+
+  useEffect(() => {
+    if (!generatedPack?.pack) {
+      setSelectedTrackKeys([]);
+      return;
+    }
+    setSelectedTrackKeys(generatedPack.pack.tracks.map((track) => track.trackKey));
+  }, [generatedPack?.pack?.id]);
 
   async function handleRecommendationDataSharingToggle() {
     if (!isAuthenticated) return;
@@ -347,8 +360,10 @@ export default function PersonalizationPage() {
     await updateProfile({ [field]: value });
   }
 
-  async function handleSaveFeaturedPack() {
+  async function handleSaveFeaturedPack(mode: "all" | "selected") {
     if (!generatedPack?.pack || !isAuthenticated) return;
+    const keysToSave = mode === "all" ? allTrackKeys : selectedTrackKeys;
+    if (keysToSave.length === 0) return;
     setPackSaving(true);
     setPackNotice(null);
     try {
@@ -364,11 +379,12 @@ export default function PersonalizationPage() {
             album: track.album,
             coverUrl: track.coverUrl,
           })),
+          selectedTrackKeys: keysToSave,
         }),
       });
       if (!response.ok) throw new Error(`Music pack save failed (${response.status})`);
       const payload = await response.json() as { playlist?: { id?: string }; savedTracks?: number };
-      setPackNotice(`Saved this pack as a playlist (${payload.savedTracks ?? generatedPack.pack.songCount} tracks).`);
+      setPackNotice(`Saved this pack as a playlist (${payload.savedTracks ?? keysToSave.length} tracks).`);
       setPackModalOpen(false);
       setPlaylistCount((value) => value + 1);
     } catch {
@@ -394,6 +410,22 @@ export default function PersonalizationPage() {
     }
     setDiscardedPackId(null);
     setPackNotice("Discard was cleared. Open the pack to inspect it again.");
+  }
+
+  function handleTrackSelectionToggle(trackKey: string) {
+    setSelectedTrackKeys((current) => (
+      current.includes(trackKey)
+        ? current.filter((item) => item !== trackKey)
+        : [...current, trackKey]
+    ));
+  }
+
+  function handleSelectAllTracks() {
+    setSelectedTrackKeys(allTrackKeys);
+  }
+
+  function handleClearTrackSelection() {
+    setSelectedTrackKeys([]);
   }
 
   return (
@@ -713,23 +745,51 @@ export default function PersonalizationPage() {
             <p className="mt-2 text-xs text-[var(--muted)]">{generatedPack.pack.explanation.summary}</p>
           </div>
           <div className="space-y-2">
+            <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] px-3 py-2">
+              <p className="text-xs text-[var(--muted)]">{selectedCount} of {allTrackKeys.length} tracks selected</p>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={handleSelectAllTracks} disabled={allSelected}>Select all</Button>
+                <Button variant="ghost" size="sm" onClick={handleClearTrackSelection} disabled={selectedCount === 0}>Clear</Button>
+              </div>
+            </div>
             {generatedPack.pack.tracks.map((track) => (
               <div key={track.trackKey} className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-3">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium">{track.rank}. {track.title}</p>
-                    <p className="text-xs text-[var(--muted)]">{track.artist}</p>
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedTrackKeys.includes(track.trackKey)}
+                      onChange={() => handleTrackSelectionToggle(track.trackKey)}
+                      className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+                    />
+                    <div>
+                      <p className="text-sm font-medium">{track.rank}. {track.title}</p>
+                      <p className="text-xs text-[var(--muted)]">{track.artist}</p>
+                    </div>
                   </div>
                   <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Track {track.rank}</span>
                 </div>
                 <p className="mt-2 text-xs text-[var(--muted)]">{track.reason}</p>
+                {track.reasonSignals && track.reasonSignals.length > 1 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {track.reasonSignals.slice(1).map((signal) => (
+                      <span key={signal} className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+                        {signal}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
+          {selectedCount === 0 ? <p className="text-xs text-amber-300">Select at least one track to save this pack.</p> : null}
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={handleDiscardFeaturedPack}>Discard pack</Button>
-            <Button variant="primary" size="sm" disabled={packSaving} onClick={() => void handleSaveFeaturedPack()}>
-              {packSaving ? "Saving…" : "Save as playlist"}
+            <Button variant="secondary" size="sm" disabled={packSaving || allTrackKeys.length === 0} onClick={() => void handleSaveFeaturedPack("all")}>
+              {packSaving ? "Saving…" : "Save full pack"}
+            </Button>
+            <Button variant="primary" size="sm" disabled={packSaving || selectedCount === 0} onClick={() => void handleSaveFeaturedPack("selected")}>
+              {packSaving ? "Saving…" : `Save selected (${selectedCount})`}
             </Button>
           </div>
         </Modal>
