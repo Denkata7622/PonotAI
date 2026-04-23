@@ -24,6 +24,13 @@ function parseNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function getSessionHint(req: Request): string | undefined {
+  const raw = req.header("x-turrex-session-id") ?? req.header("x-session-id") ?? req.header("x-client-session-id");
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export async function getWeeklyInsightsController(req: Request, res: Response): Promise<void> {
   try {
     const data = await getListeningInsights(req.userId!, "weekly");
@@ -129,7 +136,7 @@ export async function updatePlaylistController(req: Request, res: Response): Pro
 export async function moodRecommendationsController(req: Request, res: Response): Promise<void> {
   const mood = typeof req.query.mood === "string" ? req.query.mood : "relax";
   try {
-    const data = await getMoodRecommendations(req.userId!, mood);
+    const data = await getMoodRecommendations(req.userId!, mood, getSessionHint(req));
     res.status(200).json(data);
   } catch (error) {
     console.error("mood recommendation error", error);
@@ -212,6 +219,7 @@ export async function crossArtistRecommendationsController(req: Request, res: Re
     const data = await getCrossArtistRecommendations(req.userId!, {
       differentArtistsOnly,
       limit,
+      sessionId: getSessionHint(req),
     });
     res.status(200).json(data);
   } catch (error) {

@@ -400,7 +400,7 @@ async function fetchWeatherContext(latitude: number, longitude: number): Promise
   }
 }
 
-export async function getMoodRecommendations(userId: string, moodInput: string) {
+export async function getMoodRecommendations(userId: string, moodInput: string, sessionId?: string) {
   const mood = parseMoodInput(moodInput);
   const [favorites, history, playlists, user] = await Promise.all([
     listFavorites(userId),
@@ -431,9 +431,11 @@ export async function getMoodRecommendations(userId: string, moodInput: string) 
     deduped.set(trackKey(item.title, item.artist), item);
   }
 
+  const sessionMemory = getOrCreateSessionDiversityMemory(userId, sessionId);
   const recurringArtists = new Set(signalModel.groupedSignals.identity.recurringArtists.map((item) => normalizeName(item.artist)));
   const recentTopArtists = new Set(signalModel.groupedSignals.behavior.recentTopArtists.map((item) => normalizeName(item.artist)));
-  const repeatedArtistLimit = getRepeatedArtistLimit(signalModel.groupedSignals.intent.repeatedArtistTolerance);
+  const repeatedArtistTolerance = signalModel.groupedSignals.intent.repeatedArtistTolerance;
+  const repeatedArtistLimit = getRepeatedArtistLimit(repeatedArtistTolerance);
   const modeBoost = signalModel.groupedSignals.intent.recommendationMode === "mostly_discovery"
     ? 0.35
     : signalModel.groupedSignals.intent.recommendationMode === "safe_familiar"
@@ -449,9 +451,27 @@ export async function getMoodRecommendations(userId: string, moodInput: string) 
       const behaviorBoost = recentTopArtists.has(artistKey) ? 0.65 : 0;
       const energeticBias = signalModel.groupedSignals.intent.energyPreference === "more_energetic" && mood === "workout" ? 0.25 : 0;
       const calmerBias = signalModel.groupedSignals.intent.energyPreference === "calmer" && (mood === "sleep" || mood === "relax") ? 0.25 : 0;
+      const sessionArtistPenalty = getSessionArtistPenalty(
+        repeatedArtistTolerance,
+        countSessionRepeats(sessionMemory, "artistKey", artistKey),
+      );
+      const sessionTrackPenalty = Math.min(0.18, countSessionRepeats(sessionMemory, "trackKey", trackKey(track.title, track.artist)) * 0.09);
+      const sessionMoodPenalty = getSessionFlavorPenalty(
+        repeatedArtistTolerance,
+        countSessionRepeats(sessionMemory, "flavorKey", `mood:${mood}`),
+      );
       return {
         ...track,
-        _score: moodScore + identityBoost + behaviorBoost + modeBoost + sparseSeedLift + energeticBias + calmerBias,
+        _score: moodScore
+          + identityBoost
+          + behaviorBoost
+          + modeBoost
+          + sparseSeedLift
+          + energeticBias
+          + calmerBias
+          - sessionArtistPenalty
+          - sessionTrackPenalty
+          - sessionMoodPenalty,
       };
     })
     .sort((a, b) => b._score - a._score);
@@ -477,6 +497,17 @@ export async function getMoodRecommendations(userId: string, moodInput: string) 
       };
     });
   const topArtists = topCounts(aggregateBase(history, favorites, []).artistCounts, 3).map((item) => item.name);
+  rememberDiscoverySessionEvents(
+    sessionMemory,
+    tracks.slice(0, 12).flatMap((track) => {
+      const events: SessionDiversityEvent[] = [
+        { at: Date.now(), artistKey: normalizeName(track.artist), trackKey: trackKey(track.title, track.artist), flavorKey: `mood:${mood}` },
+      ];
+      const reasonType = track.recommendationReasoning?.primaryReasonType;
+      if (reasonType) events.push({ at: Date.now(), flavorKey: `reason:${reasonType}` });
+      return events;
+    }),
+  );
   const sourceBasis = {
     fromHistory: recentHistory.length,
     fromFavorites: favorites.length,
@@ -503,6 +534,7 @@ export async function getMoodRecommendations(userId: string, moodInput: string) 
       favoritesCount: favorites.length,
       knownTopArtists: topArtists,
       sourceBasis,
+      sessionDiversity: "Short-lived session memory softens repeated artists, tracks, and mood lane repetition.",
     },
   };
 }
@@ -593,7 +625,23 @@ export async function applyTags(userId: string, tags: Array<Pick<TrackTagRecord,
 }
 
 const discoveryCache = new Map<string, { date: string; payload: unknown }>();
-const crossArtistMemory = new Map<string, { recent: string[] }>();
+const SESSION_DIVERSITY_TTL_MS = 30 * 60_000;
+const SESSION_DIVERSITY_MAX_EVENTS = 180;
+
+type SessionDiversityEvent = {
+  at: number;
+  artistKey?: string;
+  trackKey?: string;
+  flavorKey?: string;
+  anchorKey?: string;
+};
+
+type SessionDiversityMemory = {
+  expiresAt: number;
+  events: SessionDiversityEvent[];
+};
+
+const discoverySessionMemory = new Map<string, SessionDiversityMemory>();
 
 type MusicPackGenerationInput = {
   onboardingSeed?: {
@@ -616,6 +664,79 @@ type MusicPackCandidate = {
 
 function normalizeName(value: string): string {
   return value.toLowerCase().trim();
+}
+
+function normalizeSessionId(sessionId?: string): string {
+  const normalized = (sessionId ?? "").trim().slice(0, 80);
+  return normalized.length > 0 ? normalized : "default";
+}
+
+function getSessionMemoryKey(userId: string, sessionId?: string): string {
+  return `${userId}::${normalizeSessionId(sessionId)}`;
+}
+
+function getOrCreateSessionDiversityMemory(userId: string, sessionId?: string): SessionDiversityMemory {
+  const now = Date.now();
+  const key = getSessionMemoryKey(userId, sessionId);
+  const current = discoverySessionMemory.get(key);
+  if (!current || current.expiresAt <= now) {
+    const fresh = { expiresAt: now + SESSION_DIVERSITY_TTL_MS, events: [] };
+    discoverySessionMemory.set(key, fresh);
+    return fresh;
+  }
+
+  const threshold = now - SESSION_DIVERSITY_TTL_MS;
+  current.events = current.events.filter((event) => event.at >= threshold);
+  current.expiresAt = now + SESSION_DIVERSITY_TTL_MS;
+  return current;
+}
+
+function countSessionRepeats(
+  memory: SessionDiversityMemory,
+  field: keyof Pick<SessionDiversityEvent, "artistKey" | "trackKey" | "flavorKey" | "anchorKey">,
+  value?: string,
+): number {
+  if (!value) return 0;
+  let count = 0;
+  for (const event of memory.events) {
+    if (event[field] === value) count += 1;
+  }
+  return count;
+}
+
+function getSessionArtistPenalty(
+  repeatedArtistTolerance: "lower" | "normal" | "higher",
+  repeats: number,
+): number {
+  if (repeats <= 0) return 0;
+  const perRepeat = repeatedArtistTolerance === "lower"
+    ? 0.2
+    : repeatedArtistTolerance === "higher"
+      ? 0.07
+      : 0.12;
+  const cap = repeatedArtistTolerance === "lower"
+    ? 0.5
+    : repeatedArtistTolerance === "higher"
+      ? 0.2
+      : 0.34;
+  return Math.min(cap, repeats * perRepeat);
+}
+
+function getSessionFlavorPenalty(
+  repeatedArtistTolerance: "lower" | "normal" | "higher",
+  repeats: number,
+): number {
+  if (repeats <= 0) return 0;
+  const perRepeat = repeatedArtistTolerance === "higher" ? 0.03 : repeatedArtistTolerance === "lower" ? 0.08 : 0.05;
+  return Math.min(0.2, repeats * perRepeat);
+}
+
+function rememberDiscoverySessionEvents(memory: SessionDiversityMemory, events: SessionDiversityEvent[]): void {
+  if (events.length === 0) return;
+  memory.events.push(...events.map((event) => ({ ...event, at: Date.now() })));
+  if (memory.events.length > SESSION_DIVERSITY_MAX_EVENTS) {
+    memory.events = memory.events.slice(memory.events.length - SESSION_DIVERSITY_MAX_EVENTS);
+  }
 }
 
 function bucketSignalScore(score: number): "low" | "medium" | "high" {
@@ -883,7 +1004,7 @@ function buildAnchorProfile(history: SearchHistoryRecord[], favorites: FavoriteR
 
 export async function getCrossArtistRecommendations(
   userId: string,
-  options: { differentArtistsOnly?: boolean; limit?: number } = {},
+  options: { differentArtistsOnly?: boolean; limit?: number; sessionId?: string } = {},
 ) {
   const differentArtistsOnly = options.differentArtistsOnly !== false;
   const limit = Math.min(Math.max(options.limit ?? 8, 3), 20);
@@ -916,8 +1037,7 @@ export async function getCrossArtistRecommendations(
     [...profile.artistCounts.entries()].filter(([, count]) => count >= 2).map(([artist]) => normalizeName(artist)),
   );
 
-  const memory = crossArtistMemory.get(userId) ?? { recent: [] };
-  const recentlySuggested = new Set(memory.recent);
+  const sessionMemory = getOrCreateSessionDiversityMemory(userId, options.sessionId);
   const discoveryClient = getExternalDiscoveryClient();
 
   let externalAvailable = true;
@@ -959,12 +1079,22 @@ export async function getCrossArtistRecommendations(
     .filter((item) => !differentArtistsOnly || !heavilyPresentArtists.has(normalizeName(item.artist)))
     .map((item) => {
       const artistKey = normalizeName(item.artist);
+      const anchorKey = item.anchorArtist ? normalizeName(item.anchorArtist) : undefined;
       const scored = scoreCrossArtistDiscoveryCandidate(item, {
         signalModel,
         artistPresenceCount: profile.artistCounts.get(item.artist) ?? 0,
-        recentlySuggested: recentlySuggested.has(artistKey),
+        recentlySuggested: countSessionRepeats(sessionMemory, "artistKey", artistKey) > 0,
         knownArtist: knownArtists.has(artistKey),
       });
+      const artistSessionPenalty = getSessionArtistPenalty(
+        signalModel.groupedSignals.intent.repeatedArtistTolerance,
+        countSessionRepeats(sessionMemory, "artistKey", artistKey),
+      );
+      const anchorSessionPenalty = Math.min(0.15, countSessionRepeats(sessionMemory, "anchorKey", anchorKey) * 0.05);
+      const flavorSessionPenalty = getSessionFlavorPenalty(
+        signalModel.groupedSignals.intent.repeatedArtistTolerance,
+        countSessionRepeats(sessionMemory, "flavorKey", `source:${item.source}`),
+      );
       const recommendationReasoning = buildAssistantRecommendationReasoning(signalModel, {
         candidateArtist: item.artist,
         explorationCandidate: true,
@@ -973,8 +1103,8 @@ export async function getCrossArtistRecommendations(
       return {
         artist: item.artist,
         source: "external-discovery" as const,
-        score: scored.score,
-        confidence: scored.confidence,
+        score: Math.max(0.05, scored.score - artistSessionPenalty - anchorSessionPenalty - flavorSessionPenalty),
+        confidence: Math.max(0.05, scored.confidence - (artistSessionPenalty * 0.65) - (anchorSessionPenalty * 0.5)),
         recommendationReasoning,
         reasons: [
           recommendationReasoning.explanationText,
@@ -983,6 +1113,7 @@ export async function getCrossArtistRecommendations(
         ],
         sampleTracks: item.sampleTracks,
         isInLibrary: knownArtists.has(artistKey),
+        anchorArtist: item.anchorArtist,
       };
     })
     .sort((a, b) => b.score - a.score)
@@ -1022,12 +1153,20 @@ export async function getCrossArtistRecommendations(
     sparseState: signalModel.groupedSignals.confidence.sparseState,
   };
 
-  crossArtistMemory.set(userId, {
-    recent: recommendations
-      .map((item) => normalizeName(item.artist))
-      .filter(Boolean)
-      .slice(0, 30),
-  });
+  rememberDiscoverySessionEvents(
+    sessionMemory,
+    recommendations.slice(0, 16).flatMap((item): SessionDiversityEvent[] => {
+      const reasonType = item.recommendationReasoning?.primaryReasonType;
+      const anchorKey = "anchorArtist" in item && typeof item.anchorArtist === "string"
+        ? normalizeName(item.anchorArtist)
+        : undefined;
+      const events: SessionDiversityEvent[] = [
+        { at: Date.now(), artistKey: normalizeName(item.artist), flavorKey: `source:${item.source}`, anchorKey },
+      ];
+      if (reasonType) events.push({ at: Date.now(), flavorKey: `reason:${reasonType}` });
+      return events;
+    }),
+  );
 
   return {
     mode: "cross-artist",
@@ -1045,7 +1184,7 @@ export async function getCrossArtistRecommendations(
       recommendationBasis,
       interpretation: recommendationBasis.sparseFallback
         ? "Sparse library fallback: suggestions prioritize your known artists until broader signals appear."
-        : "Personalized blend: identity anchors, recency behavior, controls, and diversity guardrails all shape ranking.",
+        : "Personalized blend: identity anchors, recency behavior, controls, and short-lived session diversity guardrails all shape ranking.",
       recommendationReasoning: recommendations[0]?.recommendationReasoning
         ?? buildAssistantRecommendationReasoning(signalModel, { explorationCandidate: true, allowSeedFallback: true }),
     },
