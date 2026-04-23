@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, Clock, Library, Settings, Sparkles, TrendingUp } from "../../lucide-react";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import Modal from "../components/ui/Modal";
 import { useUser } from "../context/UserContext";
 import { useTheme } from "../../lib/ThemeContext";
 import { readTasteProfile } from "../features/onboarding/tasteProfile";
@@ -56,6 +57,7 @@ type MusicPackCard = {
   note?: string;
   ctaLabel?: string;
   ctaDisabled?: boolean;
+  ctaMode?: "open" | "passive";
 };
 
 type GeneratedMusicPackResponse = {
@@ -73,6 +75,8 @@ type GeneratedMusicPackResponse = {
       trackKey: string;
       title: string;
       artist: string;
+      album?: string;
+      coverUrl?: string;
       reason: string;
     }>;
     explanation: {
@@ -89,6 +93,10 @@ export default function PersonalizationPage() {
   const [playlistCount, setPlaylistCount] = useState(0);
   const [generatedPack, setGeneratedPack] = useState<GeneratedMusicPackResponse | null>(null);
   const [musicPackLoading, setMusicPackLoading] = useState(false);
+  const [packModalOpen, setPackModalOpen] = useState(false);
+  const [packSaving, setPackSaving] = useState(false);
+  const [packNotice, setPackNotice] = useState<string | null>(null);
+  const [discardedPackId, setDiscardedPackId] = useState<string | null>(null);
 
   const tasteProfile = useMemo(() => readTasteProfile(), []);
   const tasteSnapshot = tasteProfile?.structured;
@@ -223,8 +231,9 @@ export default function PersonalizationPage() {
             state: generatedPack.status === "limited" ? "limited-generated" : "available-generated",
             description: generatedPack.pack.subtitle,
             note: `${generatedPack.pack.explanation.summary} ${generatedPack.pack.tracks.slice(0, 2).map((track) => `${track.title} — ${track.artist}`).join(" · ")}`,
-            ctaLabel: "Pack generated",
-            ctaDisabled: true,
+            ctaLabel: "Open pack",
+            ctaDisabled: false,
+            ctaMode: "open",
           }
           : {
             id: "featured-learning",
@@ -252,6 +261,7 @@ export default function PersonalizationPage() {
       note: "Later roadmap includes more frequent cadence for eligible plans. No billing or upgrade flow is active today.",
       ctaLabel: "Locked for later cadence",
       ctaDisabled: true,
+      ctaMode: "passive",
     };
 
     return [featured, nextDrop];
@@ -269,34 +279,51 @@ export default function PersonalizationPage() {
   }, [profile.id]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      setGeneratedPack(null);
-      return;
+    if (typeof window === "undefined") return;
+    try {
+      const dismissed = window.localStorage.getItem(scopedKey("ponotai.music-packs.featured.discarded", profile.id));
+      setDiscardedPackId(dismissed && dismissed.trim() ? dismissed : null);
+    } catch {
+      setDiscardedPackId(null);
     }
+  }, [profile.id]);
 
+  async function loadFeaturedPack() {
+    if (!isAuthenticated) return;
     const onboardingSeed = {
       genres: topGenres.slice(0, 8),
       moods: topMoods.slice(0, 8),
       contexts: topContexts.slice(0, 8),
       favoriteArtists: topArtists.slice(0, 8),
     };
+    setPackNotice(null);
+    setMusicPackLoading(true);
+    try {
+      const response = await apiFetch("/api/ai/music-packs/featured", {
+        method: "POST",
+        body: JSON.stringify({ onboardingSeed }),
+      });
+      if (!response.ok) throw new Error(`Music pack generation failed (${response.status})`);
+      const payload = await response.json() as GeneratedMusicPackResponse;
+      setGeneratedPack(payload);
+    } catch {
+      setGeneratedPack(null);
+      setPackNotice("Could not generate a featured pack right now.");
+    } finally {
+      setMusicPackLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setGeneratedPack(null);
+      return;
+    }
 
     let cancelled = false;
     async function loadPack() {
-      setMusicPackLoading(true);
-      try {
-        const response = await apiFetch("/api/ai/music-packs/featured", {
-          method: "POST",
-          body: JSON.stringify({ onboardingSeed }),
-        });
-        if (!response.ok) throw new Error(`Music pack generation failed (${response.status})`);
-        const payload = await response.json() as GeneratedMusicPackResponse;
-        if (!cancelled) setGeneratedPack(payload);
-      } catch {
-        if (!cancelled) setGeneratedPack(null);
-      } finally {
-        if (!cancelled) setMusicPackLoading(false);
-      }
+      if (cancelled) return;
+      await loadFeaturedPack();
     }
 
     void loadPack();
@@ -304,6 +331,8 @@ export default function PersonalizationPage() {
       cancelled = true;
     };
   }, [isAuthenticated, topArtists, topContexts, topGenres, topMoods]);
+
+  const featuredPackHiddenByDiscard = Boolean(generatedPack?.pack?.id && discardedPackId === generatedPack.pack.id);
 
   async function handleRecommendationDataSharingToggle() {
     if (!isAuthenticated) return;
@@ -316,6 +345,55 @@ export default function PersonalizationPage() {
   ) {
     if (!isAuthenticated) return;
     await updateProfile({ [field]: value });
+  }
+
+  async function handleSaveFeaturedPack() {
+    if (!generatedPack?.pack || !isAuthenticated) return;
+    setPackSaving(true);
+    setPackNotice(null);
+    try {
+      const response = await apiFetch("/api/ai/music-packs/featured/save", {
+        method: "POST",
+        body: JSON.stringify({
+          packId: generatedPack.pack.id,
+          title: generatedPack.pack.title,
+          tracks: generatedPack.pack.tracks.map((track) => ({
+            trackKey: track.trackKey,
+            title: track.title,
+            artist: track.artist,
+            album: track.album,
+            coverUrl: track.coverUrl,
+          })),
+        }),
+      });
+      if (!response.ok) throw new Error(`Music pack save failed (${response.status})`);
+      const payload = await response.json() as { playlist?: { id?: string }; savedTracks?: number };
+      setPackNotice(`Saved this pack as a playlist (${payload.savedTracks ?? generatedPack.pack.songCount} tracks).`);
+      setPackModalOpen(false);
+      setPlaylistCount((value) => value + 1);
+    } catch {
+      setPackNotice("Could not save this pack right now.");
+    } finally {
+      setPackSaving(false);
+    }
+  }
+
+  function handleDiscardFeaturedPack() {
+    if (!generatedPack?.pack) return;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(scopedKey("ponotai.music-packs.featured.discarded", profile.id), generatedPack.pack.id);
+    }
+    setDiscardedPackId(generatedPack.pack.id);
+    setPackModalOpen(false);
+    setPackNotice("Pack discarded for now. You can generate again any time.");
+  }
+
+  function handleBringBackPack() {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(scopedKey("ponotai.music-packs.featured.discarded", profile.id));
+    }
+    setDiscardedPackId(null);
+    setPackNotice("Discard was cleared. Open the pack to inspect it again.");
   }
 
   return (
@@ -451,7 +529,7 @@ export default function PersonalizationPage() {
               <span className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1">{`Signal mode: ${recommendationModeLabel}`}</span>
             </div>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {musicPackCards.map((pack) => {
+              {musicPackCards.filter((pack) => !(pack.state.includes("generated") && featuredPackHiddenByDiscard)).map((pack) => {
                 const cardClassName = pack.state === "available-generated"
                   ? "border-[var(--accent-border)] bg-[var(--panel-surface)]"
                   : pack.state === "limited-generated"
@@ -485,6 +563,7 @@ export default function PersonalizationPage() {
                     {pack.ctaLabel ? (
                       <button
                         type="button"
+                        onClick={pack.ctaMode === "open" ? () => setPackModalOpen(true) : undefined}
                         disabled={pack.ctaDisabled}
                         className="mt-3 rounded-full border border-[var(--border)] bg-transparent px-3 py-1 text-xs font-medium text-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-70"
                       >
@@ -495,9 +574,22 @@ export default function PersonalizationPage() {
                 );
               })}
             </div>
+            {featuredPackHiddenByDiscard ? (
+              <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-3">
+                <p className="text-sm font-medium">Featured pack discarded</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  Discard hides the current generated pack for now. No long-term archive or cadence skip is applied in this pass.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button variant="ghost" size="sm" onClick={handleBringBackPack}>Bring back pack</Button>
+                  <Button variant="secondary" size="sm" onClick={() => void loadFeaturedPack()}>Generate again</Button>
+                </div>
+              </div>
+            ) : null}
+            {packNotice ? <p className="mt-3 text-xs text-[var(--muted)]">{packNotice}</p> : null}
           </div>
           <div className="rounded-xl border border-dashed border-[var(--border)] p-3 text-xs text-[var(--muted)]">
-            Integration boundaries set for later: real pack title/artwork identity, open pack reveal, save/discard actions, song preview rows, and engaging-part playback via Song Taster layers.
+            This pass keeps the flow intentionally small: open and inspect the generated pack, save it as a playlist, or discard it from the current featured slot.
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {[
@@ -607,6 +699,41 @@ export default function PersonalizationPage() {
           </div>
         </Card>
       </section>
+      {generatedPack?.pack ? (
+        <Modal
+          isOpen={packModalOpen}
+          onClose={() => setPackModalOpen(false)}
+          title={generatedPack.pack.title}
+          maxWidth="760px"
+          panelClassName="space-y-4"
+        >
+          <div className="rounded-xl border border-[var(--accent-border)] bg-[var(--accent-soft)] p-3">
+            <p className="text-xs uppercase tracking-[0.08em] text-[var(--muted)]">{generatedPack.pack.moodLabel}</p>
+            <p className="mt-1 text-sm font-medium">{generatedPack.pack.subtitle}</p>
+            <p className="mt-2 text-xs text-[var(--muted)]">{generatedPack.pack.explanation.summary}</p>
+          </div>
+          <div className="space-y-2">
+            {generatedPack.pack.tracks.map((track) => (
+              <div key={track.trackKey} className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">{track.rank}. {track.title}</p>
+                    <p className="text-xs text-[var(--muted)]">{track.artist}</p>
+                  </div>
+                  <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Track {track.rank}</span>
+                </div>
+                <p className="mt-2 text-xs text-[var(--muted)]">{track.reason}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={handleDiscardFeaturedPack}>Discard pack</Button>
+            <Button variant="primary" size="sm" disabled={packSaving} onClick={() => void handleSaveFeaturedPack()}>
+              {packSaving ? "Saving…" : "Save as playlist"}
+            </Button>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }
