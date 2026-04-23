@@ -1123,6 +1123,113 @@ export async function generateFeaturedMusicPack(userId: string, input: MusicPack
   };
 }
 
+export async function getTasteIdentitySummary(userId: string, input: MusicPackGenerationInput = {}) {
+  const [history, favorites, playlists, user] = await Promise.all([
+    listUserHistory(userId),
+    listFavorites(userId),
+    getUserPlaylists(userId),
+    findUserById(userId),
+  ]);
+
+  const onboardingSeed = {
+    genres: ensureDistinct(input.onboardingSeed?.genres),
+    moods: ensureDistinct(input.onboardingSeed?.moods),
+    contexts: ensureDistinct(input.onboardingSeed?.contexts),
+    favoriteArtists: ensureDistinct(input.onboardingSeed?.favoriteArtists),
+  };
+
+  const signalModel = buildRecommendationSignalModel({
+    history,
+    favorites,
+    playlists,
+    onboardingSeed,
+    intent: user
+      ? {
+        recommendationMode: user.recommendationMode,
+        repeatedArtistTolerance: user.repeatedArtistTolerance,
+        energyPreference: user.energyPreference,
+        recommendationDataSharingEnabled: user.recommendationDataSharingEnabled,
+      }
+      : undefined,
+  });
+  const blendedIdentityConfidence = blendSignalScores(signalModel, "taste_identity");
+  const grouped = signalModel.groupedSignals;
+  const sparseState = grouped.confidence.sparseState;
+
+  const onboardingSeedCount = onboardingSeed.genres.length
+    + onboardingSeed.moods.length
+    + onboardingSeed.contexts.length
+    + onboardingSeed.favoriteArtists.length;
+  const stableArtists = grouped.identity.recurringArtists.slice(0, 3).map((item) => item.artist);
+  const recentDirectionArtists = grouped.behavior.recentTopArtists.slice(0, 2).map((item) => item.artist);
+
+  const coreIdentity = grouped.identity.ultraLikedCount >= 2
+    ? `Your core taste is anchored by ${grouped.identity.ultraLikedCount} ultra-liked track${grouped.identity.ultraLikedCount === 1 ? "" : "s"}${stableArtists.length ? ` with recurring pulls toward ${stableArtists.join(" and ")}` : ""}.`
+    : grouped.identity.favoritesCount >= 5
+      ? `Your core taste is currently favorite-led${stableArtists.length ? ` and reinforced by recurring artists like ${stableArtists.join(" and ")}` : ""}.`
+      : stableArtists.length
+        ? `Your core taste is forming around recurring artists such as ${stableArtists.join(" and ")}.`
+        : onboardingSeedCount > 0
+          ? "Your core taste is still early and currently shaped by onboarding seeds plus first saves."
+          : "Your core taste is still learning from your first listening signals.";
+
+  const currentDirection = grouped.behavior.recentHistoryEvents14d >= 3
+    ? `Current direction: recent listening leans toward ${recentDirectionArtists.join(" and ") || "your latest rotations"}, and this is treated as short-term movement.`
+    : "Current direction: recent behavior is still light, so short-term trend detection is limited.";
+
+  const anchors: string[] = [
+    grouped.identity.ultraLikedCount > 0
+      ? `Ultra-like anchors: ${grouped.identity.ultraLikedCount}`
+      : "Ultra-like anchors still forming",
+    grouped.identity.favoritesCount > 0
+      ? `Favorites signal: ${grouped.identity.favoritesCount} saved`
+      : "Favorites signal is still light",
+    stableArtists.length > 0
+      ? `Recurring artists: ${stableArtists.join(" · ")}`
+      : "Recurring artist pattern still forming",
+    grouped.behavior.recentHistoryEvents14d > 0
+      ? `Recent direction: ${grouped.behavior.recentHistoryEvents14d} listens in 14 days`
+      : "Recent direction: no 14-day listening signal yet",
+    sparseState === "sparse" && onboardingSeedCount > 0
+      ? `Onboarding support active: ${onboardingSeedCount} seed cues`
+      : "Onboarding influence tapered as behavior matured",
+  ];
+
+  const evidence: string[] = [
+    `Identity evidence combines ultra-likes (${grouped.identity.ultraLikedCount}), favorites (${grouped.identity.favoritesCount}), and recurring artists (${grouped.identity.recurringArtists.length}).`,
+    `Behavior evidence tracks recent listens (${grouped.behavior.recentHistoryEvents14d} in 14 days) and replay patterns (${grouped.behavior.replayedTracks7d} repeated tracks in 7 days).`,
+    sparseState === "sparse"
+      ? "Confidence is still early: onboarding and explicit saves are carrying more weight until listening depth grows."
+      : sparseState === "growing"
+        ? "Confidence is improving: stable identity anchors are established while recency still refines direction."
+        : "Confidence is strong: long-term identity anchors and ongoing behavior are in good agreement.",
+  ];
+
+  const confidenceNote = sparseState === "sparse"
+    ? "Still learning: this profile is directionally useful but not final."
+    : sparseState === "growing"
+      ? "Confidence is medium: your core taste is stable, with room for refinement."
+      : "Confidence is high: your core taste is well-defined by repeated strong signals.";
+
+  return {
+    generatedAt: new Date().toISOString(),
+    sparseState,
+    coreIdentity,
+    currentDirection,
+    anchors,
+    evidence,
+    confidenceNote,
+    foundation: {
+      ultraLikedCount: grouped.identity.ultraLikedCount,
+      favoritesCount: grouped.identity.favoritesCount,
+      recurringArtists: stableArtists,
+      recentHistoryEvents14d: grouped.behavior.recentHistoryEvents14d,
+      onboardingSeedCount,
+      tasteIdentityConfidence: bucketSignalScore(blendedIdentityConfidence),
+    },
+  };
+}
+
 export async function getDailyDiscovery(userId: string) {
   const today = new Date().toISOString().slice(0, 10);
   const cached = discoveryCache.get(userId);

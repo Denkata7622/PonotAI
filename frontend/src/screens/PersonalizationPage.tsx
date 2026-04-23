@@ -12,11 +12,6 @@ import { readTasteProfile } from "../features/onboarding/tasteProfile";
 import { scopedKey, useProfile } from "../../lib/ProfileContext";
 import { apiFetch } from "../lib/apiFetch";
 
-function formatListPreview(values: string[], fallback: string) {
-  if (!values.length) return fallback;
-  return values.slice(0, 3).join(" · ");
-}
-
 function getTopCounts(values: string[], limit = 3): string[] {
   const counter = new Map<string, number>();
   values.forEach((value) => {
@@ -87,6 +82,24 @@ type GeneratedMusicPackResponse = {
   };
 };
 
+type TasteIdentitySummaryResponse = {
+  generatedAt: string;
+  sparseState: "sparse" | "growing" | "rich";
+  coreIdentity: string;
+  currentDirection: string;
+  anchors: string[];
+  evidence: string[];
+  confidenceNote: string;
+  foundation: {
+    ultraLikedCount: number;
+    favoritesCount: number;
+    recurringArtists: string[];
+    recentHistoryEvents14d: number;
+    onboardingSeedCount: number;
+    tasteIdentityConfidence: "low" | "medium" | "high";
+  };
+};
+
 export default function PersonalizationPage() {
   const { user, favorites, history, isAuthenticated, updateProfile } = useUser();
   const { profile } = useProfile();
@@ -99,6 +112,7 @@ export default function PersonalizationPage() {
   const [packNotice, setPackNotice] = useState<string | null>(null);
   const [discardedPackId, setDiscardedPackId] = useState<string | null>(null);
   const [selectedTrackKeys, setSelectedTrackKeys] = useState<string[]>([]);
+  const [tasteIdentitySummary, setTasteIdentitySummary] = useState<TasteIdentitySummaryResponse | null>(null);
 
   const tasteProfile = useMemo(() => readTasteProfile(), []);
   const tasteSnapshot = tasteProfile?.structured;
@@ -118,30 +132,26 @@ export default function PersonalizationPage() {
       return Number.isFinite(parsed) && parsed >= cutoff;
     }).length;
   }, [history]);
-  const favoritesDominant = favorites.length > Math.max(2, history.length * 0.4);
   const sparseData = history.length < 5 && favorites.length < 3;
-
-  const summaryLines = useMemo(() => {
-    const identityLead = topGenres.length
-      ? `You currently lean toward ${topGenres.slice(0, 2).join(" and ")}${topMoods.length ? ` with a ${topMoods[0].toLowerCase()} mood lane` : ""}.`
-      : "We are still shaping your listening identity from your starter profile and early library activity.";
-    const behaviorLead = sparseData
-      ? "Early signal only: this summary is mostly onboarding-based until your recent history and favorites grow."
-      : favoritesDominant
-        ? "Your saved library is growing faster than your play history, so your current profile is favorite-led."
-        : recentHistoryCount >= 4
-          ? "Recent listening activity is active, and your profile is increasingly behavior-driven."
-          : "Your profile blends onboarding anchors with your current history and saved music.";
-    return [identityLead, behaviorLead];
-  }, [favoritesDominant, recentHistoryCount, sparseData, topGenres, topMoods]);
-
-  const tasteSignals = useMemo(() => ([
-    { label: "Genre lean", value: formatListPreview(topGenres, "Not enough genre signal yet") },
-    { label: "Mood lane", value: formatListPreview(topMoods, "Mood signal is still forming") },
-    { label: "Context cues", value: formatListPreview(topContexts, "Add more sessions to shape contexts") },
-    { label: "Library tilt", value: favoritesDominant ? "Favorite-heavy right now" : "Balanced between saves and plays" },
-    { label: "Recent pattern", value: recentHistoryCount > 0 ? `${recentHistoryCount} listens in last 14 days` : "No recent history in last 14 days" },
-  ]), [favoritesDominant, recentHistoryCount, topContexts, topGenres, topMoods]);
+  const fallbackTasteSummary = useMemo(() => {
+    const coreIdentity = topGenres.length
+      ? `Your core taste currently centers on ${topGenres.slice(0, 2).join(" and ")}${topMoods.length ? ` with a ${topMoods[0].toLowerCase()} lane` : ""}.`
+      : "Your core taste is still learning from onboarding and first saves.";
+    const currentDirection = recentHistoryCount >= 4
+      ? "Current direction: your recent listening is active and helps refine short-term direction."
+      : "Current direction: recent behavior is still light, so this mostly reflects your early signals.";
+    const anchors = [
+      `Ultra-like anchors: ${favorites.filter((item) => item.ultraLiked).length || "forming"}`,
+      favorites.length ? `Favorites signal: ${favorites.length} saved` : "Favorites signal is still light",
+      topArtists.length ? `Recurring artists: ${topArtists.join(" · ")}` : "Recurring artists are still forming",
+      recentHistoryCount > 0 ? `Recent direction: ${recentHistoryCount} listens in 14 days` : "Recent direction signal is not active yet",
+      sparseData ? "Onboarding support is active while your profile is still early" : "Onboarding influence is now secondary to behavior",
+    ];
+    const evidence = [
+      `Grounded by favorites (${favorites.length}), listening history (${history.length}), and playlists (${playlistCount}).`,
+    ];
+    return { coreIdentity, currentDirection, anchors, evidence };
+  }, [favorites, history.length, playlistCount, recentHistoryCount, sparseData, topArtists, topGenres, topMoods]);
 
   const recommendationDataSharingEnabled = Boolean(user?.recommendationDataSharingEnabled);
   const recommendationMode = user?.recommendationMode ?? "balanced";
@@ -334,6 +344,37 @@ export default function PersonalizationPage() {
     };
   }, [isAuthenticated, topArtists, topContexts, topGenres, topMoods]);
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setTasteIdentitySummary(null);
+      return;
+    }
+    let cancelled = false;
+    async function loadTasteIdentity() {
+      const onboardingSeed = {
+        genres: topGenres.slice(0, 8),
+        moods: topMoods.slice(0, 8),
+        contexts: topContexts.slice(0, 8),
+        favoriteArtists: topArtists.slice(0, 8),
+      };
+      try {
+        const response = await apiFetch("/api/ai/taste-identity/summary", {
+          method: "POST",
+          body: JSON.stringify({ onboardingSeed }),
+        });
+        if (!response.ok) throw new Error(`Taste identity summary failed (${response.status})`);
+        const payload = await response.json() as TasteIdentitySummaryResponse;
+        if (!cancelled) setTasteIdentitySummary(payload);
+      } catch {
+        if (!cancelled) setTasteIdentitySummary(null);
+      }
+    }
+    void loadTasteIdentity();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, topArtists, topContexts, topGenres, topMoods]);
+
   const featuredPackHiddenByDiscard = Boolean(generatedPack?.pack?.id && discardedPackId === generatedPack.pack.id);
   const allTrackKeys = generatedPack?.pack?.tracks.map((track) => track.trackKey) ?? [];
   const selectedCount = selectedTrackKeys.length;
@@ -448,37 +489,30 @@ export default function PersonalizationPage() {
             </div>
             <Sparkles className="h-5 w-5 text-[var(--accent)]" />
           </div>
-          <p className="text-sm text-[var(--muted)]">
-            A grounded summary from onboarding and listening behavior. This will deepen in a later pass.
-          </p>
+          <p className="text-sm text-[var(--muted)]">A weighted, grounded read of your core taste and current listening direction.</p>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-4">
-            <p className="text-sm font-medium">{summaryLines[0]}</p>
-            <p className="mt-2 text-xs text-[var(--muted)]">{summaryLines[1]}</p>
+            <p className="text-sm font-medium">{tasteIdentitySummary?.coreIdentity ?? fallbackTasteSummary.coreIdentity}</p>
+            <p className="mt-2 text-xs text-[var(--muted)]">{tasteIdentitySummary?.currentDirection ?? fallbackTasteSummary.currentDirection}</p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {tasteSignals.map((signal) => (
-              <div key={signal.label} className="themed-surface-subtle rounded-xl border border-[var(--border)] p-3">
-                <p className="text-xs text-[var(--muted)]">{signal.label}</p>
-                <p className="mt-1 break-words text-sm font-medium">{signal.value}</p>
-              </div>
+          <div className="flex flex-wrap gap-2">
+            {(tasteIdentitySummary?.anchors ?? fallbackTasteSummary.anchors).slice(0, 5).map((anchor) => (
+              <span key={anchor} className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1 text-xs">
+                {anchor}
+              </span>
             ))}
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-3 text-xs text-[var(--muted)]">
-            <p>
-              Evidence: favorites ({favorites.length}), listening history ({history.length}), playlists ({playlistCount})
-              {topArtists.length ? `, recurring artists (${topArtists.join(" · ")})` : ""}.
-            </p>
-            {sparseData ? (
-              <p className="mt-1">
-                Still learning: signals are currently light, so Turrex is prioritizing onboarding preferences until more behavior data arrives.
-              </p>
-            ) : null}
-            <p className="mt-1">
-              Integration-ready: this block currently uses onboarding + library signals and can layer in Song Taster/UserTasteMemory depth in later passes.
-            </p>
+            <p className="font-medium text-[var(--text)]">Evidence</p>
+            <ul className="mt-1 space-y-1">
+              {(tasteIdentitySummary?.evidence ?? fallbackTasteSummary.evidence).slice(0, 3).map((line) => (
+                <li key={line}>• {line}</li>
+              ))}
+            </ul>
+            {tasteIdentitySummary?.confidenceNote ? <p className="mt-2">{tasteIdentitySummary.confidenceNote}</p> : null}
+            {!tasteIdentitySummary && sparseData ? <p className="mt-2">Still learning: onboarding and first saves are currently stronger than behavior history.</p> : null}
           </div>
           <div className="rounded-xl border border-dashed border-[var(--border)] p-3 text-xs text-[var(--muted)]">
-            Signal scope stays curated on purpose. Internal metadata is kept private until richer layers are production-ready.
+            Signal scope stays curated on purpose. Turrex reads weighted signals without exposing raw model weights.
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-3 text-xs text-[var(--muted)]">
             <p>
