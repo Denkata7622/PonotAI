@@ -4,6 +4,7 @@ import {
   applyTags,
   getCrossArtistRecommendations,
   generateSmartPlaylist,
+  generateFeaturedMusicPack,
   getContextualRecommendations,
   getDailyDiscovery,
   getListeningInsights,
@@ -213,6 +214,25 @@ export async function crossArtistRecommendationsController(req: Request, res: Re
     res.status(200).json(data);
   } catch (error) {
     console.error("cross artist recommendation error", error);
+    sendError(res, ErrorCatalog.INTERNAL_ERROR);
+  }
+}
+
+export async function generateFeaturedMusicPackController(req: Request, res: Response): Promise<void> {
+  const payload = req.body && typeof req.body === "object" ? req.body as {
+    onboardingSeed?: {
+      genres?: string[];
+      moods?: string[];
+      contexts?: string[];
+      favoriteArtists?: string[];
+    };
+  } : {};
+
+  try {
+    const data = await generateFeaturedMusicPack(req.userId!, payload);
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("music pack generation error", error);
     sendError(res, ErrorCatalog.INTERNAL_ERROR);
   }
 }

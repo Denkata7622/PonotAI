@@ -9,6 +9,7 @@ import { useUser } from "../context/UserContext";
 import { useTheme } from "../../lib/ThemeContext";
 import { readTasteProfile } from "../features/onboarding/tasteProfile";
 import { scopedKey, useProfile } from "../../lib/ProfileContext";
+import { apiFetch } from "../lib/apiFetch";
 
 function formatListPreview(values: string[], fallback: string) {
   if (!values.length) return fallback;
@@ -42,7 +43,7 @@ type ThemeStudioSlot = {
   };
 };
 
-type MusicPackState = "no-pack-yet" | "available-scaffold" | "future-cadence-locked";
+type MusicPackState = "no-pack-yet" | "available-generated" | "limited-generated" | "future-cadence-locked";
 
 type MusicPackCard = {
   id: string;
@@ -57,11 +58,37 @@ type MusicPackCard = {
   ctaDisabled?: boolean;
 };
 
+type GeneratedMusicPackResponse = {
+  status: "available" | "limited" | "insufficient_data";
+  message: string;
+  generatedAt: string;
+  pack: null | {
+    id: string;
+    title: string;
+    subtitle: string;
+    moodLabel: string;
+    songCount: number;
+    tracks: Array<{
+      rank: number;
+      trackKey: string;
+      title: string;
+      artist: string;
+      reason: string;
+    }>;
+    explanation: {
+      summary: string;
+      basis: string[];
+    };
+  };
+};
+
 export default function PersonalizationPage() {
   const { user, favorites, history, isAuthenticated, updateProfile } = useUser();
   const { profile } = useProfile();
   const { theme, accent, intensity, surfaceStyle, density } = useTheme();
   const [playlistCount, setPlaylistCount] = useState(0);
+  const [generatedPack, setGeneratedPack] = useState<GeneratedMusicPackResponse | null>(null);
+  const [musicPackLoading, setMusicPackLoading] = useState(false);
 
   const tasteProfile = useMemo(() => readTasteProfile(), []);
   const tasteSnapshot = tasteProfile?.structured;
@@ -160,36 +187,59 @@ export default function PersonalizationPage() {
   const musicPackCards = useMemo<MusicPackCard[]>(() => {
     const primaryMood = topMoods[0] ?? "Adaptive";
     const primaryGenre = topGenres[0] ?? "Cross-genre";
-    const learning = sparseData || !recommendationDataSharingEnabled;
-    const packSize = recommendationMode === "safe_familiar" ? "8 songs" : recommendationMode === "mostly_discovery" ? "12 songs" : "10 songs";
-
-    const featured: MusicPackCard = learning
+    const featured: MusicPackCard = !isAuthenticated
       ? {
-        id: "featured-learning",
+        id: "featured-sign-in",
         title: "First Identity Drop",
         cadenceLabel: "Weekly free drop",
-        packSizeLabel: "Preview shell",
+        packSizeLabel: "Sign in required",
         identityLabel: `${primaryMood} · ${primaryGenre}`,
         state: "no-pack-yet",
-        description: "Preparing your first collectible pack. Turrex is still calibrating from onboarding and early listening signals.",
-        note: recommendationDataSharingEnabled
-          ? "Listening data sharing is on, so your first drop will unlock as your activity grows."
-          : "Enable listening data sharing for stronger pack shaping and faster confidence.",
-        ctaLabel: "Preparing",
+        description: "Sign in to generate your first real Music Pack from your ultra-likes, favorites, and listening behavior.",
+        note: "Pack generation uses your recommendation controls and onboarding profile where available.",
+        ctaLabel: "Sign in to generate",
         ctaDisabled: true,
       }
-      : {
-        id: "featured-scaffold",
-        title: "Identity Drop 001",
-        cadenceLabel: "Weekly free drop",
-        packSizeLabel: packSize,
-        identityLabel: `${primaryMood} · ${primaryGenre}`,
-        state: "available-scaffold",
-        description: "Scaffolded pack shell is ready with your current taste direction. Real generation, open/save/discard, and preview flow ship in later passes.",
-        note: `Current recommendation mode: ${recommendationModeLabel}.`,
-        ctaLabel: "Open pack shell",
-        ctaDisabled: true,
-      };
+      : musicPackLoading
+        ? {
+          id: "featured-loading",
+          title: "Generating your first pack",
+          cadenceLabel: "Weekly free drop",
+          packSizeLabel: "In progress",
+          identityLabel: `${primaryMood} · ${primaryGenre}`,
+          state: "no-pack-yet",
+          description: "Building a real drop from your strongest signals (ultra-like, favorites, recent behavior, and onboarding fallback).",
+          note: `Current recommendation mode: ${recommendationModeLabel}.`,
+          ctaLabel: "Generating…",
+          ctaDisabled: true,
+        }
+        : generatedPack?.pack
+          ? {
+            id: generatedPack.pack.id,
+            title: generatedPack.pack.title,
+            cadenceLabel: "Weekly free drop",
+            packSizeLabel: `${generatedPack.pack.songCount} songs`,
+            identityLabel: generatedPack.pack.moodLabel,
+            state: generatedPack.status === "limited" ? "limited-generated" : "available-generated",
+            description: generatedPack.pack.subtitle,
+            note: `${generatedPack.pack.explanation.summary} ${generatedPack.pack.tracks.slice(0, 2).map((track) => `${track.title} — ${track.artist}`).join(" · ")}`,
+            ctaLabel: "Pack generated",
+            ctaDisabled: true,
+          }
+          : {
+            id: "featured-learning",
+            title: "First Identity Drop",
+            cadenceLabel: "Weekly free drop",
+            packSizeLabel: sparseData ? "Early signal" : "Insufficient data",
+            identityLabel: `${primaryMood} · ${primaryGenre}`,
+            state: "no-pack-yet",
+            description: "Not enough usable data yet for an honest full pack. Keep listening or add favorites and ultra-likes.",
+            note: recommendationDataSharingEnabled
+              ? "Recommendation data sharing is enabled; generation depth will improve as your listening data grows."
+              : "Enable recommendation data sharing for stronger pack shaping and faster confidence.",
+            ctaLabel: "Preparing",
+            ctaDisabled: true,
+          };
 
     const nextDrop: MusicPackCard = {
       id: "next-drop",
@@ -205,7 +255,7 @@ export default function PersonalizationPage() {
     };
 
     return [featured, nextDrop];
-  }, [recommendationDataSharingEnabled, recommendationMode, recommendationModeLabel, sparseData, topGenres, topMoods]);
+  }, [generatedPack, isAuthenticated, musicPackLoading, recommendationDataSharingEnabled, recommendationModeLabel, sparseData, topGenres, topMoods]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -217,6 +267,43 @@ export default function PersonalizationPage() {
       setPlaylistCount(0);
     }
   }, [profile.id]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setGeneratedPack(null);
+      return;
+    }
+
+    const onboardingSeed = {
+      genres: topGenres.slice(0, 8),
+      moods: topMoods.slice(0, 8),
+      contexts: topContexts.slice(0, 8),
+      favoriteArtists: topArtists.slice(0, 8),
+    };
+
+    let cancelled = false;
+    async function loadPack() {
+      setMusicPackLoading(true);
+      try {
+        const response = await apiFetch("/api/ai/music-packs/featured", {
+          method: "POST",
+          body: JSON.stringify({ onboardingSeed }),
+        });
+        if (!response.ok) throw new Error(`Music pack generation failed (${response.status})`);
+        const payload = await response.json() as GeneratedMusicPackResponse;
+        if (!cancelled) setGeneratedPack(payload);
+      } catch {
+        if (!cancelled) setGeneratedPack(null);
+      } finally {
+        if (!cancelled) setMusicPackLoading(false);
+      }
+    }
+
+    void loadPack();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, topArtists, topContexts, topGenres, topMoods]);
 
   async function handleRecommendationDataSharingToggle() {
     if (!isAuthenticated) return;
@@ -355,7 +442,7 @@ export default function PersonalizationPage() {
             <Library className="h-5 w-5 text-[var(--accent)]" />
           </div>
           <p className="text-sm text-[var(--muted)]">
-            Music Packs are structured as collectible song drops, not generic playlists. This block is now scaffolded for real pack generation and preview playback logic in later passes.
+            Music Packs are structured as collectible song drops, not generic playlists. This block now generates one real featured pack from weighted identity, behavior, and intent signals.
           </p>
           <div className="rounded-2xl border border-[var(--accent-border)] bg-[var(--accent-soft)] p-4">
             <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">
@@ -365,8 +452,10 @@ export default function PersonalizationPage() {
             </div>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {musicPackCards.map((pack) => {
-                const cardClassName = pack.state === "available-scaffold"
+                const cardClassName = pack.state === "available-generated"
                   ? "border-[var(--accent-border)] bg-[var(--panel-surface)]"
+                  : pack.state === "limited-generated"
+                    ? "border-[var(--accent-border)] bg-[var(--panel-surface)]/80"
                   : pack.state === "future-cadence-locked"
                     ? "border-[var(--border)] bg-black/30"
                     : "border-[var(--border)] bg-[var(--panel-surface)]";
@@ -378,7 +467,8 @@ export default function PersonalizationPage() {
                         <p className="text-[11px] text-[var(--muted)]">{pack.cadenceLabel}</p>
                       </div>
                       {pack.state === "future-cadence-locked" ? <Clock className="mt-0.5 h-4 w-4 text-[var(--muted)]" /> : null}
-                      {pack.state === "available-scaffold" ? <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">Scaffold ready</span> : null}
+                      {pack.state === "available-generated" ? <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">Generated</span> : null}
+                      {pack.state === "limited-generated" ? <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">Generated · Limited</span> : null}
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                       <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]/60 p-2">

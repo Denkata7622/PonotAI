@@ -486,8 +486,168 @@ export async function applyTags(userId: string, tags: Array<Pick<TrackTagRecord,
 const discoveryCache = new Map<string, { date: string; payload: unknown }>();
 const crossArtistMemory = new Map<string, { recent: string[] }>();
 
+type MusicPackGenerationInput = {
+  onboardingSeed?: {
+    genres?: string[];
+    moods?: string[];
+    contexts?: string[];
+    favoriteArtists?: string[];
+  };
+};
+
+type MusicPackCandidate = {
+  key: string;
+  title: string;
+  artist: string;
+  album?: string;
+  coverUrl?: string;
+  score: number;
+  reasons: string[];
+};
+
 function normalizeName(value: string): string {
   return value.toLowerCase().trim();
+}
+
+function ensureDistinct(values: string[] = [], limit = 8): string[] {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    const key = normalizeName(trimmed);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(trimmed);
+    if (output.length >= limit) break;
+  }
+  return output;
+}
+
+function summarizePackFlavor(
+  model: ReturnType<typeof buildRecommendationSignalModel>,
+  mode: "safe_familiar" | "balanced" | "mostly_discovery",
+): { subtitle: string; moodLabel: string } {
+  const energy = model.groupedSignals.intent.energyPreference;
+  const moodLabel = energy === "more_energetic"
+    ? "High Energy"
+    : energy === "calmer"
+      ? "Steady Focus"
+      : "Balanced Motion";
+  const subtitle = mode === "mostly_discovery"
+    ? "Discovery-leaning drop shaped by your strongest identity signals."
+    : mode === "safe_familiar"
+      ? "Familiar-first drop grounded in your strongest songs."
+      : "Balanced drop blending familiar anchors with fresh rotation.";
+  return { subtitle, moodLabel };
+}
+
+function buildMusicPackCandidates(
+  favorites: FavoriteRecord[],
+  history: SearchHistoryRecord[],
+  playlists: PlaylistRecord[],
+  model: ReturnType<typeof buildRecommendationSignalModel>,
+): MusicPackCandidate[] {
+  const historyByKey = new Map<string, SearchHistoryRecord[]>();
+  for (const item of history) {
+    const key = trackKey(item.title, item.artist);
+    const group = historyByKey.get(key) ?? [];
+    group.push(item);
+    historyByKey.set(key, group);
+  }
+
+  const playlistByKey = new Map<string, { title: string; artist: string; album?: string; coverUrl?: string; count: number }>();
+  for (const playlist of playlists) {
+    for (const track of playlist.songs ?? []) {
+      const key = trackKey(track.title, track.artist);
+      const existing = playlistByKey.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        playlistByKey.set(key, { title: track.title, artist: track.artist, album: track.album, coverUrl: track.coverUrl, count: 1 });
+      }
+    }
+  }
+
+  const candidates = new Map<string, MusicPackCandidate>();
+  const addReason = (candidate: MusicPackCandidate, reason: string) => {
+    if (!candidate.reasons.includes(reason)) candidate.reasons.push(reason);
+  };
+
+  for (const favorite of favorites) {
+    const key = trackKey(favorite.title, favorite.artist);
+    const existing = candidates.get(key) ?? {
+      key,
+      title: favorite.title,
+      artist: favorite.artist,
+      album: favorite.album,
+      coverUrl: favorite.coverUrl,
+      score: 0,
+      reasons: [],
+    };
+    existing.score += favorite.ultraLiked ? 7.5 : 4.5;
+    addReason(existing, favorite.ultraLiked ? "Seeded by your ultra-liked songs" : "Seeded by your favorites");
+    candidates.set(key, existing);
+  }
+
+  for (const [key, entries] of historyByKey.entries()) {
+    const latest = [...entries].sort((a, b) => parseDate(b.createdAt) - parseDate(a.createdAt))[0];
+    const daysAgo = Math.max(0, (Date.now() - parseDate(latest.createdAt)) / DAY_MS);
+    const recencyBonus = daysAgo <= 7 ? 3.4 : daysAgo <= 21 ? 2 : 0.8;
+    const replayBonus = Math.min(entries.length, 5) * 0.55;
+    const existing = candidates.get(key) ?? {
+      key,
+      title: latest.title ?? "Unknown Song",
+      artist: latest.artist ?? "Unknown Artist",
+      album: latest.album,
+      coverUrl: latest.coverUrl,
+      score: 0,
+      reasons: [],
+    };
+    existing.score += recencyBonus + replayBonus;
+    addReason(existing, "Shaped by your recent listening behavior");
+    if (entries.length >= 2) addReason(existing, "You replayed this recently");
+    candidates.set(key, existing);
+  }
+
+  for (const [key, song] of playlistByKey.entries()) {
+    const existing = candidates.get(key) ?? {
+      key,
+      title: song.title,
+      artist: song.artist,
+      album: song.album,
+      coverUrl: song.coverUrl,
+      score: 0,
+      reasons: [],
+    };
+    existing.score += Math.min(song.count, 3) * 0.85;
+    addReason(existing, "Supported by your playlist library");
+    candidates.set(key, existing);
+  }
+
+  const onboardingArtists = new Set(model.groupedSignals.seed.onboardingFavoriteArtists.map((artist) => normalizeName(artist)));
+  const topRecentArtists = new Set(model.groupedSignals.behavior.recentTopArtists.map((item) => normalizeName(item.artist)));
+  const intent = model.groupedSignals.intent;
+  const withIntent = [...candidates.values()].map((candidate) => {
+    const artistKey = normalizeName(candidate.artist);
+    if (onboardingArtists.has(artistKey)) {
+      candidate.score += 1.4;
+      addReason(candidate, "Matches your onboarding favorite artists");
+    }
+    if (topRecentArtists.has(artistKey)) candidate.score += 1.2;
+
+    const mood = inferMood(`${candidate.title} ${candidate.artist} ${candidate.album ?? ""}`);
+    if (intent.energyPreference === "more_energetic" && (mood === "workout" || mood === "party")) {
+      candidate.score += 0.7;
+      addReason(candidate, "Leans energetic for your current preference");
+    } else if (intent.energyPreference === "calmer" && (mood === "relax" || mood === "focus")) {
+      candidate.score += 0.7;
+      addReason(candidate, "Leans calmer for your current preference");
+    }
+    return candidate;
+  });
+
+  return withIntent.sort((a, b) => b.score - a.score);
 }
 
 function buildAnchorProfile(history: SearchHistoryRecord[], favorites: FavoriteRecord[], playlists: PlaylistRecord[]) {
@@ -665,6 +825,109 @@ export async function getCrossArtistRecommendations(
         ? "Sparse library fallback: suggestions prioritize your known artists until broader signals appear."
         : "Personalized blend: anchored in your behavior with explicit exploration outside repeated artists.",
     },
+  };
+}
+
+export async function generateFeaturedMusicPack(userId: string, input: MusicPackGenerationInput = {}) {
+  const [history, favorites, playlists, user] = await Promise.all([
+    listUserHistory(userId),
+    listFavorites(userId),
+    getUserPlaylists(userId),
+    findUserById(userId),
+  ]);
+
+  const onboardingSeed = {
+    genres: ensureDistinct(input.onboardingSeed?.genres),
+    moods: ensureDistinct(input.onboardingSeed?.moods),
+    contexts: ensureDistinct(input.onboardingSeed?.contexts),
+    favoriteArtists: ensureDistinct(input.onboardingSeed?.favoriteArtists),
+  };
+
+  const signalModel = buildRecommendationSignalModel({
+    history,
+    favorites,
+    playlists,
+    onboardingSeed,
+    intent: user
+      ? {
+        recommendationMode: user.recommendationMode,
+        repeatedArtistTolerance: user.repeatedArtistTolerance,
+        energyPreference: user.energyPreference,
+        recommendationDataSharingEnabled: user.recommendationDataSharingEnabled,
+      }
+      : undefined,
+  });
+
+  const mode = signalModel.groupedSignals.intent.recommendationMode;
+  const targetCount = mode === "safe_familiar" ? 8 : mode === "mostly_discovery" ? 12 : 10;
+  const baseCandidates = buildMusicPackCandidates(favorites, history, playlists, signalModel);
+
+  const repeatedArtistLimit = signalModel.groupedSignals.intent.repeatedArtistTolerance === "higher"
+    ? 3
+    : signalModel.groupedSignals.intent.repeatedArtistTolerance === "lower"
+      ? 1
+      : 2;
+  const selectedArtists = new Map<string, number>();
+  const selected = [];
+  for (const candidate of baseCandidates) {
+    const artistKey = normalizeName(candidate.artist);
+    const currentArtistCount = selectedArtists.get(artistKey) ?? 0;
+    if (currentArtistCount >= repeatedArtistLimit) continue;
+    selected.push(candidate);
+    selectedArtists.set(artistKey, currentArtistCount + 1);
+    if (selected.length >= targetCount) break;
+  }
+
+  const packBlendScore = blendSignalScores(signalModel, "music_packs");
+  const sparseState = signalModel.groupedSignals.confidence.sparseState;
+  const status = selected.length >= 4 ? "available" : selected.length > 0 ? "limited" : "insufficient_data";
+  const flavor = summarizePackFlavor(signalModel, mode);
+  const recurringArtists = signalModel.groupedSignals.identity.recurringArtists.slice(0, 3).map((item) => item.artist);
+  const titleSeed = recurringArtists[0] ?? onboardingSeed.genres[0] ?? onboardingSeed.moods[0] ?? "Identity";
+
+  return {
+    status,
+    generatedAt: new Date().toISOString(),
+    pack: status === "insufficient_data"
+      ? null
+      : {
+        id: `pack-${new Date().toISOString().slice(0, 10)}`,
+        title: `${titleSeed} Drop 001`,
+        subtitle: flavor.subtitle,
+        moodLabel: flavor.moodLabel,
+        songCount: selected.length,
+        tracks: selected.map((track, index) => ({
+          rank: index + 1,
+          trackKey: track.key,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          coverUrl: track.coverUrl,
+          reason: track.reasons[0] ?? "Included from your strongest listening signals.",
+        })),
+        explanation: {
+          summary: "Built from ultra-liked songs first, then favorites, recency behavior, and onboarding fallback when sparse.",
+          basis: [
+            `Ultra-liked anchors: ${signalModel.groupedSignals.identity.ultraLikedCount}`,
+            `Favorites considered: ${signalModel.groupedSignals.identity.favoritesCount}`,
+            `Recent listens (14d): ${signalModel.groupedSignals.behavior.recentHistoryEvents14d}`,
+            `Onboarding seeds used: ${onboardingSeed.genres.length + onboardingSeed.moods.length + onboardingSeed.contexts.length + onboardingSeed.favoriteArtists.length}`,
+            `Recommendation mode: ${mode.replace("_", " ")}`,
+          ],
+        },
+      },
+    foundation: {
+      sparseState,
+      blendScore: packBlendScore,
+      controls: signalModel.groupedSignals.intent,
+      candidatePoolSize: baseCandidates.length,
+      fallbackUsed: sparseState !== "rich",
+    },
+    message: status === "available"
+      ? "Your first real Music Pack is ready."
+      : status === "limited"
+        ? "Your pack is available with limited depth while your signals grow."
+        : "Not enough usable music data yet to generate an honest pack.",
   };
 }
 

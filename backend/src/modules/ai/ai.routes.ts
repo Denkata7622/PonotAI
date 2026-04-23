@@ -9,6 +9,7 @@ import {
   getActivitySummaryController,
   getDailyInsightsController,
   dailyDiscoveryController,
+  generateFeaturedMusicPackController,
   generatePlaylistController,
   getMonthlyInsightsController,
   getTrendsController,
@@ -33,6 +34,7 @@ router.get("/insights/activity", getActivitySummaryController);
 
 router.post("/playlists/generate", generatePlaylistController);
 router.post("/playlists/update", updatePlaylistController);
+router.post("/music-packs/featured", generateFeaturedMusicPackController);
 
 router.get("/recommendations/mood", moodRecommendationsController);
 router.get("/recommendations/contextual", contextualRecommendationsController);
