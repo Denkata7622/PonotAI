@@ -77,6 +77,8 @@ type GeneratedMusicPackResponse = {
     }>;
     explanation: {
       summary: string;
+      reasonSignals?: string[];
+      stateNote?: string;
       basis: string[];
     };
   };
@@ -262,7 +264,9 @@ export default function PersonalizationPage() {
             identityLabel: generatedPack.pack.moodLabel,
             state: generatedPack.status === "limited" ? "limited-generated" : "available-generated",
             description: generatedPack.pack.subtitle,
-            note: `${generatedPack.pack.explanation.summary} ${generatedPack.pack.tracks.slice(0, 2).map((track) => `${track.title} — ${track.artist}`).join(" · ")}`,
+            note: generatedPack.pack.explanation.reasonSignals?.length
+              ? generatedPack.pack.explanation.reasonSignals.slice(0, 2).join(" · ")
+              : generatedPack.pack.explanation.summary,
             ctaLabel: "Open pack",
             ctaDisabled: false,
             ctaMode: "open",
@@ -676,6 +680,9 @@ export default function PersonalizationPage() {
                     </div>
                     <p className="mt-3 break-words text-xs text-[var(--muted)]">{pack.description}</p>
                     {pack.note ? <p className="mt-1 text-[11px] text-[var(--muted)]">{pack.note}</p> : null}
+                    {pack.state.includes("generated") && generatedPack?.pack?.id === pack.id && generatedPack.pack.explanation.stateNote ? (
+                      <p className="mt-1 text-[11px] text-[var(--muted)]">{generatedPack.pack.explanation.stateNote}</p>
+                    ) : null}
                     {pack.ctaLabel ? (
                       <button
                         type="button"
@@ -840,6 +847,16 @@ export default function PersonalizationPage() {
             <p className="text-xs uppercase tracking-[0.08em] text-[var(--muted)]">{generatedPack.pack.moodLabel}</p>
             <p className="mt-1 text-sm font-medium">{generatedPack.pack.subtitle}</p>
             <p className="mt-2 text-xs text-[var(--muted)]">{generatedPack.pack.explanation.summary}</p>
+            {generatedPack.pack.explanation.reasonSignals?.length ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {generatedPack.pack.explanation.reasonSignals.slice(0, 4).map((signal) => (
+                  <span key={signal} className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2 py-0.5 text-[10px] text-[var(--muted)]">
+                    {signal}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {generatedPack.pack.explanation.stateNote ? <p className="mt-2 text-[11px] text-[var(--muted)]">{generatedPack.pack.explanation.stateNote}</p> : null}
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] px-3 py-2">

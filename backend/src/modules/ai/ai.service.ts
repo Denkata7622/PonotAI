@@ -836,6 +836,81 @@ function summarizePackFlavor(
   return { subtitle, moodLabel };
 }
 
+function toReadableRecommendationMode(mode: "safe_familiar" | "balanced" | "mostly_discovery"): string {
+  return mode === "mostly_discovery"
+    ? "discovery"
+    : mode === "safe_familiar"
+      ? "familiar"
+      : "balanced";
+}
+
+function buildPackLevelExplanation(
+  model: ReturnType<typeof buildRecommendationSignalModel>,
+  onboardingSeed: { genres: string[]; moods: string[]; contexts: string[]; favoriteArtists: string[] },
+): {
+  summaryLine: string;
+  reasonSignals: string[];
+  stateNote: string;
+  basis: string[];
+} {
+  const { identity, behavior, intent, confidence } = model.groupedSignals;
+  const hasUltraLikes = identity.ultraLikedCount > 0;
+  const hasRecentDirection = behavior.recentHistoryEvents14d > 0;
+  const onboardingSeedCount = onboardingSeed.genres.length + onboardingSeed.moods.length + onboardingSeed.contexts.length + onboardingSeed.favoriteArtists.length;
+  const modeLabel = toReadableRecommendationMode(intent.recommendationMode);
+
+  const summaryLine = confidence.sparseState === "sparse"
+    ? "This pack starts from your strongest saved taste anchors and uses onboarding support while your listening history is still early."
+    : hasUltraLikes && hasRecentDirection
+      ? "This pack blends your strongest identity anchors with your recent listening direction."
+      : hasUltraLikes
+        ? "This pack stays close to your strongest saved identity anchors."
+        : hasRecentDirection
+          ? "This pack leans on your recent listening direction and replay behavior."
+          : "This pack is grounded in your current saved taste signals.";
+
+  const reasonSignals = [
+    hasUltraLikes
+      ? `Ultra-liked anchors: ${identity.ultraLikedCount}`
+      : `Favorites anchors: ${identity.favoritesCount}`,
+    hasRecentDirection
+      ? `Recent direction: ${behavior.recentHistoryEvents14d} plays in 14 days`
+      : "Recent direction is still light",
+    `Mode shaping: ${modeLabel}`,
+    intent.repeatedArtistTolerance === "lower"
+      ? "Artist repeat guardrail: lower repeat tolerance"
+      : intent.repeatedArtistTolerance === "higher"
+        ? "Artist repeat guardrail: higher repeat tolerance"
+        : "Artist repeat guardrail: normal repeat tolerance",
+    intent.energyPreference === "more_energetic"
+      ? "Energy shaping: more energetic"
+      : intent.energyPreference === "calmer"
+        ? "Energy shaping: calmer"
+        : "Energy shaping: mixed",
+  ];
+
+  const stateNote = confidence.sparseState === "sparse"
+    ? onboardingSeedCount > 0
+      ? "Signals are still sparse, so onboarding seeds are helping stabilize this pack."
+      : "Signals are still sparse, so this pack remains conservative until more listening data arrives."
+    : confidence.sparseState === "growing"
+      ? "Signal depth is growing; this pack reflects clear anchors with moderate exploration."
+      : "Signal depth is strong; this pack is primarily driven by your established identity and recent behavior.";
+
+  return {
+    summaryLine,
+    reasonSignals: reasonSignals.slice(0, 4),
+    stateNote,
+    basis: [
+      `Ultra-liked anchors: ${identity.ultraLikedCount}`,
+      `Favorites considered: ${identity.favoritesCount}`,
+      `Recent listens (14d): ${behavior.recentHistoryEvents14d}`,
+      `Onboarding seeds available: ${onboardingSeedCount}`,
+      `Recommendation mode: ${modeLabel}`,
+    ],
+  };
+}
+
 function buildMusicPackCandidates(
   favorites: FavoriteRecord[],
   history: SearchHistoryRecord[],
@@ -1297,6 +1372,7 @@ export async function generateFeaturedMusicPack(userId: string, input: MusicPack
   const sparseState = signalModel.groupedSignals.confidence.sparseState;
   const status = selected.length >= 4 ? "available" : selected.length > 0 ? "limited" : "insufficient_data";
   const flavor = summarizePackFlavor(signalModel, mode);
+  const packExplanation = buildPackLevelExplanation(signalModel, onboardingSeed);
   const recurringArtists = signalModel.groupedSignals.identity.recurringArtists.slice(0, 3).map((item) => item.artist);
   const titleSeed = recurringArtists[0] ?? onboardingSeed.genres[0] ?? onboardingSeed.moods[0] ?? "Identity";
 
@@ -1322,14 +1398,10 @@ export async function generateFeaturedMusicPack(userId: string, input: MusicPack
         reasonSignals: track.reasons.slice(0, 2),
       })),
       explanation: {
-        summary: "Built from ultra-liked songs first, then favorites, recency behavior, and onboarding fallback when sparse.",
-        basis: [
-          `Ultra-liked anchors: ${signalModel.groupedSignals.identity.ultraLikedCount}`,
-          `Favorites considered: ${signalModel.groupedSignals.identity.favoritesCount}`,
-          `Recent listens (14d): ${signalModel.groupedSignals.behavior.recentHistoryEvents14d}`,
-          `Onboarding seeds used: ${onboardingSeed.genres.length + onboardingSeed.moods.length + onboardingSeed.contexts.length + onboardingSeed.favoriteArtists.length}`,
-          `Recommendation mode: ${mode.replace("_", " ")}`,
-        ],
+        summary: packExplanation.summaryLine,
+        reasonSignals: packExplanation.reasonSignals,
+        stateNote: packExplanation.stateNote,
+        basis: packExplanation.basis,
       },
     };
 
