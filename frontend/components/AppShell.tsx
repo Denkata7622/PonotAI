@@ -59,6 +59,13 @@ const SECONDARY_NAV = [
   { href: "/stats", key: "nav_stats", icon: BarChart2 },
 ] as const;
 
+const MOBILE_PRIMARY_NAV = [
+  { href: "/", key: "nav_listen", icon: Headphones },
+  { href: "/search", key: "nav_search", icon: Search },
+  { href: "/library", key: "nav_library", icon: Library },
+  { href: "/assistant", key: "nav_assistant", icon: Sparkles },
+] as const;
+
 function AppShellContent({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -81,6 +88,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false);
   const [todayIsoDate, setTodayIsoDate] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const blurTimeoutRef = useRef<number | null>(null);
@@ -105,6 +113,21 @@ function AppShellContent({ children }: { children: ReactNode }) {
     setShowSearchDropdown(false);
     setOpenActionsId(null);
   }, [pathname]);
+
+  useEffect(() => {
+    const handleNowPlayingVisibility = (event: Event) => {
+      const customEvent = event as CustomEvent<{ open?: boolean }>;
+      const open = Boolean(customEvent.detail?.open);
+      setIsNowPlayingOpen(open);
+      if (open) {
+        setShowMobileMenu(false);
+      }
+    };
+    window.addEventListener("ponotai:now-playing-visibility", handleNowPlayingVisibility as EventListener);
+    return () => {
+      window.removeEventListener("ponotai:now-playing-visibility", handleNowPlayingVisibility as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     const updateMobileNavHeight = () => {
@@ -135,6 +158,16 @@ function AppShellContent({ children }: { children: ReactNode }) {
       return pathname === href || pathname.startsWith(`${href}/`);
     }
     return pathname === href;
+  };
+
+  const mobileLabel = (key: (typeof MOBILE_PRIMARY_NAV)[number]["key"]) => {
+    if (language === "bg") {
+      if (key === "nav_assistant") return "Асистент";
+      if (key === "nav_listen") return "Слушай";
+      return t(key as Parameters<typeof t>[0], language);
+    }
+    if (key === "nav_assistant") return "Assistant";
+    return t(key as Parameters<typeof t>[0], language);
   };
 
   const recentHistory = useMemo<HistoryItem[]>(
@@ -717,32 +750,28 @@ function AppShellContent({ children }: { children: ReactNode }) {
       {showMobileMenu ? <button type="button" className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setShowMobileMenu(false)} aria-label={t("mobile_close_menu", language)} /> : null}
       <nav
         ref={mobileNavRef}
-        className="fixed bottom-[calc(var(--player-bar-height,88px)+env(safe-area-inset-bottom,0px)+8px)] left-2 right-2 z-[45] rounded-2xl border border-border bg-surface/95 p-2 shadow-xl backdrop-blur md:hidden"
+        className={`fixed bottom-[calc(var(--player-bar-height,88px)+env(safe-area-inset-bottom,0px)+8px)] left-2 right-2 z-[45] rounded-2xl border border-border bg-surface/95 p-1.5 shadow-xl backdrop-blur transition-all duration-200 md:hidden ${isNowPlayingOpen ? "pointer-events-none translate-y-4 opacity-0" : "opacity-100"}`}
       >
-        <div className="grid h-14 grid-cols-5 gap-2">
-        {[
-          { href: "/", key: "nav_listen", icon: Headphones },
-          { href: "/search", key: "nav_search", icon: Search },
-          { href: "/library", key: "nav_library", icon: Library },
-          { href: "/assistant", key: "nav_assistant", icon: Sparkles },
-          { href: "/personalization", key: "nav_personalization", icon: Music },
-        ].map((item) => (
+        <div className="grid h-16 grid-cols-5 gap-1">
+        {MOBILE_PRIMARY_NAV.map((item) => (
           <Link
             key={`mobile-${item.href}`}
             href={item.href}
-            className={`flex h-full flex-col items-center justify-center px-2 py-1 text-xs ${isNavItemActive(item.href) ? "navItemActive" : "navItem"}`}
+            className={`flex h-full min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 ${isNavItemActive(item.href) ? "navItemActive" : "navItem"}`}
             aria-label={t(item.key as Parameters<typeof t>[0], language)}
             onClick={() => setShowMobileMenu(false)}
           >
-            <item.icon className="w-4 h-4 text-[var(--muted)]" />
+            <item.icon className="h-4 w-4 text-[var(--muted)]" />
+            <span className="max-w-full truncate text-[10px] leading-none">{mobileLabel(item.key)}</span>
           </Link>
         ))}
-          <button type="button" className={`flex h-full flex-col items-center justify-center px-2 py-1 text-xs ${showMobileMenu ? "navItemActive" : "navItem"}`} onClick={() => setShowMobileMenu((prev) => !prev)} aria-label={t("mobile_open_menu", language)}>
-            <EllipsisVertical className="w-4 h-4 text-[var(--muted)]" />
+          <button type="button" className={`flex h-full min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 ${showMobileMenu ? "navItemActive" : "navItem"}`} onClick={() => setShowMobileMenu((prev) => !prev)} aria-label={t("mobile_open_menu", language)}>
+            <EllipsisVertical className="h-4 w-4 text-[var(--muted)]" />
+            <span className="text-[10px] leading-none">{language === "bg" ? "Още" : "More"}</span>
           </button>
         </div>
         {showMobileMenu ? (
-          <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border pt-2">
+          <div className="mt-1.5 grid grid-cols-2 gap-2 border-t border-border pt-2">
             {[
               { href: "/personalization", label: t("nav_personalization", language), icon: Music },
               { href: "/profile", label: t("nav_profile", language), icon: User },
