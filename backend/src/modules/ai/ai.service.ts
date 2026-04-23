@@ -398,7 +398,25 @@ async function fetchWeatherContext(latitude: number, longitude: number): Promise
 
 export async function getMoodRecommendations(userId: string, moodInput: string) {
   const mood = parseMoodInput(moodInput);
-  const [favorites, history] = await Promise.all([listFavorites(userId), listUserHistory(userId)]);
+  const [favorites, history, playlists, user] = await Promise.all([
+    listFavorites(userId),
+    listUserHistory(userId),
+    getUserPlaylists(userId),
+    findUserById(userId),
+  ]);
+  const signalModel = buildRecommendationSignalModel({
+    history,
+    favorites,
+    playlists,
+    intent: user
+      ? {
+        recommendationMode: user.recommendationMode,
+        repeatedArtistTolerance: user.repeatedArtistTolerance,
+        energyPreference: user.energyPreference,
+        recommendationDataSharingEnabled: user.recommendationDataSharingEnabled,
+      }
+      : undefined,
+  });
   const recentHistory = history.filter((item) => parseDate(item.createdAt) >= Date.now() - 14 * DAY_MS);
   const candidates = [...favorites, ...recentHistory, ...history]
     .filter((item) => item.title && item.artist)
@@ -409,15 +427,53 @@ export async function getMoodRecommendations(userId: string, moodInput: string) 
     deduped.set(trackKey(item.title, item.artist), item);
   }
 
-  const tracks = [...deduped.values()]
-    .sort((a, b) => rankTrackForMood(b, mood) - rankTrackForMood(a, mood))
-    .slice(0, 20);
+  const recurringArtists = new Set(signalModel.groupedSignals.identity.recurringArtists.map((item) => normalizeName(item.artist)));
+  const recentTopArtists = new Set(signalModel.groupedSignals.behavior.recentTopArtists.map((item) => normalizeName(item.artist)));
+  const repeatedArtistLimit = getRepeatedArtistLimit(signalModel.groupedSignals.intent.repeatedArtistTolerance);
+  const modeBoost = signalModel.groupedSignals.intent.recommendationMode === "mostly_discovery"
+    ? 0.35
+    : signalModel.groupedSignals.intent.recommendationMode === "safe_familiar"
+      ? -0.2
+      : 0;
+  const sparseSeedLift = signalModel.groupedSignals.confidence.sparseState === "sparse" ? 0.25 : 0.08;
+
+  const rankedCandidates = [...deduped.values()]
+    .map((track) => {
+      const artistKey = normalizeName(track.artist);
+      const moodScore = rankTrackForMood(track, mood);
+      const identityBoost = recurringArtists.has(artistKey) ? 0.9 : 0;
+      const behaviorBoost = recentTopArtists.has(artistKey) ? 0.65 : 0;
+      const energeticBias = signalModel.groupedSignals.intent.energyPreference === "more_energetic" && mood === "workout" ? 0.25 : 0;
+      const calmerBias = signalModel.groupedSignals.intent.energyPreference === "calmer" && (mood === "sleep" || mood === "relax") ? 0.25 : 0;
+      return {
+        ...track,
+        _score: moodScore + identityBoost + behaviorBoost + modeBoost + sparseSeedLift + energeticBias + calmerBias,
+      };
+    })
+    .sort((a, b) => b._score - a._score);
+
+  const artistCounts = new Map<string, number>();
+  const tracks = rankedCandidates
+    .filter((track) => {
+      const artistKey = normalizeName(track.artist);
+      const count = artistCounts.get(artistKey) ?? 0;
+      if (count >= repeatedArtistLimit) return false;
+      artistCounts.set(artistKey, count + 1);
+      return true;
+    })
+    .slice(0, 20)
+    .map(({ _score, ...track }) => track);
   const topArtists = topCounts(aggregateBase(history, favorites, []).artistCounts, 3).map((item) => item.name);
   const sourceBasis = {
     fromHistory: recentHistory.length,
     fromFavorites: favorites.length,
     inferredMood: mood,
     sparseLibrary: history.length < 8 && favorites.length < 5,
+    controlsApplied: {
+      recommendationMode: signalModel.groupedSignals.intent.recommendationMode,
+      repeatedArtistTolerance: signalModel.groupedSignals.intent.repeatedArtistTolerance,
+      energyPreference: signalModel.groupedSignals.intent.energyPreference,
+    },
   };
 
   return {
@@ -427,7 +483,7 @@ export async function getMoodRecommendations(userId: string, moodInput: string) 
     source: tracks.length > 0 ? "library" : "curated_fallback",
     explainability: {
       basis: tracks.length > 0
-        ? `Ranked from ${recentHistory.length} recent plays plus ${favorites.length} favorites, tuned for mood=${mood}.`
+        ? `Ranked from ${recentHistory.length} recent plays plus ${favorites.length} favorites, then adjusted by identity anchors and recommendation controls.`
         : "No substantial history/favorites signal yet; using fallback ordering.",
       recentEvents: recentHistory.length,
       favoritesCount: favorites.length,
@@ -546,6 +602,18 @@ type MusicPackCandidate = {
 
 function normalizeName(value: string): string {
   return value.toLowerCase().trim();
+}
+
+function bucketSignalScore(score: number): "low" | "medium" | "high" {
+  if (score >= 0.67) return "high";
+  if (score >= 0.34) return "medium";
+  return "low";
+}
+
+function getRepeatedArtistLimit(tolerance: "lower" | "normal" | "higher"): number {
+  if (tolerance === "higher") return 3;
+  if (tolerance === "lower") return 1;
+  return 2;
 }
 
 function ensureDistinct(values: string[] = [], limit = 8): string[] {
@@ -689,6 +757,79 @@ function buildMusicPackCandidates(
   return withIntent.sort((a, b) => b.score - a.score);
 }
 
+function scoreCrossArtistDiscoveryCandidate(
+  candidate: ExternalArtistCandidate,
+  input: {
+    signalModel: ReturnType<typeof buildRecommendationSignalModel>;
+    artistPresenceCount: number;
+    recentlySuggested: boolean;
+    knownArtist: boolean;
+  },
+) {
+  const signalModel = input.signalModel;
+  const intent = signalModel.groupedSignals.intent;
+  const sparseState = signalModel.groupedSignals.confidence.sparseState;
+  const sparseBoost = signalModel.groupedSignals.seed.sparseBoost;
+  const discoveryBlend = blendSignalScores(signalModel, "discovery");
+  const recurringArtists = new Set(signalModel.groupedSignals.identity.recurringArtists.map((item) => normalizeName(item.artist)));
+  const recentTopArtists = new Set(signalModel.groupedSignals.behavior.recentTopArtists.map((item) => normalizeName(item.artist)));
+  const candidateArtist = normalizeName(candidate.artist);
+
+  const baseSimilarity = candidate.similarityScore * 0.58;
+  const modelAlignment = discoveryBlend * 0.18;
+  const sourceExplorationBoost = candidate.source === "genre_seed" ? (sparseState === "sparse" ? 0.16 : 0.11) : 0.05;
+  const sparseSeedLift = signalModel.scores.seed * sparseBoost * 0.12;
+
+  let identityAffinity = 0;
+  if (candidate.anchorArtist && recurringArtists.has(normalizeName(candidate.anchorArtist))) identityAffinity += 0.14;
+  if (recentTopArtists.has(candidateArtist)) identityAffinity += 0.06;
+
+  const noveltyPenalty = input.recentlySuggested ? 0.14 : 0;
+  const knownArtistPenalty = input.knownArtist ? 0.06 : 0;
+  const overPresencePenalty = input.artistPresenceCount >= getRepeatedArtistLimit(intent.repeatedArtistTolerance)
+    ? 0.14
+    : input.artistPresenceCount > 0
+      ? 0.06
+      : 0;
+
+  const modeAdjustment = intent.recommendationMode === "mostly_discovery"
+    ? 0.07
+    : intent.recommendationMode === "safe_familiar"
+      ? -0.03
+      : 0.02;
+
+  const confidence = Math.max(0.24, Math.min(
+    0.97,
+    baseSimilarity
+      + modelAlignment
+      + sourceExplorationBoost
+      + sparseSeedLift
+      + identityAffinity
+      + modeAdjustment
+      - noveltyPenalty
+      - knownArtistPenalty
+      - overPresencePenalty,
+  ));
+
+  return {
+    score: confidence,
+    confidence,
+    reasons: [
+      candidate.anchorArtist
+        ? `Discovery bridge from ${candidate.anchorArtist}.`
+        : "Discovery seed aligned to your genre profile.",
+      sparseState === "sparse"
+        ? "Boosted for sparse-data discovery support."
+        : "Balanced by recent behavior and identity anchors.",
+      intent.recommendationMode === "mostly_discovery"
+        ? "Leans exploratory based on your recommendation mode."
+        : intent.recommendationMode === "safe_familiar"
+          ? "Tempered toward familiarity from your controls."
+          : "Balanced mode keeps familiar and fresh artists in rotation.",
+    ],
+  };
+}
+
 function buildAnchorProfile(history: SearchHistoryRecord[], favorites: FavoriteRecord[], playlists: PlaylistRecord[]) {
   const artistCounts = new Map<string, number>();
   const genreCounts = new Map<string, number>();
@@ -803,22 +944,24 @@ export async function getCrossArtistRecommendations(
     .filter((item) => item.artist.trim().length > 0)
     .filter((item) => !differentArtistsOnly || !heavilyPresentArtists.has(normalizeName(item.artist)))
     .map((item) => {
-      const noveltyPenalty = recentlySuggested.has(normalizeName(item.artist)) ? 0.15 : 0;
-      const diversityBoost = item.source === "genre_seed" ? 0.08 : 0;
-      const similarity = item.similarityScore;
-      const novelty = Math.max(0, 1 - noveltyPenalty);
-      const confidence = Math.max(0.25, Math.min(0.98, (similarity * 0.55) + (novelty * 0.3) + diversityBoost));
+      const artistKey = normalizeName(item.artist);
+      const scored = scoreCrossArtistDiscoveryCandidate(item, {
+        signalModel,
+        artistPresenceCount: profile.artistCounts.get(item.artist) ?? 0,
+        recentlySuggested: recentlySuggested.has(artistKey),
+        knownArtist: knownArtists.has(artistKey),
+      });
       return {
         artist: item.artist,
         source: "external-discovery" as const,
-        score: confidence,
-        confidence,
+        score: scored.score,
+        confidence: scored.confidence,
         reasons: [
-          item.anchorArtist ? `Similar to ${item.anchorArtist} from your library.` : "Matches your dominant genres.",
-          profile.topGenres[0]?.[0] ? `Aligned with your ${profile.topGenres[0][0]} preference.` : "Aligned with your listening patterns.",
+          ...scored.reasons,
+          profile.topGenres[0]?.[0] ? `Aligned with your ${profile.topGenres[0][0]} profile.` : "Aligned with your listening patterns.",
         ],
         sampleTracks: item.sampleTracks,
-        isInLibrary: knownArtists.has(normalizeName(item.artist)),
+        isInLibrary: knownArtists.has(artistKey),
       };
     })
     .sort((a, b) => b.score - a.score)
@@ -834,8 +977,17 @@ export async function getCrossArtistRecommendations(
     fromPlaylists: playlists.length,
     usedExternalDiscovery: externalAvailable,
     sparseFallback: ranked.length === 0,
-    signalScores: signalModel.scores,
-    discoveryBlendScore: blendSignalScores(signalModel, "discovery"),
+    signalSummary: {
+      identity: bucketSignalScore(signalModel.scores.identity),
+      behavior: bucketSignalScore(signalModel.scores.behavior),
+      intent: signalModel.groupedSignals.intent.recommendationMode,
+      confidence: signalModel.groupedSignals.confidence.sparseState,
+    },
+    controlsApplied: {
+      recommendationMode: signalModel.groupedSignals.intent.recommendationMode,
+      repeatedArtistTolerance: signalModel.groupedSignals.intent.repeatedArtistTolerance,
+      energyPreference: signalModel.groupedSignals.intent.energyPreference,
+    },
     sparseState: signalModel.groupedSignals.confidence.sparseState,
   };
 
@@ -862,7 +1014,7 @@ export async function getCrossArtistRecommendations(
       recommendationBasis,
       interpretation: recommendationBasis.sparseFallback
         ? "Sparse library fallback: suggestions prioritize your known artists until broader signals appear."
-        : "Personalized blend: anchored in your behavior with explicit exploration outside repeated artists.",
+        : "Personalized blend: identity anchors, recency behavior, controls, and diversity guardrails all shape ranking.",
     },
   };
 }
