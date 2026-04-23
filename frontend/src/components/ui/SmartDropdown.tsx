@@ -101,6 +101,14 @@ export function SmartDropdown({
   const click = useClick(context);
   const dismiss = useDismiss(context, {
     outsidePressEvent: 'pointerdown',
+    outsidePress: (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return true;
+      if (target.closest('[data-smart-dropdown-floating]')) {
+        return false;
+      }
+      return true;
+    },
   });
 
   const interactions = enableClickTrigger ? [click, dismiss] : [dismiss];

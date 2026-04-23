@@ -38,7 +38,7 @@ createdAt?: string;
 
 export default function LibraryPage() {
 const { language } = useLanguage();
-const { addToQueue, addManyToQueue, clearQueue, playNow } = usePlayer();
+const { addManyToQueue, clearQueue, playNow } = usePlayer();
 const { favorites: userFavorites, history: userHistory, deleteHistoryItem, isAuthenticated, isLoading } = useUser();
 const { profile } = useProfile();
 
@@ -177,7 +177,7 @@ return playlists.filter((p) => p.name.toLowerCase().includes(query));
 function handlePlaySong(song: Song | any) {
 if (!song?.title || !song?.artist) return;
 
-addToQueue({
+playNow({
   id: `${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
   title: song.title,
   artist: song.artist,
@@ -185,7 +185,7 @@ addToQueue({
   artworkUrl: song.coverUrl || "https://picsum.photos/seed/library/80",
   license: "COPYRIGHTED",
   query: `${song.title} ${song.artist} official audio`,
-});
+}, "manual");
 
 }
 

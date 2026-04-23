@@ -97,9 +97,15 @@ function readStoredState(): {
     const parsed = raw ? (JSON.parse(raw) as { queue?: QueuedTrack[]; currentIndex?: number }) : {};
     const rawRepeatMode = window.localStorage.getItem(REPEAT_MODE_STORAGE_KEY);
     const repeatMode = rawRepeatMode === "queue" || rawRepeatMode === "track" ? rawRepeatMode : "normal";
+    const normalizedQueue = Array.isArray(parsed.queue)
+      ? parsed.queue
+        .filter((item): item is QueuedTrack & { track: Omit<QueueTrack, "id"> & { id?: string } } => Boolean(item?.track?.title && item?.track?.artist))
+        .map((item) => ({ ...item, track: normalizeTrack(item.track) }))
+      : [];
+    const normalizedCurrentIndex = typeof parsed.currentIndex === "number" ? Math.max(0, parsed.currentIndex) : 0;
     return {
-      queue: Array.isArray(parsed.queue) ? parsed.queue : [],
-      currentIndex: typeof parsed.currentIndex === "number" ? Math.max(0, parsed.currentIndex) : 0,
+      queue: normalizedQueue,
+      currentIndex: normalizedQueue.length === 0 ? 0 : Math.min(normalizedCurrentIndex, normalizedQueue.length - 1),
       volume: rawVolume ? Math.max(0, Math.min(100, Number(rawVolume) || 70)) : 70,
       repeatMode,
     };
@@ -135,15 +141,18 @@ function normalizeVideoId(input?: string) {
 }
 
 function normalizeTrack(track: Omit<QueueTrack, "id"> & { id?: string }): QueueTrack {
+  const normalizedVideoId = normalizeVideoId(track.videoId);
+  const fallbackId = `${track.title}-${track.artist}`.toLowerCase().replace(/\s+/g, "-");
+  const normalizedId = (track.id?.trim() || normalizedVideoId || fallbackId).toLowerCase();
   return {
-    id: track.id ?? `${track.title}-${track.artist}`.toLowerCase().replace(/\s+/g, "-"),
+    id: normalizedId,
     title: track.title,
     artist: track.artist,
     artistId: track.artistId,
     artworkUrl: track.artworkUrl,
     license: track.license,
     query: track.query,
-    videoId: normalizeVideoId(track.videoId),
+    videoId: normalizedVideoId,
   };
 }
 

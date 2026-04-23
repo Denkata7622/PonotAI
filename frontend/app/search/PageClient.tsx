@@ -33,6 +33,7 @@ import SongRow from "../../components/SongRow";
 import { toCanonicalSong, toSongKey } from "../../lib/songIdentity";
 import { getHomeRecommendations } from "../../features/recommendations/homeRecommendations";
 import { readTasteProfile } from "../../src/features/onboarding/tasteProfile";
+import type { QueueTrack } from "../../features/player/state";
 
 type HistoryItem = {
   id: string;
@@ -59,7 +60,7 @@ export default function SearchPage() {
   const router = useRouter();
   const { language } = useLanguage();
   const { profile } = useProfile();
-  const { addToQueue } = usePlayer();
+  const { addToQueue, playNow } = usePlayer();
   const { favorites, history: userHistory, token, saveToLibrary } = useUser();
   const { playlists, addSongToPlaylist, favoritesSet, favoritesList, toggleFavorite } = useLibrary(profile.id);
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
@@ -227,8 +228,8 @@ export default function SearchPage() {
 
   const hasActiveQuery = debouncedQuery.trim().length >= 2;
 
-  function queueResult(result: SearchResult) {
-    addToQueue({
+  function toQueueTrack(result: SearchResult): Omit<QueueTrack, "id"> {
+    return {
       title: result.title,
       artist: result.artist,
       artistId: result.videoId,
@@ -236,7 +237,16 @@ export default function SearchPage() {
       videoId: result.videoId,
       query: `${result.title} ${result.artist}`,
       license: "COPYRIGHTED",
-    });
+    };
+  }
+
+  function queueResult(result: SearchResult, mode: "play-now" | "add-queue" = "play-now") {
+    const track = toQueueTrack(result);
+    if (mode === "play-now") {
+      playNow(track, "manual");
+      return;
+    }
+    addToQueue(track, "manual");
   }
 
   return (
@@ -392,7 +402,7 @@ export default function SearchPage() {
                           artist={item.artist ?? "-"}
                           artworkUrl={item.coverUrl}
                           videoId={item.youtubeVideoId}
-                          onPlay={canQueue ? () => addToQueue({
+                          onPlay={canQueue ? () => playNow({
                             id: item.id,
                             title: item.title ?? "",
                             artist: item.artist ?? "",
@@ -401,7 +411,7 @@ export default function SearchPage() {
                             videoId: item.youtubeVideoId,
                             query: `${item.title ?? ""} ${item.artist ?? ""}`,
                             license: "COPYRIGHTED",
-                          }) : undefined}
+                          }, "manual") : undefined}
                           onFavorite={() => toggleFavorite(item.id, item.title, item.artist, item.coverUrl, item.youtubeVideoId)}
                           isFavorite={favoritesSet.has(favoriteKey)}
                           showMoreMenu
@@ -442,7 +452,7 @@ export default function SearchPage() {
                           artist={artist}
                           artworkUrl={favorite.artworkUrl}
                           onPlay={() =>
-                            addToQueue({
+                            playNow({
                               id,
                               title,
                               artist,
@@ -450,7 +460,7 @@ export default function SearchPage() {
                               artworkUrl: favorite.artworkUrl ?? "https://picsum.photos/seed/trackly-search-favorite/80",
                               query: `${title} ${artist}`,
                               license: "COPYRIGHTED",
-                            })
+                            }, "manual")
                           }
                           onFavorite={() => toggleFavorite(id, title, artist, favorite.artworkUrl)}
                           isFavorite={favoritesSet.has(favorite.key)}
@@ -488,7 +498,7 @@ export default function SearchPage() {
                         artworkUrl={track.artworkUrl}
                         videoId={track.youtubeVideoId}
                         onPlay={() =>
-                          addToQueue({
+                          playNow({
                             id: track.id,
                             title: track.title,
                             artist: track.artistName,
@@ -497,7 +507,7 @@ export default function SearchPage() {
                             videoId: track.youtubeVideoId,
                             query: `${track.title} ${track.artistName}`,
                             license: track.license,
-                          })
+                          }, "manual")
                         }
                         onFavorite={() => toggleFavorite(track.id, track.title, track.artistName, track.artworkUrl, track.youtubeVideoId)}
                         isFavorite={favoritesSet.has(favoriteKey)}
@@ -542,13 +552,13 @@ export default function SearchPage() {
                         <p className="truncate text-xs text-[var(--muted)]">{result.artist}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
+                        <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result, "play-now")} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
                         <SearchResultActions
                           resultId={result.videoId}
                           isOpen={openActionsId === result.videoId}
                           onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)}
-                          onPlayNow={() => queueResult(result)}
-                          onAddToQueue={() => queueResult(result)}
+                          onPlayNow={() => queueResult(result, "play-now")}
+                          onAddToQueue={() => queueResult(result, "add-queue")}
                           onSaveToLibrary={() => {
                             void saveToLibrary({
                               title: result.title,
@@ -586,13 +596,13 @@ export default function SearchPage() {
                           <p className="truncate text-xs text-[var(--muted)]">{result.artist}</p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
-                          <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result)} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
+                          <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result, "play-now")} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
                           <SearchResultActions
                             resultId={result.videoId}
                             isOpen={openActionsId === result.videoId}
                             onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)}
-                            onPlayNow={() => queueResult(result)}
-                            onAddToQueue={() => queueResult(result)}
+                            onPlayNow={() => queueResult(result, "play-now")}
+                            onAddToQueue={() => queueResult(result, "add-queue")}
                             onSaveToLibrary={() => {
                               void saveToLibrary({
                                 title: result.title,
