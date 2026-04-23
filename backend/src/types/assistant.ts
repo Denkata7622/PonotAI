@@ -33,6 +33,7 @@ export interface LibraryTrack {
   coverUrl?: string;
   playCount: number;
   isFavorite: boolean;
+  isUltraLiked?: boolean;
   lastPlayedAt?: string;
 }
 

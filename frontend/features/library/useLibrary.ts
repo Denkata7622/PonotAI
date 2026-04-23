@@ -7,7 +7,7 @@ import { useUser } from "../../src/context/UserContext";
 
 export function useLibrary(profileId: string) {
   const [libraryState, setLibraryState] = useState<LibraryState>(() => loadLibraryState(profileId));
-  const { isAuthenticated, favorites, addFavorite, removeFavorite } = useUser();
+  const { isAuthenticated, favorites, addFavorite, removeFavorite, setFavoriteUltraLike } = useUser();
   const latestMutationAtRef = useRef(0);
 
   function markMutation() {
@@ -78,6 +78,14 @@ export function useLibrary(profileId: string) {
     [favorites],
   );
   const favoritesSet = useMemo(() => new Set(favoritesList.map((favorite) => favorite.key)), [favoritesList]);
+  const ultraLikedSet = useMemo(
+    () => new Set(
+      favorites
+        .filter((favorite) => favorite.ultraLiked)
+        .map((favorite) => toSongKey(favorite)),
+    ),
+    [favorites],
+  );
 
   function toggleFavorite(_trackId: string, title?: string, artist?: string, artworkUrl?: string, _videoId?: string) {
     if (!title || !artist) return;
@@ -94,6 +102,12 @@ export function useLibrary(profileId: string) {
       artist: canonical.artist,
       coverUrl: canonical.coverUrl,
     });
+  }
+
+  async function toggleUltraLike(trackKey: string): Promise<boolean> {
+    const favorite = favorites.find((item) => toSongKey(item) === trackKey);
+    if (!favorite) return false;
+    return setFavoriteUltraLike(favorite.id, !favorite.ultraLiked);
   }
 
   async function createPlaylist(name: string): Promise<Playlist | null> {
@@ -172,8 +186,10 @@ export function useLibrary(profileId: string) {
   return {
     playlists: isAuthenticated ? libraryState.playlists : [],
     favoritesSet,
+    ultraLikedSet,
     favoritesList,
     toggleFavorite,
+    toggleUltraLike,
     createPlaylist,
     deletePlaylist,
     addSongToPlaylist,

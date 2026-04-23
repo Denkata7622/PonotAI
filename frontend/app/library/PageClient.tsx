@@ -42,7 +42,7 @@ const { addToQueue, addManyToQueue, clearQueue, playNow } = usePlayer();
 const { favorites: userFavorites, history: userHistory, deleteHistoryItem, isAuthenticated, isLoading } = useUser();
 const { profile } = useProfile();
 
-const { toggleFavorite } = useLibrary(profile.id);
+const { toggleFavorite, ultraLikedSet, toggleUltraLike } = useLibrary(profile.id);
 
 const normalizeSong = (item: any): Song => {
 const canonical = toCanonicalSong(item);
@@ -157,6 +157,16 @@ return mergedFavorites.filter(
 (fav.album ?? "").toLowerCase().includes(q)
 );
 }, [mergedFavorites, searchQuery]);
+
+const filteredUltraLikedFavorites = useMemo(
+  () => filteredFavorites.filter((favorite) => ultraLikedSet.has(toSongKey(favorite))),
+  [filteredFavorites, ultraLikedSet],
+);
+
+const filteredStandardFavorites = useMemo(
+  () => filteredFavorites.filter((favorite) => !ultraLikedSet.has(toSongKey(favorite))),
+  [filteredFavorites, ultraLikedSet],
+);
 
 const filteredPlaylists = useMemo(() => {
 if (!searchQuery) return playlists;
@@ -544,21 +554,60 @@ return ( <section className="space-y-5 sm:space-y-6"> <div className="card p-4 s
 
         <div className="space-y-2">
           {filteredFavorites.length > 0 ? (
-            filteredFavorites.map((fav, idx) => (
-              <SongRow
-                key={fav.id ?? idx}
-                id={fav.id ?? `${fav.title}-${fav.artist}-${idx}`}
-                title={fav.title ?? t("unknown_song", language)}
-                artist={fav.artist ?? "-"}
-                artworkUrl={fav.coverUrl}
-                onPlay={() => handlePlaySong(fav)}
-                isFavorite
-                onFavorite={() => {
-                  const favoriteKey = toSongKey({ title: fav.title, artist: fav.artist });
-                  toggleFavorite(favoriteKey, fav.title, fav.artist, fav.coverUrl);
-                }}
-              />
-            ))
+            <>
+              {filteredUltraLikedFavorites.length > 0 && (
+                <div className="space-y-2 rounded-2xl border border-violet-500/30 bg-violet-500/5 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-violet-200">
+                      {language === "bg" ? "Ultra-любими" : "Ultra-liked"}
+                    </p>
+                    <span className="rounded-full border border-violet-500/30 px-2 py-0.5 text-xs text-violet-200">
+                      {filteredUltraLikedFavorites.length}
+                    </span>
+                  </div>
+                  {filteredUltraLikedFavorites.map((fav, idx) => (
+                    <SongRow
+                      key={fav.id ?? idx}
+                      id={fav.id ?? `${fav.title}-${fav.artist}-${idx}`}
+                      title={fav.title ?? t("unknown_song", language)}
+                      artist={fav.artist ?? "-"}
+                      artworkUrl={fav.coverUrl}
+                      onPlay={() => handlePlaySong(fav)}
+                      isFavorite
+                      isUltraLiked
+                      onUltraLikeToggle={() => {
+                        const favoriteKey = toSongKey({ title: fav.title, artist: fav.artist });
+                        void toggleUltraLike(favoriteKey);
+                      }}
+                      onFavorite={() => {
+                        const favoriteKey = toSongKey({ title: fav.title, artist: fav.artist });
+                        toggleFavorite(favoriteKey, fav.title, fav.artist, fav.coverUrl);
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {filteredStandardFavorites.map((fav, idx) => (
+                <SongRow
+                  key={fav.id ?? idx}
+                  id={fav.id ?? `${fav.title}-${fav.artist}-${idx}`}
+                  title={fav.title ?? t("unknown_song", language)}
+                  artist={fav.artist ?? "-"}
+                  artworkUrl={fav.coverUrl}
+                  onPlay={() => handlePlaySong(fav)}
+                  isFavorite
+                  onUltraLikeToggle={() => {
+                    const favoriteKey = toSongKey({ title: fav.title, artist: fav.artist });
+                    void toggleUltraLike(favoriteKey);
+                  }}
+                  onFavorite={() => {
+                    const favoriteKey = toSongKey({ title: fav.title, artist: fav.artist });
+                    toggleFavorite(favoriteKey, fav.title, fav.artist, fav.coverUrl);
+                  }}
+                />
+              ))}
+            </>
           ) : (
             <div className="flex flex-col items-center gap-2 py-6 text-center"><Heart className="w-10 h-10 text-[var(--muted)]" /><p className="font-semibold">{t("empty_favorites_heading", language)}</p><p className="cardText">{t("empty_favorites_hint", language)}</p></div>
           )}

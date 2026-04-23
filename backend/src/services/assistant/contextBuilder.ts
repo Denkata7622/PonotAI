@@ -87,6 +87,11 @@ function trimToBudget(payload: LibraryContextPayload): LibraryContextPayload {
 
 function buildTracks(history: SearchHistoryRecord[], favorites: FavoriteRecord[], playlists: PlaylistRecord[]): LibraryTrack[] {
   const favoritesSet = new Set(favorites.map((fav) => normalizeTrackKey(fav.title, fav.artist)));
+  const ultraLikedSet = new Set(
+    favorites
+      .filter((fav) => fav.ultraLiked)
+      .map((fav) => normalizeTrackKey(fav.title, fav.artist)),
+  );
   const historyByTrack = new Map<string, SearchHistoryRecord[]>();
   for (const item of history) {
     const key = normalizeTrackKey(item.title, item.artist);
@@ -114,8 +119,9 @@ function buildTracks(history: SearchHistoryRecord[], favorites: FavoriteRecord[]
       coverUrl: latest.coverUrl ?? metadata?.coverUrl,
       playCount: entries.length,
       isFavorite: favoritesSet.has(key),
+      isUltraLiked: ultraLikedSet.has(key),
       lastPlayedAt: latest.createdAt,
-      __score: (favoritesSet.has(key) ? 4 : 0) + entries.length * 1.5 + computeRecencyBonus(latest.createdAt),
+      __score: (favoritesSet.has(key) ? 4 : 0) + (ultraLikedSet.has(key) ? 3 : 0) + entries.length * 1.5 + computeRecencyBonus(latest.createdAt),
     });
   }
 
@@ -130,8 +136,9 @@ function buildTracks(history: SearchHistoryRecord[], favorites: FavoriteRecord[]
       coverUrl: favorite.coverUrl,
       playCount: 0,
       isFavorite: true,
+      isUltraLiked: Boolean(favorite.ultraLiked),
       lastPlayedAt: favorite.savedAt,
-      __score: 4,
+      __score: 4 + (favorite.ultraLiked ? 3 : 0),
     });
   }
 

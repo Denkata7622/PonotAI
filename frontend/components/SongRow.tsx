@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Heart, EllipsisVertical, Music, Play, Trash2 } from "../lucide-react";
+import { Heart, EllipsisVertical, Music, Play, Sparkles, Trash2 } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -28,6 +28,8 @@ type SongRowProps = {
   showMoreMenu?: boolean;
   playlists?: Playlist[];
   isHighlighted?: boolean;
+  onUltraLikeToggle?: () => void;
+  isUltraLiked?: boolean;
   className?: string;
 };
 
@@ -47,6 +49,8 @@ export default function SongRow({
   showMoreMenu = false,
   playlists = [],
   isHighlighted = false,
+  onUltraLikeToggle,
+  isUltraLiked = false,
   className = "",
 }: SongRowProps) {
   const { language } = useLanguage();
@@ -82,6 +86,17 @@ export default function SongRow({
       </div>
 
       <div className="relative flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+        {onUltraLikeToggle && (
+          <button
+            type="button"
+            onClick={onUltraLikeToggle}
+            className="rounded-lg p-2 hover:bg-[var(--hover-bg)]"
+            aria-label={isUltraLiked ? "Remove ultra-like" : "Ultra-like this song"}
+            title={isUltraLiked ? "Remove ultra-like" : "Ultra-like this song"}
+          >
+            <Sparkles className={`w-4 h-4 ${isUltraLiked ? "fill-current text-violet-400" : "text-[var(--muted)]"}`} />
+          </button>
+        )}
         {onFavorite && (
           <button
             type="button"

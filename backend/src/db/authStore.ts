@@ -44,6 +44,8 @@ export type FavoriteRecord = {
   artist: string;
   album?: string;
   coverUrl?: string;
+  ultraLiked: boolean;
+  ultraLikedAt?: string;
   savedAt: string;
 };
 
@@ -204,6 +206,8 @@ function mapFavorite(item: any): FavoriteRecord {
     artist: item.artist,
     album: item.album ?? undefined,
     coverUrl: item.coverUrl ?? undefined,
+    ultraLiked: Boolean(item.ultraLiked),
+    ultraLikedAt: item.ultraLikedAt ? toIso(item.ultraLikedAt) : undefined,
     savedAt: toIso(item.savedAt),
   };
 }
@@ -465,7 +469,12 @@ export async function clearUserHistory(userId: string): Promise<number> {
 }
 
 export async function listFavorites(userId: string): Promise<FavoriteRecord[]> {
-  return (await prisma.favorite.findMany({ where: { userId }, orderBy: { savedAt: "desc" } })).map(mapFavorite);
+  return (
+    await prisma.favorite.findMany({
+      where: { userId },
+      orderBy: [{ ultraLiked: "desc" }, { ultraLikedAt: "desc" }, { savedAt: "desc" }],
+    })
+  ).map(mapFavorite);
 }
 
 export async function findDuplicateFavorite(userId: string, title: string, artist: string) {
@@ -475,7 +484,7 @@ export async function findDuplicateFavorite(userId: string, title: string, artis
   return found ? mapFavorite(found) : null;
 }
 
-export async function createFavorite(item: Omit<FavoriteRecord, "id" | "savedAt">): Promise<FavoriteRecord> {
+export async function createFavorite(item: Pick<FavoriteRecord, "userId" | "title" | "artist" | "album" | "coverUrl">): Promise<FavoriteRecord> {
   const favorite = await prisma.favorite.create({
     data: {
       id: randomUUID(),
@@ -484,7 +493,26 @@ export async function createFavorite(item: Omit<FavoriteRecord, "id" | "savedAt"
       artist: item.artist,
       album: item.album,
       coverUrl: item.coverUrl,
+      ultraLiked: false,
+      ultraLikedAt: null,
       savedAt: new Date(),
+    },
+  });
+  return mapFavorite(favorite);
+}
+
+export async function setFavoriteUltraLike(userId: string, idOrTrackKey: string, enabled: boolean): Promise<FavoriteRecord | null> {
+  const target = idOrTrackKey.includes("|||")
+    ? (await prisma.favorite.findMany({ where: { userId } }))
+      .find((item: any) => normalizeTrackKey(item.title, item.artist) === idOrTrackKey)
+    : await prisma.favorite.findUnique({ where: { id: idOrTrackKey } });
+  if (!target || target.userId !== userId) return null;
+
+  const favorite = await prisma.favorite.update({
+    where: { id: target.id },
+    data: {
+      ultraLiked: enabled,
+      ultraLikedAt: enabled ? new Date() : null,
     },
   });
   return mapFavorite(favorite);
