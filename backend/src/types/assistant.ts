@@ -115,6 +115,16 @@ export interface LibraryContextPayload {
     favoritesCount: number;
     playlistsCount: number;
     strategyHint: string;
+    recommendationSignals?: {
+      scores: {
+        identity: number;
+        behavior: number;
+        intent: number;
+        seed: number;
+        confidence: number;
+      };
+      sparseBoost: number;
+    };
   };
   statedPreferences?: {
     genres: string[];

@@ -1,4 +1,5 @@
 import {
+  findUserById,
   getUserPlaylists,
   listFavorites,
   listUserHistory,
@@ -6,6 +7,7 @@ import {
   type PlaylistRecord,
   type SearchHistoryRecord,
 } from "../../db/authStore";
+import { buildRecommendationSignalModel } from "../recommendation/signalWeighting";
 import type { LibraryContextPayload, LibraryHistoryEntry, LibraryTrack } from "../../types/assistant";
 import { normalizeTrackKey, trackIdFrom } from "../../utils/songIdentity";
 
@@ -166,6 +168,26 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
     listFavorites(userId).catch(() => [] as FavoriteRecord[]),
     getUserPlaylists(userId).catch(() => [] as PlaylistRecord[]),
   ]);
+  const user = await findUserById(userId).catch(() => null);
+  const recommendationSignals = buildRecommendationSignalModel({
+    history,
+    favorites,
+    playlists,
+    onboardingSeed: {
+      genres: hints?.statedPreferences?.genres,
+      favoriteArtists: hints?.statedPreferences?.artists,
+      moods: hints?.statedPreferences?.moods,
+      contexts: hints?.statedPreferences?.goals,
+    },
+    intent: user
+      ? {
+        recommendationMode: user.recommendationMode,
+        repeatedArtistTolerance: user.repeatedArtistTolerance,
+        energyPreference: user.energyPreference,
+        recommendationDataSharingEnabled: user.recommendationDataSharingEnabled,
+      }
+      : undefined,
+  });
   const topTracks = buildTracks(history, favorites, playlists);
 
   const recentHistory: LibraryHistoryEntry[] = [];
@@ -361,11 +383,15 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
       },
     },
     grounding: {
-      dataRichness,
+      dataRichness: recommendationSignals.groupedSignals.confidence.sparseState,
       historyEvents,
       favoritesCount,
       playlistsCount,
       strategyHint,
+      recommendationSignals: {
+        scores: recommendationSignals.scores,
+        sparseBoost: recommendationSignals.groupedSignals.seed.sparseBoost,
+      },
     },
     statedPreferences: hints?.statedPreferences
       ? {
