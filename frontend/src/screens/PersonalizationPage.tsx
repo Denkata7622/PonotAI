@@ -6,6 +6,7 @@ import { ChevronRight, Clock, Library, Settings, Sparkles, TrendingUp } from "..
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
+import { usePlayer } from "../../components/PlayerProvider";
 import { useUser } from "../context/UserContext";
 import { useTheme } from "../../lib/ThemeContext";
 import { readTasteProfile } from "../features/onboarding/tasteProfile";
@@ -84,6 +85,8 @@ type GeneratedMusicPackResponse = {
   };
 };
 
+type GeneratedPackTrack = NonNullable<GeneratedMusicPackResponse["pack"]>["tracks"][number];
+
 type MusicPackLifecycleRecord = {
   packId: string;
   title: string;
@@ -123,6 +126,7 @@ type TasteIdentitySummaryResponse = {
 };
 
 export default function PersonalizationPage() {
+  const { playNow, addManyToQueue } = usePlayer();
   const { user, favorites, history, isAuthenticated, updateProfile } = useUser();
   const { profile } = useProfile();
   const { theme, accent, intensity, surfaceStyle, density } = useTheme();
@@ -523,6 +527,48 @@ export default function PersonalizationPage() {
     setPackModalOpen(true);
   }
 
+  function mapPackTrackToQueueTrack(track: GeneratedPackTrack) {
+    return {
+      id: track.trackKey,
+      title: track.title,
+      artist: track.artist,
+      artistId: `pack-artist-${track.artist.toLowerCase().replace(/\s+/g, "-")}`,
+      artworkUrl: track.coverUrl ?? "https://picsum.photos/seed/music-pack/80",
+      query: `${track.title} ${track.artist} official audio`,
+      license: "COPYRIGHTED" as const,
+    };
+  }
+
+  function getPackTracksForScope(scope: "all" | "selected") {
+    if (!generatedPack?.pack) return [];
+    if (scope === "all") return generatedPack.pack.tracks;
+    const selectedSet = new Set(selectedTrackKeys);
+    return generatedPack.pack.tracks.filter((track) => selectedSet.has(track.trackKey));
+  }
+
+  function handlePackListen(mode: "play-now" | "add-queue", scope: "all" | "selected") {
+    const scopedTracks = getPackTracksForScope(scope);
+    if (scopedTracks.length === 0) {
+      setPackNotice("Select at least one track before using selected listening actions.");
+      return;
+    }
+
+    const [firstTrack, ...restTracks] = scopedTracks.map(mapPackTrackToQueueTrack);
+    if (mode === "play-now") {
+      playNow(firstTrack, "manual");
+      if (restTracks.length > 0) addManyToQueue(restTracks, "manual");
+      setPackNotice(scope === "all"
+        ? `Playing "${generatedPack?.pack?.title}" now and queued ${scopedTracks.length} tracks.`
+        : `Playing selected tracks now and queued ${scopedTracks.length} tracks.`);
+      return;
+    }
+
+    addManyToQueue([firstTrack, ...restTracks], "manual");
+    setPackNotice(scope === "all"
+      ? `Added full pack to queue (${scopedTracks.length} tracks).`
+      : `Added selected tracks to queue (${scopedTracks.length}).`);
+  }
+
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 px-3 pb-[calc(var(--layout-bottom-offset)+24px)] pt-2 sm:px-6 sm:pt-4">
       <header className="space-y-2">
@@ -896,7 +942,16 @@ export default function PersonalizationPage() {
               </div>
             ))}
           </div>
-          {selectedCount === 0 ? <p className="text-xs text-amber-300">Select at least one track to save this pack.</p> : null}
+          <div className="space-y-2 rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-3">
+            <p className="text-xs uppercase tracking-[0.08em] text-[var(--muted)]">Listen now or queue</p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" disabled={allTrackKeys.length === 0} onClick={() => handlePackListen("play-now", "all")}>Play pack now</Button>
+              <Button variant="ghost" size="sm" disabled={allTrackKeys.length === 0} onClick={() => handlePackListen("add-queue", "all")}>Add pack to queue</Button>
+              <Button variant="secondary" size="sm" disabled={selectedCount === 0} onClick={() => handlePackListen("play-now", "selected")}>Play selected</Button>
+              <Button variant="ghost" size="sm" disabled={selectedCount === 0} onClick={() => handlePackListen("add-queue", "selected")}>Add selected to queue</Button>
+            </div>
+            {selectedCount === 0 ? <p className="text-xs text-amber-300">Select at least one track for selected listening or save-selected actions.</p> : null}
+          </div>
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={handleDiscardFeaturedPack}>Discard pack</Button>
             <Button variant="secondary" size="sm" disabled={packSaving || allTrackKeys.length === 0} onClick={() => void handleSaveFeaturedPack("all")}>
