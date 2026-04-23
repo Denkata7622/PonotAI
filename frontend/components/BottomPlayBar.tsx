@@ -72,6 +72,15 @@ export default function BottomPlayBar() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.dataset.nowPlayingOpen = isNowPlayingOpen ? "true" : "false";
+    window.dispatchEvent(new CustomEvent("ponotai:now-playing-visibility", { detail: { open: isNowPlayingOpen } }));
+    return () => {
+      document.documentElement.dataset.nowPlayingOpen = "false";
+    };
+  }, [isNowPlayingOpen]);
+
   function toggleMute() {
     if (volume === 0) {
       setVolume(lastVolume || 70);
