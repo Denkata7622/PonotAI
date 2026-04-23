@@ -4,10 +4,15 @@ import {
   createPlaylist,
   getTrackTags,
   getUserPlaylists,
+  listRecentMusicPackDrops,
   listFavorites,
   listUserHistory,
+  markMusicPackDropOpened,
   setTrackTags,
+  updateMusicPackDropOutcome,
+  upsertGeneratedMusicPackDrop,
   type FavoriteRecord,
+  type MusicPackDropStatus,
   type PlaylistRecord,
   type SearchHistoryRecord,
   type TrackTagRecord,
@@ -21,6 +26,7 @@ import {
 import { normalizeTrackKey as trackKey } from "../../utils/songIdentity";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MUSIC_PACK_DROP_CADENCE_MS = 7 * DAY_MS;
 
 function normalize(value?: string): string {
   return (value ?? "").toLowerCase().trim();
@@ -379,11 +385,57 @@ export async function saveFeaturedMusicPack(userId: string, payload: {
   }
 
   const playlist = await createPlaylist(userId, playlistName, randomUUID(), validTracks);
+  const lifecycle = await updateMusicPackDropOutcome({
+    userId,
+    packId: payload.packId,
+    status: "saved",
+    savedPlaylistId: playlist.id,
+  });
   return {
     playlist,
     savedTracks: validTracks.length,
     selectedTrackKeys: selectedKeys.size > 0 ? [...selectedKeys] : null,
     packId: payload.packId,
+    lifecycle,
+  };
+}
+
+export async function updateFeaturedMusicPackLifecycle(userId: string, payload: {
+  packId: string;
+  action: "discard" | "bring_back" | "opened";
+}) {
+  if (payload.action === "opened") {
+    await markMusicPackDropOpened(userId, payload.packId);
+    return { ok: true };
+  }
+  const status: MusicPackDropStatus = payload.action === "discard" ? "discarded" : "generated";
+  const lifecycle = await updateMusicPackDropOutcome({
+    userId,
+    packId: payload.packId,
+    status,
+    savedPlaylistId: null,
+  });
+  if (!lifecycle) {
+    throw new Error("MUSIC_PACK_NOT_FOUND");
+  }
+  return { lifecycle };
+}
+
+export async function getFeaturedMusicPackLifecycle(userId: string) {
+  const history = await listRecentMusicPackDrops(userId, 5);
+  const current = history[0] ?? null;
+  const now = Date.now();
+  const nextDropAt = current ? current.nextDropAt : new Date(now + MUSIC_PACK_DROP_CADENCE_MS).toISOString();
+  const hasCurrentPack = Boolean(current && current.status === "generated");
+  return {
+    generatedAt: new Date().toISOString(),
+    current,
+    history,
+    nextDrop: {
+      state: hasCurrentPack ? "current_pack_available" : "pending",
+      nextDropAt,
+      secondsUntilNextDrop: Math.max(0, Math.floor((new Date(nextDropAt).getTime() - now) / 1000)),
+    },
   };
 }
 
@@ -1248,38 +1300,54 @@ export async function generateFeaturedMusicPack(userId: string, input: MusicPack
   const recurringArtists = signalModel.groupedSignals.identity.recurringArtists.slice(0, 3).map((item) => item.artist);
   const titleSeed = recurringArtists[0] ?? onboardingSeed.genres[0] ?? onboardingSeed.moods[0] ?? "Identity";
 
+  const generatedAtIso = new Date().toISOString();
+  const packId = `pack-${new Date().toISOString().slice(0, 10)}`;
+  const nextDropAtIso = new Date(Date.now() + MUSIC_PACK_DROP_CADENCE_MS).toISOString();
+  const pack = status === "insufficient_data"
+    ? null
+    : {
+      id: packId,
+      title: `${titleSeed} Drop 001`,
+      subtitle: flavor.subtitle,
+      moodLabel: flavor.moodLabel,
+      songCount: selected.length,
+      tracks: selected.map((track, index) => ({
+        rank: index + 1,
+        trackKey: track.key,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        coverUrl: track.coverUrl,
+        reason: track.reasons[0] ?? "Included from your strongest listening signals.",
+        reasonSignals: track.reasons.slice(0, 2),
+      })),
+      explanation: {
+        summary: "Built from ultra-liked songs first, then favorites, recency behavior, and onboarding fallback when sparse.",
+        basis: [
+          `Ultra-liked anchors: ${signalModel.groupedSignals.identity.ultraLikedCount}`,
+          `Favorites considered: ${signalModel.groupedSignals.identity.favoritesCount}`,
+          `Recent listens (14d): ${signalModel.groupedSignals.behavior.recentHistoryEvents14d}`,
+          `Onboarding seeds used: ${onboardingSeed.genres.length + onboardingSeed.moods.length + onboardingSeed.contexts.length + onboardingSeed.favoriteArtists.length}`,
+          `Recommendation mode: ${mode.replace("_", " ")}`,
+        ],
+      },
+    };
+
+  if (pack) {
+    await upsertGeneratedMusicPackDrop({
+      userId,
+      packId: pack.id,
+      title: pack.title,
+      songCount: pack.songCount,
+      generatedAt: generatedAtIso,
+      nextDropAt: nextDropAtIso,
+    });
+  }
+
   return {
     status,
-    generatedAt: new Date().toISOString(),
-    pack: status === "insufficient_data"
-      ? null
-      : {
-        id: `pack-${new Date().toISOString().slice(0, 10)}`,
-        title: `${titleSeed} Drop 001`,
-        subtitle: flavor.subtitle,
-        moodLabel: flavor.moodLabel,
-        songCount: selected.length,
-        tracks: selected.map((track, index) => ({
-          rank: index + 1,
-          trackKey: track.key,
-          title: track.title,
-          artist: track.artist,
-          album: track.album,
-          coverUrl: track.coverUrl,
-          reason: track.reasons[0] ?? "Included from your strongest listening signals.",
-          reasonSignals: track.reasons.slice(0, 2),
-        })),
-        explanation: {
-          summary: "Built from ultra-liked songs first, then favorites, recency behavior, and onboarding fallback when sparse.",
-          basis: [
-            `Ultra-liked anchors: ${signalModel.groupedSignals.identity.ultraLikedCount}`,
-            `Favorites considered: ${signalModel.groupedSignals.identity.favoritesCount}`,
-            `Recent listens (14d): ${signalModel.groupedSignals.behavior.recentHistoryEvents14d}`,
-            `Onboarding seeds used: ${onboardingSeed.genres.length + onboardingSeed.moods.length + onboardingSeed.contexts.length + onboardingSeed.favoriteArtists.length}`,
-            `Recommendation mode: ${mode.replace("_", " ")}`,
-          ],
-        },
-      },
+    generatedAt: generatedAtIso,
+    pack,
     foundation: {
       sparseState,
       blendScore: packBlendScore,

@@ -150,6 +150,24 @@ export type TrackTagRecord = {
   updatedAt: string;
 };
 
+export type MusicPackDropStatus = "generated" | "saved" | "discarded";
+
+export type MusicPackDropRecord = {
+  id: string;
+  userId: string;
+  packId: string;
+  title: string;
+  status: MusicPackDropStatus;
+  songCount: number;
+  generatedAt: string;
+  openedAt?: string;
+  outcomeAt?: string;
+  savedPlaylistId?: string;
+  nextDropAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AdminOverviewSnapshot = {
   totals: {
     users: number;
@@ -315,6 +333,24 @@ function mapEmailVerificationToken(item: any): EmailVerificationTokenRecord {
     expiresAt: toIso(item.expiresAt),
     consumedAt: item.consumedAt ? toIso(item.consumedAt) : undefined,
     createdAt: toIso(item.createdAt),
+  };
+}
+
+function mapMusicPackDrop(item: any): MusicPackDropRecord {
+  return {
+    id: item.id,
+    userId: item.userId,
+    packId: item.packId,
+    title: item.title,
+    status: item.status,
+    songCount: item.songCount,
+    generatedAt: toIso(item.generatedAt),
+    openedAt: item.openedAt ? toIso(item.openedAt) : undefined,
+    outcomeAt: item.outcomeAt ? toIso(item.outcomeAt) : undefined,
+    savedPlaylistId: item.savedPlaylistId ?? undefined,
+    nextDropAt: toIso(item.nextDropAt),
+    createdAt: toIso(item.createdAt),
+    updatedAt: toIso(item.updatedAt),
   };
 }
 
@@ -673,6 +709,78 @@ export async function createPlaylist(userId: string, name: string, id?: string, 
     include: { tracks: true },
   });
   return mapPlaylist(playlist);
+}
+
+export async function upsertGeneratedMusicPackDrop(input: {
+  userId: string;
+  packId: string;
+  title: string;
+  songCount: number;
+  generatedAt: string;
+  nextDropAt: string;
+}): Promise<MusicPackDropRecord> {
+  const generatedAt = new Date(input.generatedAt);
+  const nextDropAt = new Date(input.nextDropAt);
+  const drop = await prisma.musicPackDrop.upsert({
+    where: { userId_packId: { userId: input.userId, packId: input.packId } },
+    update: {
+      title: input.title,
+      songCount: input.songCount,
+      generatedAt,
+      nextDropAt,
+      status: "generated",
+      outcomeAt: null,
+      savedPlaylistId: null,
+    },
+    create: {
+      id: randomUUID(),
+      userId: input.userId,
+      packId: input.packId,
+      title: input.title,
+      songCount: input.songCount,
+      generatedAt,
+      nextDropAt,
+      status: "generated",
+    },
+  });
+  return mapMusicPackDrop(drop);
+}
+
+export async function updateMusicPackDropOutcome(input: {
+  userId: string;
+  packId: string;
+  status: MusicPackDropStatus;
+  savedPlaylistId?: string | null;
+}): Promise<MusicPackDropRecord | null> {
+  const found = await prisma.musicPackDrop.findUnique({
+    where: { userId_packId: { userId: input.userId, packId: input.packId } },
+  });
+  if (!found) return null;
+  const updated = await prisma.musicPackDrop.update({
+    where: { id: found.id },
+    data: {
+      status: input.status,
+      outcomeAt: new Date(),
+      savedPlaylistId: input.status === "saved" ? input.savedPlaylistId ?? null : null,
+    },
+  });
+  return mapMusicPackDrop(updated);
+}
+
+export async function markMusicPackDropOpened(userId: string, packId: string): Promise<void> {
+  await prisma.musicPackDrop.updateMany({
+    where: { userId, packId },
+    data: { openedAt: new Date() },
+  });
+}
+
+export async function listRecentMusicPackDrops(userId: string, limit = 6): Promise<MusicPackDropRecord[]> {
+  const drops = await prisma.musicPackDrop.findMany({
+    where: { userId },
+    orderBy: [{ generatedAt: "desc" }, { updatedAt: "desc" }],
+    take: limit,
+  });
+  return drops.map(mapMusicPackDrop);
 }
 
 export async function updatePlaylistName(playlistId: string, name: string): Promise<PlaylistRecord | null> {
