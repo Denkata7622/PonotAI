@@ -170,7 +170,13 @@ export function useClick(context: FloatingContext) {
   };
 }
 
-export function useDismiss(context: FloatingContext, opts?: { outsidePressEvent?: "pointerdown" | "click" }) {
+export function useDismiss(
+  context: FloatingContext,
+  opts?: {
+    outsidePressEvent?: "pointerdown" | "click";
+    outsidePress?: (event: PointerEvent | MouseEvent) => boolean;
+  },
+) {
   useEffect(() => {
     if (!context.open) return;
 
@@ -181,6 +187,7 @@ export function useDismiss(context: FloatingContext, opts?: { outsidePressEvent?
       const reference = context.refs.reference.current;
       const floating = context.refs.floating.current;
       if (!target) return;
+      if (opts?.outsidePress && !opts.outsidePress(event)) return;
       if (reference?.contains(target) || floating?.contains(target)) return;
       context.onOpenChange?.(false);
     };
@@ -197,7 +204,7 @@ export function useDismiss(context: FloatingContext, opts?: { outsidePressEvent?
       document.removeEventListener(outsidePressEvent, onOutsidePress, true);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [context.open, context.onOpenChange, context.refs.reference, context.refs.floating, opts?.outsidePressEvent]);
+  }, [context.open, context.onOpenChange, context.refs.reference, context.refs.floating, opts?.outsidePressEvent, opts?.outsidePress]);
 
   return {
     getFloatingProps: <T extends HTMLProps<Element>>(props: T) => props,

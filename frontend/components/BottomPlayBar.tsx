@@ -20,6 +20,7 @@ export default function BottomPlayBar() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [lastVolume, setLastVolume] = useState(70);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const playerBarRef = useRef<HTMLDivElement | null>(null);
 
   const {
@@ -54,6 +55,15 @@ export default function BottomPlayBar() {
   const youtubeSearchUrl = currentTrack
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
     : "#";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 767px)");
+    const syncViewport = () => setIsMobileViewport(media.matches);
+    syncViewport();
+    media.addEventListener("change", syncViewport);
+    return () => media.removeEventListener("change", syncViewport);
+  }, []);
 
   useEffect(() => {
     const updatePlayerBarHeight = () => {
@@ -135,14 +145,7 @@ export default function BottomPlayBar() {
             <div className="space-y-3">
               <div className={`hidden items-center gap-3 transition-all duration-300 ease-in-out md:flex ${isExpanded ? "flex-col" : "flex-row"}`}>
                 <div className={`overflow-hidden rounded-xl border border-border bg-black/60 shrink-0 transition-all duration-300 ease-in-out ${isExpanded ? "w-full aspect-video" : "w-[120px] h-[68px] sm:w-40 sm:h-[90px]"}`}>
-                  <iframe
-                    id="ponotai-yt-player"
-                    title={`${currentTrack.title} by ${currentTrack.artist}`}
-                    src={`https://www.youtube.com/embed/${currentVideoId}?enablejsapi=1&autoplay=1&controls=1&rel=0&modestbranding=1`}
-                    className="h-full w-full"
-                    allow="autoplay; encrypted-media; picture-in-picture"
-                    allowFullScreen
-                  />
+                  {!isMobileViewport ? <div id="ponotai-yt-player" className="h-full w-full" /> : null}
                 </div>
 
                 <button type="button" onClick={() => setIsExpanded((v) => !v)} className={`text-left ${isExpanded ? "mt-2" : "flex-1"}`}>
@@ -168,14 +171,7 @@ export default function BottomPlayBar() {
               <div className="space-y-3 md:hidden">
                 <div className="flex items-center gap-3">
                   <div className="h-[74px] w-[132px] shrink-0 overflow-hidden rounded-xl border border-border bg-black/60">
-                    <iframe
-                      id="ponotai-yt-player-mobile"
-                      title={`${currentTrack.title} by ${currentTrack.artist} mobile`}
-                      src={`https://www.youtube.com/embed/${currentVideoId}?enablejsapi=1&autoplay=1&controls=1&rel=0&modestbranding=1`}
-                      className="h-full w-full"
-                      allow="autoplay; encrypted-media; picture-in-picture"
-                      allowFullScreen
-                    />
+                    {isMobileViewport ? <div id="ponotai-yt-player" className="h-full w-full" /> : null}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-[var(--text)]">{currentTrack.title}</p>
