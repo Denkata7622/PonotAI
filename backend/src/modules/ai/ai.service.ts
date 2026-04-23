@@ -348,10 +348,19 @@ export async function saveFeaturedMusicPack(userId: string, payload: {
   packId: string;
   title: string;
   tracks: Array<{ title: string; artist: string; album?: string; coverUrl?: string; trackKey?: string }>;
+  selectedTrackKeys?: string[];
 }) {
   const cleanedTitle = payload.title.trim();
   const playlistName = cleanedTitle ? `${cleanedTitle} · Saved Pack` : "Saved Music Pack";
-  const validTracks = payload.tracks
+  const selectedKeys = new Set((payload.selectedTrackKeys ?? [])
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0));
+
+  const filteredTracks = selectedKeys.size > 0
+    ? payload.tracks.filter((track) => track.trackKey && selectedKeys.has(track.trackKey.trim().toLowerCase()))
+    : payload.tracks;
+
+  const validTracks = filteredTracks
     .filter((track) => track.title && track.artist)
     .map((track) => ({
       title: track.title.trim(),
@@ -369,6 +378,7 @@ export async function saveFeaturedMusicPack(userId: string, payload: {
   return {
     playlist,
     savedTracks: validTracks.length,
+    selectedTrackKeys: selectedKeys.size > 0 ? [...selectedKeys] : null,
     packId: payload.packId,
   };
 }
@@ -933,6 +943,7 @@ export async function generateFeaturedMusicPack(userId: string, input: MusicPack
           album: track.album,
           coverUrl: track.coverUrl,
           reason: track.reasons[0] ?? "Included from your strongest listening signals.",
+          reasonSignals: track.reasons.slice(0, 2),
         })),
         explanation: {
           summary: "Built from ultra-liked songs first, then favorites, recency behavior, and onboarding fallback when sparse.",

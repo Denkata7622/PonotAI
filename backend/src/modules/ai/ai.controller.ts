@@ -243,11 +243,15 @@ export async function saveFeaturedMusicPackController(req: Request, res: Respons
     packId?: string;
     title?: string;
     tracks?: Array<{ title?: string; artist?: string; album?: string; coverUrl?: string; trackKey?: string }>;
+    selectedTrackKeys?: string[];
   } : {};
 
   const packId = typeof payload.packId === "string" ? payload.packId.trim() : "";
   const title = typeof payload.title === "string" ? payload.title.trim() : "";
   const tracks = Array.isArray(payload.tracks) ? payload.tracks : [];
+  const selectedTrackKeys = Array.isArray(payload.selectedTrackKeys)
+    ? payload.selectedTrackKeys.filter((item): item is string => typeof item === "string")
+    : [];
 
   if (!packId || !title || tracks.length === 0) {
     sendError(res, ErrorCatalog.VALIDATION_ERROR, { field: "musicPack" });
@@ -265,6 +269,7 @@ export async function saveFeaturedMusicPackController(req: Request, res: Respons
         coverUrl: track.coverUrl,
         trackKey: track.trackKey,
       })),
+      selectedTrackKeys,
     });
     res.status(200).json(data);
   } catch (error) {
