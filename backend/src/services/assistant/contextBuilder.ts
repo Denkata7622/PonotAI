@@ -7,7 +7,7 @@ import {
   type PlaylistRecord,
   type SearchHistoryRecord,
 } from "../../db/authStore";
-import { buildRecommendationSignalModel } from "../recommendation/signalWeighting";
+import { buildAssistantRecommendationReasoning, buildRecommendationSignalModel } from "../recommendation/signalWeighting";
 import type { LibraryContextPayload, LibraryHistoryEntry, LibraryTrack } from "../../types/assistant";
 import { normalizeTrackKey, trackIdFrom } from "../../utils/songIdentity";
 
@@ -187,6 +187,9 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
         recommendationDataSharingEnabled: user.recommendationDataSharingEnabled,
       }
       : undefined,
+  });
+  const recommendationReasoningBasis = buildAssistantRecommendationReasoning(recommendationSignals, {
+    allowSeedFallback: true,
   });
   const topTracks = buildTracks(history, favorites, playlists);
 
@@ -391,6 +394,7 @@ export async function buildLibraryContext(userId: string, hints?: ContextHints):
       recommendationSignals: {
         scores: recommendationSignals.scores,
         sparseBoost: recommendationSignals.groupedSignals.seed.sparseBoost,
+        reasoningBasis: recommendationReasoningBasis,
       },
     },
     statedPreferences: hints?.statedPreferences

@@ -62,6 +62,21 @@ export type RecommendationSignalModel = {
   };
 };
 
+export type AssistantRecommendationReasonType =
+  | "identity_led"
+  | "behavior_led"
+  | "discovery_led"
+  | "mixed"
+  | "seed_led"
+  | "sparse_honest";
+
+export type AssistantRecommendationReasoning = {
+  primaryReasonType: AssistantRecommendationReasonType;
+  explanationText: string;
+  explanationSignals: string[];
+  confidenceState: SignalSparseState;
+};
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function clamp01(value: number): number {
@@ -82,6 +97,14 @@ function isWithinDays(value: string | undefined, days: number): boolean {
 function toScore(raw: number, scale: number): number {
   if (scale <= 0) return 0;
   return clamp01(raw / scale);
+}
+
+function hasSeedSignals(model: RecommendationSignalModel): boolean {
+  const seed = model.groupedSignals.seed;
+  return seed.onboardingGenres.length > 0
+    || seed.onboardingMoods.length > 0
+    || seed.onboardingContexts.length > 0
+    || seed.onboardingFavoriteArtists.length > 0;
 }
 
 export function buildRecommendationSignalModel(input: RecommendationSignalInput): RecommendationSignalModel {
@@ -241,4 +264,93 @@ export function blendSignalScores(
       + (model.scores.seed * weights.seed)
       + (model.scores.confidence * weights.confidence),
   );
+}
+
+export function buildAssistantRecommendationReasoning(
+  model: RecommendationSignalModel,
+  options: {
+    candidateArtist?: string;
+    explorationCandidate?: boolean;
+    allowSeedFallback?: boolean;
+  } = {},
+): AssistantRecommendationReasoning {
+  const intent = model.groupedSignals.intent;
+  const behavior = model.groupedSignals.behavior;
+  const identity = model.groupedSignals.identity;
+  const sparseState = model.groupedSignals.confidence.sparseState;
+  const artist = normalizeName(options.candidateArtist);
+  const recurringArtistSet = new Set(identity.recurringArtists.map((item) => normalizeName(item.artist)));
+  const recentArtistSet = new Set(behavior.recentTopArtists.map((item) => normalizeName(item.artist)));
+
+  const hasIdentityAnchor = identity.ultraLikedCount > 0 || identity.favoritesCount > 0 || identity.recurringArtists.length > 0;
+  const identityMatch = Boolean(artist) && recurringArtistSet.has(artist);
+  const behaviorMatch = Boolean(artist) && recentArtistSet.has(artist);
+  const behaviorStrong = behavior.recentHistoryEvents14d >= 6 || behavior.replayedTracks7d >= 2 || behavior.recentTopArtists.length >= 2;
+  const discoveryIntent = intent.recommendationMode === "mostly_discovery";
+  const seedAvailable = hasSeedSignals(model);
+
+  if (sparseState === "sparse" && options.allowSeedFallback && seedAvailable && !behaviorStrong) {
+    return {
+      primaryReasonType: "sparse_honest",
+      explanationText: "Suggested mainly from your stated taste seeds while your listening history is still limited.",
+      explanationSignals: ["confidence.sparseState", "seed.onboarding", "identity.favorites"],
+      confidenceState: sparseState,
+    };
+  }
+
+  if (options.explorationCandidate || discoveryIntent) {
+    return {
+      primaryReasonType: "discovery_led",
+      explanationText: intent.repeatedArtistTolerance === "lower"
+        ? "Suggested because your discovery settings lean toward adjacent artists with less repetition."
+        : "Suggested because your discovery settings lean toward adjacent artists beyond your usual rotation.",
+      explanationSignals: ["intent.recommendationMode", "intent.repeatedArtistTolerance", "behavior.recentTopArtists"],
+      confidenceState: sparseState,
+    };
+  }
+
+  if ((identityMatch && behaviorMatch) || (hasIdentityAnchor && behaviorStrong)) {
+    return {
+      primaryReasonType: "mixed",
+      explanationText: "Suggested from overlap between your strongest taste anchors and recent listening direction.",
+      explanationSignals: ["identity.ultraLiked", "identity.recurringArtists", "behavior.recentListening"],
+      confidenceState: sparseState,
+    };
+  }
+
+  if (identityMatch || hasIdentityAnchor) {
+    return {
+      primaryReasonType: "identity_led",
+      explanationText: identity.ultraLikedCount > 0
+        ? "Suggested because it aligns with artists you signal as core taste through ultra-likes and favorites."
+        : "Suggested because it aligns with artists you repeatedly save and revisit.",
+      explanationSignals: ["identity.ultraLiked", "identity.favorites", "identity.recurringArtists"],
+      confidenceState: sparseState,
+    };
+  }
+
+  if (behaviorMatch || behaviorStrong) {
+    return {
+      primaryReasonType: "behavior_led",
+      explanationText: "Suggested because it follows your recent listening direction and replay behavior.",
+      explanationSignals: ["behavior.recentListening", "behavior.replay", "behavior.recentTopArtists"],
+      confidenceState: sparseState,
+    };
+  }
+
+  if (options.allowSeedFallback && seedAvailable) {
+    return {
+      primaryReasonType: "seed_led",
+      explanationText: "Suggested from your stated onboarding taste seeds and current recommendation controls.",
+      explanationSignals: ["seed.onboarding", "intent.recommendationMode", "intent.energyPreference"],
+      confidenceState: sparseState,
+    };
+  }
+
+  return {
+    primaryReasonType: "sparse_honest",
+    explanationText: "Suggested from the limited signals currently available in your library.",
+    explanationSignals: ["confidence.sparseState"],
+    confidenceState: sparseState,
+  };
 }
