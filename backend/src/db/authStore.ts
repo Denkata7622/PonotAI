@@ -1,4 +1,13 @@
 import { randomUUID } from "node:crypto";
+import type {
+  EnergyPreference,
+  Favorite,
+  RecommendationMode,
+  RepeatedArtistTolerance,
+  SearchHistory,
+  User,
+  Prisma,
+} from "@prisma/client";
 import { prisma } from "./prisma";
 import { normalizeTrackKey } from "../utils/songIdentity";
 
@@ -8,9 +17,9 @@ export type UserRecord = {
   email: string;
   passwordHash: string;
   recommendationDataSharingEnabled: boolean;
-  recommendationMode: "safe_familiar" | "balanced" | "mostly_discovery";
-  repeatedArtistTolerance: "lower" | "normal" | "higher";
-  energyPreference: "calmer" | "mixed" | "more_energetic";
+  recommendationMode: RecommendationMode;
+  repeatedArtistTolerance: RepeatedArtistTolerance;
+  energyPreference: EnergyPreference;
   emailVerifiedAt?: string | null;
   role?: "user" | "admin";
   isDemo?: boolean;
@@ -19,7 +28,11 @@ export type UserRecord = {
   createdAt: string;
 };
 
-type CreateUserInput = Omit<UserRecord, "id" | "createdAt" | "recommendationMode" | "repeatedArtistTolerance" | "energyPreference"> & {
+type CreateUserInput = Omit<
+  UserRecord,
+  "id" | "createdAt" | "recommendationDataSharingEnabled" | "recommendationMode" | "repeatedArtistTolerance" | "energyPreference"
+> & {
+  recommendationDataSharingEnabled?: boolean;
   recommendationMode?: UserRecord["recommendationMode"];
   repeatedArtistTolerance?: UserRecord["repeatedArtistTolerance"];
   energyPreference?: UserRecord["energyPreference"];
@@ -164,8 +177,9 @@ export type AdminOverviewSnapshot = {
 };
 
 const toIso = (value: Date | string) => (value instanceof Date ? value.toISOString() : new Date(value).toISOString());
+const toUserRole = (role: string): UserRecord["role"] => (role === "admin" ? "admin" : "user");
 
-function mapUser(user: any): UserRecord {
+function mapUser(user: User): UserRecord {
   return {
     id: user.id,
     username: user.username,
@@ -176,7 +190,7 @@ function mapUser(user: any): UserRecord {
     repeatedArtistTolerance: user.repeatedArtistTolerance,
     energyPreference: user.energyPreference,
     emailVerifiedAt: user.emailVerifiedAt ? toIso(user.emailVerifiedAt) : undefined,
-    role: user.role,
+    role: toUserRole(user.role),
     isDemo: user.isDemo,
     avatarBase64: user.avatarBase64 ?? undefined,
     bio: user.bio ?? undefined,
@@ -184,7 +198,7 @@ function mapUser(user: any): UserRecord {
   };
 }
 
-function mapHistory(item: any): SearchHistoryRecord {
+function mapHistory(item: SearchHistory): SearchHistoryRecord {
   return {
     id: item.id,
     userId: item.userId,
@@ -198,7 +212,7 @@ function mapHistory(item: any): SearchHistoryRecord {
   };
 }
 
-function mapFavorite(item: any): FavoriteRecord {
+function mapFavorite(item: Favorite): FavoriteRecord {
   return {
     id: item.id,
     userId: item.userId,
@@ -309,22 +323,27 @@ export async function listUsers() {
 }
 
 export async function createUser(input: CreateUserInput): Promise<UserRecord> {
+  const data: Prisma.UserCreateInput = {
+    id: randomUUID(),
+    username: input.username,
+    email: input.email.trim().toLowerCase(),
+    passwordHash: input.passwordHash,
+    recommendationDataSharingEnabled: input.recommendationDataSharingEnabled ?? false,
+    recommendationMode: input.recommendationMode ?? "balanced",
+    repeatedArtistTolerance: input.repeatedArtistTolerance ?? "normal",
+    energyPreference: input.energyPreference ?? "mixed",
+    role: input.role ?? "user",
+    isDemo: input.isDemo ?? false,
+    avatarBase64: input.avatarBase64,
+    bio: input.bio,
+  };
+
+  if (input.emailVerifiedAt !== undefined) {
+    data.emailVerifiedAt = input.emailVerifiedAt ? new Date(input.emailVerifiedAt) : null;
+  }
+
   const user = await prisma.user.create({
-    data: {
-      id: randomUUID(),
-      username: input.username,
-      email: input.email.trim().toLowerCase(),
-      passwordHash: input.passwordHash,
-      recommendationDataSharingEnabled: Boolean(input.recommendationDataSharingEnabled),
-      recommendationMode: input.recommendationMode ?? "balanced",
-      repeatedArtistTolerance: input.repeatedArtistTolerance ?? "normal",
-      energyPreference: input.energyPreference ?? "mixed",
-      emailVerifiedAt: input.emailVerifiedAt ? new Date(input.emailVerifiedAt) : undefined,
-      role: input.role ?? "user",
-      isDemo: Boolean(input.isDemo),
-      avatarBase64: input.avatarBase64,
-      bio: input.bio,
-    },
+    data,
   });
   return mapUser(user);
 }
@@ -335,22 +354,28 @@ export async function updateUser(
 ): Promise<UserRecord | null> {
   const found = await prisma.user.findUnique({ where: { id } });
   if (!found) return null;
+
+  const data: Prisma.UserUpdateInput = {
+    username: updates.username,
+    email: updates.email ? updates.email.trim().toLowerCase() : undefined,
+    passwordHash: updates.passwordHash,
+    recommendationDataSharingEnabled: updates.recommendationDataSharingEnabled,
+    recommendationMode: updates.recommendationMode,
+    repeatedArtistTolerance: updates.repeatedArtistTolerance,
+    energyPreference: updates.energyPreference,
+    role: updates.role,
+    isDemo: updates.isDemo,
+    avatarBase64: updates.avatarBase64,
+    bio: updates.bio,
+  };
+
+  if (updates.emailVerifiedAt !== undefined) {
+    data.emailVerifiedAt = updates.emailVerifiedAt ? new Date(updates.emailVerifiedAt) : null;
+  }
+
   const user = await prisma.user.update({
     where: { id },
-    data: {
-      username: updates.username,
-      email: updates.email ? updates.email.trim().toLowerCase() : undefined,
-      passwordHash: updates.passwordHash,
-      recommendationDataSharingEnabled: updates.recommendationDataSharingEnabled,
-      recommendationMode: updates.recommendationMode,
-      repeatedArtistTolerance: updates.repeatedArtistTolerance,
-      energyPreference: updates.energyPreference,
-      emailVerifiedAt: updates.emailVerifiedAt ? new Date(updates.emailVerifiedAt) : updates.emailVerifiedAt === null ? null : undefined,
-      role: updates.role,
-      isDemo: updates.isDemo,
-      avatarBase64: updates.avatarBase64,
-      bio: updates.bio,
-    },
+    data,
   });
   return mapUser(user);
 }
@@ -419,13 +444,13 @@ export async function createUserHistory(
   item: Omit<SearchHistoryRecord, "id" | "createdAt">,
   options?: { allowDuplicates?: boolean; createdAt?: string },
 ): Promise<SearchHistoryRecord> {
-  return prisma.$transaction(async (tx: any) => {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const targetKey = normalizeTrackKey(item.title ?? "", item.artist ?? "");
     if (!options?.allowDuplicates) {
       const existing = await tx.searchHistory.findMany({ where: { userId: item.userId } });
       const duplicateIds = existing
-        .filter((entry: any) => normalizeTrackKey(entry.title ?? "", entry.artist ?? "") === targetKey)
-        .map((entry: any) => entry.id);
+        .filter((entry) => normalizeTrackKey(entry.title ?? "", entry.artist ?? "") === targetKey)
+        .map((entry) => entry.id);
       if (duplicateIds.length > 0) {
         await tx.searchHistory.deleteMany({ where: { id: { in: duplicateIds } } });
       }
@@ -480,7 +505,7 @@ export async function listFavorites(userId: string): Promise<FavoriteRecord[]> {
 export async function findDuplicateFavorite(userId: string, title: string, artist: string) {
   const targetKey = normalizeTrackKey(title, artist);
   const favorites = await prisma.favorite.findMany({ where: { userId } });
-  const found = favorites.find((item: any) => normalizeTrackKey(item.title, item.artist) === targetKey);
+  const found = favorites.find((item) => normalizeTrackKey(item.title, item.artist) === targetKey);
   return found ? mapFavorite(found) : null;
 }
 
@@ -504,7 +529,7 @@ export async function createFavorite(item: Pick<FavoriteRecord, "userId" | "titl
 export async function setFavoriteUltraLike(userId: string, idOrTrackKey: string, enabled: boolean): Promise<FavoriteRecord | null> {
   const target = idOrTrackKey.includes("|||")
     ? (await prisma.favorite.findMany({ where: { userId } }))
-      .find((item: any) => normalizeTrackKey(item.title, item.artist) === idOrTrackKey)
+      .find((item) => normalizeTrackKey(item.title, item.artist) === idOrTrackKey)
     : await prisma.favorite.findUnique({ where: { id: idOrTrackKey } });
   if (!target || target.userId !== userId) return null;
 
@@ -528,7 +553,7 @@ export async function deleteFavorite(userId: string, id: string): Promise<"ok" |
 
 export async function deleteFavoriteByTrackKey(userId: string, trackKey: string): Promise<"ok" | "missing"> {
   const favorites = await prisma.favorite.findMany({ where: { userId } });
-  const target = favorites.find((item: any) => normalizeTrackKey(item.title, item.artist) === trackKey);
+  const target = favorites.find((item) => normalizeTrackKey(item.title, item.artist) === trackKey);
   if (!target) return "missing";
   await prisma.favorite.delete({ where: { id: target.id } });
   return "ok";
