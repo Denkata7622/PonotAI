@@ -344,6 +344,35 @@ export async function saveGeneratedPlaylist(userId: string, payload: { name: str
   return playlist;
 }
 
+export async function saveFeaturedMusicPack(userId: string, payload: {
+  packId: string;
+  title: string;
+  tracks: Array<{ title: string; artist: string; album?: string; coverUrl?: string; trackKey?: string }>;
+}) {
+  const cleanedTitle = payload.title.trim();
+  const playlistName = cleanedTitle ? `${cleanedTitle} · Saved Pack` : "Saved Music Pack";
+  const validTracks = payload.tracks
+    .filter((track) => track.title && track.artist)
+    .map((track) => ({
+      title: track.title.trim(),
+      artist: track.artist.trim(),
+      album: track.album,
+      coverUrl: track.coverUrl,
+    }))
+    .filter((track) => track.title.length > 0 && track.artist.length > 0);
+
+  if (validTracks.length === 0) {
+    throw new Error("MUSIC_PACK_EMPTY");
+  }
+
+  const playlist = await createPlaylist(userId, playlistName, randomUUID(), validTracks);
+  return {
+    playlist,
+    savedTracks: validTracks.length,
+    packId: payload.packId,
+  };
+}
+
 async function fetchWeatherContext(latitude: number, longitude: number): Promise<{ temperature: number; weatherCode: number } | null> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code`;
   try {

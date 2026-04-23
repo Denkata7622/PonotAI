@@ -13,6 +13,7 @@ import {
   getMoodRecommendations,
   getSurpriseDiscovery,
   saveGeneratedPlaylist,
+  saveFeaturedMusicPack,
   suggestTags,
 } from "./ai.service";
 
@@ -233,6 +234,45 @@ export async function generateFeaturedMusicPackController(req: Request, res: Res
     res.status(200).json(data);
   } catch (error) {
     console.error("music pack generation error", error);
+    sendError(res, ErrorCatalog.INTERNAL_ERROR);
+  }
+}
+
+export async function saveFeaturedMusicPackController(req: Request, res: Response): Promise<void> {
+  const payload = req.body && typeof req.body === "object" ? req.body as {
+    packId?: string;
+    title?: string;
+    tracks?: Array<{ title?: string; artist?: string; album?: string; coverUrl?: string; trackKey?: string }>;
+  } : {};
+
+  const packId = typeof payload.packId === "string" ? payload.packId.trim() : "";
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  const tracks = Array.isArray(payload.tracks) ? payload.tracks : [];
+
+  if (!packId || !title || tracks.length === 0) {
+    sendError(res, ErrorCatalog.VALIDATION_ERROR, { field: "musicPack" });
+    return;
+  }
+
+  try {
+    const data = await saveFeaturedMusicPack(req.userId!, {
+      packId,
+      title,
+      tracks: tracks.map((track) => ({
+        title: String(track.title ?? ""),
+        artist: String(track.artist ?? ""),
+        album: track.album,
+        coverUrl: track.coverUrl,
+        trackKey: track.trackKey,
+      })),
+    });
+    res.status(200).json(data);
+  } catch (error) {
+    if ((error as Error).message === "MUSIC_PACK_EMPTY") {
+      sendError(res, ErrorCatalog.VALIDATION_ERROR, { field: "tracks", reason: "Pack contains no valid tracks." });
+      return;
+    }
+    console.error("music pack save error", error);
     sendError(res, ErrorCatalog.INTERNAL_ERROR);
   }
 }
