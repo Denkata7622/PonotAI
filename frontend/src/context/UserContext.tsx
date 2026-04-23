@@ -48,6 +48,8 @@ export type FavoriteItem = {
   artist: string;
   album?: string | null;
   coverUrl?: string | null;
+  ultraLiked?: boolean;
+  ultraLikedAt?: string;
   savedAt?: string;
 };
 
@@ -212,6 +214,7 @@ type UserContextValue = {
   clearHistory: () => Promise<void>;
   addFavorite: (song: Omit<FavoriteItem, "id"> & { id?: string }) => Promise<void>;
   removeFavorite: (id: string) => Promise<void>;
+  setFavoriteUltraLike: (idOrTrackKey: string, enabled: boolean) => Promise<boolean>;
   saveToLibrary: (song: SaveSongInput) => Promise<void>;
   addManualSubmission: (submission: ManualSubmission) => void;
   shareSong: (song: { title: string; artist: string; album?: string; coverUrl?: string }) => Promise<string | null>;
@@ -533,6 +536,25 @@ export function UserProvider({ children }: { children: ReactNode }) {
     dispatchGuest({ type: "REMOVE_FAVORITE", payload: resolvedId });
   }
 
+  async function setFavoriteUltraLike(idOrTrackKey: string, enabled: boolean): Promise<boolean> {
+    if (!isAuthenticated) return false;
+    const encodedTarget = encodeURIComponent(idOrTrackKey);
+    const res = await apiFetch(`/api/favorites/${encodedTarget}/ultra-like`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) return false;
+    const updated = (await res.json()) as FavoriteItem;
+    setServerFavorites(
+      dedupeBySongKey(serverFavorites.map((favorite) => (
+        favorite.id === updated.id || toSongKey(favorite) === toSongKey(updated)
+          ? updated
+          : favorite
+      ))),
+    );
+    return true;
+  }
+
   async function saveToLibrary(song: SaveSongInput) {
     const canonical = toCanonicalSong(song);
 
@@ -597,6 +619,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       clearHistory,
       addFavorite,
       removeFavorite,
+      setFavoriteUltraLike,
       saveToLibrary,
       addManualSubmission,
       shareSong,
@@ -605,7 +628,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       completeOnboarding,
     }),
         [authState, serverHistory, serverFavorites, guest, isAuthenticated, onboardingRequired]
-  );
+      );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 }

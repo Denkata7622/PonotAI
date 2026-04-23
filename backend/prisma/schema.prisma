@@ -115,12 +115,15 @@ model Favorite {
   artist   String
   album    String?
   coverUrl String?
+  ultraLiked Boolean @default(false)
+  ultraLikedAt DateTime?
   savedAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, title, artist])
   @@index([userId, savedAt])
+  @@index([userId, ultraLiked, ultraLikedAt])
 }
 
 model SharedSong {

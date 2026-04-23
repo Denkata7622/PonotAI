@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/auth.middleware";
-import { createFavorite, deleteFavorite, deleteFavoriteByTrackKey, findDuplicateFavorite, listFavorites } from "../../db/authStore";
+import { createFavorite, deleteFavorite, deleteFavoriteByTrackKey, findDuplicateFavorite, listFavorites, setFavoriteUltraLike } from "../../db/authStore";
 import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 import { invalidateLibraryContextCache } from "../../services/assistant/contextBuilder";
 import { normalizeTrackKey } from "../../utils/songIdentity";
@@ -37,6 +37,20 @@ favoritesRouter.delete("/:id", async (req, res) => {
   if (status === "forbidden") return void sendError(res, ErrorCatalog.FORBIDDEN);
   invalidateLibraryContextCache(req.userId!);
   res.status(200).json({ ok: true });
+});
+
+favoritesRouter.patch("/:id/ultra-like", async (req, res) => {
+  const idOrKey = String(req.params.id || "").trim();
+  const { enabled } = req.body as { enabled?: unknown };
+  if (typeof enabled !== "boolean") return void sendError(res, ErrorCatalog.INVALID_PAYLOAD);
+
+  const normalizedId = idOrKey.includes("|||")
+    ? normalizeTrackKey(...idOrKey.split("|||", 2))
+    : idOrKey;
+  const updated = await setFavoriteUltraLike(req.userId!, normalizedId, enabled);
+  if (!updated) return void sendError(res, ErrorCatalog.NOT_FOUND);
+  invalidateLibraryContextCache(req.userId!);
+  res.status(200).json(updated);
 });
 
 export default favoritesRouter;
