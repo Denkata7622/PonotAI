@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  findUserById,
   createPlaylist,
   getTrackTags,
   getUserPlaylists,
@@ -12,6 +13,7 @@ import {
   type TrackTagRecord,
 } from "../../db/authStore";
 import { getExternalDiscoveryClient, type ExternalArtistCandidate } from "../../services/assistant/externalDiscovery";
+import { blendSignalScores, buildRecommendationSignalModel } from "../../services/recommendation/signalWeighting";
 import { normalizeTrackKey as trackKey } from "../../utils/songIdentity";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -537,6 +539,20 @@ export async function getCrossArtistRecommendations(
     listFavorites(userId),
     getUserPlaylists(userId),
   ]);
+  const user = await findUserById(userId);
+  const signalModel = buildRecommendationSignalModel({
+    history,
+    favorites,
+    playlists,
+    intent: user
+      ? {
+        recommendationMode: user.recommendationMode,
+        repeatedArtistTolerance: user.repeatedArtistTolerance,
+        energyPreference: user.energyPreference,
+        recommendationDataSharingEnabled: user.recommendationDataSharingEnabled,
+      }
+      : undefined,
+  });
 
   const profile = buildAnchorProfile(history, favorites, playlists);
   const knownArtists = new Set<string>();
@@ -619,6 +635,9 @@ export async function getCrossArtistRecommendations(
     fromPlaylists: playlists.length,
     usedExternalDiscovery: externalAvailable,
     sparseFallback: ranked.length === 0,
+    signalScores: signalModel.scores,
+    discoveryBlendScore: blendSignalScores(signalModel, "discovery"),
+    sparseState: signalModel.groupedSignals.confidence.sparseState,
   };
 
   crossArtistMemory.set(userId, {
