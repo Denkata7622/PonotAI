@@ -74,7 +74,7 @@ export async function GET(request: Request) {
   target.searchParams.set("part", "snippet");
   target.searchParams.set("type", "video");
   target.searchParams.set("videoCategoryId", "10");
-  target.searchParams.set("maxResults", "14");
+  target.searchParams.set("maxResults", "24");
   target.searchParams.set("q", query);
   target.searchParams.set("key", apiKey);
 

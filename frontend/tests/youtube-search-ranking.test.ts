@@ -51,3 +51,46 @@ test("ranking keeps legitimate longer songs competitive when metadata is strong"
   assert.equal(ranked[0]?.videoId, "official");
   assert.equal(ranked[0]?.kind, "song");
 });
+
+test("ranking strongly demotes shorts and edit clips below canonical tracks", () => {
+  const ranked = rankYouTubeSearchResults("Blinding Lights The Weeknd", [
+    {
+      videoId: "short-edit",
+      title: "Blinding Lights edit #shorts",
+      channelTitle: "fan clips",
+      thumbnailUrl: "https://img/1",
+      durationSec: 28,
+    },
+    {
+      videoId: "topic-audio",
+      title: "Blinding Lights",
+      channelTitle: "The Weeknd - Topic",
+      thumbnailUrl: "https://img/2",
+      durationSec: 200,
+    },
+  ]);
+
+  assert.equal(ranked[0]?.videoId, "topic-audio");
+  assert.equal(ranked[1]?.videoId, "short-edit");
+});
+
+test("ranking prefers official-like sources over random uploads when titles are similar", () => {
+  const ranked = rankYouTubeSearchResults("Numb Linkin Park", [
+    {
+      videoId: "official",
+      title: "Numb (Official Audio)",
+      channelTitle: "Linkin Park",
+      thumbnailUrl: "https://img/1",
+      durationSec: 186,
+    },
+    {
+      videoId: "random",
+      title: "Numb",
+      channelTitle: "rock edits and clips",
+      thumbnailUrl: "https://img/2",
+      durationSec: 180,
+    },
+  ]);
+
+  assert.equal(ranked[0]?.videoId, "official");
+});
