@@ -44,7 +44,25 @@ const COMPILATION_MARKERS = [
 
 const SONG_QUALIFIERS = ["official audio", "official music video", "official video", "audio", "lyrics", "lyric video"];
 const ALT_VERSION_MARKERS = ["live", "remix", "cover", "sped up", "slowed", "nightcore", "karaoke", "instrumental"];
+const LOW_QUALITY_NON_SONG_MARKERS = [
+  "edit",
+  "clip",
+  "scene",
+  "shorts",
+  "#shorts",
+  "short",
+  "mashup",
+  "reaction",
+  "tribute",
+  "fan video",
+  "bass boosted",
+  "reverb",
+];
+const HEAVY_ALT_OR_FORMAT_MARKERS = ["slowed", "sped up", "reverb", "bass boosted", "mashup", "nightcore"];
 const SINGLE_SONG_INTENT_MARKERS = ["song", "lyrics", "audio", "official", "video"];
+const OFFICIAL_SOURCE_MARKERS = ["official", "records", "vevo", "topic"];
+const LOW_QUALITY_CHANNEL_MARKERS = ["clips", "edits", "fan", "reaction", "archive"];
+const QUERY_ACCEPTS_SHORT_FORM_MARKERS = ["short", "edit", "clip", "snippet", "teaser"];
 
 function tokenize(value: string): string[] {
   return value
@@ -65,6 +83,12 @@ function overlapRatio(tokens: string[], pool: Set<string>): number {
 
 function includesAny(haystack: string, terms: string[]): boolean {
   return terms.some((term) => haystack.includes(term));
+}
+
+function isLikelyOfficialSource(channel: string): boolean {
+  const normalized = channel.toLowerCase();
+  if (normalized.endsWith("- topic")) return true;
+  return includesAny(normalized, OFFICIAL_SOURCE_MARKERS);
 }
 
 export function parseIsoDurationToSec(isoDuration: string | undefined): number | undefined {
@@ -108,15 +132,26 @@ export function rankYouTubeSearchResults(query: string, inputs: RankedSearchInpu
       if (normalizedArtist.includes(normalizedQuery)) score += 0.8;
 
       const isTopicChannel = normalizedArtist.endsWith("- topic");
+      const isLikelyOfficialChannel = isLikelyOfficialSource(normalizedArtist);
       if (isTopicChannel) score += 0.65;
+      if (isLikelyOfficialChannel) score += 0.75;
       if (includesAny(normalizedTitle, SONG_QUALIFIERS)) score += 0.25;
 
       const hasCompilationSignals = includesAny(normalizedTitle, COMPILATION_MARKERS);
       const hasAltVersionSignals = includesAny(normalizedTitle, ALT_VERSION_MARKERS);
+      const hasLowQualitySignals = includesAny(normalizedTitle, LOW_QUALITY_NON_SONG_MARKERS);
+      const lowQualityChannel = includesAny(normalizedArtist, LOW_QUALITY_CHANNEL_MARKERS);
+      const hasHeavyAltOrFormatSignals = includesAny(normalizedTitle, HEAVY_ALT_OR_FORMAT_MARKERS);
+      const likelyShorts = normalizedTitle.includes("#shorts") || normalizedTitle.includes("shorts");
       const queryAllowsAltVersions = includesAny(normalizedQuery, ALT_VERSION_MARKERS);
+      const queryAllowsShortForm = includesAny(normalizedQuery, QUERY_ACCEPTS_SHORT_FORM_MARKERS);
 
       if (hasCompilationSignals) score -= queryLooksLikeSingleSongIntent ? 2.3 : 0.8;
       if (hasAltVersionSignals && !queryAllowsAltVersions) score -= 0.5;
+      if (hasLowQualitySignals && !queryAllowsShortForm) score -= queryLooksLikeSingleSongIntent ? 1.6 : 0.9;
+      if (lowQualityChannel && !queryAllowsShortForm) score -= 0.9;
+      if (hasHeavyAltOrFormatSignals && !queryAllowsAltVersions) score -= 1.3;
+      if (likelyShorts && !queryAllowsShortForm) score -= 2.2;
 
       const durationSec = item.durationSec;
       if (durationSec !== undefined) {
@@ -126,13 +161,26 @@ export function rankYouTubeSearchResults(query: string, inputs: RankedSearchInpu
           else if (durationSec > 720) score -= 1.2;
           else if (durationSec > 540) score -= 0.65;
           else if (durationSec >= 110 && durationSec <= 390) score += 0.45;
-          else if (durationSec < 45) score -= 0.4;
+          else if (durationSec < 35 && !queryAllowsShortForm) score -= 3.2;
+          else if (durationSec < 60 && !queryAllowsShortForm) score -= 2.2;
+          else if (durationSec < 90 && !queryAllowsShortForm) score -= 1.1;
         }
       }
 
       if (queryTokenSet.size > 0) {
         const missingTokens = queryTokens.filter((token) => !titleTokenSet.has(token) && !artistTokenSet.has(token)).length;
         score -= missingTokens * 0.25;
+      }
+
+      const titleWithoutMeta = normalizedTitle
+        .replace(/\([^)]*\)|\[[^\]]*\]/g, " ")
+        .replace(/\b(official|audio|video|lyrics|lyric)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (normalizedQuery && (titleWithoutMeta === normalizedQuery || normalizedTitle === normalizedQuery)) {
+        score += 1.6;
+      } else if (normalizedQuery && titleWithoutMeta.includes(normalizedQuery)) {
+        score += 0.9;
       }
 
       const kind: RankedSearchKind = hasCompilationSignals || (durationSec !== undefined && durationSec > 900)
