@@ -299,6 +299,14 @@ function AppShellContent({ children }: { children: ReactNode }) {
     window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `${t("toast_now_playing", language)}: ${result.title}` } }));
   }
 
+  function openSearchWorkspace(searchValue?: string) {
+    const target = (searchValue ?? debouncedQuery ?? query).trim();
+    if (!target) return;
+    setShowSearchDropdown(false);
+    setOpenActionsId(null);
+    router.push(`/search?q=${encodeURIComponent(target)}`);
+  }
+
   function handleSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       setShowSearchDropdown(false);
@@ -627,11 +635,33 @@ function AppShellContent({ children }: { children: ReactNode }) {
                           </li>
                         ))}
                       </ul>
+                      <button
+                        type="button"
+                        className="mt-1 flex w-full items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          openSearchWorkspace();
+                        }}
+                      >
+                        <span>{language === "bg" ? "Виж още резултати" : "See more results"}</span>
+                        <ChevronRight className="h-4 w-4 text-[var(--muted)]" />
+                      </button>
                     </div>
                   ) : query === debouncedQuery && searchResults.length === 0 ? (
                     <div className="flex flex-col items-center justify-center gap-2 px-3 py-4 text-center text-[var(--muted)]">
                       <SearchX className="w-8 h-8 text-[var(--muted)]" />
                       <p className="text-sm">{t("search_no_results_for", language)} "{debouncedQuery}"</p>
+                      <button
+                        type="button"
+                        className="mt-1 inline-flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm hover:bg-[var(--hover-bg)]"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          openSearchWorkspace();
+                        }}
+                      >
+                        <span>{language === "bg" ? "Отвори пълно търсене" : "Open full search page"}</span>
+                        <ChevronRight className="h-4 w-4 text-[var(--muted)]" />
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -718,6 +748,17 @@ function AppShellContent({ children }: { children: ReactNode }) {
                           </ul>
                         </>
                       )}
+                      <button
+                        type="button"
+                        className="mt-1 flex w-full items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm hover:bg-[var(--hover-bg)]"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          openSearchWorkspace();
+                        }}
+                      >
+                        <span>{language === "bg" ? "Виж още резултати" : "See more results"}</span>
+                        <ChevronRight className="h-4 w-4 text-[var(--muted)]" />
+                      </button>
                     </div>
                   )}
               </SmartDropdown>

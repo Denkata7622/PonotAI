@@ -5,12 +5,10 @@ import {
   ChevronRight,
   Library,
   Clock,
-  Camera,
   Mic,
   Play,
   Search,
   SearchX,
-  Sparkles,
   TrendingUp,
   Upload,
   WifiOff,
@@ -18,7 +16,7 @@ import {
 } from "../../lucide-react";
 import SearchInput from "../../components/SearchInput";
 import { usePlayer } from "../../components/PlayerProvider";
-import { scopedKey, useProfile } from "../../lib/ProfileContext";
+import { useProfile } from "../../lib/ProfileContext";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
 import { useLibrary } from "../../features/library/useLibrary";
@@ -31,8 +29,6 @@ import SearchResultActions from "../../components/SearchResultActions";
 import { runUnifiedSearch } from "../../lib/searchClient";
 import SongRow from "../../components/SongRow";
 import { toCanonicalSong, toSongKey } from "../../lib/songIdentity";
-import { getHomeRecommendations } from "../../features/recommendations/homeRecommendations";
-import { readTasteProfile } from "../../src/features/onboarding/tasteProfile";
 import type { QueueTrack } from "../../features/player/state";
 
 type HistoryItem = {
@@ -52,8 +48,6 @@ type SearchResult = {
   thumbnailUrl: string;
   isTopicChannel?: boolean;
   kind?: "song" | "channel" | "other";
-  durationSec?: number;
-  rankScore?: number;
 };
 
 export default function SearchPage() {
@@ -61,20 +55,17 @@ export default function SearchPage() {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { addToQueue, playNow } = usePlayer();
-  const { favorites, history: userHistory, token, saveToLibrary } = useUser();
-  const { playlists, addSongToPlaylist, favoritesSet, favoritesList, toggleFavorite } = useLibrary(profile.id);
+  const { history: userHistory, token, saveToLibrary } = useUser();
+  const { playlists, addSongToPlaylist, favoritesSet, toggleFavorite } = useLibrary(profile.id);
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
-  const [activeTab, setActiveTab] = useState<"discover" | "history">("discover");
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [historyQuery, setHistoryQuery] = useState("");
   const [discoverResults, setDiscoverResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUnavailable, setIsUnavailable] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
-  const [tasteProfile, setTasteProfile] = useState(() => null as ReturnType<typeof readTasteProfile>);
   const blurTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => () => {
@@ -84,8 +75,16 @@ export default function SearchPage() {
   }, []);
 
   useEffect(() => {
-    setTasteProfile(readTasteProfile());
-  }, []);
+    if (typeof window === "undefined") return;
+    const queryFromParams = new URLSearchParams(window.location.search).get("q")?.trim() ?? "";
+    if (queryFromParams && queryFromParams !== query) {
+      setQuery(queryFromParams);
+      return;
+    }
+    if (!queryFromParams && query) {
+      setQuery("");
+    }
+  }, [query]);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -114,8 +113,6 @@ export default function SearchPage() {
           ...item,
           isTopicChannel: item.isTopicChannel ?? item.artist.endsWith("- Topic"),
           kind: item.kind,
-          durationSec: item.durationSec,
-          rankScore: item.rankScore,
           artist: formatArtist(item.artist),
         })));
         if (!response.isUnavailable) {
@@ -160,14 +157,14 @@ export default function SearchPage() {
   }, [userHistory]);
 
   const historyResults = useMemo(() => {
-    const q = historyQuery.trim().toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
     if (!q) return history;
     return history.filter((item) => {
       const song = item.song?.songName?.toLowerCase() ?? "";
       const artist = item.song?.artist?.toLowerCase() ?? "";
       return song.includes(q) || artist.includes(q);
     });
-  }, [history, historyQuery]);
+  }, [history, debouncedQuery]);
 
   const groupedResults = useMemo(
     () => ({
@@ -176,44 +173,8 @@ export default function SearchPage() {
     }),
     [discoverResults],
   );
-  const recommendationHistory = useMemo(
-    () =>
-      history.filter(
-        (item): item is { id: string; song: { songName: string; artist: string; albumArtUrl?: string; youtubeVideoId?: string } } =>
-          Boolean(item.song?.songName && item.song?.artist),
-      ),
-    [history],
-  );
-  const homeBrowse = useMemo(
-    () =>
-      getHomeRecommendations({
-        language,
-        userId: profile.id,
-        history: recommendationHistory,
-        favorites: favorites.map((favorite) => ({
-          key: toSongKey(favorite),
-          title: favorite.title,
-          artist: favorite.artist,
-          artworkUrl: favorite.coverUrl ?? undefined,
-        })),
-        tasteProfile,
-        limit: 8,
-      }),
-    [favorites, recommendationHistory, language, profile.id, tasteProfile],
-  );
+
   const recentCaptures = useMemo(() => {
-    const mapped = userHistory
-      .filter((item) => item.title && item.artist)
-      .map((item) => ({
-        id: item.id,
-        title: item.title,
-        artist: item.artist,
-        coverUrl: item.coverUrl ?? undefined,
-        youtubeVideoId: undefined,
-      }));
-
-    if (mapped.length > 0) return mapped.slice(0, 4);
-
     return history
       .map((item) => ({
         id: item.id,
@@ -224,9 +185,19 @@ export default function SearchPage() {
       }))
       .filter((item) => item.title && item.artist)
       .slice(0, 4);
-  }, [history, userHistory]);
+  }, [history]);
 
   const hasActiveQuery = debouncedQuery.trim().length >= 2;
+
+  function setQueryAndSyncUrl(value: string) {
+    setQuery(value);
+    const next = value.trim();
+    if (!next) {
+      router.replace("/search");
+      return;
+    }
+    router.replace(`/search?q=${encodeURIComponent(next)}`);
+  }
 
   function toQueueTrack(result: SearchResult): Omit<QueueTrack, "id"> {
     return {
@@ -251,20 +222,21 @@ export default function SearchPage() {
 
   return (
     <section className="card p-3 sm:p-6">
-      <header className="rounded-2xl border border-[var(--border)] bg-[color:color-mix(in_srgb,var(--surface)_88%,var(--accent)_12%)] p-4 sm:p-5">
+      <header className="rounded-2xl border border-[var(--border)] bg-[color:color-mix(in_srgb,var(--surface)_82%,var(--accent)_18%)] p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="cardTitle text-xl font-bold sm:text-2xl">{t("nav_search", language)}</h1>
+            <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">{language === "bg" ? "ДЪЛБОКО ТЪРСЕНЕ" : "DEEP SEARCH WORKSPACE"}</p>
+            <h1 className="cardTitle mt-1 text-xl font-bold sm:text-2xl">{t("nav_search", language)}</h1>
             <p className="mt-1 text-sm text-[var(--muted)]">
               {hasActiveQuery
-                ? (language === "bg" ? "Резултати за текущата заявка" : "Results for your current query")
-                : (language === "bg" ? "Откривай, улавяй и запазвай музика по-бързо" : "Discover, capture, and save music faster")}
+                ? (language === "bg" ? "Разгледай пълните резултати и действай директно от тях." : "Inspect full results and take actions directly from them.")
+                : (language === "bg" ? "Място за по-сериозно търсене и продължаване на откриването." : "A focused place for deeper search and continued discovery.")}
             </p>
           </div>
           {hasActiveQuery ? (
             <span className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-xs text-[var(--muted)]">
               <Search className="h-3.5 w-3.5" />
-              {language === "bg" ? `Търсене: ${debouncedQuery}` : `Searching: ${debouncedQuery}`}
+              {language === "bg" ? `Активна заявка: ${debouncedQuery}` : `Active query: ${debouncedQuery}`}
             </span>
           ) : null}
         </div>
@@ -280,8 +252,8 @@ export default function SearchPage() {
             trigger={(
               <SearchInput
                 value={query}
-                onChange={setQuery}
-                onClear={() => setQuery("")}
+                onChange={setQueryAndSyncUrl}
+                onClear={() => setQueryAndSyncUrl("")}
                 placeholder={t("search_placeholder", language)}
                 className="py-3"
                 onFocus={() => {
@@ -305,7 +277,7 @@ export default function SearchPage() {
                 <ul className="space-y-1">
                   {recentSearches.map((item) => (
                     <li key={item} className="dropdown-item flex items-center gap-2 rounded-lg px-2 py-2">
-                      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}><Clock className="w-4 h-4 text-[var(--muted)]" /><span className="truncate text-sm">{item}</span></button>
+                      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onMouseDown={(event) => event.preventDefault()} onClick={() => setQueryAndSyncUrl(item)}><Clock className="w-4 h-4 text-[var(--muted)]" /><span className="truncate text-sm">{item}</span></button>
                       <button type="button" className="rounded-full p-1 hover:bg-[var(--hover-bg)]" onMouseDown={(event) => event.preventDefault()} onClick={() => removeRecent(item)}><X className="w-3 h-3 text-[var(--muted)]" /></button>
                     </li>
                   ))}
@@ -316,41 +288,17 @@ export default function SearchPage() {
                 <p className="mb-2 inline-flex items-center gap-2 px-2 text-sm text-[var(--muted)]"><TrendingUp className="w-4 h-4 text-[var(--muted)]" />{t("search_suggested", language)}</p>
                 <div className="flex flex-wrap gap-2 px-2 pb-1">
                   {suggestedQueries.map((item) => (
-                    <button key={item} type="button" className="dropdown-item rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm" onMouseDown={(event) => event.preventDefault()} onClick={() => setQuery(item)}>{item}</button>
+                    <button key={item} type="button" className="dropdown-item rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-sm" onMouseDown={(event) => event.preventDefault()} onClick={() => setQueryAndSyncUrl(item)}>{item}</button>
                   ))}
                 </div>
               </>
             )}
           </SmartDropdown>
         </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <button type="button" onClick={() => setQuery("")} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
-            <Search className="mb-1.5 h-4 w-4 text-[var(--muted)]" />
-            <p className="text-sm font-medium">{language === "bg" ? "Търси песни" : "Search songs"}</p>
-          </button>
-          <button type="button" onClick={() => router.push("/?intent=recognize-audio")} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
-            <Mic className="mb-1.5 h-4 w-4 text-[var(--muted)]" />
-            <p className="text-sm font-medium">{language === "bg" ? "Разпознай аудио" : "Recognize audio"}</p>
-          </button>
-          <button type="button" onClick={() => router.push("/?intent=recognize-ocr")} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
-            <Upload className="mb-1.5 h-4 w-4 text-[var(--muted)]" />
-            <p className="text-sm font-medium">{language === "bg" ? "Качи screenshot" : "Upload screenshot"}</p>
-          </button>
-          <button type="button" onClick={() => router.push("/assistant")} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
-            <Sparkles className="mb-1.5 h-4 w-4 text-[var(--muted)]" />
-            <p className="text-sm font-medium">{language === "bg" ? "Отвори асистент" : "Open assistant"}</p>
-          </button>
-        </div>
       </header>
 
-      <div className="mt-4 app-tabs w-full max-w-full overflow-x-auto sm:w-auto">
-        <button type="button" className={`app-tab ${activeTab === "discover" ? "app-tab-active" : ""}`} onClick={() => setActiveTab("discover")}>{t("search_discover", language)}</button>
-        <button type="button" className={`app-tab ${activeTab === "history" ? "app-tab-active" : ""}`} onClick={() => setActiveTab("history")}>{t("search_history", language)}</button>
-      </div>
-
-      {activeTab === "discover" ? (
-        <div className="mt-4 space-y-4">
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-4">
           {isUnavailable && <p className="cardText inline-flex items-center gap-2"><WifiOff className="w-4 h-4 text-[var(--muted)]" />{t("search_unavailable", language)}</p>}
           {!isUnavailable && (query !== debouncedQuery || isLoading) && (
             <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-sm text-[var(--muted)]">
@@ -359,173 +307,8 @@ export default function SearchPage() {
           )}
 
           {!hasActiveQuery && (
-            <div className="space-y-4">
-              {recentSearches.length > 0 && (
-                <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <p className="inline-flex items-center gap-2 text-sm font-semibold"><Clock className="h-4 w-4 text-[var(--muted)]" />{t("search_recent", language)}</p>
-                    <button type="button" onClick={clearRecent} className="text-xs text-[var(--muted)] hover:text-[var(--text)]">{t("search_clear_recent", language)}</button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {recentSearches.slice(0, 8).map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        onClick={() => setQuery(item)}
-                        className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-sm transition hover:bg-[var(--hover-bg)]"
-                      >
-                        {item}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {recentCaptures.length > 0 && (
-                <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <p className="inline-flex items-center gap-2 text-sm font-semibold"><Library className="h-4 w-4 text-[var(--muted)]" />{language === "bg" ? "Скорошни находки" : "Recent captures"}</p>
-                    <button type="button" onClick={() => setActiveTab("history")} className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--text)]">
-                      {language === "bg" ? "Виж история" : "View history"}
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {recentCaptures.map((item) => {
-                      const canQueue = Boolean(item.title && item.artist);
-                      const favoriteKey = toSongKey({ title: item.title, artist: item.artist });
-                      return (
-                        <SongRow
-                          key={item.id}
-                          id={item.id}
-                          title={item.title ?? t("unknown_song", language)}
-                          artist={item.artist ?? "-"}
-                          artworkUrl={item.coverUrl}
-                          videoId={item.youtubeVideoId}
-                          onPlay={canQueue ? () => playNow({
-                            id: item.id,
-                            title: item.title ?? "",
-                            artist: item.artist ?? "",
-                            artistId: item.id,
-                            artworkUrl: item.coverUrl ?? "https://picsum.photos/seed/trackly-search/80",
-                            videoId: item.youtubeVideoId,
-                            query: `${item.title ?? ""} ${item.artist ?? ""}`,
-                            license: "COPYRIGHTED",
-                          }, "manual") : undefined}
-                          onFavorite={() => toggleFavorite(item.id, item.title, item.artist, item.coverUrl, item.youtubeVideoId)}
-                          isFavorite={favoritesSet.has(favoriteKey)}
-                          showMoreMenu
-                          playlists={playlists}
-                          onAddToPlaylist={(playlistId) =>
-                            addSongToPlaylist(playlistId, {
-                              title: item.title ?? "",
-                              artist: item.artist ?? "",
-                              coverUrl: item.coverUrl,
-                              videoId: item.youtubeVideoId,
-                            })
-                          }
-                        />
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-
-              {favoritesList.length > 0 && (
-                <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <p className="inline-flex items-center gap-2 text-sm font-semibold"><Library className="h-4 w-4 text-[var(--muted)]" />{language === "bg" ? "Любими песни" : "Favorite songs"}</p>
-                    <button type="button" onClick={() => router.push("/library?tab=favorites")} className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--text)]">
-                      {language === "bg" ? "Към любими" : "Open favorites"}
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {favoritesList.slice(0, 4).map((favorite) => {
-                      const [title, artist] = [favorite.title, favorite.artist];
-                      const id = favorite.key;
-                      return (
-                        <SongRow
-                          key={id}
-                          id={id}
-                          title={title}
-                          artist={artist}
-                          artworkUrl={favorite.artworkUrl}
-                          onPlay={() =>
-                            playNow({
-                              id,
-                              title,
-                              artist,
-                              artistId: `artist-${artist}`.toLowerCase().replace(/\s+/g, "-"),
-                              artworkUrl: favorite.artworkUrl ?? "https://picsum.photos/seed/trackly-search-favorite/80",
-                              query: `${title} ${artist}`,
-                              license: "COPYRIGHTED",
-                            }, "manual")
-                          }
-                          onFavorite={() => toggleFavorite(id, title, artist, favorite.artworkUrl)}
-                          isFavorite={favoritesSet.has(favorite.key)}
-                          showMoreMenu
-                          playlists={playlists}
-                          onAddToPlaylist={(playlistId) =>
-                            addSongToPlaylist(playlistId, {
-                              title,
-                              artist,
-                              coverUrl: favorite.artworkUrl,
-                            })
-                          }
-                        />
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-
-              <section className="space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                <div>
-                  <p className="inline-flex items-center gap-2 text-xs uppercase tracking-wider text-[var(--muted)]"><Camera className="h-3.5 w-3.5" />{t("search_from_home", language)}</p>
-                  <h2 className="mt-1 text-lg font-semibold">{homeBrowse.title}</h2>
-                  <p className="text-sm text-[var(--muted)]">{homeBrowse.description}</p>
-                </div>
-                <div className="space-y-2">
-                  {homeBrowse.tracks.slice(0, 5).map((track) => {
-                    const favoriteKey = toSongKey({ title: track.title, artist: track.artistName });
-                    return (
-                      <SongRow
-                        key={track.id}
-                        id={track.id}
-                        title={track.title}
-                        artist={track.artistName}
-                        artworkUrl={track.artworkUrl}
-                        videoId={track.youtubeVideoId}
-                        onPlay={() =>
-                          playNow({
-                            id: track.id,
-                            title: track.title,
-                            artist: track.artistName,
-                            artistId: track.artistId,
-                            artworkUrl: track.artworkUrl,
-                            videoId: track.youtubeVideoId,
-                            query: `${track.title} ${track.artistName}`,
-                            license: track.license,
-                          }, "manual")
-                        }
-                        onFavorite={() => toggleFavorite(track.id, track.title, track.artistName, track.artworkUrl, track.youtubeVideoId)}
-                        isFavorite={favoritesSet.has(favoriteKey)}
-                        showMoreMenu
-                        playlists={playlists}
-                        onAddToPlaylist={(playlistId) =>
-                          addSongToPlaylist(playlistId, {
-                            title: track.title,
-                            artist: track.artistName,
-                            coverUrl: track.artworkUrl,
-                            videoId: track.youtubeVideoId,
-                          })
-                        }
-                      />
-                    );
-                  })}
-                </div>
-              </section>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 text-center">
+              <p className="text-sm text-[var(--muted)]">{language === "bg" ? "Въведи заявка, за да отвориш пълния работен изглед с резултати." : "Type a query to open the full results workspace."}</p>
             </div>
           )}
 
@@ -628,20 +411,81 @@ export default function SearchPage() {
             </div>
           )}
         </div>
-      ) : (
-        <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-          <SearchInput value={historyQuery} onChange={setHistoryQuery} onClear={() => setHistoryQuery("")} placeholder={t("history_search_placeholder", language)} />
-          <div className="mt-4 space-y-2">
-            {historyResults.length === 0 && <p className="cardText">{t("history_empty", language)}</p>}
-            {historyResults.map((item) => (
-              <div key={item.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
-                <p className="font-medium">{item.song?.songName ?? t("unknown_song", language)}</p>
-                <p className="cardText text-sm">{item.song?.artist ?? "-"}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+
+        <aside className="space-y-4">
+          <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+            <p className="inline-flex items-center gap-2 text-sm font-semibold"><Library className="h-4 w-4 text-[var(--muted)]" />{language === "bg" ? "Скорошни находки" : "Recent captures"}</p>
+            <div className="mt-3 space-y-2">
+              {recentCaptures.length === 0 && <p className="text-sm text-[var(--muted)]">{t("history_empty", language)}</p>}
+              {recentCaptures.map((item) => {
+                const canQueue = Boolean(item.title && item.artist);
+                const favoriteKey = toSongKey({ title: item.title, artist: item.artist });
+                return (
+                  <SongRow
+                    key={item.id}
+                    id={item.id}
+                    title={item.title ?? t("unknown_song", language)}
+                    artist={item.artist ?? "-"}
+                    artworkUrl={item.coverUrl}
+                    videoId={item.youtubeVideoId}
+                    onPlay={canQueue ? () => playNow({
+                      id: item.id,
+                      title: item.title ?? "",
+                      artist: item.artist ?? "",
+                      artistId: item.id,
+                      artworkUrl: item.coverUrl ?? "https://picsum.photos/seed/trackly-search/80",
+                      videoId: item.youtubeVideoId,
+                      query: `${item.title ?? ""} ${item.artist ?? ""}`,
+                      license: "COPYRIGHTED",
+                    }, "manual") : undefined}
+                    onFavorite={() => toggleFavorite(item.id, item.title, item.artist, item.coverUrl, item.youtubeVideoId)}
+                    isFavorite={favoritesSet.has(favoriteKey)}
+                    showMoreMenu
+                    playlists={playlists}
+                    onAddToPlaylist={(playlistId) =>
+                      addSongToPlaylist(playlistId, {
+                        title: item.title ?? "",
+                        artist: item.artist ?? "",
+                        coverUrl: item.coverUrl,
+                        videoId: item.youtubeVideoId,
+                      })
+                    }
+                  />
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+            <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{language === "bg" ? "Инструменти за разпознаване" : "Recognition tools"}</p>
+            <div className="mt-3 grid grid-cols-1 gap-2">
+              <button type="button" onClick={() => router.push("/?intent=recognize-audio")} className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
+                <p className="inline-flex items-center gap-2 text-sm font-medium"><Mic className="h-4 w-4 text-[var(--muted)]" />{language === "bg" ? "Разпознай аудио" : "Recognize audio"}</p>
+              </button>
+              <button type="button" onClick={() => router.push("/?intent=recognize-ocr")} className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3 text-left transition hover:bg-[var(--hover-bg)]">
+                <p className="inline-flex items-center gap-2 text-sm font-medium"><Upload className="h-4 w-4 text-[var(--muted)]" />{language === "bg" ? "Качи screenshot" : "Upload screenshot"}</p>
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+            <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{language === "bg" ? "Съвпадения в историята" : "Matches in your history"}</p>
+            <div className="mt-3 space-y-2">
+              {historyResults.slice(0, 5).map((item) => (
+                <div key={item.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2">
+                  <p className="truncate text-sm font-medium">{item.song?.songName ?? t("unknown_song", language)}</p>
+                  <p className="truncate text-xs text-[var(--muted)]">{item.song?.artist ?? "-"}</p>
+                </div>
+              ))}
+              {historyResults.length === 0 && <p className="text-sm text-[var(--muted)]">{t("history_empty", language)}</p>}
+            </div>
+            <button type="button" onClick={() => router.push("/library?tab=history")} className="mt-3 inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--text)]">
+              {language === "bg" ? "Отвори пълната история" : "Open full history"}
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </section>
+        </aside>
+      </div>
     </section>
   );
 }
