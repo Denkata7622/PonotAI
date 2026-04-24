@@ -18,6 +18,7 @@ export default function AssistantFAB() {
   const [mounted, setMounted] = useState(false);
   const [bottom, setBottom] = useState("24px");
   const [isSongMenuOpen, setIsSongMenuOpen] = useState(false);
+  const [nowPlayingOpen, setNowPlayingOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -37,18 +38,25 @@ export default function AssistantFAB() {
       setIsSongMenuOpen(Boolean(customEvent.detail?.open));
     };
 
+    const handleNowPlayingVisibility = (event: Event) => {
+      const customEvent = event as CustomEvent<{ open?: boolean }>;
+      setNowPlayingOpen(Boolean(customEvent.detail?.open));
+    };
+
     updateBottomOffset();
     window.addEventListener("resize", updateBottomOffset);
     window.addEventListener("scroll", updateBottomOffset, { passive: true, capture: true });
     window.addEventListener("trackly-song-menu-toggle", handleSongMenuToggle as EventListener);
+    window.addEventListener("ponotai:now-playing-visibility", handleNowPlayingVisibility as EventListener);
     return () => {
       window.removeEventListener("resize", updateBottomOffset);
       window.removeEventListener("scroll", updateBottomOffset, true);
       window.removeEventListener("trackly-song-menu-toggle", handleSongMenuToggle as EventListener);
+      window.removeEventListener("ponotai:now-playing-visibility", handleNowPlayingVisibility as EventListener);
     };
   }, [pathname]);
 
-  if (!mounted || pathname === "/assistant") {
+  if (!mounted || pathname === "/assistant" || nowPlayingOpen) {
     return null;
   }
 
