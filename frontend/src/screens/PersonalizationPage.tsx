@@ -139,13 +139,16 @@ export default function PersonalizationPage() {
   const [packLifecycle, setPackLifecycle] = useState<MusicPackLifecycleResponse | null>(null);
   const [selectedTrackKeys, setSelectedTrackKeys] = useState<string[]>([]);
   const [tasteIdentitySummary, setTasteIdentitySummary] = useState<TasteIdentitySummaryResponse | null>(null);
-
-  const tasteProfile = useMemo(() => readTasteProfile(), []);
+  const [tasteProfile, setTasteProfile] = useState<ReturnType<typeof readTasteProfile>>(null);
   const tasteSnapshot = tasteProfile?.structured;
 
   const topGenres = tasteSnapshot?.genres ?? tasteProfile?.genres ?? [];
   const topMoods = tasteSnapshot?.moods ?? tasteProfile?.moods ?? [];
   const topContexts = tasteSnapshot?.contexts ?? tasteProfile?.goals ?? [];
+
+  useEffect(() => {
+    setTasteProfile(readTasteProfile());
+  }, []);
   const topArtists = useMemo(
     () => getTopCounts([...favorites.map((item) => item.artist ?? ""), ...history.map((item) => item.artist ?? "")], 3),
     [favorites, history],

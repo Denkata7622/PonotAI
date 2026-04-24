@@ -567,12 +567,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
       recognized: song.recognized ?? true,
       createdAt: song.createdAt ?? new Date().toISOString(),
     });
-    await addFavorite({
-      title: canonical.title,
-      artist: canonical.artist,
-      album: canonical.album,
-      coverUrl: canonical.coverUrl,
-    });
   }
 
   async function shareSong(song: { title: string; artist: string; album?: string; coverUrl?: string }) {

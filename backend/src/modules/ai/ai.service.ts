@@ -803,10 +803,11 @@ function getRepeatedArtistLimit(tolerance: "lower" | "normal" | "higher"): numbe
   return 2;
 }
 
-function ensureDistinct(values: string[] = [], limit = 8): string[] {
+function ensureDistinct(values: unknown[] = [], limit = 8): string[] {
   const seen = new Set<string>();
   const output: string[] = [];
   for (const value of values) {
+    if (typeof value !== "string") continue;
     const trimmed = value.trim();
     if (!trimmed) continue;
     const key = normalizeName(trimmed);

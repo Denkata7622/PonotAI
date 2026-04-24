@@ -92,10 +92,6 @@ export default function BottomPlayBar() {
 
   return (
     <>
-      <div className="pointer-events-none fixed -left-[9999px] top-0 h-px w-px overflow-hidden" aria-hidden>
-        <div id="ponotai-yt-player" className="h-full w-full" />
-      </div>
-
       {isNowPlayingOpen && (
         <button
           className="fixed inset-0 z-[55] bg-black/55"
@@ -138,11 +134,7 @@ export default function BottomPlayBar() {
           </div>
 
           <div className="mx-auto w-full max-w-sm overflow-hidden rounded-2xl border border-border bg-[var(--surface-raised)] shadow-sm">
-            {currentTrack.artworkUrl ? (
-              <img src={currentTrack.artworkUrl} alt={isBg ? "Обложка" : "Artwork"} className="aspect-square w-full object-cover" />
-            ) : (
-              <div className="aspect-square w-full bg-gradient-to-br from-[var(--surface-raised)] to-[var(--surface)]" />
-            )}
+            <div className="aspect-video w-full bg-black" />
           </div>
 
           <div className="mt-5 min-w-0 text-center">
@@ -206,6 +198,9 @@ export default function BottomPlayBar() {
               ) : (
                 <div className="h-11 w-11 shrink-0 rounded-lg bg-[var(--surface)]" />
               )}
+              <div className="h-11 w-20 overflow-hidden rounded-lg border border-border bg-black">
+                <div id="ponotai-yt-player" className="h-full w-full" />
+              </div>
               <button type="button" onClick={() => setIsNowPlayingOpen(true)} className="min-w-0 flex-1 text-left">
                 <p className="truncate text-sm font-semibold text-[var(--text)]">{currentTrack.title}</p>
                 <p className="truncate text-xs text-text-muted">{currentTrack.artist}</p>
