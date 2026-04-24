@@ -20,6 +20,7 @@ import SearchResultActions from "./SearchResultActions";
 import { addSongToPlaylist as addSongToPlaylistApi } from "../features/library/api";
 import { formatArtist } from "../lib/formatArtist";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
+import NowPlayingWorkspace from "./player/NowPlayingWorkspace";
 import { runUnifiedSearch, type PersonalizedSearchResult } from "../lib/searchClient";
 import { toSongKey } from "../lib/songIdentity";
 
@@ -77,7 +78,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const { addToQueue, playNow, currentTrack } = usePlayer();
+  const { addToQueue, playNow, currentTrack, currentVideoId } = usePlayer();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -89,11 +90,13 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<"queue" | "assistant" | "context">("queue");
   const [todayIsoDate, setTodayIsoDate] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const blurTimeoutRef = useRef<number | null>(null);
   const mobileNavRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const expandedVideoHostRef = useRef<HTMLDivElement | null>(null);
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
 
   useEffect(() => {
@@ -115,19 +118,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
-    const handleNowPlayingVisibility = (event: Event) => {
-      const customEvent = event as CustomEvent<{ open?: boolean }>;
-      const open = Boolean(customEvent.detail?.open);
-      setIsNowPlayingOpen(open);
-      if (open) {
-        setShowMobileMenu(false);
-      }
-    };
-    window.addEventListener("ponotai:now-playing-visibility", handleNowPlayingVisibility as EventListener);
-    return () => {
-      window.removeEventListener("ponotai:now-playing-visibility", handleNowPlayingVisibility as EventListener);
-    };
-  }, []);
+    if (isNowPlayingOpen) setShowMobileMenu(false);
+  }, [isNowPlayingOpen]);
 
   useEffect(() => {
     const updateMobileNavHeight = () => {
@@ -784,7 +776,15 @@ function AppShellContent({ children }: { children: ReactNode }) {
               </div>
             </div>
           ) : null}
-          {children}
+          {isNowPlayingOpen && currentTrack && currentVideoId ? (
+            <NowPlayingWorkspace
+              isOpen={isNowPlayingOpen}
+              workspaceTab={workspaceTab}
+              onWorkspaceTabChange={setWorkspaceTab}
+              onClose={() => setIsNowPlayingOpen(false)}
+              expandedVideoHostRef={expandedVideoHostRef}
+            />
+          ) : children}
           </div>
         </main>
       </div>
@@ -831,7 +831,12 @@ function AppShellContent({ children }: { children: ReactNode }) {
         ) : null}
       </nav>
       <DualSidebarHost />
-      <BottomPlayBar />
+      <BottomPlayBar
+        isNowPlayingOpen={isNowPlayingOpen}
+        onNowPlayingOpenChange={setIsNowPlayingOpen}
+        onWorkspaceTabChange={setWorkspaceTab}
+        expandedVideoHostRef={expandedVideoHostRef}
+      />
     </>
   );
 }
