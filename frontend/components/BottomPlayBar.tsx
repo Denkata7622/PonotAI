@@ -15,9 +15,10 @@ type BottomPlayBarProps = {
   onNowPlayingOpenChange: (open: boolean) => void;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   expandedVideoHostRef: RefObject<HTMLDivElement | null>;
+  onDockMetricsChange: (metrics: { top: number; left: number; width: number; height: number }) => void;
 };
 
-export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowPlayingOpenChange, onWorkspaceTabChange, expandedVideoHostRef }: BottomPlayBarProps) {
+export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowPlayingOpenChange, onWorkspaceTabChange, expandedVideoHostRef, onDockMetricsChange }: BottomPlayBarProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -54,8 +55,12 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
 
   useEffect(() => {
     const updatePlayerBarHeight = () => {
-      const height = playerBarRef.current?.getBoundingClientRect().height ?? 0;
+      const rect = playerBarRef.current?.getBoundingClientRect();
+      const height = rect?.height ?? 0;
       document.documentElement.style.setProperty("--player-bar-height", `${Math.round(height)}px`);
+      if (rect) {
+        onDockMetricsChange({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+      }
     };
 
     updatePlayerBarHeight();
@@ -68,7 +73,7 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
       observer.disconnect();
       document.documentElement.style.setProperty("--player-bar-height", "88px");
     };
-  }, []);
+  }, [onDockMetricsChange]);
 
   useEffect(() => {
     if (!currentTrack || !currentVideoId) return;

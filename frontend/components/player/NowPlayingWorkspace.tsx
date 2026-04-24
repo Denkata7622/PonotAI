@@ -13,13 +13,14 @@ type WorkspaceTab = "queue" | "assistant" | "context";
 type NowPlayingWorkspaceProps = {
   isOpen: boolean;
   phase: "closed" | "mounted-from-dock" | "opening" | "open" | "closing";
+  dockOrigin: { scaleX: number; scaleY: number; translateX: number; translateY: number } | null;
   workspaceTab: WorkspaceTab;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   onClose: () => void;
   expandedVideoHostRef: RefObject<HTMLDivElement | null>;
 };
 
-export default function NowPlayingWorkspace({ isOpen, phase, workspaceTab, onWorkspaceTabChange, onClose, expandedVideoHostRef }: NowPlayingWorkspaceProps) {
+export default function NowPlayingWorkspace({ isOpen, phase, dockOrigin, workspaceTab, onWorkspaceTabChange, onClose, expandedVideoHostRef }: NowPlayingWorkspaceProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const {
@@ -48,17 +49,15 @@ export default function NowPlayingWorkspace({ isOpen, phase, workspaceTab, onWor
 
   if (!isOpen || !currentTrack || !currentVideoId) return null;
 
-  const motionClass = phase === "open"
-    ? "translate-y-0 scale-y-100 opacity-100"
-    : phase === "mounted-from-dock"
-      ? "translate-y-full scale-y-[0.12] opacity-100"
-    : phase === "opening"
-      ? "translate-y-0 scale-y-100 opacity-100"
-      : "translate-y-full scale-y-[0.12] opacity-100";
+  const collapsedTransform = dockOrigin
+    ? `translate3d(${dockOrigin.translateX}px, ${dockOrigin.translateY}px, 0) scale3d(${dockOrigin.scaleX}, ${dockOrigin.scaleY}, 1)`
+    : "translate3d(0, 100%, 0) scale3d(1, 0.12, 1)";
+  const transformStyle = phase === "open" || phase === "opening" ? "translate3d(0,0,0) scale3d(1,1,1)" : collapsedTransform;
 
   return (
     <section
-      className={`flex h-full min-h-0 flex-1 origin-bottom flex-col overflow-hidden rounded-2xl bg-[var(--surface)] transition-[transform,opacity] duration-[260ms] ease-[cubic-bezier(0.22,0.61,0.36,1)] ${motionClass}`}
+      className="flex h-full min-h-0 flex-1 origin-bottom flex-col overflow-hidden rounded-2xl bg-[var(--surface)] transition-transform duration-[260ms] ease-[cubic-bezier(0.22,0.61,0.36,1)]"
+      style={{ transform: transformStyle }}
       aria-label={isBg ? "Разширен плейър" : "Expanded now playing workspace"}
     >
       <div className="flex items-center justify-between px-4 py-3 md:px-6">
