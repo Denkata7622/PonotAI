@@ -90,28 +90,10 @@ export default function BottomPlayBar() {
   }, [isNowPlayingOpen]);
 
   useEffect(() => {
-    if (isNowPlayingOpen && (sidebarState.open.queue || sidebarState.open.assistant)) {
-      closePanel("queue");
-      closePanel("assistant");
+    if (!currentTrack || !currentVideoId) {
+      setIsNowPlayingOpen(false);
     }
-  }, [closePanel, isNowPlayingOpen, sidebarState.open.assistant, sidebarState.open.queue]);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    if (!youtubeMountRef.current) {
-      const mount = document.createElement("div");
-      mount.id = "ponotai-yt-player";
-      mount.className = "h-full w-full";
-      youtubeMountRef.current = mount;
-    }
-
-    const target = isNowPlayingOpen ? expandedVideoHostRef.current : collapsedVideoHostRef.current;
-    const mount = youtubeMountRef.current;
-    if (target && mount && target.firstChild !== mount) {
-      target.innerHTML = "";
-      target.appendChild(mount);
-    }
-  }, [isNowPlayingOpen, currentVideoId]);
+  }, [currentTrack, currentVideoId]);
 
   function toggleMute() {
     if (volume === 0) {
@@ -148,6 +130,14 @@ export default function BottomPlayBar() {
 
   return (
     <>
+      {isNowPlayingOpen && currentTrack && currentVideoId && (
+        <button
+          className="fixed inset-0 z-[55] bg-black/55"
+          aria-label={isBg ? "Затвори изгледа" : "Close now playing"}
+          onClick={() => setIsNowPlayingOpen(false)}
+        />
+      )}
+
       {isShortcutsOpen && (
         <div className="fixed inset-0 z-[70] bg-black/60" onClick={() => setIsShortcutsOpen(false)}>
           <div className="mx-auto mt-24 w-[92%] max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5" onClick={(event) => event.stopPropagation()}>
