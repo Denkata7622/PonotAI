@@ -81,6 +81,12 @@ export default function BottomPlayBar() {
     };
   }, [isNowPlayingOpen]);
 
+  useEffect(() => {
+    if (!currentTrack || !currentVideoId) {
+      setIsNowPlayingOpen(false);
+    }
+  }, [currentTrack, currentVideoId]);
+
   function toggleMute() {
     if (volume === 0) {
       setVolume(lastVolume || 70);
@@ -92,7 +98,7 @@ export default function BottomPlayBar() {
 
   return (
     <>
-      {isNowPlayingOpen && (
+      {isNowPlayingOpen && currentTrack && currentVideoId && (
         <button
           className="fixed inset-0 z-[55] bg-black/55"
           aria-label={isBg ? "Затвори изгледа" : "Close now playing"}

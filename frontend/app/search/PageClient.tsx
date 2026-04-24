@@ -76,15 +76,14 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const queryFromParams = new URLSearchParams(window.location.search).get("q")?.trim() ?? "";
-    if (queryFromParams && queryFromParams !== query) {
-      setQuery(queryFromParams);
-      return;
-    }
-    if (!queryFromParams && query) {
-      setQuery("");
-    }
-  }, [query]);
+    const syncFromLocation = () => {
+      const queryFromParams = new URLSearchParams(window.location.search).get("q")?.trim() ?? "";
+      setQuery((prev) => (prev === queryFromParams ? prev : queryFromParams));
+    };
+    syncFromLocation();
+    window.addEventListener("popstate", syncFromLocation);
+    return () => window.removeEventListener("popstate", syncFromLocation);
+  }, []);
 
   useEffect(() => {
     if (!query.trim()) {
