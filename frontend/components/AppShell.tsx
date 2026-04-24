@@ -68,7 +68,6 @@ const MOBILE_PRIMARY_NAV = [
 ] as const;
 
 function AppShellContent({ children }: { children: ReactNode }) {
-  type DockMetrics = { top: number; left: number; width: number; height: number };
   const pathname = usePathname();
   const router = useRouter();
   const { language } = useLanguage();
@@ -91,7 +90,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false);
-  const [workspacePhase, setWorkspacePhase] = useState<"closed" | "mounted-from-dock" | "opening" | "open" | "closing">("closed");
+  const [workspacePhase, setWorkspacePhase] = useState<"closed" | "opening" | "open" | "closing">("closed");
   const [workspaceTab, setWorkspaceTab] = useState<"queue" | "assistant" | "context">("queue");
   const [todayIsoDate, setTodayIsoDate] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -99,12 +98,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const mobileNavRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const expandedVideoHostRef = useRef<HTMLDivElement | null>(null);
-  const workspaceHostRef = useRef<HTMLDivElement | null>(null);
   const workspaceTransitionTimerRef = useRef<number | null>(null);
-  const workspaceOpenRafRef = useRef<number | null>(null);
-  const workspaceOpenRaf2Ref = useRef<number | null>(null);
-  const [dockMetrics, setDockMetrics] = useState<DockMetrics | null>(null);
-  const [workspaceHostMetrics, setWorkspaceHostMetrics] = useState<DOMRect | null>(null);
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
 
   useEffect(() => {
@@ -133,22 +127,6 @@ function AppShellContent({ children }: { children: ReactNode }) {
     if (workspaceTransitionTimerRef.current) {
       window.clearTimeout(workspaceTransitionTimerRef.current);
     }
-    if (workspaceOpenRafRef.current) {
-      window.cancelAnimationFrame(workspaceOpenRafRef.current);
-    }
-    if (workspaceOpenRaf2Ref.current) {
-      window.cancelAnimationFrame(workspaceOpenRaf2Ref.current);
-    }
-  }, []);
-
-  useEffect(() => {
-    const measureHost = () => {
-      if (!workspaceHostRef.current) return;
-      setWorkspaceHostMetrics(workspaceHostRef.current.getBoundingClientRect());
-    };
-    measureHost();
-    window.addEventListener("resize", measureHost);
-    return () => window.removeEventListener("resize", measureHost);
   }, []);
 
   useEffect(() => {
@@ -163,45 +141,20 @@ function AppShellContent({ children }: { children: ReactNode }) {
       window.clearTimeout(workspaceTransitionTimerRef.current);
       workspaceTransitionTimerRef.current = null;
     }
-    if (workspaceOpenRafRef.current) {
-      window.cancelAnimationFrame(workspaceOpenRafRef.current);
-      workspaceOpenRafRef.current = null;
-    }
-    if (workspaceOpenRaf2Ref.current) {
-      window.cancelAnimationFrame(workspaceOpenRaf2Ref.current);
-      workspaceOpenRaf2Ref.current = null;
-    }
 
     if (isNowPlayingOpen) {
       if (workspacePhase === "closed" || workspacePhase === "closing") {
-        setWorkspacePhase("mounted-from-dock");
-        workspaceOpenRafRef.current = window.requestAnimationFrame(() => {
-          workspaceOpenRaf2Ref.current = window.requestAnimationFrame(() => {
-            setWorkspacePhase("opening");
-            workspaceTransitionTimerRef.current = window.setTimeout(() => setWorkspacePhase("open"), 260);
-          });
-        });
+        setWorkspacePhase("opening");
+        workspaceTransitionTimerRef.current = window.setTimeout(() => setWorkspacePhase("open"), 220);
       }
       return;
     }
 
-    if (workspacePhase === "open" || workspacePhase === "opening" || workspacePhase === "mounted-from-dock") {
+    if (workspacePhase === "open" || workspacePhase === "opening") {
       setWorkspacePhase("closing");
-      workspaceTransitionTimerRef.current = window.setTimeout(() => setWorkspacePhase("closed"), 260);
+      workspaceTransitionTimerRef.current = window.setTimeout(() => setWorkspacePhase("closed"), 220);
     }
   }, [currentTrack, currentVideoId, isNowPlayingOpen, workspacePhase]);
-
-  const dockOrigin = useMemo(() => {
-    if (!dockMetrics || !workspaceHostMetrics) return null;
-    const host = workspaceHostMetrics;
-    if (host.width <= 0 || host.height <= 0) return null;
-
-    const scaleX = Math.min(1, Math.max(0.1, dockMetrics.width / host.width));
-    const scaleY = Math.min(1, Math.max(0.08, dockMetrics.height / host.height));
-    const translateX = dockMetrics.left - host.left - (host.width * (1 - scaleX)) / 2;
-    const translateY = dockMetrics.top - (host.top + host.height * (1 - scaleY));
-    return { scaleX, scaleY, translateX, translateY };
-  }, [dockMetrics, workspaceHostMetrics]);
 
   useEffect(() => {
     const updateMobileNavHeight = () => {
@@ -858,23 +811,10 @@ function AppShellContent({ children }: { children: ReactNode }) {
               </div>
             </div>
           ) : null}
-          <div ref={workspaceHostRef} className="relative flex min-h-0 flex-1 overflow-hidden">
-            <div className={`min-h-0 w-full flex-1 transition-opacity duration-200 ${workspacePhase === "closed" ? "opacity-100" : "opacity-0 pointer-events-none select-none"}`}>
+          <div className="relative flex min-h-0 flex-1 overflow-hidden">
+            <div className="min-h-0 w-full flex-1">
               {children}
             </div>
-            {workspacePhase !== "closed" && currentTrack && currentVideoId ? (
-              <div className="absolute inset-0 h-full min-h-0 overflow-hidden">
-                <NowPlayingWorkspace
-                  isOpen
-                  phase={workspacePhase}
-                  dockOrigin={dockOrigin}
-                  workspaceTab={workspaceTab}
-                  onWorkspaceTabChange={setWorkspaceTab}
-                  onClose={() => setIsNowPlayingOpen(false)}
-                  expandedVideoHostRef={expandedVideoHostRef}
-                />
-              </div>
-            ) : null}
           </div>
           </div>
         </main>
@@ -882,7 +822,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
       {showMobileMenu ? <button type="button" className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setShowMobileMenu(false)} aria-label={t("mobile_close_menu", language)} /> : null}
       <nav
         ref={mobileNavRef}
-        className={`fixed bottom-[calc(var(--player-bar-height,88px)+env(safe-area-inset-bottom,0px)+8px)] left-2 right-2 z-[45] rounded-2xl border border-border bg-surface/95 p-1.5 shadow-xl backdrop-blur transition-all duration-200 md:hidden ${isNowPlayingOpen ? "pointer-events-none translate-y-4 opacity-0" : "opacity-100"}`}
+        className={`fixed bottom-[calc(var(--player-bar-height,88px)+env(safe-area-inset-bottom,0px)+8px)] left-2 right-2 z-[45] rounded-2xl border border-border bg-surface/95 p-1.5 shadow-xl backdrop-blur transition-all duration-200 md:hidden ${workspacePhase !== "closed" ? "pointer-events-none translate-y-4 opacity-0" : "opacity-100"}`}
       >
         <div className="grid h-16 grid-cols-5 gap-1">
         {MOBILE_PRIMARY_NAV.map((item) => (
@@ -922,13 +862,24 @@ function AppShellContent({ children }: { children: ReactNode }) {
         ) : null}
       </nav>
       <DualSidebarHost />
+      {workspacePhase !== "closed" && currentTrack && currentVideoId ? (
+        <div className="fixed inset-x-0 top-0 bottom-[var(--player-bar-height,88px)] z-[60]">
+          <NowPlayingWorkspace
+            isOpen
+            phase={workspacePhase}
+            workspaceTab={workspaceTab}
+            onWorkspaceTabChange={setWorkspaceTab}
+            onClose={() => setIsNowPlayingOpen(false)}
+            expandedVideoHostRef={expandedVideoHostRef}
+          />
+        </div>
+      ) : null}
       <BottomPlayBar
         isNowPlayingOpen={isNowPlayingOpen}
         workspacePhase={workspacePhase}
         onNowPlayingOpenChange={setIsNowPlayingOpen}
         onWorkspaceTabChange={setWorkspaceTab}
         expandedVideoHostRef={expandedVideoHostRef}
-        onDockMetricsChange={setDockMetrics}
       />
     </>
   );
