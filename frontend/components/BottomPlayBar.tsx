@@ -5,22 +5,23 @@ import { ChevronDown, Keyboard, ListMusic, Pause, Play, RotateCcw, SkipBack, Ski
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
-import { formatPlayerTime, getRepeatModeLabel, toggleMuteWithMemory } from "./player/playerUiUtils";
+import { formatPlayerTime, getRepeatModeLabel, useVolumeUi } from "./player/playerUiUtils";
 
 type WorkspaceTab = "queue" | "assistant" | "context";
 
 type BottomPlayBarProps = {
   isNowPlayingOpen: boolean;
+  workspacePhase: "closed" | "mounted-from-dock" | "opening" | "open" | "closing";
   onNowPlayingOpenChange: (open: boolean) => void;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   expandedVideoHostRef: RefObject<HTMLDivElement | null>;
+  onDockMetricsChange: (metrics: { top: number; left: number; width: number; height: number }) => void;
 };
 
-export default function BottomPlayBar({ isNowPlayingOpen, onNowPlayingOpenChange, onWorkspaceTabChange, expandedVideoHostRef }: BottomPlayBarProps) {
+export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowPlayingOpenChange, onWorkspaceTabChange, expandedVideoHostRef, onDockMetricsChange }: BottomPlayBarProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
-  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const playerBarRef = useRef<HTMLDivElement | null>(null);
   const collapsedVideoHostRef = useRef<HTMLDivElement | null>(null);
   const youtubeMountRef = useRef<HTMLDivElement | null>(null);
@@ -47,14 +48,19 @@ export default function BottomPlayBar({ isNowPlayingOpen, onNowPlayingOpenChange
 
   const progress = useMemo(() => (duration ? Math.min(100, (currentTime / duration) * 100) : 0), [currentTime, duration]);
   const repeatLabel = getRepeatModeLabel(repeatMode, isBg);
+  const { isVolumePanelOpen, setIsVolumePanelOpen, toggleMute, updateVolume } = useVolumeUi(volume, setVolume);
   const youtubeSearchUrl = currentTrack
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
     : "#";
 
   useEffect(() => {
     const updatePlayerBarHeight = () => {
-      const height = playerBarRef.current?.getBoundingClientRect().height ?? 0;
+      const rect = playerBarRef.current?.getBoundingClientRect();
+      const height = rect?.height ?? 0;
       document.documentElement.style.setProperty("--player-bar-height", `${Math.round(height)}px`);
+      if (rect) {
+        onDockMetricsChange({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+      }
     };
 
     updatePlayerBarHeight();
@@ -67,7 +73,7 @@ export default function BottomPlayBar({ isNowPlayingOpen, onNowPlayingOpenChange
       observer.disconnect();
       document.documentElement.style.setProperty("--player-bar-height", "88px");
     };
-  }, []);
+  }, [onDockMetricsChange]);
 
   useEffect(() => {
     if (!currentTrack || !currentVideoId) return;
@@ -81,15 +87,6 @@ export default function BottomPlayBar({ isNowPlayingOpen, onNowPlayingOpenChange
       target.appendChild(youtubeMountRef.current);
     }
   }, [currentTrack, currentVideoId, isNowPlayingOpen, expandedVideoHostRef]);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    document.documentElement.dataset.nowPlayingOpen = isNowPlayingOpen ? "true" : "false";
-    window.dispatchEvent(new CustomEvent("ponotai:now-playing-visibility", { detail: { open: isNowPlayingOpen } }));
-    return () => {
-      document.documentElement.dataset.nowPlayingOpen = "false";
-    };
-  }, [isNowPlayingOpen, onNowPlayingOpenChange]);
 
   useEffect(() => {
     if (!currentTrack || !currentVideoId) {
@@ -120,12 +117,19 @@ export default function BottomPlayBar({ isNowPlayingOpen, onNowPlayingOpenChange
 
   const sharedVolumeSlider = (
     <div className="absolute bottom-[calc(100%+8px)] right-0 z-[72] rounded-xl border border-border bg-[var(--surface)] p-3 shadow-xl">
+      <button
+        type="button"
+        onClick={toggleMute}
+        className="mb-2 w-full rounded-lg bg-[var(--surface-subtle)] px-2 py-1 text-xs text-[var(--text)]"
+      >
+        {volume === 0 ? (isBg ? "Включи звук" : "Unmute") : (isBg ? "Изключи звук" : "Mute")}
+      </button>
       <input
         type="range"
         min={0}
         max={100}
         value={volume}
-        onChange={(event) => setVolume(Number(event.target.value))}
+        onChange={(event) => updateVolume(Number(event.target.value))}
         className="h-28 w-8 accent-[var(--accent)]"
         aria-label={isBg ? "Сила на звука" : "Volume"}
       />
@@ -163,7 +167,7 @@ export default function BottomPlayBar({ isNowPlayingOpen, onNowPlayingOpenChange
       <div
         ref={playerBarRef}
         data-player-bar
-        className={`fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 backdrop-blur-xl transition-[border-color,box-shadow] duration-300 sm:px-4 ${isNowPlayingOpen ? "border-[var(--accent-soft)] shadow-[0_-10px_26px_rgba(0,0,0,0.2)]" : ""}`}
+        className={`fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 backdrop-blur-xl transition-[border-color,box-shadow,transform] duration-300 sm:px-4 ${workspacePhase === "open" || workspacePhase === "opening" || workspacePhase === "mounted-from-dock" ? "border-[var(--accent-soft)] shadow-[0_-10px_26px_rgba(0,0,0,0.2)] -translate-y-[2px]" : ""}`}
       >
         <div className="mx-auto max-w-7xl">
           {!currentTrack || !currentVideoId ? (
@@ -202,9 +206,9 @@ export default function BottomPlayBar({ isNowPlayingOpen, onNowPlayingOpenChange
                   <button onClick={cycleRepeatMode} className={`grid h-9 w-9 place-items-center rounded-full ${repeatMode === "normal" ? "bg-[var(--surface-subtle)] text-[var(--muted)]" : "bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel}><RotateCcw className="h-4 w-4" /></button>
                   <button data-testid="queue-toggle-dock" onClick={handleQueueClick} className="relative grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Queue"><ListMusic className="h-4 w-4 text-[var(--text)]" />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
                   <button onClick={handleAssistantClick} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="AI assistant"><Sparkles className="h-4 w-4 text-[var(--text)]" /></button>
-                  <div className="relative" onMouseEnter={() => setShowVolumeSlider(true)} onMouseLeave={() => setShowVolumeSlider(false)}>
-                    <button onClick={() => toggleMuteWithMemory(volume, setVolume)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface)]" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
-                    {showVolumeSlider ? sharedVolumeSlider : null}
+                  <div className="relative">
+                    <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? "Сила на звука" : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
+                    {isVolumePanelOpen ? sharedVolumeSlider : null}
                   </div>
                   <button onClick={() => onNowPlayingOpenChange(true)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Разгъни" : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
                 </div>
@@ -239,8 +243,8 @@ export default function BottomPlayBar({ isNowPlayingOpen, onNowPlayingOpenChange
                   <button onClick={handleQueueClick} className="relative grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Queue"><ListMusic className="h-4 w-4 text-[var(--text)]" />{queue.length > 0 ? <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
                   <button onClick={handleAssistantClick} className="grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="AI assistant"><Sparkles className="h-4 w-4 text-[var(--text)]" /></button>
                   <div className="relative">
-                    <button onClick={() => { toggleMuteWithMemory(volume, setVolume); setShowVolumeSlider((prev) => !prev); }} className="grid h-10 w-full place-items-center rounded-full bg-[var(--surface)]" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
-                    {showVolumeSlider ? sharedVolumeSlider : null}
+                    <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-10 w-full place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? "Сила на звука" : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
+                    {isVolumePanelOpen ? sharedVolumeSlider : null}
                   </div>
                   <button onClick={() => onNowPlayingOpenChange(true)} className="grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Разгъни" : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
                 </div>

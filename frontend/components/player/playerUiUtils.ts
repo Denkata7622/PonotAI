@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
 export function formatPlayerTime(seconds: number) {
   const safe = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
   const minutes = Math.floor(safe / 60).toString().padStart(2, "0");
@@ -11,13 +13,36 @@ export function getRepeatModeLabel(repeatMode: "normal" | "queue" | "track", isB
   return isBg ? "Повтаряне на песента" : "Repeat track";
 }
 
-let rememberedVolume = 70;
+export function useVolumeUi(volume: number, setVolume: (value: number) => void) {
+  const [isVolumePanelOpen, setIsVolumePanelOpen] = useState(false);
+  const lastVolumeRef = useRef(70);
 
-export function toggleMuteWithMemory(volume: number, setVolume: (value: number) => void) {
-  if (volume === 0) {
-    setVolume(rememberedVolume || 70);
-    return;
-  }
-  rememberedVolume = volume;
-  setVolume(0);
+  useEffect(() => {
+    if (volume > 0) {
+      lastVolumeRef.current = volume;
+    }
+  }, [volume]);
+
+  const toggleMute = useCallback(() => {
+    if (volume === 0) {
+      setVolume(lastVolumeRef.current || 70);
+      return;
+    }
+    lastVolumeRef.current = volume;
+    setVolume(0);
+  }, [setVolume, volume]);
+
+  const updateVolume = useCallback((value: number) => {
+    if (value > 0) {
+      lastVolumeRef.current = value;
+    }
+    setVolume(value);
+  }, [setVolume]);
+
+  return {
+    isVolumePanelOpen,
+    setIsVolumePanelOpen,
+    toggleMute,
+    updateVolume,
+  };
 }

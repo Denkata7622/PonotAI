@@ -1,27 +1,28 @@
 "use client";
 
-import { useMemo, useState, type RefObject } from "react";
+import { useMemo, type RefObject } from "react";
 import { ChevronDown, Keyboard, ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { useLanguage } from "../../lib/LanguageContext";
 import { usePlayer } from "../PlayerProvider";
 import QueuePanel from "@/src/components/player/QueuePanel";
 import MusicAssistantPage from "@/src/features/assistant/components/MusicAssistantPage";
-import { formatPlayerTime, getRepeatModeLabel, toggleMuteWithMemory } from "./playerUiUtils";
+import { formatPlayerTime, getRepeatModeLabel, useVolumeUi } from "./playerUiUtils";
 
 type WorkspaceTab = "queue" | "assistant" | "context";
 
 type NowPlayingWorkspaceProps = {
   isOpen: boolean;
+  phase: "closed" | "mounted-from-dock" | "opening" | "open" | "closing";
+  dockOrigin: { scaleX: number; scaleY: number; translateX: number; translateY: number } | null;
   workspaceTab: WorkspaceTab;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   onClose: () => void;
   expandedVideoHostRef: RefObject<HTMLDivElement | null>;
 };
 
-export default function NowPlayingWorkspace({ isOpen, workspaceTab, onWorkspaceTabChange, onClose, expandedVideoHostRef }: NowPlayingWorkspaceProps) {
+export default function NowPlayingWorkspace({ isOpen, phase, dockOrigin, workspaceTab, onWorkspaceTabChange, onClose, expandedVideoHostRef }: NowPlayingWorkspaceProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
-  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const {
     currentTrack,
     currentVideoId,
@@ -41,14 +42,24 @@ export default function NowPlayingWorkspace({ isOpen, workspaceTab, onWorkspaceT
 
   const progress = useMemo(() => (duration ? Math.min(100, (currentTime / duration) * 100) : 0), [currentTime, duration]);
   const repeatLabel = getRepeatModeLabel(repeatMode, isBg);
+  const { isVolumePanelOpen, setIsVolumePanelOpen, toggleMute, updateVolume } = useVolumeUi(volume, setVolume);
   const youtubeSearchUrl = currentTrack
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
     : "#";
 
   if (!isOpen || !currentTrack || !currentVideoId) return null;
 
+  const collapsedTransform = dockOrigin
+    ? `translate3d(${dockOrigin.translateX}px, ${dockOrigin.translateY}px, 0) scale3d(${dockOrigin.scaleX}, ${dockOrigin.scaleY}, 1)`
+    : "translate3d(0, 100%, 0) scale3d(1, 0.12, 1)";
+  const transformStyle = phase === "open" || phase === "opening" ? "translate3d(0,0,0) scale3d(1,1,1)" : collapsedTransform;
+
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-2xl bg-[var(--surface)]" aria-label={isBg ? "Разширен плейър" : "Expanded now playing workspace"}>
+    <section
+      className="flex h-full min-h-0 flex-1 origin-bottom flex-col overflow-hidden rounded-2xl bg-[var(--surface)] transition-transform duration-[260ms] ease-[cubic-bezier(0.22,0.61,0.36,1)]"
+      style={{ transform: transformStyle }}
+      aria-label={isBg ? "Разширен плейър" : "Expanded now playing workspace"}
+    >
       <div className="flex items-center justify-between px-4 py-3 md:px-6">
         <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted">{isBg ? "Плейър" : "Player workspace"}</p>
@@ -57,8 +68,8 @@ export default function NowPlayingWorkspace({ isOpen, workspaceTab, onWorkspaceT
         <button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Свий плейъра" : "Collapse player workspace"}><ChevronDown className="h-5 w-5 text-[var(--text)]" /></button>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 px-3 pb-3 pt-2 md:grid-cols-[minmax(200px,240px)_minmax(0,1fr)_minmax(290px,340px)] md:gap-4 md:px-5 md:pb-5">
-        <aside className="order-1 hidden md:block md:pt-2">
+      <div className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-3 px-3 pb-3 pt-2 md:grid-cols-[minmax(200px,240px)_minmax(0,1fr)_minmax(290px,340px)] md:grid-rows-1 md:gap-4 md:px-5 md:pb-5">
+        <aside className="order-1 hidden h-full min-h-0 md:block md:pt-2">
           <div className="space-y-3 rounded-2xl bg-[var(--surface-subtle)] p-4">
             {currentTrack.artworkUrl ? <img src={currentTrack.artworkUrl} alt={isBg ? "Обложка" : "Artwork"} className="h-48 w-full rounded-xl object-cover" /> : <div className="h-48 w-full rounded-xl bg-[var(--surface-raised)]" />}
             <div>
@@ -68,7 +79,7 @@ export default function NowPlayingWorkspace({ isOpen, workspaceTab, onWorkspaceT
           </div>
         </aside>
 
-        <main className="order-2 flex min-h-0 flex-col md:pt-2">
+        <main className="order-2 flex h-full min-h-0 flex-col overflow-hidden md:pt-2">
           <div className="overflow-hidden rounded-2xl bg-black">
             <div ref={expandedVideoHostRef} className="aspect-video w-full" />
           </div>
@@ -86,11 +97,18 @@ export default function NowPlayingWorkspace({ isOpen, workspaceTab, onWorkspaceT
             <button onClick={togglePlayPause} className="grid h-14 w-14 place-items-center rounded-full bg-[var(--accent-soft)]" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="h-6 w-6 text-[var(--text)]" /> : <Play className="h-6 w-6 text-[var(--text)]" />}</button>
             <div className="flex items-center gap-2">
               <button onClick={skipNext} className="grid h-11 w-11 place-items-center rounded-full bg-[var(--surface)]" aria-label="Next"><SkipForward className="h-4 w-4 text-[var(--text)]" /></button>
-              <div className="relative" onMouseEnter={() => setShowVolumeSlider(true)} onMouseLeave={() => setShowVolumeSlider(false)}>
-                <button onClick={() => toggleMuteWithMemory(volume, setVolume)} className="grid h-11 w-11 place-items-center rounded-full bg-[var(--surface)]" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
-                {showVolumeSlider ? (
+              <div className="relative">
+                <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-11 w-11 place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? "Сила на звука" : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
+                {isVolumePanelOpen ? (
                   <div className="absolute bottom-[calc(100%+8px)] right-0 z-30 rounded-xl border border-border bg-[var(--surface)] p-3 shadow-xl">
-                    <input type="range" min={0} max={100} value={volume} onChange={(event) => setVolume(Number(event.target.value))} className="h-28 w-8 accent-[var(--accent)]" aria-label={isBg ? "Сила на звука" : "Volume"} />
+                    <button
+                      type="button"
+                      onClick={toggleMute}
+                      className="mb-2 w-full rounded-lg bg-[var(--surface-subtle)] px-2 py-1 text-xs text-[var(--text)]"
+                    >
+                      {volume === 0 ? (isBg ? "Включи звук" : "Unmute") : (isBg ? "Изключи звук" : "Mute")}
+                    </button>
+                    <input type="range" min={0} max={100} value={volume} onChange={(event) => updateVolume(Number(event.target.value))} className="h-28 w-8 accent-[var(--accent)]" aria-label={isBg ? "Сила на звука" : "Volume"} />
                   </div>
                 ) : null}
               </div>
@@ -99,15 +117,15 @@ export default function NowPlayingWorkspace({ isOpen, workspaceTab, onWorkspaceT
           {playerError ? <p className="mt-3 text-xs status-danger">{playerError}</p> : null}
         </main>
 
-        <aside className="order-4 flex min-h-0 flex-col rounded-2xl bg-[var(--surface-subtle)] p-3 md:order-3 md:mt-2 md:p-4">
+        <aside className="order-3 flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-[var(--surface-subtle)] p-3 md:order-3 md:mt-2 md:p-4">
           <div className="app-tabs">
             <button onClick={() => onWorkspaceTabChange("queue")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "queue" ? "app-tab-active" : ""}`}><ListMusic className="h-3.5 w-3.5" />{isBg ? "Опашка" : "Queue"}</button>
             <button onClick={() => onWorkspaceTabChange("assistant")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "assistant" ? "app-tab-active" : ""}`}><Sparkles className="h-3.5 w-3.5" />AI</button>
             <button onClick={() => onWorkspaceTabChange("context")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "context" ? "app-tab-active" : ""}`}><Keyboard className="h-3.5 w-3.5" />{isBg ? "Контекст" : "Context"}</button>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden pt-3">
-            {workspaceTab === "queue" ? <QueuePanel /> : null}
-            {workspaceTab === "assistant" ? <MusicAssistantPage mode="sidebar" sidebarOpen={isOpen} /> : null}
+            {workspaceTab === "queue" ? <div className="h-full overflow-auto"><QueuePanel /></div> : null}
+            {workspaceTab === "assistant" ? <div className="h-full overflow-auto"><MusicAssistantPage mode="sidebar" sidebarOpen={isOpen} /></div> : null}
             {workspaceTab === "context" ? (
               <div className="h-full overflow-auto rounded-2xl bg-[var(--surface)] p-4">
                 <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{isBg ? "Текущ контекст" : "Current context"}</p>
