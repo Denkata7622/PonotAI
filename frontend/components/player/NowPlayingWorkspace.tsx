@@ -12,7 +12,7 @@ type WorkspaceTab = "queue" | "assistant" | "context";
 
 type NowPlayingWorkspaceProps = {
   isOpen: boolean;
-  phase: "closed" | "opening" | "open" | "closing";
+  phase: "closed" | "mounted-from-dock" | "opening" | "open" | "closing";
   workspaceTab: WorkspaceTab;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   onClose: () => void;
@@ -50,9 +50,11 @@ export default function NowPlayingWorkspace({ isOpen, phase, workspaceTab, onWor
 
   const motionClass = phase === "open"
     ? "translate-y-0 scale-y-100 opacity-100"
+    : phase === "mounted-from-dock"
+      ? "translate-y-full scale-y-[0.12] opacity-100"
     : phase === "opening"
-      ? "translate-y-6 scale-y-95 opacity-100"
-      : "translate-y-6 scale-y-95 opacity-0";
+      ? "translate-y-0 scale-y-100 opacity-100"
+      : "translate-y-full scale-y-[0.12] opacity-100";
 
   return (
     <section
@@ -78,7 +80,7 @@ export default function NowPlayingWorkspace({ isOpen, phase, workspaceTab, onWor
           </div>
         </aside>
 
-        <main className="order-2 flex h-full min-h-0 flex-col md:pt-2">
+        <main className="order-2 flex h-full min-h-0 flex-col overflow-hidden md:pt-2">
           <div className="overflow-hidden rounded-2xl bg-black">
             <div ref={expandedVideoHostRef} className="aspect-video w-full" />
           </div>
@@ -116,7 +118,7 @@ export default function NowPlayingWorkspace({ isOpen, phase, workspaceTab, onWor
           {playerError ? <p className="mt-3 text-xs status-danger">{playerError}</p> : null}
         </main>
 
-        <aside className="order-3 flex h-full min-h-0 flex-col rounded-2xl bg-[var(--surface-subtle)] p-3 md:order-3 md:mt-2 md:p-4">
+        <aside className="order-3 flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-[var(--surface-subtle)] p-3 md:order-3 md:mt-2 md:p-4">
           <div className="app-tabs">
             <button onClick={() => onWorkspaceTabChange("queue")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "queue" ? "app-tab-active" : ""}`}><ListMusic className="h-3.5 w-3.5" />{isBg ? "Опашка" : "Queue"}</button>
             <button onClick={() => onWorkspaceTabChange("assistant")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "assistant" ? "app-tab-active" : ""}`}><Sparkles className="h-3.5 w-3.5" />AI</button>

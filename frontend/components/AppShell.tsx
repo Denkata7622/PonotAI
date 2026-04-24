@@ -90,7 +90,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false);
-  const [workspacePhase, setWorkspacePhase] = useState<"closed" | "opening" | "open" | "closing">("closed");
+  const [workspacePhase, setWorkspacePhase] = useState<"closed" | "mounted-from-dock" | "opening" | "open" | "closing">("closed");
   const [workspaceTab, setWorkspaceTab] = useState<"queue" | "assistant" | "context">("queue");
   const [todayIsoDate, setTodayIsoDate] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -144,13 +144,18 @@ function AppShellContent({ children }: { children: ReactNode }) {
 
     if (isNowPlayingOpen) {
       if (workspacePhase === "closed" || workspacePhase === "closing") {
-        setWorkspacePhase("opening");
-        workspaceTransitionTimerRef.current = window.setTimeout(() => setWorkspacePhase("open"), 260);
+        setWorkspacePhase("mounted-from-dock");
+        workspaceTransitionTimerRef.current = window.setTimeout(() => {
+          window.requestAnimationFrame(() => {
+            setWorkspacePhase("opening");
+            workspaceTransitionTimerRef.current = window.setTimeout(() => setWorkspacePhase("open"), 260);
+          });
+        }, 0);
       }
       return;
     }
 
-    if (workspacePhase === "open" || workspacePhase === "opening") {
+    if (workspacePhase === "open" || workspacePhase === "opening" || workspacePhase === "mounted-from-dock") {
       setWorkspacePhase("closing");
       workspaceTransitionTimerRef.current = window.setTimeout(() => setWorkspacePhase("closed"), 260);
     }
@@ -811,12 +816,12 @@ function AppShellContent({ children }: { children: ReactNode }) {
               </div>
             </div>
           ) : null}
-          <div className="relative flex min-h-0 flex-1">
+          <div className="relative flex min-h-0 flex-1 overflow-hidden">
             <div className={`min-h-0 w-full flex-1 transition-opacity duration-200 ${workspacePhase === "closed" ? "opacity-100" : "opacity-0 pointer-events-none select-none"}`}>
               {children}
             </div>
             {workspacePhase !== "closed" && currentTrack && currentVideoId ? (
-              <div className="absolute inset-0 min-h-0">
+              <div className="absolute inset-0 h-full min-h-0 overflow-hidden">
                 <NowPlayingWorkspace
                   isOpen
                   phase={workspacePhase}
