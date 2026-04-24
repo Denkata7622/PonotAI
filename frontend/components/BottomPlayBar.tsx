@@ -10,14 +10,13 @@ import { formatPlayerTime, getRepeatModeLabel, useVolumeUi } from "./player/play
 type WorkspaceTab = "queue" | "assistant" | "context";
 
 type BottomPlayBarProps = {
-  isNowPlayingOpen: boolean;
-  workspacePhase: "closed" | "opening" | "open" | "closing";
-  onNowPlayingOpenChange: (open: boolean) => void;
+  isNowPlayingExpanded: boolean;
+  onNowPlayingExpandedChange: (expanded: boolean) => void;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   expandedVideoHostRef: RefObject<HTMLDivElement | null>;
 };
 
-export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowPlayingOpenChange, onWorkspaceTabChange, expandedVideoHostRef }: BottomPlayBarProps) {
+export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange, expandedVideoHostRef }: BottomPlayBarProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -51,7 +50,6 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
   const youtubeSearchUrl = currentTrack
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
     : "#";
-  const isExpandedVisual = workspacePhase !== "closed";
 
   useEffect(() => {
     const updatePlayerBarHeight = () => {
@@ -86,61 +84,64 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
 
   useEffect(() => {
     if (!youtubeMountRef.current) return;
-    const target = workspacePhase === "closed" || !currentTrack || !currentVideoId
-      ? collapsedVideoHostRef.current
-      : expandedVideoHostRef.current;
+    const target = isNowPlayingExpanded && currentTrack && currentVideoId
+      ? expandedVideoHostRef.current
+      : collapsedVideoHostRef.current;
+    const fallbackTarget = isNowPlayingExpanded ? collapsedVideoHostRef.current : expandedVideoHostRef.current;
     if (target && !target.contains(youtubeMountRef.current)) {
       target.appendChild(youtubeMountRef.current);
+    } else if (!target && fallbackTarget && !fallbackTarget.contains(youtubeMountRef.current)) {
+      fallbackTarget.appendChild(youtubeMountRef.current);
     }
-  }, [currentTrack, currentVideoId, expandedVideoHostRef, workspacePhase]);
+  }, [currentTrack, currentVideoId, expandedVideoHostRef, isNowPlayingExpanded]);
 
   useEffect(() => {
     if (!currentTrack || !currentVideoId) {
-      onNowPlayingOpenChange(false);
+      onNowPlayingExpandedChange(false);
     }
-  }, [currentTrack, currentVideoId, onNowPlayingOpenChange]);
+  }, [currentTrack, currentVideoId, onNowPlayingExpandedChange]);
 
   useEffect(() => {
-    if (!isNowPlayingOpen) return;
+    if (!isNowPlayingExpanded) return;
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onNowPlayingOpenChange(false);
+        onNowPlayingExpandedChange(false);
       }
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [isNowPlayingOpen, onNowPlayingOpenChange]);
+  }, [isNowPlayingExpanded, onNowPlayingExpandedChange]);
 
   function handleQueueClick() {
-    if (!isNowPlayingOpen) onNowPlayingOpenChange(true);
+    if (!isNowPlayingExpanded) onNowPlayingExpandedChange(true);
     onWorkspaceTabChange("queue");
   }
 
   function handleAssistantClick() {
-    if (!isNowPlayingOpen) onNowPlayingOpenChange(true);
+    if (!isNowPlayingExpanded) onNowPlayingExpandedChange(true);
     onWorkspaceTabChange("assistant");
   }
 
   const sharedVolumeSlider = (
-    <div className="absolute bottom-[calc(100%+8px)] right-0 z-[72] rounded-xl border border-border bg-[var(--surface)] p-3 shadow-xl">
+    <div className="absolute bottom-[calc(100%+8px)] right-0 z-[72] w-56 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-2.5 shadow-xl">
       <button
         type="button"
         onClick={toggleMute}
-        className="mb-2 w-full rounded-lg bg-[var(--surface-subtle)] px-2 py-1 text-xs text-[var(--text)]"
+        className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--text)]"
+        aria-label={volume === 0 ? (isBg ? "Включи звук" : "Unmute") : (isBg ? "Изключи звук" : "Mute")}
       >
-        {volume === 0 ? (isBg ? "Включи звук" : "Unmute") : (isBg ? "Изключи звук" : "Mute")}
+        {volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
       </button>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        value={volume}
-        onChange={(event) => updateVolume(Number(event.target.value))}
-        className="h-28 w-8 accent-[var(--accent)]"
-        aria-label={isBg ? "Сила на звука" : "Volume"}
-      />
+      <div className="flex items-center gap-2">
+        <input type="range" min={0} max={100} value={volume} onChange={(event) => updateVolume(Number(event.target.value))} className="h-8 min-w-0 flex-1 accent-[var(--accent)]" aria-label={isBg ? "Сила на звука" : "Volume"} />
+        <span className="w-10 text-right text-xs text-[var(--muted)]">{Math.round(volume)}%</span>
+      </div>
     </div>
   );
+
+  if (isNowPlayingExpanded) {
+    return null;
+  }
 
   return (
     <>
@@ -173,7 +174,7 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
       <div
         ref={playerBarRef}
         data-player-bar
-        className={`fixed bottom-0 left-0 right-0 z-50 border-t px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 backdrop-blur-xl transition-[border-color,box-shadow,transform,background-color] duration-200 sm:px-4 ${isExpandedVisual ? "border-[var(--accent-soft)] bg-surface/95 shadow-[0_-14px_30px_rgba(0,0,0,0.32)]" : "border-border bg-[var(--surface)]"}`}
+        className="fixed bottom-0 left-0 right-0 z-50 border-t border-[var(--border)] bg-[var(--surface)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 sm:px-4"
       >
         <div className="mx-auto max-w-7xl">
           {!currentTrack || !currentVideoId ? (
@@ -190,7 +191,7 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
           ) : (
             <div className="rounded-2xl bg-[var(--surface-raised)] p-2.5">
               <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_auto_auto_96px] md:items-center">
-                <button type="button" onClick={() => onNowPlayingOpenChange(true)} className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1.5 text-left transition hover:bg-[var(--surface-subtle)]">
+                <button type="button" onClick={() => onNowPlayingExpandedChange(true)} className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1.5 text-left transition hover:bg-[var(--surface-subtle)]">
                   {currentTrack.artworkUrl ? (
                     <img src={currentTrack.artworkUrl} alt={isBg ? "Обложка" : "Artwork"} className="h-11 w-11 shrink-0 rounded-lg object-cover" />
                   ) : (
@@ -216,7 +217,7 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
                     <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? "Сила на звука" : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
                     {isVolumePanelOpen ? sharedVolumeSlider : null}
                   </div>
-                  <button onClick={() => onNowPlayingOpenChange(true)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Разгъни" : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
+                  <button onClick={() => onNowPlayingExpandedChange(true)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Разгъни" : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
                 </div>
 
                 <div className="hidden h-14 overflow-hidden rounded-xl bg-black md:block md:justify-self-end">
@@ -232,7 +233,7 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
 
               <div className="mt-2 space-y-2 md:hidden">
                 <div className="grid grid-cols-[minmax(0,1fr)_90px] items-center gap-2">
-                  <button type="button" onClick={() => onNowPlayingOpenChange(true)} className="flex min-w-0 items-center gap-2 rounded-xl px-2 py-1 text-left">
+                  <button type="button" onClick={() => onNowPlayingExpandedChange(true)} className="flex min-w-0 items-center gap-2 rounded-xl px-2 py-1 text-left">
                     <p className="truncate text-sm font-semibold text-[var(--text)]">{currentTrack.title}</p>
                   </button>
                   <div className="h-12 overflow-hidden rounded-xl bg-black">
@@ -252,7 +253,7 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
                     <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-10 w-full place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? "Сила на звука" : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
                     {isVolumePanelOpen ? sharedVolumeSlider : null}
                   </div>
-                  <button onClick={() => onNowPlayingOpenChange(true)} className="grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Разгъни" : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
+                  <button onClick={() => onNowPlayingExpandedChange(true)} className="grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Разгъни" : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
                 </div>
               </div>
             </div>

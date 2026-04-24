@@ -89,8 +89,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false);
-  const [workspacePhase, setWorkspacePhase] = useState<"closed" | "opening" | "open" | "closing">("closed");
+  const [isNowPlayingExpanded, setIsNowPlayingExpanded] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState<"queue" | "assistant" | "context">("queue");
   const [todayIsoDate, setTodayIsoDate] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -98,7 +97,6 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const mobileNavRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const expandedVideoHostRef = useRef<HTMLDivElement | null>(null);
-  const workspaceTransitionTimerRef = useRef<number | null>(null);
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
 
   useEffect(() => {
@@ -120,41 +118,14 @@ function AppShellContent({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
-    if (isNowPlayingOpen) setShowMobileMenu(false);
-  }, [isNowPlayingOpen]);
-
-  useEffect(() => () => {
-    if (workspaceTransitionTimerRef.current) {
-      window.clearTimeout(workspaceTransitionTimerRef.current);
-    }
-  }, []);
+    if (isNowPlayingExpanded) setShowMobileMenu(false);
+  }, [isNowPlayingExpanded]);
 
   useEffect(() => {
-    const hasPlayableTrack = Boolean(currentTrack && currentVideoId);
-    if (!hasPlayableTrack) {
-      setIsNowPlayingOpen(false);
-      setWorkspacePhase("closed");
-      return;
+    if (!currentTrack || !currentVideoId) {
+      setIsNowPlayingExpanded(false);
     }
-
-    if (workspaceTransitionTimerRef.current) {
-      window.clearTimeout(workspaceTransitionTimerRef.current);
-      workspaceTransitionTimerRef.current = null;
-    }
-
-    if (isNowPlayingOpen) {
-      if (workspacePhase === "closed" || workspacePhase === "closing") {
-        setWorkspacePhase("opening");
-        workspaceTransitionTimerRef.current = window.setTimeout(() => setWorkspacePhase("open"), 220);
-      }
-      return;
-    }
-
-    if (workspacePhase === "open" || workspacePhase === "opening") {
-      setWorkspacePhase("closing");
-      workspaceTransitionTimerRef.current = window.setTimeout(() => setWorkspacePhase("closed"), 220);
-    }
-  }, [currentTrack, currentVideoId, isNowPlayingOpen, workspacePhase]);
+  }, [currentTrack, currentVideoId]);
 
   useEffect(() => {
     const updateMobileNavHeight = () => {
@@ -822,7 +793,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
       {showMobileMenu ? <button type="button" className="fixed inset-0 z-40 bg-black/45 md:hidden" onClick={() => setShowMobileMenu(false)} aria-label={t("mobile_close_menu", language)} /> : null}
       <nav
         ref={mobileNavRef}
-        className={`fixed bottom-[calc(var(--player-bar-height,88px)+env(safe-area-inset-bottom,0px)+8px)] left-2 right-2 z-[45] rounded-2xl border border-border bg-surface/95 p-1.5 shadow-xl backdrop-blur transition-all duration-200 md:hidden ${workspacePhase !== "closed" ? "pointer-events-none translate-y-4 opacity-0" : "opacity-100"}`}
+        className={`fixed bottom-[calc(var(--player-bar-height,88px)+env(safe-area-inset-bottom,0px)+8px)] left-2 right-2 z-[45] rounded-2xl border border-border bg-surface/95 p-1.5 shadow-xl backdrop-blur transition-all duration-200 md:hidden ${isNowPlayingExpanded ? "pointer-events-none translate-y-4 opacity-0" : "opacity-100"}`}
       >
         <div className="grid h-16 grid-cols-5 gap-1">
         {MOBILE_PRIMARY_NAV.map((item) => (
@@ -862,23 +833,20 @@ function AppShellContent({ children }: { children: ReactNode }) {
         ) : null}
       </nav>
       <DualSidebarHost />
-      {workspacePhase !== "closed" && currentTrack && currentVideoId ? (
-        <div className={`fixed inset-x-0 top-0 bottom-[var(--player-bar-height,88px)] z-[60] ${workspacePhase === "closing" ? "pointer-events-none" : "pointer-events-auto"}`}>
+      {isNowPlayingExpanded && currentTrack && currentVideoId ? (
+        <div className="fixed inset-0 z-[60]">
           <div className="absolute inset-0 bg-black/55 backdrop-blur-md" />
           <NowPlayingWorkspace
-            isOpen
-            phase={workspacePhase}
             workspaceTab={workspaceTab}
             onWorkspaceTabChange={setWorkspaceTab}
-            onClose={() => setIsNowPlayingOpen(false)}
+            onClose={() => setIsNowPlayingExpanded(false)}
             expandedVideoHostRef={expandedVideoHostRef}
           />
         </div>
       ) : null}
       <BottomPlayBar
-        isNowPlayingOpen={isNowPlayingOpen}
-        workspacePhase={workspacePhase}
-        onNowPlayingOpenChange={setIsNowPlayingOpen}
+        isNowPlayingExpanded={isNowPlayingExpanded}
+        onNowPlayingExpandedChange={setIsNowPlayingExpanded}
         onWorkspaceTabChange={setWorkspaceTab}
         expandedVideoHostRef={expandedVideoHostRef}
       />
