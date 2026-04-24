@@ -863,7 +863,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
       </nav>
       <DualSidebarHost />
       {workspacePhase !== "closed" && currentTrack && currentVideoId ? (
-        <div className="fixed inset-x-0 top-0 bottom-[var(--player-bar-height,88px)] z-[60]">
+        <div className={`fixed inset-x-0 top-0 bottom-[var(--player-bar-height,88px)] z-[60] ${workspacePhase === "closing" ? "pointer-events-none" : "pointer-events-auto"}`}>
+          <div className="absolute inset-0 bg-black/55 backdrop-blur-md" />
           <NowPlayingWorkspace
             isOpen
             phase={workspacePhase}
