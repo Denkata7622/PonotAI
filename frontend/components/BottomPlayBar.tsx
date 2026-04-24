@@ -11,14 +11,13 @@ type WorkspaceTab = "queue" | "assistant" | "context";
 
 type BottomPlayBarProps = {
   isNowPlayingOpen: boolean;
-  workspacePhase: "closed" | "mounted-from-dock" | "opening" | "open" | "closing";
+  workspacePhase: "closed" | "opening" | "open" | "closing";
   onNowPlayingOpenChange: (open: boolean) => void;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   expandedVideoHostRef: RefObject<HTMLDivElement | null>;
-  onDockMetricsChange: (metrics: { top: number; left: number; width: number; height: number }) => void;
 };
 
-export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowPlayingOpenChange, onWorkspaceTabChange, expandedVideoHostRef, onDockMetricsChange }: BottomPlayBarProps) {
+export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowPlayingOpenChange, onWorkspaceTabChange, expandedVideoHostRef }: BottomPlayBarProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -58,9 +57,6 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
       const rect = playerBarRef.current?.getBoundingClientRect();
       const height = rect?.height ?? 0;
       document.documentElement.style.setProperty("--player-bar-height", `${Math.round(height)}px`);
-      if (rect) {
-        onDockMetricsChange({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
-      }
     };
 
     updatePlayerBarHeight();
@@ -73,7 +69,7 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
       observer.disconnect();
       document.documentElement.style.setProperty("--player-bar-height", "88px");
     };
-  }, [onDockMetricsChange]);
+  }, []);
 
   useEffect(() => {
     if (!currentTrack || !currentVideoId) return;
@@ -81,12 +77,11 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
       youtubeMountRef.current = document.createElement("div");
       youtubeMountRef.current.className = "h-full w-full";
     }
-    const target = isNowPlayingOpen ? expandedVideoHostRef.current : collapsedVideoHostRef.current;
+    const target = workspacePhase === "closed" ? collapsedVideoHostRef.current : expandedVideoHostRef.current;
     if (target && !target.contains(youtubeMountRef.current)) {
-      target.innerHTML = "";
       target.appendChild(youtubeMountRef.current);
     }
-  }, [currentTrack, currentVideoId, isNowPlayingOpen, expandedVideoHostRef]);
+  }, [currentTrack, currentVideoId, expandedVideoHostRef, workspacePhase]);
 
   useEffect(() => {
     if (!currentTrack || !currentVideoId) {
@@ -167,7 +162,7 @@ export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowP
       <div
         ref={playerBarRef}
         data-player-bar
-        className={`fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 backdrop-blur-xl transition-[border-color,box-shadow,transform] duration-300 sm:px-4 ${workspacePhase === "open" || workspacePhase === "opening" || workspacePhase === "mounted-from-dock" ? "border-[var(--accent-soft)] shadow-[0_-10px_26px_rgba(0,0,0,0.2)] -translate-y-[2px]" : ""}`}
+        className={`fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 transition-[border-color,box-shadow,transform] duration-200 sm:px-4 ${workspacePhase === "open" || workspacePhase === "opening" ? "border-[var(--accent-soft)] shadow-[0_-8px_20px_rgba(0,0,0,0.15)] -translate-y-[1px]" : ""}`}
       >
         <div className="mx-auto max-w-7xl">
           {!currentTrack || !currentVideoId ? (
