@@ -12,13 +12,14 @@ type WorkspaceTab = "queue" | "assistant" | "context";
 
 type NowPlayingWorkspaceProps = {
   isOpen: boolean;
+  phase: "closed" | "opening" | "open" | "closing";
   workspaceTab: WorkspaceTab;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   onClose: () => void;
   expandedVideoHostRef: RefObject<HTMLDivElement | null>;
 };
 
-export default function NowPlayingWorkspace({ isOpen, workspaceTab, onWorkspaceTabChange, onClose, expandedVideoHostRef }: NowPlayingWorkspaceProps) {
+export default function NowPlayingWorkspace({ isOpen, phase, workspaceTab, onWorkspaceTabChange, onClose, expandedVideoHostRef }: NowPlayingWorkspaceProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const {
@@ -47,8 +48,17 @@ export default function NowPlayingWorkspace({ isOpen, workspaceTab, onWorkspaceT
 
   if (!isOpen || !currentTrack || !currentVideoId) return null;
 
+  const motionClass = phase === "open"
+    ? "translate-y-0 scale-y-100 opacity-100"
+    : phase === "opening"
+      ? "translate-y-6 scale-y-95 opacity-100"
+      : "translate-y-6 scale-y-95 opacity-0";
+
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-2xl bg-[var(--surface)]" aria-label={isBg ? "Разширен плейър" : "Expanded now playing workspace"}>
+    <section
+      className={`flex h-full min-h-0 flex-1 origin-bottom flex-col overflow-hidden rounded-2xl bg-[var(--surface)] transition-[transform,opacity] duration-[260ms] ease-[cubic-bezier(0.22,0.61,0.36,1)] ${motionClass}`}
+      aria-label={isBg ? "Разширен плейър" : "Expanded now playing workspace"}
+    >
       <div className="flex items-center justify-between px-4 py-3 md:px-6">
         <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted">{isBg ? "Плейър" : "Player workspace"}</p>
@@ -57,8 +67,8 @@ export default function NowPlayingWorkspace({ isOpen, workspaceTab, onWorkspaceT
         <button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Свий плейъра" : "Collapse player workspace"}><ChevronDown className="h-5 w-5 text-[var(--text)]" /></button>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 px-3 pb-3 pt-2 md:grid-cols-[minmax(200px,240px)_minmax(0,1fr)_minmax(290px,340px)] md:gap-4 md:px-5 md:pb-5">
-        <aside className="order-1 hidden md:block md:pt-2">
+      <div className="grid h-full min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-3 px-3 pb-3 pt-2 md:grid-cols-[minmax(200px,240px)_minmax(0,1fr)_minmax(290px,340px)] md:grid-rows-1 md:gap-4 md:px-5 md:pb-5">
+        <aside className="order-1 hidden h-full min-h-0 md:block md:pt-2">
           <div className="space-y-3 rounded-2xl bg-[var(--surface-subtle)] p-4">
             {currentTrack.artworkUrl ? <img src={currentTrack.artworkUrl} alt={isBg ? "Обложка" : "Artwork"} className="h-48 w-full rounded-xl object-cover" /> : <div className="h-48 w-full rounded-xl bg-[var(--surface-raised)]" />}
             <div>
@@ -68,7 +78,7 @@ export default function NowPlayingWorkspace({ isOpen, workspaceTab, onWorkspaceT
           </div>
         </aside>
 
-        <main className="order-2 flex min-h-0 flex-col md:pt-2">
+        <main className="order-2 flex h-full min-h-0 flex-col md:pt-2">
           <div className="overflow-hidden rounded-2xl bg-black">
             <div ref={expandedVideoHostRef} className="aspect-video w-full" />
           </div>
@@ -106,15 +116,15 @@ export default function NowPlayingWorkspace({ isOpen, workspaceTab, onWorkspaceT
           {playerError ? <p className="mt-3 text-xs status-danger">{playerError}</p> : null}
         </main>
 
-        <aside className="order-4 flex min-h-0 flex-col rounded-2xl bg-[var(--surface-subtle)] p-3 md:order-3 md:mt-2 md:p-4">
+        <aside className="order-3 flex h-full min-h-0 flex-col rounded-2xl bg-[var(--surface-subtle)] p-3 md:order-3 md:mt-2 md:p-4">
           <div className="app-tabs">
             <button onClick={() => onWorkspaceTabChange("queue")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "queue" ? "app-tab-active" : ""}`}><ListMusic className="h-3.5 w-3.5" />{isBg ? "Опашка" : "Queue"}</button>
             <button onClick={() => onWorkspaceTabChange("assistant")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "assistant" ? "app-tab-active" : ""}`}><Sparkles className="h-3.5 w-3.5" />AI</button>
             <button onClick={() => onWorkspaceTabChange("context")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "context" ? "app-tab-active" : ""}`}><Keyboard className="h-3.5 w-3.5" />{isBg ? "Контекст" : "Context"}</button>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden pt-3">
-            {workspaceTab === "queue" ? <QueuePanel /> : null}
-            {workspaceTab === "assistant" ? <MusicAssistantPage mode="sidebar" sidebarOpen={isOpen} /> : null}
+            {workspaceTab === "queue" ? <div className="h-full overflow-auto"><QueuePanel /></div> : null}
+            {workspaceTab === "assistant" ? <div className="h-full overflow-auto"><MusicAssistantPage mode="sidebar" sidebarOpen={isOpen} /></div> : null}
             {workspaceTab === "context" ? (
               <div className="h-full overflow-auto rounded-2xl bg-[var(--surface)] p-4">
                 <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{isBg ? "Текущ контекст" : "Current context"}</p>

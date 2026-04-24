@@ -11,12 +11,13 @@ type WorkspaceTab = "queue" | "assistant" | "context";
 
 type BottomPlayBarProps = {
   isNowPlayingOpen: boolean;
+  workspacePhase: "closed" | "opening" | "open" | "closing";
   onNowPlayingOpenChange: (open: boolean) => void;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   expandedVideoHostRef: RefObject<HTMLDivElement | null>;
 };
 
-export default function BottomPlayBar({ isNowPlayingOpen, onNowPlayingOpenChange, onWorkspaceTabChange, expandedVideoHostRef }: BottomPlayBarProps) {
+export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowPlayingOpenChange, onWorkspaceTabChange, expandedVideoHostRef }: BottomPlayBarProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -161,7 +162,7 @@ export default function BottomPlayBar({ isNowPlayingOpen, onNowPlayingOpenChange
       <div
         ref={playerBarRef}
         data-player-bar
-        className={`fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 backdrop-blur-xl transition-[border-color,box-shadow] duration-300 sm:px-4 ${isNowPlayingOpen ? "border-[var(--accent-soft)] shadow-[0_-10px_26px_rgba(0,0,0,0.2)]" : ""}`}
+        className={`fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 backdrop-blur-xl transition-[border-color,box-shadow,transform] duration-300 sm:px-4 ${workspacePhase === "open" || workspacePhase === "opening" ? "border-[var(--accent-soft)] shadow-[0_-10px_26px_rgba(0,0,0,0.2)] -translate-y-[2px]" : ""}`}
       >
         <div className="mx-auto max-w-7xl">
           {!currentTrack || !currentVideoId ? (

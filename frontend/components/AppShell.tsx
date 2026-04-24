@@ -90,6 +90,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false);
+  const [workspacePhase, setWorkspacePhase] = useState<"closed" | "opening" | "open" | "closing">("closed");
   const [workspaceTab, setWorkspaceTab] = useState<"queue" | "assistant" | "context">("queue");
   const [todayIsoDate, setTodayIsoDate] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -97,6 +98,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const mobileNavRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const expandedVideoHostRef = useRef<HTMLDivElement | null>(null);
+  const workspaceTransitionTimerRef = useRef<number | null>(null);
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
 
   useEffect(() => {
@@ -120,6 +122,39 @@ function AppShellContent({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isNowPlayingOpen) setShowMobileMenu(false);
   }, [isNowPlayingOpen]);
+
+  useEffect(() => () => {
+    if (workspaceTransitionTimerRef.current) {
+      window.clearTimeout(workspaceTransitionTimerRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    const hasPlayableTrack = Boolean(currentTrack && currentVideoId);
+    if (!hasPlayableTrack) {
+      setIsNowPlayingOpen(false);
+      setWorkspacePhase("closed");
+      return;
+    }
+
+    if (workspaceTransitionTimerRef.current) {
+      window.clearTimeout(workspaceTransitionTimerRef.current);
+      workspaceTransitionTimerRef.current = null;
+    }
+
+    if (isNowPlayingOpen) {
+      if (workspacePhase === "closed" || workspacePhase === "closing") {
+        setWorkspacePhase("opening");
+        workspaceTransitionTimerRef.current = window.setTimeout(() => setWorkspacePhase("open"), 260);
+      }
+      return;
+    }
+
+    if (workspacePhase === "open" || workspacePhase === "opening") {
+      setWorkspacePhase("closing");
+      workspaceTransitionTimerRef.current = window.setTimeout(() => setWorkspacePhase("closed"), 260);
+    }
+  }, [currentTrack, currentVideoId, isNowPlayingOpen, workspacePhase]);
 
   useEffect(() => {
     const updateMobileNavHeight = () => {
@@ -776,15 +811,23 @@ function AppShellContent({ children }: { children: ReactNode }) {
               </div>
             </div>
           ) : null}
-          {isNowPlayingOpen && currentTrack && currentVideoId ? (
-            <NowPlayingWorkspace
-              isOpen={isNowPlayingOpen}
-              workspaceTab={workspaceTab}
-              onWorkspaceTabChange={setWorkspaceTab}
-              onClose={() => setIsNowPlayingOpen(false)}
-              expandedVideoHostRef={expandedVideoHostRef}
-            />
-          ) : children}
+          <div className="relative flex min-h-0 flex-1">
+            <div className={`min-h-0 w-full flex-1 transition-opacity duration-200 ${workspacePhase === "closed" ? "opacity-100" : "opacity-0 pointer-events-none select-none"}`}>
+              {children}
+            </div>
+            {workspacePhase !== "closed" && currentTrack && currentVideoId ? (
+              <div className="absolute inset-0 min-h-0">
+                <NowPlayingWorkspace
+                  isOpen
+                  phase={workspacePhase}
+                  workspaceTab={workspaceTab}
+                  onWorkspaceTabChange={setWorkspaceTab}
+                  onClose={() => setIsNowPlayingOpen(false)}
+                  expandedVideoHostRef={expandedVideoHostRef}
+                />
+              </div>
+            ) : null}
+          </div>
           </div>
         </main>
       </div>
@@ -833,6 +876,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
       <DualSidebarHost />
       <BottomPlayBar
         isNowPlayingOpen={isNowPlayingOpen}
+        workspacePhase={workspacePhase}
         onNowPlayingOpenChange={setIsNowPlayingOpen}
         onWorkspaceTabChange={setWorkspaceTab}
         expandedVideoHostRef={expandedVideoHostRef}
