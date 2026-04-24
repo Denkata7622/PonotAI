@@ -95,6 +95,17 @@ export default function BottomPlayBar() {
     }
   }, [currentTrack, currentVideoId]);
 
+  useEffect(() => {
+    if (!isNowPlayingOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsNowPlayingOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [isNowPlayingOpen]);
+
   function toggleMute() {
     if (volume === 0) {
       setVolume(lastVolume || 70);
@@ -130,14 +141,6 @@ export default function BottomPlayBar() {
 
   return (
     <>
-      {isNowPlayingOpen && currentTrack && currentVideoId && (
-        <button
-          className="fixed inset-0 z-[55] bg-black/55"
-          aria-label={isBg ? "Затвори изгледа" : "Close now playing"}
-          onClick={() => setIsNowPlayingOpen(false)}
-        />
-      )}
-
       {isShortcutsOpen && (
         <div className="fixed inset-0 z-[70] bg-black/60" onClick={() => setIsShortcutsOpen(false)}>
           <div className="mx-auto mt-24 w-[92%] max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5" onClick={(event) => event.stopPropagation()}>
@@ -164,31 +167,37 @@ export default function BottomPlayBar() {
       )}
 
       {isNowPlayingOpen && currentTrack && currentVideoId ? (
-        <section className="fixed inset-0 z-[60] flex flex-col bg-[var(--surface)]">
-          <div className="flex items-center justify-between border-b border-border px-4 py-[calc(10px+env(safe-area-inset-top,0px))] md:px-6">
+        <section
+          className="fixed inset-x-0 bottom-[var(--player-bar-height)] top-0 z-[45] flex flex-col border-t border-border bg-[var(--surface)] shadow-[0_-10px_40px_rgba(0,0,0,0.28)] transition-all duration-300 ease-out md:top-0"
+          aria-label={isBg ? "Разширен плейър" : "Expanded now playing workspace"}
+        >
+          <div className="flex items-center justify-between border-b border-border bg-[var(--surface)] px-4 py-[calc(10px+env(safe-area-inset-top,0px))] md:px-6">
             <div className="min-w-0">
-              <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted">{isBg ? "Сега звучи" : "Now Playing"}</p>
+              <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted">{isBg ? "Плейър" : "Player workspace"}</p>
               <p className="truncate text-sm font-semibold text-[var(--text)]">{currentTrack.title} · {currentTrack.artist}</p>
             </div>
-            <button onClick={() => setIsNowPlayingOpen(false)} className="grid h-10 w-10 place-items-center rounded-full border border-border" aria-label={isBg ? "Затвори" : "Close"}><X className="h-5 w-5 text-[var(--text)]" /></button>
+            <button onClick={() => setIsNowPlayingOpen(false)} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Свий плейъра" : "Collapse player workspace"}><ChevronDown className="h-5 w-5 text-[var(--text)]" /></button>
           </div>
 
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 md:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(300px,360px)] md:gap-4 md:p-4">
-            <aside className="hidden md:block">
-              <div className="h-full rounded-2xl bg-[var(--surface-subtle)] p-4">
-                {currentTrack.artworkUrl ? <img src={currentTrack.artworkUrl} alt={isBg ? "Обложка" : "Artwork"} className="mb-3 h-52 w-full rounded-xl object-cover" /> : <div className="mb-3 h-52 w-full rounded-xl bg-[var(--surface)]" />}
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 px-3 pb-3 pt-2 md:grid-cols-[minmax(200px,250px)_minmax(0,1fr)_minmax(290px,350px)] md:gap-5 md:px-5 md:pb-5">
+            <aside className="hidden md:block md:pt-3">
+              <div className="space-y-3 rounded-2xl bg-[var(--surface-subtle)] p-4">
+                {currentTrack.artworkUrl ? <img src={currentTrack.artworkUrl} alt={isBg ? "Обложка" : "Artwork"} className="h-48 w-full rounded-xl object-cover" /> : <div className="h-48 w-full rounded-xl bg-[var(--surface)]" />}
                 <p className="text-lg font-semibold">{currentTrack.title}</p>
                 <p className="text-sm text-text-muted">{currentTrack.artist}</p>
-                <button onClick={setIsShortcutsOpen.bind(null, true)} className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs"><Keyboard className="h-3.5 w-3.5" />{t("shortcuts_title", language)}</button>
+                <div className="flex items-center gap-2 pt-1">
+                  <button onClick={setIsShortcutsOpen.bind(null, true)} className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-raised)] px-3 py-1.5 text-xs"><Keyboard className="h-3.5 w-3.5" />{t("shortcuts_title", language)}</button>
+                  <button onClick={handleQueueClick} className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-raised)] px-3 py-1.5 text-xs"><ListMusic className="h-3.5 w-3.5" />{isBg ? "Опашка" : "Queue"}</button>
+                </div>
               </div>
             </aside>
 
-            <main className="flex min-h-0 flex-col rounded-2xl bg-[var(--surface-raised)] p-3 md:p-4">
-              <div className="overflow-hidden rounded-2xl bg-black shadow-xl">
+            <main className="flex min-h-0 flex-col pt-2 md:pt-3">
+              <div className="overflow-hidden rounded-2xl bg-black">
                 <div ref={expandedVideoHostRef} className="aspect-video w-full" />
               </div>
 
-              <div className="mt-4">
+              <div className="mt-3">
                 <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="h-8 w-full themed-progress" aria-label={isBg ? "Прогрес" : "Track progress"} />
                 <div className="mt-1 flex items-center justify-between text-xs text-text-muted">
                   <span>{formatTime(currentTime)}</span>
@@ -196,7 +205,7 @@ export default function BottomPlayBar() {
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+              <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-2xl bg-[var(--surface-subtle)] p-2 md:p-3">
                 <div className="flex justify-end gap-2">
                   <button onClick={cycleRepeatMode} className={`inline-flex h-11 w-11 items-center justify-center rounded-full ${repeatMode === "normal" ? "bg-[var(--surface-subtle)] text-[var(--muted)]" : "bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel}><RotateCcw className="h-4 w-4" /></button>
                   <button onClick={skipPrevious} className="grid h-11 w-11 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Previous"><SkipBack className="h-4 w-4 text-[var(--text)]" /></button>
@@ -213,7 +222,7 @@ export default function BottomPlayBar() {
               {playerError ? <p className="mt-3 text-xs status-danger">{playerError}</p> : null}
             </main>
 
-            <aside className="flex min-h-0 flex-col rounded-2xl bg-[var(--surface-subtle)] p-3 md:p-4">
+            <aside className="flex min-h-0 flex-col rounded-2xl bg-[var(--surface-subtle)] p-3 md:mt-3 md:p-4">
               <div className="app-tabs">
                 {[
                   { key: "queue", icon: ListMusic, label: isBg ? "Опашка" : "Queue" },
@@ -234,13 +243,11 @@ export default function BottomPlayBar() {
                 {workspaceTab === "queue" ? <QueuePanel /> : null}
                 {workspaceTab === "assistant" ? <MusicAssistantPage mode="sidebar" sidebarOpen={isNowPlayingOpen} /> : null}
                 {workspaceTab === "context" ? (
-                  <div className="h-full overflow-auto">
-                    <div className="rounded-2xl bg-[var(--surface)] p-4">
+                  <div className="h-full overflow-auto rounded-2xl bg-[var(--surface)] p-4">
                       <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{isBg ? "Текущ контекст" : "Current context"}</p>
                       <p className="mt-2 text-lg font-semibold">{currentTrack.title}</p>
                       <p className="text-sm text-text-muted">{currentTrack.artist}</p>
                       <a className="mt-4 inline-block text-sm underline" href={youtubeSearchUrl} target="_blank" rel="noreferrer">{isBg ? "Отвори в YouTube" : "Open in YouTube"}</a>
-                    </div>
                   </div>
                 ) : null}
               </div>
@@ -252,7 +259,7 @@ export default function BottomPlayBar() {
       <div
         ref={playerBarRef}
         data-player-bar
-        className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 backdrop-blur-xl sm:px-4"
+        className={`fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 backdrop-blur-xl transition-[border-color,box-shadow] duration-300 sm:px-4 ${isNowPlayingOpen ? "border-[var(--accent-soft)] shadow-[0_-10px_26px_rgba(0,0,0,0.2)]" : ""}`}
       >
         <div className="mx-auto max-w-7xl">
           {!currentTrack || !currentVideoId ? (
