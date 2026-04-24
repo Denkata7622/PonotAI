@@ -47,7 +47,7 @@ export default function SearchResultActions({
       <button
         type="button"
         className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
-        onMouseDown={(event) => {
+        onPointerDown={(event) => {
           event.preventDefault();
           event.stopPropagation();
         }}

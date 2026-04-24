@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Heart, EllipsisVertical, Music, Play, Sparkles, Trash2 } from "../lucide-react";
+import { Heart, EllipsisVertical, Music, Play, Sparkles } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -109,18 +109,6 @@ export default function SongRow({
           </button>
         )}
 
-        {onDelete && (
-          <button
-            type="button"
-            onClick={onDelete}
-            className="rounded-lg p-2 hover:bg-[var(--hover-bg)]"
-            aria-label={t("song_row_delete", language)}
-            title={t("song_row_delete", language)}
-          >
-            <Trash2 className="w-4 h-4 text-[var(--muted)]" />
-          </button>
-        )}
-
         {onPlay && (
           <button
             type="button"
@@ -133,7 +121,7 @@ export default function SongRow({
           </button>
         )}
 
-        {showMoreMenu && (
+        {(showMoreMenu || onDelete) && (
           <SongActionsMenu
             isOpen={menuOpen}
             onOpenChange={setMenuOpen}
@@ -177,6 +165,8 @@ export default function SongRow({
               });
             }}
             isSharing={isSharing}
+            onDelete={onDelete}
+            deleteConfirmMessage={language === "bg" ? "Наистина ли искате да изтриете тази песен?" : "Are you sure you want to delete this song?"}
           />
         )}
       </div>

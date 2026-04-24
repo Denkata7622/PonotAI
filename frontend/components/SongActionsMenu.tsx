@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Heart, ListPlus, Play, Share2 } from "../lucide-react";
+import { Heart, ListPlus, Play, Share2, Trash2 } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -22,6 +22,9 @@ type SongActionsMenuProps = {
   onAddToPlaylist?: (playlistId: string) => void;
   onShare?: () => void;
   isSharing?: boolean;
+  onDelete?: () => void;
+  deleteLabel?: string;
+  deleteConfirmMessage?: string;
 };
 
 export default function SongActionsMenu({
@@ -39,6 +42,9 @@ export default function SongActionsMenu({
   onAddToPlaylist,
   onShare,
   isSharing = false,
+  onDelete,
+  deleteLabel,
+  deleteConfirmMessage,
 }: SongActionsMenuProps) {
   const { language } = useLanguage();
   const [showPlaylists, setShowPlaylists] = useState(false);
@@ -61,7 +67,7 @@ export default function SongActionsMenu({
         <button
           type="button"
           className={triggerClassName}
-          onMouseDown={(event) => {
+          onPointerDown={(event) => {
             event.preventDefault();
             event.stopPropagation();
           }}
@@ -76,7 +82,7 @@ export default function SongActionsMenu({
         <button
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-          onMouseDown={(event) => {
+          onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
             onPlay();
@@ -90,7 +96,7 @@ export default function SongActionsMenu({
         <button
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-          onMouseDown={(event) => {
+          onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
             onAddToQueue();
@@ -104,7 +110,7 @@ export default function SongActionsMenu({
         <button
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-          onMouseDown={(event) => {
+          onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
             onSaveToLibrary();
@@ -118,7 +124,7 @@ export default function SongActionsMenu({
         <button
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-          onMouseDown={(event) => {
+          onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
             onToggleFavorite();
@@ -135,7 +141,7 @@ export default function SongActionsMenu({
           <button
             type="button"
             className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-            onMouseDown={(event) => {
+            onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
               setShowPlaylists((prev) => !prev);
@@ -153,7 +159,7 @@ export default function SongActionsMenu({
                   key={playlist.id}
                   type="button"
                   className="block w-full rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
-                  onMouseDown={(event) => {
+                  onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
                     onAddToPlaylist(playlist.id);
@@ -174,13 +180,32 @@ export default function SongActionsMenu({
             type="button"
             disabled={isSharing}
             className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)] disabled:opacity-60"
-            onMouseDown={(event) => {
+            onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
               onShare();
             }}
           >
             <Share2 className="h-[15px] w-[15px]" /> {t("track_share_song", language)}
+          </button>
+        </>
+      )}
+      {onDelete && (
+        <>
+          <div className="my-1 h-px bg-[var(--border)]" />
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-red-500 hover:bg-red-500/10"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const confirmed = window.confirm(deleteConfirmMessage ?? (language === "bg" ? "Сигурни ли сте, че искате да изтриете това?" : "Are you sure you want to delete this?"));
+              if (!confirmed) return;
+              onDelete();
+              onOpenChange(false);
+            }}
+          >
+            <Trash2 className="h-[15px] w-[15px]" /> {deleteLabel ?? t("song_row_delete", language)}
           </button>
         </>
       )}

@@ -315,7 +315,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playerRef.current = new ytWindow.YT.Player("ponotai-yt-player", {
       width: "100%",
       height: "100%",
-      playerVars: { autoplay: 0, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1 },
+      playerVars: { autoplay: 0, controls: 1, rel: 0, modestbranding: 1, playsinline: 1, enablejsapi: 1 },
       events: {
         onReady: (event: { target: YTPlayerLike }) => {
           playerRef.current = event.target;
