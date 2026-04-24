@@ -1,34 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ChevronDown, Keyboard, ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Volume2, VolumeX, X, Sparkles } from "lucide-react";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
-import { useDualSidebar } from "@/src/components/sidebars/DualSidebarContext";
-import QueuePanel from "@/src/components/player/QueuePanel";
-import MusicAssistantPage from "@/src/features/assistant/components/MusicAssistantPage";
+import { formatPlayerTime, getRepeatModeLabel, useVolumeUi } from "./player/playerUiUtils";
 
 type WorkspaceTab = "queue" | "assistant" | "context";
 
-function formatTime(seconds: number) {
-  const safe = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
-  const minutes = Math.floor(safe / 60).toString().padStart(2, "0");
-  const secs = (safe % 60).toString().padStart(2, "0");
-  return `${minutes}:${secs}`;
-}
+type BottomPlayBarProps = {
+  isNowPlayingOpen: boolean;
+  workspacePhase: "closed" | "mounted-from-dock" | "opening" | "open" | "closing";
+  onNowPlayingOpenChange: (open: boolean) => void;
+  onWorkspaceTabChange: (tab: WorkspaceTab) => void;
+  expandedVideoHostRef: RefObject<HTMLDivElement | null>;
+  onDockMetricsChange: (metrics: { top: number; left: number; width: number; height: number }) => void;
+};
 
-export default function BottomPlayBar() {
+export default function BottomPlayBar({ isNowPlayingOpen, workspacePhase, onNowPlayingOpenChange, onWorkspaceTabChange, expandedVideoHostRef, onDockMetricsChange }: BottomPlayBarProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
-  const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
-  const [lastVolume, setLastVolume] = useState(70);
-  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("queue");
   const playerBarRef = useRef<HTMLDivElement | null>(null);
   const collapsedVideoHostRef = useRef<HTMLDivElement | null>(null);
-  const expandedVideoHostRef = useRef<HTMLDivElement | null>(null);
   const youtubeMountRef = useRef<HTMLDivElement | null>(null);
 
   const {
@@ -51,21 +46,21 @@ export default function BottomPlayBar() {
     cycleRepeatMode,
   } = usePlayer();
 
-  const { state: sidebarState, closePanel } = useDualSidebar();
   const progress = useMemo(() => (duration ? Math.min(100, (currentTime / duration) * 100) : 0), [currentTime, duration]);
-  const repeatLabel = repeatMode === "normal"
-    ? (isBg ? "Без повторение" : "Repeat off")
-    : repeatMode === "queue"
-      ? (isBg ? "Повтаряне на опашката" : "Repeat queue")
-      : (isBg ? "Повтаряне на песента" : "Repeat track");
+  const repeatLabel = getRepeatModeLabel(repeatMode, isBg);
+  const { isVolumePanelOpen, setIsVolumePanelOpen, toggleMute, updateVolume } = useVolumeUi(volume, setVolume);
   const youtubeSearchUrl = currentTrack
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
     : "#";
 
   useEffect(() => {
     const updatePlayerBarHeight = () => {
-      const height = playerBarRef.current?.getBoundingClientRect().height ?? 0;
+      const rect = playerBarRef.current?.getBoundingClientRect();
+      const height = rect?.height ?? 0;
       document.documentElement.style.setProperty("--player-bar-height", `${Math.round(height)}px`);
+      if (rect) {
+        onDockMetricsChange({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+      }
     };
 
     updatePlayerBarHeight();
@@ -78,61 +73,63 @@ export default function BottomPlayBar() {
       observer.disconnect();
       document.documentElement.style.setProperty("--player-bar-height", "88px");
     };
-  }, []);
+  }, [onDockMetricsChange]);
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    document.documentElement.dataset.nowPlayingOpen = isNowPlayingOpen ? "true" : "false";
-    window.dispatchEvent(new CustomEvent("ponotai:now-playing-visibility", { detail: { open: isNowPlayingOpen } }));
-    return () => {
-      document.documentElement.dataset.nowPlayingOpen = "false";
-    };
-  }, [isNowPlayingOpen]);
+    if (!currentTrack || !currentVideoId) return;
+    if (!youtubeMountRef.current) {
+      youtubeMountRef.current = document.createElement("div");
+      youtubeMountRef.current.className = "h-full w-full";
+    }
+    const target = isNowPlayingOpen ? expandedVideoHostRef.current : collapsedVideoHostRef.current;
+    if (target && !target.contains(youtubeMountRef.current)) {
+      target.innerHTML = "";
+      target.appendChild(youtubeMountRef.current);
+    }
+  }, [currentTrack, currentVideoId, isNowPlayingOpen, expandedVideoHostRef]);
 
   useEffect(() => {
     if (!currentTrack || !currentVideoId) {
-      setIsNowPlayingOpen(false);
+      onNowPlayingOpenChange(false);
     }
-  }, [currentTrack, currentVideoId]);
+  }, [currentTrack, currentVideoId, onNowPlayingOpenChange]);
 
   useEffect(() => {
     if (!isNowPlayingOpen) return;
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setIsNowPlayingOpen(false);
+        onNowPlayingOpenChange(false);
       }
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [isNowPlayingOpen]);
-
-  function toggleMute() {
-    if (volume === 0) {
-      setVolume(lastVolume || 70);
-      return;
-    }
-    setLastVolume(volume);
-    setVolume(0);
-  }
+  }, [isNowPlayingOpen, onNowPlayingOpenChange]);
 
   function handleQueueClick() {
-    if (!isNowPlayingOpen) setIsNowPlayingOpen(true);
-    setWorkspaceTab("queue");
+    if (!isNowPlayingOpen) onNowPlayingOpenChange(true);
+    onWorkspaceTabChange("queue");
   }
 
   function handleAssistantClick() {
-    if (!isNowPlayingOpen) setIsNowPlayingOpen(true);
-    setWorkspaceTab("assistant");
+    if (!isNowPlayingOpen) onNowPlayingOpenChange(true);
+    onWorkspaceTabChange("assistant");
   }
 
   const sharedVolumeSlider = (
     <div className="absolute bottom-[calc(100%+8px)] right-0 z-[72] rounded-xl border border-border bg-[var(--surface)] p-3 shadow-xl">
+      <button
+        type="button"
+        onClick={toggleMute}
+        className="mb-2 w-full rounded-lg bg-[var(--surface-subtle)] px-2 py-1 text-xs text-[var(--text)]"
+      >
+        {volume === 0 ? (isBg ? "Включи звук" : "Unmute") : (isBg ? "Изключи звук" : "Mute")}
+      </button>
       <input
         type="range"
         min={0}
         max={100}
         value={volume}
-        onChange={(event) => setVolume(Number(event.target.value))}
+        onChange={(event) => updateVolume(Number(event.target.value))}
         className="h-28 w-8 accent-[var(--accent)]"
         aria-label={isBg ? "Сила на звука" : "Volume"}
       />
@@ -166,100 +163,11 @@ export default function BottomPlayBar() {
         </div>
       )}
 
-      {isNowPlayingOpen && currentTrack && currentVideoId ? (
-        <section
-          className="fixed inset-x-0 bottom-[var(--player-bar-height)] top-0 z-[45] flex flex-col border-t border-border bg-[var(--surface)] shadow-[0_-10px_40px_rgba(0,0,0,0.28)] transition-all duration-300 ease-out md:top-0"
-          aria-label={isBg ? "Разширен плейър" : "Expanded now playing workspace"}
-        >
-          <div className="flex items-center justify-between border-b border-border bg-[var(--surface)] px-4 py-[calc(10px+env(safe-area-inset-top,0px))] md:px-6">
-            <div className="min-w-0">
-              <p className="text-[11px] uppercase tracking-[0.12em] text-text-muted">{isBg ? "Плейър" : "Player workspace"}</p>
-              <p className="truncate text-sm font-semibold text-[var(--text)]">{currentTrack.title} · {currentTrack.artist}</p>
-            </div>
-            <button onClick={() => setIsNowPlayingOpen(false)} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Свий плейъра" : "Collapse player workspace"}><ChevronDown className="h-5 w-5 text-[var(--text)]" /></button>
-          </div>
-
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 px-3 pb-3 pt-2 md:grid-cols-[minmax(200px,250px)_minmax(0,1fr)_minmax(290px,350px)] md:gap-5 md:px-5 md:pb-5">
-            <aside className="hidden md:block md:pt-3">
-              <div className="space-y-3 rounded-2xl bg-[var(--surface-subtle)] p-4">
-                {currentTrack.artworkUrl ? <img src={currentTrack.artworkUrl} alt={isBg ? "Обложка" : "Artwork"} className="h-48 w-full rounded-xl object-cover" /> : <div className="h-48 w-full rounded-xl bg-[var(--surface)]" />}
-                <p className="text-lg font-semibold">{currentTrack.title}</p>
-                <p className="text-sm text-text-muted">{currentTrack.artist}</p>
-                <div className="flex items-center gap-2 pt-1">
-                  <button onClick={setIsShortcutsOpen.bind(null, true)} className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-raised)] px-3 py-1.5 text-xs"><Keyboard className="h-3.5 w-3.5" />{t("shortcuts_title", language)}</button>
-                  <button onClick={handleQueueClick} className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-raised)] px-3 py-1.5 text-xs"><ListMusic className="h-3.5 w-3.5" />{isBg ? "Опашка" : "Queue"}</button>
-                </div>
-              </div>
-            </aside>
-
-            <main className="flex min-h-0 flex-col pt-2 md:pt-3">
-              <div className="overflow-hidden rounded-2xl bg-black">
-                <div ref={expandedVideoHostRef} className="aspect-video w-full" />
-              </div>
-
-              <div className="mt-3">
-                <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="h-8 w-full themed-progress" aria-label={isBg ? "Прогрес" : "Track progress"} />
-                <div className="mt-1 flex items-center justify-between text-xs text-text-muted">
-                  <span>{formatTime(currentTime)}</span>
-                  <span>{formatTime(duration)}</span>
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-2xl bg-[var(--surface-subtle)] p-2 md:p-3">
-                <div className="flex justify-end gap-2">
-                  <button onClick={cycleRepeatMode} className={`inline-flex h-11 w-11 items-center justify-center rounded-full ${repeatMode === "normal" ? "bg-[var(--surface-subtle)] text-[var(--muted)]" : "bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel}><RotateCcw className="h-4 w-4" /></button>
-                  <button onClick={skipPrevious} className="grid h-11 w-11 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Previous"><SkipBack className="h-4 w-4 text-[var(--text)]" /></button>
-                </div>
-                <button onClick={togglePlayPause} className="grid h-14 w-14 place-items-center rounded-full bg-[var(--accent-soft)] shadow-sm" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="h-6 w-6 text-[var(--text)]" /> : <Play className="h-6 w-6 text-[var(--text)]" />}</button>
-                <div className="flex items-center gap-2">
-                  <button onClick={skipNext} className="grid h-11 w-11 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Next"><SkipForward className="h-4 w-4 text-[var(--text)]" /></button>
-                  <div className="relative">
-                    <button onClick={() => setShowVolumeSlider((prev) => !prev)} className="grid h-11 w-11 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
-                    {showVolumeSlider ? sharedVolumeSlider : null}
-                  </div>
-                </div>
-              </div>
-              {playerError ? <p className="mt-3 text-xs status-danger">{playerError}</p> : null}
-            </main>
-
-            <aside className="flex min-h-0 flex-col rounded-2xl bg-[var(--surface-subtle)] p-3 md:mt-3 md:p-4">
-              <div className="app-tabs">
-                {[
-                  { key: "queue", icon: ListMusic, label: isBg ? "Опашка" : "Queue" },
-                  { key: "assistant", icon: Sparkles, label: "AI" },
-                  { key: "context", icon: Keyboard, label: isBg ? "Контекст" : "Context" },
-                ].map((tab) => {
-                  const Icon = tab.icon;
-                  const active = workspaceTab === tab.key;
-                  return (
-                    <button key={tab.key} onClick={() => setWorkspaceTab(tab.key as WorkspaceTab)} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${active ? "app-tab-active" : ""}`}>
-                      <Icon className="h-3.5 w-3.5" />
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="min-h-0 flex-1 overflow-hidden pt-3">
-                {workspaceTab === "queue" ? <QueuePanel /> : null}
-                {workspaceTab === "assistant" ? <MusicAssistantPage mode="sidebar" sidebarOpen={isNowPlayingOpen} /> : null}
-                {workspaceTab === "context" ? (
-                  <div className="h-full overflow-auto rounded-2xl bg-[var(--surface)] p-4">
-                      <p className="text-xs uppercase tracking-[0.1em] text-text-muted">{isBg ? "Текущ контекст" : "Current context"}</p>
-                      <p className="mt-2 text-lg font-semibold">{currentTrack.title}</p>
-                      <p className="text-sm text-text-muted">{currentTrack.artist}</p>
-                      <a className="mt-4 inline-block text-sm underline" href={youtubeSearchUrl} target="_blank" rel="noreferrer">{isBg ? "Отвори в YouTube" : "Open in YouTube"}</a>
-                  </div>
-                ) : null}
-              </div>
-            </aside>
-          </div>
-        </section>
-      ) : null}
 
       <div
         ref={playerBarRef}
         data-player-bar
-        className={`fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 backdrop-blur-xl transition-[border-color,box-shadow] duration-300 sm:px-4 ${isNowPlayingOpen ? "border-[var(--accent-soft)] shadow-[0_-10px_26px_rgba(0,0,0,0.2)]" : ""}`}
+        className={`fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-[var(--surface)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 backdrop-blur-xl transition-[border-color,box-shadow,transform] duration-300 sm:px-4 ${workspacePhase === "open" || workspacePhase === "opening" || workspacePhase === "mounted-from-dock" ? "border-[var(--accent-soft)] shadow-[0_-10px_26px_rgba(0,0,0,0.2)] -translate-y-[2px]" : ""}`}
       >
         <div className="mx-auto max-w-7xl">
           {!currentTrack || !currentVideoId ? (
@@ -276,7 +184,7 @@ export default function BottomPlayBar() {
           ) : (
             <div className="rounded-2xl bg-[var(--surface-raised)] p-2.5">
               <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_auto_auto_96px] md:items-center">
-                <button type="button" onClick={() => setIsNowPlayingOpen(true)} className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1.5 text-left transition hover:bg-[var(--surface-subtle)]">
+                <button type="button" onClick={() => onNowPlayingOpenChange(true)} className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1.5 text-left transition hover:bg-[var(--surface-subtle)]">
                   {currentTrack.artworkUrl ? (
                     <img src={currentTrack.artworkUrl} alt={isBg ? "Обложка" : "Artwork"} className="h-11 w-11 shrink-0 rounded-lg object-cover" />
                   ) : (
@@ -299,10 +207,10 @@ export default function BottomPlayBar() {
                   <button data-testid="queue-toggle-dock" onClick={handleQueueClick} className="relative grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Queue"><ListMusic className="h-4 w-4 text-[var(--text)]" />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
                   <button onClick={handleAssistantClick} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="AI assistant"><Sparkles className="h-4 w-4 text-[var(--text)]" /></button>
                   <div className="relative">
-                    <button onClick={() => setShowVolumeSlider((prev) => !prev)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
-                    {showVolumeSlider ? sharedVolumeSlider : null}
+                    <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? "Сила на звука" : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
+                    {isVolumePanelOpen ? sharedVolumeSlider : null}
                   </div>
-                  <button onClick={() => setIsNowPlayingOpen(true)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Разгъни" : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
+                  <button onClick={() => onNowPlayingOpenChange(true)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Разгъни" : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
                 </div>
 
                 <div className="hidden h-14 overflow-hidden rounded-xl bg-black md:block md:justify-self-end">
@@ -311,14 +219,14 @@ export default function BottomPlayBar() {
               </div>
 
               <div className="mt-2 flex items-center gap-2 text-xs text-text-muted">
-                <span className="w-10 shrink-0 text-right">{formatTime(currentTime)}</span>
+                <span className="w-10 shrink-0 text-right">{formatPlayerTime(currentTime)}</span>
                 <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="h-7 min-w-0 flex-1 themed-progress" aria-label={isBg ? "Прогрес" : "Track progress"} />
-                <span className="w-10 shrink-0">{formatTime(duration)}</span>
+                <span className="w-10 shrink-0">{formatPlayerTime(duration)}</span>
               </div>
 
               <div className="mt-2 space-y-2 md:hidden">
                 <div className="grid grid-cols-[minmax(0,1fr)_90px] items-center gap-2">
-                  <button type="button" onClick={() => setIsNowPlayingOpen(true)} className="flex min-w-0 items-center gap-2 rounded-xl px-2 py-1 text-left">
+                  <button type="button" onClick={() => onNowPlayingOpenChange(true)} className="flex min-w-0 items-center gap-2 rounded-xl px-2 py-1 text-left">
                     <p className="truncate text-sm font-semibold text-[var(--text)]">{currentTrack.title}</p>
                   </button>
                   <div className="h-12 overflow-hidden rounded-xl bg-black">
@@ -335,10 +243,10 @@ export default function BottomPlayBar() {
                   <button onClick={handleQueueClick} className="relative grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Queue"><ListMusic className="h-4 w-4 text-[var(--text)]" />{queue.length > 0 ? <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
                   <button onClick={handleAssistantClick} className="grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="AI assistant"><Sparkles className="h-4 w-4 text-[var(--text)]" /></button>
                   <div className="relative">
-                    <button onClick={() => setShowVolumeSlider((prev) => !prev)} className="grid h-10 w-full place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={volume === 0 ? "Unmute" : "Mute"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
-                    {showVolumeSlider ? sharedVolumeSlider : null}
+                    <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-10 w-full place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? "Сила на звука" : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
+                    {isVolumePanelOpen ? sharedVolumeSlider : null}
                   </div>
-                  <button onClick={() => setIsNowPlayingOpen(true)} className="grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Разгъни" : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
+                  <button onClick={() => onNowPlayingOpenChange(true)} className="grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Разгъни" : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
                 </div>
               </div>
             </div>
