@@ -544,8 +544,10 @@ function AppShellContent({ children }: { children: ReactNode }) {
 
         <main
           key={pathname}
-          className="pageTransition flex min-h-0 min-w-0 flex-1 flex-col px-2 pt-4 sm:px-6 sm:pt-6"
-          style={{ paddingBottom: "calc(var(--layout-bottom-offset, var(--player-bar-height, 88px)) + 24px)" }}
+          className="pageTransition flex min-h-0 min-w-0 flex-1 flex-col pl-[max(0.5rem,env(safe-area-inset-left,0px))] pr-[max(0.5rem,env(safe-area-inset-right,0px))] pt-4 sm:pl-[max(1.5rem,env(safe-area-inset-left,0px))] sm:pr-[max(1.5rem,env(safe-area-inset-right,0px))] sm:pt-6"
+          style={{
+            paddingBottom: "calc(var(--layout-bottom-offset, var(--player-bar-height, 88px)) + 24px)",
+          }}
         >
           <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-1 flex-col">
           {pathname !== "/search" ? <div className="sticky top-[env(safe-area-inset-top,0px)] z-30 mb-4 flex flex-col gap-2 bg-[var(--bg)]/90 pb-2 pt-1 backdrop-blur md:static md:flex-row md:items-center md:bg-transparent md:pb-0 md:pt-0 md:backdrop-blur-0">
