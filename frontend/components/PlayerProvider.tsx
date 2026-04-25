@@ -179,7 +179,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const requestedPlaybackRef = useRef<"play" | "pause" | null>(null);
   const failedVideoIdsRef = useRef<Set<string>>(new Set());
   const recoveryInFlightRef = useRef<Set<string>>(new Set());
-  const visibleErrorRecoveryRef = useRef<Set<string>>(new Set());
   const trackLoadTokenRef = useRef(0);
   const queueRef = useRef(queue);
   const currentIndexRef = useRef(currentIndex);
@@ -559,45 +558,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }, 250);
     return () => window.clearTimeout(startPlayback);
   }, [currentEntry?.queueId, currentTrack, initializePlayer, safePlayerCall]);
-
-  useEffect(() => {
-    const match = playerError?.match(/^Playback error \((100|101|150)\)\.$/);
-    if (!match || !currentTrack || !currentVideoId) return;
-    const recoveryKey = `${currentTrack.id}:${currentVideoId}`;
-    if (visibleErrorRecoveryRef.current.has(recoveryKey)) return;
-    visibleErrorRecoveryRef.current.add(recoveryKey);
-
-    const loadToken = trackLoadTokenRef.current;
-    const queueIndex = currentIndexRef.current;
-    const query = currentTrack.query?.trim() || `${currentTrack.title} ${currentTrack.artist}`;
-    setPlayerError("Trying another embeddable YouTube result...");
-
-    void (async () => {
-      try {
-        const params = new URLSearchParams({ query, exclude: currentVideoId });
-        const response = await fetch(`/api/youtube/resolve?${params.toString()}`);
-        const payload = response.ok ? ((await response.json()) as { videoId?: string }) : {};
-        const replacementVideoId = normalizeVideoId(payload.videoId);
-        if (!replacementVideoId || replacementVideoId === currentVideoId || loadToken !== trackLoadTokenRef.current) {
-          setPlayerError(`Playback error (${match[1]}).`);
-          return;
-        }
-        currentVideoIdRef.current = replacementVideoId;
-        setCurrentVideoId(replacementVideoId);
-        setQueue((prev) => prev.map((item, index) => (
-          index === queueIndex ? { ...item, track: { ...item.track, videoId: replacementVideoId } } : item
-        )));
-        setPlayerError(null);
-        requestedPlaybackRef.current = "play";
-        safePlayerCall((player) => {
-          player.loadVideoById?.(replacementVideoId);
-          player.playVideo?.();
-        });
-      } catch {
-        if (loadToken === trackLoadTokenRef.current) setPlayerError(`Playback error (${match[1]}).`);
-      }
-    })();
-  }, [currentTrack, currentVideoId, playerError, safePlayerCall]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
