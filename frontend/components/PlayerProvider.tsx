@@ -80,7 +80,6 @@ const QUEUE_STORAGE_KEY = "ponotai.queue.v1";
 const VOLUME_STORAGE_KEY = "ponotai.player.volume.v1";
 const REPEAT_MODE_STORAGE_KEY = "ponotai.player.repeat-mode.v1";
 const PLAYER_MOUNT_NODE_ID = "ponotai-yt-player";
-const PLAYER_MOUNT_CONNECTED_EVENT = "ponotai:yt-mount-connected";
 const VIDEO_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
 const PLAYBACK_RECOVERABLE_ERROR_CODES = new Set([100, 101, 150]);
 const DEBUG_PLAYER_PROVIDER = process.env.NODE_ENV !== "production";
@@ -200,12 +199,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const currentTrackRef = useRef<QueueTrack | null>(null);
   const currentVideoIdRef = useRef<string | null>(currentVideoId);
 
-  const isPlayerMountConnected = useCallback(() => {
-    if (typeof document === "undefined") return false;
-    const mountNode = document.getElementById(PLAYER_MOUNT_NODE_ID);
-    return Boolean(mountNode && mountNode.isConnected);
-  }, []);
-
   useEffect(() => {
     queueRef.current = queue;
   }, [queue]);
@@ -223,7 +216,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [duration]);
 
   const safePlayerCall = useCallback((fn: (player: YTPlayerLike) => void) => {
-    if (!playerRef.current || !isPlayerReadyRef.current || !isPlayerMountConnected()) return false;
+    if (!playerRef.current || !isPlayerReadyRef.current) return false;
     try {
       fn(playerRef.current);
       return true;
@@ -231,31 +224,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Player can be destroyed between checks during fast unmount/remount cycles.
       return false;
     }
-  }, [isPlayerMountConnected]);
+  }, []);
 
   const requestLoadVideo = useCallback((videoId: string, playback: "play" | "pause" | null = null) => {
     if (!videoId) return false;
     pendingVideoIdRef.current = videoId;
-    if (!isPlayerMountConnected()) {
-      if (playback) requestedPlaybackRef.current = playback;
-      logPlayerDebug("Deferring loadVideoById until mount reconnects", { videoId, playback });
-      return false;
-    }
     if (playback) requestedPlaybackRef.current = playback;
     const loaded = safePlayerCall((player) => player.loadVideoById?.(videoId));
     if (loaded) pendingVideoIdRef.current = null;
     else logPlayerDebug("loadVideoById deferred because player is not ready yet", { videoId });
     return loaded;
-  }, [isPlayerMountConnected, safePlayerCall]);
+  }, [safePlayerCall]);
 
   const requestPlayback = useCallback((playback: "play" | "pause") => {
     requestedPlaybackRef.current = playback;
-    if (!isPlayerMountConnected()) return false;
     return safePlayerCall((player) => {
       if (playback === "play") player.playVideo?.();
       else player.pauseVideo?.();
     });
-  }, [isPlayerMountConnected, safePlayerCall]);
+  }, [safePlayerCall]);
 
   const currentEntry = queue[currentIndex] ?? null;
   const currentTrack = currentEntry?.track ?? null;
@@ -506,32 +493,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [currentVideoId, initializePlayer]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!playerRef.current || !isPlayerReadyRef.current) {
+      initializePlayer();
+      return;
+    }
 
-    const flushPendingPlaybackRequest = () => {
-      if (!isPlayerMountConnected()) return;
-      if (!playerRef.current || !isPlayerReadyRef.current) {
-        initializePlayer();
-        return;
-      }
+    if (pendingVideoIdRef.current) {
+      const pendingVideoId = pendingVideoIdRef.current;
+      requestLoadVideo(pendingVideoId);
+      pendingVideoIdRef.current = null;
+    }
 
-      if (pendingVideoIdRef.current) {
-        const pendingVideoId = pendingVideoIdRef.current;
-        requestLoadVideo(pendingVideoId);
-        pendingVideoIdRef.current = null;
-      }
-
-      if (requestedPlaybackRef.current === "play") {
-        requestPlayback("play");
-      } else if (requestedPlaybackRef.current === "pause") {
-        requestPlayback("pause");
-      }
-    };
-
-    window.addEventListener(PLAYER_MOUNT_CONNECTED_EVENT, flushPendingPlaybackRequest);
-    flushPendingPlaybackRequest();
-    return () => window.removeEventListener(PLAYER_MOUNT_CONNECTED_EVENT, flushPendingPlaybackRequest);
-  }, [initializePlayer, isPlayerMountConnected, requestLoadVideo, requestPlayback]);
+    if (requestedPlaybackRef.current === "play") {
+      requestPlayback("play");
+    } else if (requestedPlaybackRef.current === "pause") {
+      requestPlayback("pause");
+    }
+  }, [initializePlayer, requestLoadVideo, requestPlayback, currentVideoId]);
 
   useEffect(() => {
     return () => {

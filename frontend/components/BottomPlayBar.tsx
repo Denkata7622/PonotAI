@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { formatPlayerTime, getRepeatModeLabel, getRepeatModeTooltip, useVolumeUi } from "./player/playerUiUtils";
-import YouTubePlayerPortalHost from "./player/YouTubePlayerPortalHost";
 
 type WorkspaceTab = "queue" | "assistant" | "context";
 
@@ -14,7 +13,6 @@ type BottomPlayBarProps = {
   isNowPlayingExpanded: boolean;
   onNowPlayingExpandedChange: (expanded: boolean) => void;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
-  collapsedVideoHostRef: RefObject<HTMLDivElement | null>;
 };
 
 const bg = {
@@ -32,7 +30,7 @@ const bg = {
   unmute: "Включи звук",
 };
 
-export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange, collapsedVideoHostRef }: BottomPlayBarProps) {
+export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange }: BottomPlayBarProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -169,15 +167,13 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
     </div>
   ) : null;
 
-  if (isNowPlayingExpanded) return <>{shortcutsDialog}</>;
-
   return (
     <>
       {shortcutsDialog}
       <div
         ref={playerBarRef}
         data-player-bar
-        className="fixed bottom-0 left-0 right-0 z-50 border-t border-[var(--border)] bg-[var(--surface-raised)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 shadow-[var(--shadow-raised)] backdrop-blur-xl transition-all duration-200 motion-reduce:transition-none sm:px-4"
+        className={`fixed bottom-0 left-0 right-0 z-50 border-t border-[var(--border)] bg-[var(--surface-raised)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 shadow-[var(--shadow-raised)] backdrop-blur-xl transition-all duration-200 motion-reduce:transition-none sm:px-4 ${isNowPlayingExpanded ? "pointer-events-none translate-y-3 opacity-0" : "translate-y-0 opacity-100"}`}
       >
         <div className="mx-auto max-w-7xl">
           {!currentTrack || !currentVideoId ? (
@@ -226,7 +222,7 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
                 </div>
 
                 <div className="h-12 overflow-hidden rounded-xl bg-black md:h-14 md:justify-self-end">
-                  <YouTubePlayerPortalHost hostRef={collapsedVideoHostRef} className="h-full w-full" />
+                  <div id="ponotai-yt-player" className="h-full w-full" />
                 </div>
               </div>
 

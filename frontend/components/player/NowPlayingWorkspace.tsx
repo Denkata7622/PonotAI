@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type RefObject } from "react";
+import { useMemo } from "react";
 import { ChevronDown, Keyboard, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
@@ -8,7 +8,6 @@ import { usePlayer } from "../PlayerProvider";
 import QueuePanel from "@/src/components/player/QueuePanel";
 import MusicAssistantPage from "@/src/features/assistant/components/MusicAssistantPage";
 import { formatPlayerTime, getRepeatModeLabel, getRepeatModeTooltip, useVolumeUi } from "./playerUiUtils";
-import YouTubePlayerPortalHost from "./YouTubePlayerPortalHost";
 
 type WorkspaceTab = "queue" | "assistant" | "context";
 
@@ -16,10 +15,9 @@ type NowPlayingWorkspaceProps = {
   workspaceTab: WorkspaceTab;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   onClose: () => void;
-  expandedVideoHostRef: RefObject<HTMLDivElement | null>;
 };
 
-export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange, onClose, expandedVideoHostRef }: NowPlayingWorkspaceProps) {
+export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange, onClose }: NowPlayingWorkspaceProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const {
@@ -56,7 +54,7 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
   const expandedLabel = isBg ? "Разширен плейър" : "Expanded now playing workspace";
   const collapseLabel = t("btn_collapse", language);
   const artworkLabel = t("song_artwork", language);
-  const activePlaybackLabel = isBg ? "Активното YouTube възпроизвеждане остава закачено, докато плейърът е разгънат." : "Active YouTube playback stays attached while this player is expanded.";
+  const activePlaybackLabel = isBg ? "Възпроизвеждането продължава в долния плеър." : "Playback continues in the dock.";
 
   const volumePanel = (
     <div
@@ -114,7 +112,9 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
 
           <main className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-2 md:p-3">
             <div className="shrink-0 overflow-hidden rounded-lg bg-black">
-              <YouTubePlayerPortalHost hostRef={expandedVideoHostRef} className="aspect-video max-h-[24dvh] w-full sm:max-h-[30dvh] md:max-h-none" />
+              <div className="flex aspect-video max-h-[24dvh] w-full items-center justify-center bg-black/80 px-4 text-center text-sm text-white/85 sm:max-h-[30dvh] md:max-h-none">
+                {activePlaybackLabel}
+              </div>
             </div>
 
             <div className="mt-1.5 shrink-0 md:mt-2">
