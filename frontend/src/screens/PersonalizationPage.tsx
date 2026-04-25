@@ -709,18 +709,18 @@ export default function PersonalizationPage() {
                       ? "border-[var(--border)] bg-[var(--surface-subtle)]/70"
                       : "border-[var(--border)] bg-black/35";
                 return (
-                  <div key={slot.id} className={`flex min-h-[220px] flex-col rounded-xl border p-4 ${stateClassName}`}>
+                  <div key={slot.id} className={`flex min-h-[244px] flex-col rounded-xl border p-4 ${stateClassName}`}>
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-semibold">{slot.title}</p>
                       {slot.state === "active" ? <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">Live</span> : null}
                       {slot.state === "bonus-locked" ? <Sparkles className="h-4 w-4 text-[var(--muted)]" /> : null}
                     </div>
                     <p className="mt-2 text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">{slot.subtitle}</p>
-                    <div className="mt-4 min-h-[88px] rounded-lg border border-[var(--border)]/80 bg-[var(--surface-subtle)]/40 p-3">
+                    <div className="mt-4 min-h-[108px] rounded-lg border border-[var(--border)]/80 bg-[var(--surface-subtle)]/40 p-3.5">
                       <p className="break-words text-xs leading-relaxed text-[var(--muted)]">{slot.details}</p>
                     </div>
                     {slot.cta ? (
-                      <div className="mt-auto pt-5">
+                      <div className="mt-auto pt-6">
                         <Link href={slot.cta.href}>
                           <Button variant="ghost" size="sm">
                             <span className="inline-flex items-center gap-1.5">{slot.cta.label}<ChevronRight className="h-3.5 w-3.5" /></span>
