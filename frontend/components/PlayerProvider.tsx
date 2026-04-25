@@ -157,6 +157,7 @@ function normalizeTrack(track: Omit<QueueTrack, "id"> & { id?: string }): QueueT
   const normalizedVideoId = normalizeVideoId(track.videoId);
   const fallbackId = `${track.title}-${track.artist}`.toLowerCase().replace(/\s+/g, "-");
   const normalizedId = (track.id?.trim() || normalizedVideoId || fallbackId).toLowerCase();
+  const normalizedQuery = track.query?.trim() || `${track.title} ${track.artist} official audio`;
   return {
     id: normalizedId,
     title: track.title,
@@ -164,7 +165,7 @@ function normalizeTrack(track: Omit<QueueTrack, "id"> & { id?: string }): QueueT
     artistId: track.artistId,
     artworkUrl: track.artworkUrl,
     license: track.license,
-    query: track.query,
+    query: normalizedQuery,
     videoId: normalizedVideoId,
   };
 }
@@ -234,15 +235,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const requestLoadVideo = useCallback((videoId: string, playback: "play" | "pause" | null = null) => {
     if (!videoId) return false;
+    pendingVideoIdRef.current = videoId;
     if (!isPlayerMountConnected()) {
-      pendingVideoIdRef.current = videoId;
       if (playback) requestedPlaybackRef.current = playback;
       logPlayerDebug("Deferring loadVideoById until mount reconnects", { videoId, playback });
       return false;
     }
-    pendingVideoIdRef.current = null;
     if (playback) requestedPlaybackRef.current = playback;
-    return safePlayerCall((player) => player.loadVideoById?.(videoId));
+    const loaded = safePlayerCall((player) => player.loadVideoById?.(videoId));
+    if (loaded) pendingVideoIdRef.current = null;
+    else logPlayerDebug("loadVideoById deferred because player is not ready yet", { videoId });
+    return loaded;
   }, [isPlayerMountConnected, safePlayerCall]);
 
   const requestPlayback = useCallback((playback: "play" | "pause") => {
@@ -577,7 +580,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       let cancelled = false;
       (async () => {
         try {
-          const response = await fetch(`/api/youtube/resolve?query=${encodeURIComponent(currentTrack.query)}`);
+          const resolverQuery = currentTrack.query?.trim() || `${currentTrack.title} ${currentTrack.artist} official audio`;
+          const response = await fetch(`/api/youtube/resolve?query=${encodeURIComponent(resolverQuery)}`);
           if (!response.ok) {
             setPlayerError("Could not resolve a playable YouTube video.");
             return;
@@ -612,6 +616,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     if (!isPlayerReadyRef.current) {
       pendingVideoIdRef.current = resolvedVideoId;
+      initializePlayer();
       return;
     }
     requestedPlaybackRef.current = "play";

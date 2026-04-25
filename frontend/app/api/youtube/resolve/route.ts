@@ -15,13 +15,16 @@ export async function GET(request: NextRequest) {
   );
 
   if (!query?.trim()) {
-    return NextResponse.json({ videoId: null });
+    return NextResponse.json({ videoId: null, reason: process.env.NODE_ENV !== "production" ? "missing_query" : undefined });
   }
 
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) {
-    // Key not configured — return null gracefully; player will display its error state
-        return NextResponse.json({ videoId: null });
+    // Key not configured — return null gracefully; player will display its error state.
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[youtube/resolve] Missing YOUTUBE_API_KEY.");
+    }
+    return NextResponse.json({ videoId: null, reason: process.env.NODE_ENV !== "production" ? "missing_api_key" : undefined });
   }
 
   try {
@@ -36,7 +39,10 @@ export async function GET(request: NextRequest) {
 
     const res = await fetch(url.toString());
     if (!res.ok) {
-      return NextResponse.json({ videoId: null });
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[youtube/resolve] Upstream request failed", { status: res.status });
+      }
+      return NextResponse.json({ videoId: null, reason: process.env.NODE_ENV !== "production" ? "upstream_failed" : undefined });
     }
 
     const data = (await res.json()) as {
@@ -46,8 +52,14 @@ export async function GET(request: NextRequest) {
       const candidate = item.id?.videoId;
       return candidate && !excludedIds.has(candidate);
     })?.id?.videoId ?? null;
-    return NextResponse.json({ videoId });
+    return NextResponse.json({
+      videoId,
+      reason: process.env.NODE_ENV !== "production" && !videoId ? "no_match" : undefined,
+    });
   } catch {
-    return NextResponse.json({ videoId: null });
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[youtube/resolve] Unexpected resolver error.");
+    }
+    return NextResponse.json({ videoId: null, reason: process.env.NODE_ENV !== "production" ? "unexpected_error" : undefined });
   }
 }
