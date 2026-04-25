@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ChevronDown, ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { formatPlayerTime, getRepeatModeLabel, useVolumeUi } from "./player/playerUiUtils";
+import YouTubePlayerPortalHost from "./player/YouTubePlayerPortalHost";
 
 type WorkspaceTab = "queue" | "assistant" | "context";
 
@@ -13,7 +14,7 @@ type BottomPlayBarProps = {
   isNowPlayingExpanded: boolean;
   onNowPlayingExpandedChange: (expanded: boolean) => void;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
-  expandedVideoHostRef: RefObject<HTMLDivElement | null>;
+  collapsedVideoHostRef: RefObject<HTMLDivElement | null>;
 };
 
 const bg = {
@@ -31,30 +32,11 @@ const bg = {
   unmute: "Включи звук",
 };
 
-function applyYouTubeIframePolicy(node: HTMLElement | null) {
-  if (node?.tagName !== "IFRAME") return;
-  node.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
-  node.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
-  node.setAttribute("allowfullscreen", "");
-}
-
-function getOrCreateYouTubeMount() {
-  const nodes = Array.from(document.querySelectorAll<HTMLElement>("#ponotai-yt-player"));
-  const node = nodes[0] ?? document.createElement("div");
-  node.id = "ponotai-yt-player";
-  node.className = "h-full w-full";
-  applyYouTubeIframePolicy(node);
-  nodes.slice(1).forEach((duplicate) => duplicate.remove());
-  return node;
-}
-
-export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange, expandedVideoHostRef }: BottomPlayBarProps) {
+export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange, collapsedVideoHostRef }: BottomPlayBarProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const playerBarRef = useRef<HTMLDivElement | null>(null);
-  const collapsedVideoHostRef = useRef<HTMLDivElement | null>(null);
-  const youtubeMountRef = useRef<HTMLElement | null>(null);
 
   const {
     queue,
@@ -101,28 +83,6 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
     };
   }, []);
 
-  useLayoutEffect(() => {
-    youtubeMountRef.current = getOrCreateYouTubeMount();
-    const collapsedHost = collapsedVideoHostRef.current;
-    if (collapsedHost && !collapsedHost.contains(youtubeMountRef.current)) {
-      collapsedHost.appendChild(youtubeMountRef.current);
-    }
-  }, []);
-
-  useLayoutEffect(() => {
-    youtubeMountRef.current = document.getElementById("ponotai-yt-player") ?? youtubeMountRef.current ?? getOrCreateYouTubeMount();
-    applyYouTubeIframePolicy(youtubeMountRef.current);
-    Array.from(document.querySelectorAll<HTMLElement>("#ponotai-yt-player")).forEach((node) => {
-      if (node !== youtubeMountRef.current) node.remove();
-    });
-
-    const target = isNowPlayingExpanded && currentTrack && currentVideoId
-      ? expandedVideoHostRef.current
-      : collapsedVideoHostRef.current;
-    if (target && !target.contains(youtubeMountRef.current)) {
-      target.appendChild(youtubeMountRef.current);
-    }
-  }, [currentTrack, currentVideoId, expandedVideoHostRef, isNowPlayingExpanded]);
 
   useEffect(() => {
     if (!currentTrack || !currentVideoId) {
@@ -247,7 +207,7 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
                 </div>
 
                 <div className="h-12 overflow-hidden rounded-xl bg-black md:h-14 md:justify-self-end">
-                  <div ref={collapsedVideoHostRef} className="h-full w-full" />
+                  <YouTubePlayerPortalHost hostRef={collapsedVideoHostRef} className="h-full w-full" />
                 </div>
               </div>
 

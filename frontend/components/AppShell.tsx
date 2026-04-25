@@ -21,6 +21,7 @@ import { addSongToPlaylist as addSongToPlaylistApi } from "../features/library/a
 import { formatArtist } from "../lib/formatArtist";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
 import NowPlayingWorkspace from "./player/NowPlayingWorkspace";
+import PlayerMountManager from "./player/PlayerMountManager";
 import { runUnifiedSearch, type PersonalizedSearchResult } from "../lib/searchClient";
 import { toSongKey } from "../lib/songIdentity";
 
@@ -97,6 +98,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const mobileNavRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const expandedVideoHostRef = useRef<HTMLDivElement | null>(null);
+  const collapsedVideoHostRef = useRef<HTMLDivElement | null>(null);
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
 
   useEffect(() => {
@@ -833,6 +835,12 @@ function AppShellContent({ children }: { children: ReactNode }) {
         ) : null}
       </nav>
       <DualSidebarHost />
+      <PlayerMountManager
+        collapsedHostRef={collapsedVideoHostRef}
+        expandedHostRef={expandedVideoHostRef}
+        isExpanded={isNowPlayingExpanded}
+        hasActiveVideo={Boolean(currentTrack && currentVideoId)}
+      />
       {isNowPlayingExpanded && currentTrack && currentVideoId ? (
         <div className="now-playing-overlay fixed inset-0 z-[60] bg-black/55 backdrop-blur-md">
           <NowPlayingWorkspace
@@ -847,7 +855,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
         isNowPlayingExpanded={isNowPlayingExpanded}
         onNowPlayingExpandedChange={setIsNowPlayingExpanded}
         onWorkspaceTabChange={setWorkspaceTab}
-        expandedVideoHostRef={expandedVideoHostRef}
+        collapsedVideoHostRef={collapsedVideoHostRef}
       />
     </>
   );
