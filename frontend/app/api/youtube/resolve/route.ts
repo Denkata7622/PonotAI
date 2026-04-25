@@ -6,6 +6,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("query");
+  const excludedIds = new Set(
+    request.nextUrl.searchParams
+      .getAll("exclude")
+      .flatMap((value) => value.split(","))
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
 
   if (!query?.trim()) {
     return NextResponse.json({ videoId: null });
@@ -21,7 +28,9 @@ export async function GET(request: NextRequest) {
     const url = new URL("https://www.googleapis.com/youtube/v3/search");
     url.searchParams.set("part", "snippet");
     url.searchParams.set("type", "video");
-    url.searchParams.set("maxResults", "1");
+    url.searchParams.set("maxResults", "8");
+    url.searchParams.set("videoEmbeddable", "true");
+    url.searchParams.set("videoSyndicated", "true");
     url.searchParams.set("q", query.trim());
     url.searchParams.set("key", apiKey);
 
@@ -33,7 +42,10 @@ export async function GET(request: NextRequest) {
     const data = (await res.json()) as {
       items?: Array<{ id?: { videoId?: string } }>;
     };
-    const videoId = data.items?.[0]?.id?.videoId ?? null;
+    const videoId = data.items?.find((item) => {
+      const candidate = item.id?.videoId;
+      return candidate && !excludedIds.has(candidate);
+    })?.id?.videoId ?? null;
     return NextResponse.json({ videoId });
   } catch {
     return NextResponse.json({ videoId: null });

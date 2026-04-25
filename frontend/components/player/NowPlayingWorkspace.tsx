@@ -17,6 +17,23 @@ type NowPlayingWorkspaceProps = {
   expandedVideoHostRef: RefObject<HTMLDivElement | null>;
 };
 
+const bg = {
+  expanded: "Разширен плейър",
+  collapse: "Свий плейъра",
+  artwork: "Обложка",
+  queue: "Опашка",
+  context: "Контекст",
+  currentContext: "Текущ контекст",
+  openYoutube: "Отвори в YouTube",
+  activePlayback: "Активното YouTube възпроизвеждане остава закачено, докато плейърът е разгънат.",
+  pause: "Пауза",
+  play: "Пусни",
+  progress: "Прогрес",
+  volume: "Сила на звука",
+  mute: "Изключи звук",
+  unmute: "Включи звук",
+};
+
 export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange, onClose, expandedVideoHostRef }: NowPlayingWorkspaceProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
@@ -46,102 +63,128 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
 
   if (!currentTrack || !currentVideoId) return null;
 
+  const queueLabel = isBg ? bg.queue : "Queue";
+  const contextLabel = isBg ? bg.context : "Context";
+  const currentContextLabel = isBg ? bg.currentContext : "Current context";
+  const openYoutubeLabel = isBg ? bg.openYoutube : "Open in YouTube";
+
+  const volumePanel = (
+    <div
+      className="absolute bottom-[calc(100%+8px)] right-0 z-30 flex w-[min(18rem,calc(100vw-1.5rem))] items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-2.5 shadow-2xl"
+      style={{ background: "color-mix(in srgb, var(--surface-raised) 92%, var(--bg) 8%)" }}
+    >
+      <button type="button" onClick={toggleMute} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--text)]" aria-label={volume === 0 ? (isBg ? bg.unmute : "Unmute") : (isBg ? bg.mute : "Mute")}>
+        {volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+      </button>
+      <input type="range" min={0} max={100} value={volume} onChange={(event) => updateVolume(Number(event.target.value))} className="h-8 min-w-0 flex-1 accent-[var(--accent)]" aria-label={isBg ? bg.volume : "Volume"} />
+      <span className="w-10 shrink-0 text-right text-xs text-[var(--muted)]">{Math.round(volume)}%</span>
+    </div>
+  );
+
   return (
-    <section className="absolute inset-x-0 top-0 bottom-0 overflow-hidden px-2 pb-2 pt-[max(env(safe-area-inset-top,0px),8px)] sm:px-4 sm:pb-4" aria-label={isBg ? "Разширен плейър" : "Expanded now playing workspace"}>
-      <div className="mx-auto flex h-full min-h-0 max-w-7xl flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
-        <header className="border-b border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 sm:px-4">
-          <div className="flex items-center gap-3">
-            {currentTrack.artworkUrl ? (
-              <img src={currentTrack.artworkUrl} alt={isBg ? "Обложка" : "Artwork"} className="h-11 w-11 shrink-0 rounded-lg object-cover" />
-            ) : (
-              <div className="h-11 w-11 shrink-0 rounded-lg bg-[var(--surface-subtle)]" />
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-[var(--text)]">{currentTrack.title}</p>
-              <p className="truncate text-xs text-[var(--muted)]">{currentTrack.artist}</p>
+    <section
+      className="now-playing-workspace absolute inset-0 overflow-hidden px-2 pb-[calc(10px+env(safe-area-inset-bottom,0px))] pt-[max(env(safe-area-inset-top,0px),10px)] sm:px-4 sm:pb-4"
+      aria-label={isBg ? bg.expanded : "Expanded now playing workspace"}
+    >
+      <div className="now-playing-card mx-auto flex h-full min-h-0 max-w-7xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-surface/95 shadow-2xl backdrop-blur-xl">
+        <header className="now-playing-dock shrink-0 border-b border-[var(--border)] bg-[var(--surface-raised)]/95 px-2 py-2 sm:px-4">
+          <div className="flex min-h-12 items-center gap-2 sm:min-h-14 sm:gap-3">
+            <button type="button" onClick={onClose} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1.5 py-1 text-left transition hover:bg-[var(--surface-subtle)]" aria-label={isBg ? bg.collapse : "Collapse now playing"}>
+              {currentTrack.artworkUrl ? (
+                <img src={currentTrack.artworkUrl} alt={isBg ? bg.artwork : "Artwork"} className="h-10 w-10 shrink-0 rounded-lg object-cover sm:h-11 sm:w-11" />
+              ) : (
+                <div className="h-10 w-10 shrink-0 rounded-lg bg-[var(--surface-subtle)] sm:h-11 sm:w-11" />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-[var(--text)]">{currentTrack.title}</p>
+                <p className="truncate text-xs text-[var(--muted)]">{currentTrack.artist}</p>
+              </div>
+            </button>
+            <div className="hidden items-center gap-1 rounded-full bg-[var(--surface-subtle)] p-1 sm:flex">
+              <button onClick={skipPrevious} className="grid h-9 w-9 place-items-center rounded-full" aria-label="Previous"><SkipBack className="h-4 w-4 text-[var(--text)]" /></button>
+              <button onClick={togglePlayPause} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--accent-soft)]" aria-label={isPlaying ? (isBg ? bg.pause : "Pause playback") : (isBg ? bg.play : "Start playback")}>{isPlaying ? <Pause className="h-4 w-4 text-[var(--text)]" /> : <Play className="h-4 w-4 text-[var(--text)]" />}</button>
+              <button onClick={skipNext} className="grid h-9 w-9 place-items-center rounded-full" aria-label="Next"><SkipForward className="h-4 w-4 text-[var(--text)]" /></button>
             </div>
-            <button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Свий плейъра" : "Collapse now playing"}><ChevronDown className="h-5 w-5 text-[var(--text)]" /></button>
+            <button onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? bg.collapse : "Collapse now playing"}>
+              <ChevronDown className="h-5 w-5 text-[var(--text)]" />
+            </button>
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-2 p-2 md:grid-cols-[minmax(200px,260px)_minmax(0,1fr)] md:p-3 xl:grid-cols-[minmax(220px,280px)_minmax(0,1fr)_minmax(300px,360px)]">
-          <aside className="hidden min-h-0 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3 md:block">
-            <p className="text-xs uppercase tracking-[0.1em] text-[var(--muted)]">{isBg ? "Контекст" : "Context"}</p>
-            <p className="mt-2 line-clamp-2 text-base font-semibold text-[var(--text)]">{currentTrack.title}</p>
+        <div className="grid min-h-0 flex-1 gap-2 overflow-hidden p-2 md:grid-cols-[minmax(190px,260px)_minmax(0,1fr)] md:p-3 xl:grid-cols-[minmax(220px,280px)_minmax(0,1fr)_minmax(300px,360px)]">
+          <aside className="hidden min-h-0 overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3 md:block">
+            <p className="text-xs uppercase text-[var(--muted)]">{contextLabel}</p>
+            <p className="mt-2 line-clamp-3 text-base font-semibold text-[var(--text)]">{currentTrack.title}</p>
             <p className="mt-1 text-sm text-[var(--muted)]">{currentTrack.artist}</p>
-            <a className="mt-4 inline-block text-sm text-[var(--accent)] underline" href={youtubeSearchUrl} target="_blank" rel="noreferrer">{isBg ? "Отвори в YouTube" : "Open in YouTube"}</a>
+            <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-3">
+              <p className="text-xs text-[var(--muted)]">{isBg ? bg.activePlayback : "Active YouTube playback stays attached while this player is expanded."}</p>
+            </div>
+            <a className="mt-4 inline-block text-sm text-[var(--accent)] underline" href={youtubeSearchUrl} target="_blank" rel="noreferrer">{openYoutubeLabel}</a>
           </aside>
 
-          <main className="flex min-h-0 flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-2 md:p-3">
-            <div className="overflow-hidden rounded-lg bg-black">
-              <div ref={expandedVideoHostRef} className="aspect-video w-full" />
+          <main className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-2 md:p-3">
+            <div className="shrink-0 overflow-hidden rounded-lg bg-black">
+              <div ref={expandedVideoHostRef} className="aspect-video max-h-[24dvh] w-full sm:max-h-[30dvh] md:max-h-none" />
             </div>
 
-            <div className="mt-2">
-              <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="h-8 w-full themed-progress" aria-label={isBg ? "Прогрес" : "Track progress"} />
+            <div className="mt-1.5 shrink-0 md:mt-2">
+              <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="h-6 w-full themed-progress md:h-8" aria-label={isBg ? bg.progress : "Track progress"} />
               <div className="mt-1 flex items-center justify-between text-xs text-[var(--muted)]"><span>{formatPlayerTime(currentTime)}</span><span>{formatPlayerTime(duration)}</span></div>
             </div>
 
-            <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-1.5">
-              <div className="flex items-center justify-start gap-2">
+            <div className="mt-1.5 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-1.5 md:mt-2">
+              <div className="flex items-center justify-start gap-1">
                 <button onClick={cycleRepeatMode} className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${repeatMode === "normal" ? "bg-[var(--surface-subtle)] text-[var(--muted)]" : "bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel}><RotateCcw className="h-4 w-4" /></button>
-                <button onClick={skipPrevious} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Previous"><SkipBack className="h-4 w-4 text-[var(--text)]" /></button>
+                <button onClick={() => onWorkspaceTabChange("queue")} className={`relative grid h-10 w-10 place-items-center rounded-full ${workspaceTab === "queue" ? "bg-[var(--accent-soft)] text-[var(--text)]" : "bg-[var(--surface-subtle)] text-[var(--text)]"}`} aria-label={queueLabel}><ListMusic className="h-4 w-4" /></button>
               </div>
-              <button onClick={togglePlayPause} className="grid h-11 w-11 place-items-center rounded-full bg-[var(--accent-soft)]" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="h-5 w-5 text-[var(--text)]" /> : <Play className="h-5 w-5 text-[var(--text)]" />}</button>
-              <div className="flex items-center justify-end gap-2">
-                <button onClick={skipNext} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Next"><SkipForward className="h-4 w-4 text-[var(--text)]" /></button>
+              <div className="flex items-center justify-center gap-1 rounded-full bg-[var(--surface-subtle)] p-1">
+                <button onClick={skipPrevious} className="grid h-9 w-9 place-items-center rounded-full" aria-label="Previous"><SkipBack className="h-4 w-4 text-[var(--text)]" /></button>
+                <button onClick={togglePlayPause} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--accent-soft)]" aria-label={isPlaying ? (isBg ? bg.pause : "Pause playback") : (isBg ? bg.play : "Start playback")}>{isPlaying ? <Pause className="h-5 w-5 text-[var(--text)]" /> : <Play className="h-5 w-5 text-[var(--text)]" />}</button>
+                <button onClick={skipNext} className="grid h-9 w-9 place-items-center rounded-full" aria-label="Next"><SkipForward className="h-4 w-4 text-[var(--text)]" /></button>
+              </div>
+              <div className="flex items-center justify-end">
                 <div className="relative">
-                  <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Сила на звука" : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
-                  {isVolumePanelOpen ? (
-                    <div className="absolute bottom-[calc(100%+8px)] right-0 z-30 w-56 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-2.5 shadow-xl">
-                      <button type="button" onClick={toggleMute} className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--text)]" aria-label={volume === 0 ? (isBg ? "Включи звук" : "Unmute") : (isBg ? "Изключи звук" : "Mute")}>
-                        {volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <input type="range" min={0} max={100} value={volume} onChange={(event) => updateVolume(Number(event.target.value))} className="h-8 min-w-0 flex-1 accent-[var(--accent)]" aria-label={isBg ? "Сила на звука" : "Volume"} />
-                        <span className="w-10 text-right text-xs text-[var(--muted)]">{Math.round(volume)}%</span>
-                      </div>
-                    </div>
-                  ) : null}
+                  <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? bg.volume : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
+                  {isVolumePanelOpen ? volumePanel : null}
                 </div>
               </div>
             </div>
-            {playerError ? <p className="mt-2 text-xs status-danger">{playerError}</p> : null}
+            {playerError ? <p className="mt-1.5 shrink-0 text-xs status-danger">{playerError}</p> : null}
 
-            <div className="mt-2 app-tabs xl:hidden">
-              <button onClick={() => onWorkspaceTabChange("queue")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "queue" ? "app-tab-active" : ""}`}><ListMusic className="h-3.5 w-3.5" />{isBg ? "Опашка" : "Queue"}</button>
+            <div className="mt-1.5 shrink-0 app-tabs md:mt-2 xl:hidden">
+              <button onClick={() => onWorkspaceTabChange("queue")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "queue" ? "app-tab-active" : ""}`}><ListMusic className="h-3.5 w-3.5" />{queueLabel}</button>
               <button onClick={() => onWorkspaceTabChange("assistant")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "assistant" ? "app-tab-active" : ""}`}><Sparkles className="h-3.5 w-3.5" />AI</button>
-              <button onClick={() => onWorkspaceTabChange("context")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "context" ? "app-tab-active" : ""}`}><Keyboard className="h-3.5 w-3.5" />{isBg ? "Контекст" : "Context"}</button>
+              <button onClick={() => onWorkspaceTabChange("context")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "context" ? "app-tab-active" : ""}`}><Keyboard className="h-3.5 w-3.5" />{contextLabel}</button>
             </div>
-            <div className="mt-2 min-h-0 flex-1 overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-2 xl:hidden">
-              {workspaceTab === "queue" ? <QueuePanel /> : null}
+            <div className="mt-1.5 min-h-0 flex-1 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-1 md:mt-2 md:p-2 xl:hidden">
+              {workspaceTab === "queue" ? <QueuePanel compact /> : null}
               {workspaceTab === "assistant" ? <MusicAssistantPage mode="sidebar" sidebarOpen /> : null}
               {workspaceTab === "context" ? (
-                <div className="rounded-xl bg-[var(--surface)] p-4">
-                  <p className="text-xs uppercase tracking-[0.1em] text-[var(--muted)]">{isBg ? "Текущ контекст" : "Current context"}</p>
+                <div className="h-full overflow-auto rounded-xl bg-[var(--surface)] p-4">
+                  <p className="text-xs uppercase text-[var(--muted)]">{currentContextLabel}</p>
                   <p className="mt-2 text-lg font-semibold text-[var(--text)]">{currentTrack.title}</p>
                   <p className="text-sm text-[var(--muted)]">{currentTrack.artist}</p>
-                  <a className="mt-4 inline-block text-sm text-[var(--accent)] underline" href={youtubeSearchUrl} target="_blank" rel="noreferrer">{isBg ? "Отвори в YouTube" : "Open in YouTube"}</a>
+                  <a className="mt-4 inline-block text-sm text-[var(--accent)] underline" href={youtubeSearchUrl} target="_blank" rel="noreferrer">{openYoutubeLabel}</a>
                 </div>
               ) : null}
             </div>
           </main>
 
-          <aside className="hidden min-h-0 flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3 xl:flex">
-            <div className="app-tabs">
-              <button onClick={() => onWorkspaceTabChange("queue")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "queue" ? "app-tab-active" : ""}`}><ListMusic className="h-3.5 w-3.5" />{isBg ? "Опашка" : "Queue"}</button>
+          <aside className="hidden min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3 xl:flex">
+            <div className="shrink-0 app-tabs">
+              <button onClick={() => onWorkspaceTabChange("queue")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "queue" ? "app-tab-active" : ""}`}><ListMusic className="h-3.5 w-3.5" />{queueLabel}</button>
               <button onClick={() => onWorkspaceTabChange("assistant")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "assistant" ? "app-tab-active" : ""}`}><Sparkles className="h-3.5 w-3.5" />AI</button>
-              <button onClick={() => onWorkspaceTabChange("context")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "context" ? "app-tab-active" : ""}`}><Keyboard className="h-3.5 w-3.5" />{isBg ? "Контекст" : "Context"}</button>
+              <button onClick={() => onWorkspaceTabChange("context")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "context" ? "app-tab-active" : ""}`}><Keyboard className="h-3.5 w-3.5" />{contextLabel}</button>
             </div>
             <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-xl bg-[var(--surface-raised)] p-2">
               {workspaceTab === "queue" ? <QueuePanel /> : null}
               {workspaceTab === "assistant" ? <MusicAssistantPage mode="sidebar" sidebarOpen /> : null}
               {workspaceTab === "context" ? (
                 <div className="rounded-xl bg-[var(--surface)] p-4">
-                  <p className="text-xs uppercase tracking-[0.1em] text-[var(--muted)]">{isBg ? "Текущ контекст" : "Current context"}</p>
+                  <p className="text-xs uppercase text-[var(--muted)]">{currentContextLabel}</p>
                   <p className="mt-2 text-lg font-semibold text-[var(--text)]">{currentTrack.title}</p>
                   <p className="text-sm text-[var(--muted)]">{currentTrack.artist}</p>
-                  <a className="mt-4 inline-block text-sm text-[var(--accent)] underline" href={youtubeSearchUrl} target="_blank" rel="noreferrer">{isBg ? "Отвори в YouTube" : "Open in YouTube"}</a>
+                  <a className="mt-4 inline-block text-sm text-[var(--accent)] underline" href={youtubeSearchUrl} target="_blank" rel="noreferrer">{openYoutubeLabel}</a>
                 </div>
               ) : null}
             </div>

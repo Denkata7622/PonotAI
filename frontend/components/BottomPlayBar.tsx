@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { ChevronDown, Keyboard, ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Volume2, VolumeX, X, Sparkles } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { ChevronDown, ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -16,13 +16,45 @@ type BottomPlayBarProps = {
   expandedVideoHostRef: RefObject<HTMLDivElement | null>;
 };
 
+const bg = {
+  chooseTrack: "Избери песен, за да стартираш плейъра.",
+  preparing: "Подготвяне на видео...",
+  unavailable: "Възпроизвеждането е недостъпно - отвори в YouTube.",
+  openSearch: "Отвори търсене",
+  artwork: "Обложка",
+  pause: "Пауза",
+  play: "Пусни",
+  volume: "Сила на звука",
+  expand: "Разгъни",
+  progress: "Прогрес",
+  mute: "Изключи звук",
+  unmute: "Включи звук",
+};
+
+function applyYouTubeIframePolicy(node: HTMLElement | null) {
+  if (node?.tagName !== "IFRAME") return;
+  node.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+  node.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
+  node.setAttribute("allowfullscreen", "");
+}
+
+function getOrCreateYouTubeMount() {
+  const nodes = Array.from(document.querySelectorAll<HTMLElement>("#ponotai-yt-player"));
+  const node = nodes[0] ?? document.createElement("div");
+  node.id = "ponotai-yt-player";
+  node.className = "h-full w-full";
+  applyYouTubeIframePolicy(node);
+  nodes.slice(1).forEach((duplicate) => duplicate.remove());
+  return node;
+}
+
 export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange, expandedVideoHostRef }: BottomPlayBarProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const playerBarRef = useRef<HTMLDivElement | null>(null);
   const collapsedVideoHostRef = useRef<HTMLDivElement | null>(null);
-  const youtubeMountRef = useRef<HTMLDivElement | null>(null);
+  const youtubeMountRef = useRef<HTMLElement | null>(null);
 
   const {
     queue,
@@ -34,7 +66,6 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
     volume,
     isInitializing,
     isBuffering,
-    playerError,
     togglePlayPause,
     seekToPercent,
     setVolume,
@@ -55,7 +86,7 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
     const updatePlayerBarHeight = () => {
       const rect = playerBarRef.current?.getBoundingClientRect();
       const height = rect?.height ?? 0;
-      document.documentElement.style.setProperty("--player-bar-height", `${Math.round(height)}px`);
+      document.documentElement.style.setProperty("--player-bar-height", `${Math.round(height || 88)}px`);
     };
 
     updatePlayerBarHeight();
@@ -70,28 +101,26 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
     };
   }, []);
 
-  useEffect(() => {
-    if (!youtubeMountRef.current) {
-      youtubeMountRef.current = document.createElement("div");
-      youtubeMountRef.current.id = "ponotai-yt-player";
-      youtubeMountRef.current.className = "h-full w-full";
-    }
+  useLayoutEffect(() => {
+    youtubeMountRef.current = getOrCreateYouTubeMount();
     const collapsedHost = collapsedVideoHostRef.current;
     if (collapsedHost && !collapsedHost.contains(youtubeMountRef.current)) {
       collapsedHost.appendChild(youtubeMountRef.current);
     }
   }, []);
 
-  useEffect(() => {
-    if (!youtubeMountRef.current) return;
+  useLayoutEffect(() => {
+    youtubeMountRef.current = document.getElementById("ponotai-yt-player") ?? youtubeMountRef.current ?? getOrCreateYouTubeMount();
+    applyYouTubeIframePolicy(youtubeMountRef.current);
+    Array.from(document.querySelectorAll<HTMLElement>("#ponotai-yt-player")).forEach((node) => {
+      if (node !== youtubeMountRef.current) node.remove();
+    });
+
     const target = isNowPlayingExpanded && currentTrack && currentVideoId
       ? expandedVideoHostRef.current
       : collapsedVideoHostRef.current;
-    const fallbackTarget = isNowPlayingExpanded ? collapsedVideoHostRef.current : expandedVideoHostRef.current;
     if (target && !target.contains(youtubeMountRef.current)) {
       target.appendChild(youtubeMountRef.current);
-    } else if (!target && fallbackTarget && !fallbackTarget.contains(youtubeMountRef.current)) {
-      fallbackTarget.appendChild(youtubeMountRef.current);
     }
   }, [currentTrack, currentVideoId, expandedVideoHostRef, isNowPlayingExpanded]);
 
@@ -104,96 +133,93 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
   useEffect(() => {
     if (!isNowPlayingExpanded) return;
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onNowPlayingExpandedChange(false);
-      }
+      if (event.key === "Escape") onNowPlayingExpandedChange(false);
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, [isNowPlayingExpanded, onNowPlayingExpandedChange]);
 
   function handleQueueClick() {
-    if (!isNowPlayingExpanded) onNowPlayingExpandedChange(true);
+    onNowPlayingExpandedChange(true);
     onWorkspaceTabChange("queue");
   }
 
   function handleAssistantClick() {
-    if (!isNowPlayingExpanded) onNowPlayingExpandedChange(true);
+    onNowPlayingExpandedChange(true);
     onWorkspaceTabChange("assistant");
   }
 
-  const sharedVolumeSlider = (
-    <div className="absolute bottom-[calc(100%+8px)] right-0 z-[72] w-56 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-2.5 shadow-xl">
+  const volumePanel = (
+    <div
+      className="absolute bottom-[calc(100%+8px)] right-0 z-[72] flex w-[min(18rem,calc(100vw-1.5rem))] items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-2.5 shadow-2xl"
+      style={{ background: "color-mix(in srgb, var(--surface-raised) 92%, var(--bg) 8%)" }}
+    >
       <button
         type="button"
         onClick={toggleMute}
-        className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--text)]"
-        aria-label={volume === 0 ? (isBg ? "Включи звук" : "Unmute") : (isBg ? "Изключи звук" : "Mute")}
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--surface-subtle)] text-[var(--text)]"
+        aria-label={volume === 0 ? (isBg ? bg.unmute : "Unmute") : (isBg ? bg.mute : "Mute")}
       >
         {volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
       </button>
-      <div className="flex items-center gap-2">
-        <input type="range" min={0} max={100} value={volume} onChange={(event) => updateVolume(Number(event.target.value))} className="h-8 min-w-0 flex-1 accent-[var(--accent)]" aria-label={isBg ? "Сила на звука" : "Volume"} />
-        <span className="w-10 text-right text-xs text-[var(--muted)]">{Math.round(volume)}%</span>
-      </div>
+      <input type="range" min={0} max={100} value={volume} onChange={(event) => updateVolume(Number(event.target.value))} className="h-8 min-w-0 flex-1 accent-[var(--accent)]" aria-label={isBg ? bg.volume : "Volume"} />
+      <span className="w-10 shrink-0 text-right text-xs text-[var(--muted)]">{Math.round(volume)}%</span>
     </div>
   );
 
-  if (isNowPlayingExpanded) {
-    return null;
-  }
+  const shortcutsDialog = isShortcutsOpen ? (
+    <div className="fixed inset-0 z-[70] bg-black/60" onClick={() => setIsShortcutsOpen(false)}>
+      <div className="mx-auto mt-24 w-[92%] max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5" onClick={(event) => event.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-base font-semibold">{t("shortcuts_title", language)}</h3>
+          <button onClick={() => setIsShortcutsOpen(false)} aria-label="Close shortcuts"><X className="h-5 w-5 text-[var(--muted)]" /></button>
+        </div>
+        <div className="space-y-2 text-sm">
+          {[
+            { key: "Space", label: t("shortcut_play_pause", language) },
+            { key: "Right", label: t("shortcut_next", language) },
+            { key: "Left", label: t("shortcut_previous", language) },
+            { key: "M", label: t("shortcut_mute", language) },
+            { key: "/", label: t("shortcut_focus_search", language) },
+          ].map((item) => (
+            <div key={item.key} className="flex items-center justify-between rounded-lg border border-border bg-[var(--surface-raised)] px-3 py-2">
+              <kbd className="rounded border border-border bg-[var(--surface)] px-2 py-1 text-xs">{item.key}</kbd>
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  if (isNowPlayingExpanded) return <>{shortcutsDialog}</>;
 
   return (
     <>
-      {isShortcutsOpen && (
-        <div className="fixed inset-0 z-[70] bg-black/60" onClick={() => setIsShortcutsOpen(false)}>
-          <div className="mx-auto mt-24 w-[92%] max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5" onClick={(event) => event.stopPropagation()}>
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-base font-semibold">{t("shortcuts_title", language)}</h3>
-              <button onClick={() => setIsShortcutsOpen(false)} aria-label="Close shortcuts"><X className="h-5 w-5 text-[var(--muted)]" /></button>
-            </div>
-            <div className="space-y-2 text-sm">
-              {[
-                { key: "Space", label: t("shortcut_play_pause", language) },
-                { key: "→", label: t("shortcut_next", language) },
-                { key: "←", label: t("shortcut_previous", language) },
-                { key: "M", label: t("shortcut_mute", language) },
-                { key: "/", label: t("shortcut_focus_search", language) },
-              ].map((item) => (
-                <div key={item.key} className="flex items-center justify-between rounded-lg border border-border bg-[var(--surface-raised)] px-3 py-2">
-                  <kbd className="rounded border border-border bg-[var(--surface)] px-2 py-1 text-xs">{item.key}</kbd>
-                  <span>{item.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-
+      {shortcutsDialog}
       <div
         ref={playerBarRef}
         data-player-bar
-        className="fixed bottom-0 left-0 right-0 z-50 border-t border-[var(--border)] bg-[var(--surface)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 sm:px-4"
+        className="fixed bottom-0 left-0 right-0 z-50 border-t border-[var(--border)] bg-[var(--surface-raised)] px-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] pt-2 shadow-[var(--shadow-raised)] backdrop-blur-xl transition-all duration-200 motion-reduce:transition-none sm:px-4"
       >
         <div className="mx-auto max-w-7xl">
           {!currentTrack || !currentVideoId ? (
             <div className="rounded-xl border border-dashed border-border bg-[var(--surface-raised)] px-4 py-2 text-xs text-text-muted">
               {!currentTrack
-                ? (isBg ? "Избери песен, за да стартираш плейъра." : "Choose a track to start playback.")
+                ? (isBg ? bg.chooseTrack : "Choose a track to start playback.")
                 : (isInitializing || isBuffering
-                  ? (isBg ? "Подготвяне на видео…" : "Preparing video…")
+                  ? (isBg ? bg.preparing : "Preparing video...")
                   : <span>
-                      {isBg ? "Възпроизвеждането е недостъпно — отвори в YouTube." : "Playback unavailable — open on YouTube."}{" "}
-                      <a className="underline" href={youtubeSearchUrl} target="_blank" rel="noreferrer">{isBg ? "Отвори търсене" : "Open search"}</a>
+                      {isBg ? bg.unavailable : "Playback unavailable - open on YouTube."}{" "}
+                      <a className="underline" href={youtubeSearchUrl} target="_blank" rel="noreferrer">{isBg ? bg.openSearch : "Open search"}</a>
                     </span>)}
             </div>
           ) : (
-            <div className="rounded-2xl bg-[var(--surface-raised)] p-2.5">
-              <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_auto_auto_96px] md:items-center">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-2.5">
+              <div className="grid grid-cols-[minmax(0,1fr)_90px] items-center gap-2 md:grid-cols-[minmax(220px,1fr)_auto_auto_96px]">
                 <button type="button" onClick={() => onNowPlayingExpandedChange(true)} className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1.5 text-left transition hover:bg-[var(--surface-subtle)]">
                   {currentTrack.artworkUrl ? (
-                    <img src={currentTrack.artworkUrl} alt={isBg ? "Обложка" : "Artwork"} className="h-11 w-11 shrink-0 rounded-lg object-cover" />
+                    <img src={currentTrack.artworkUrl} alt={isBg ? bg.artwork : "Artwork"} className="h-11 w-11 shrink-0 rounded-lg object-cover" />
                   ) : (
                     <div className="h-11 w-11 shrink-0 rounded-lg bg-[var(--surface)]" />
                   )}
@@ -205,7 +231,7 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
 
                 <div className="hidden items-center gap-1 rounded-full bg-[var(--surface-subtle)] p-1 md:flex">
                   <button onClick={skipPrevious} className="grid h-9 w-9 place-items-center rounded-full" aria-label="Previous"><SkipBack className="h-4 w-4 text-[var(--text)]" /></button>
-                  <button onClick={togglePlayPause} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--accent-soft)]" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="h-4 w-4 text-[var(--text)]" /> : <Play className="h-4 w-4 text-[var(--text)]" />}</button>
+                  <button onClick={togglePlayPause} className="grid h-10 w-10 place-items-center rounded-full bg-[var(--accent-soft)]" aria-label={isPlaying ? (isBg ? bg.pause : "Pause playback") : (isBg ? bg.play : "Start playback")}>{isPlaying ? <Pause className="h-4 w-4 text-[var(--text)]" /> : <Play className="h-4 w-4 text-[var(--text)]" />}</button>
                   <button onClick={skipNext} className="grid h-9 w-9 place-items-center rounded-full" aria-label="Next"><SkipForward className="h-4 w-4 text-[var(--text)]" /></button>
                 </div>
 
@@ -214,35 +240,27 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
                   <button data-testid="queue-toggle-dock" onClick={handleQueueClick} className="relative grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Queue"><ListMusic className="h-4 w-4 text-[var(--text)]" />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
                   <button onClick={handleAssistantClick} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="AI assistant"><Sparkles className="h-4 w-4 text-[var(--text)]" /></button>
                   <div className="relative">
-                    <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? "Сила на звука" : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
-                    {isVolumePanelOpen ? sharedVolumeSlider : null}
+                    <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? bg.volume : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
+                    {isVolumePanelOpen ? volumePanel : null}
                   </div>
-                  <button onClick={() => onNowPlayingExpandedChange(true)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Разгъни" : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
+                  <button onClick={() => onNowPlayingExpandedChange(true)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? bg.expand : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
                 </div>
 
-                <div className="hidden h-14 overflow-hidden rounded-xl bg-black md:block md:justify-self-end">
+                <div className="h-12 overflow-hidden rounded-xl bg-black md:h-14 md:justify-self-end">
                   <div ref={collapsedVideoHostRef} className="h-full w-full" />
                 </div>
               </div>
 
               <div className="mt-2 flex items-center gap-2 text-xs text-text-muted">
                 <span className="w-10 shrink-0 text-right">{formatPlayerTime(currentTime)}</span>
-                <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="h-7 min-w-0 flex-1 themed-progress" aria-label={isBg ? "Прогрес" : "Track progress"} />
+                <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="h-7 min-w-0 flex-1 themed-progress" aria-label={isBg ? bg.progress : "Track progress"} />
                 <span className="w-10 shrink-0">{formatPlayerTime(duration)}</span>
               </div>
 
               <div className="mt-2 space-y-2 md:hidden">
-                <div className="grid grid-cols-[minmax(0,1fr)_90px] items-center gap-2">
-                  <button type="button" onClick={() => onNowPlayingExpandedChange(true)} className="flex min-w-0 items-center gap-2 rounded-xl px-2 py-1 text-left">
-                    <p className="truncate text-sm font-semibold text-[var(--text)]">{currentTrack.title}</p>
-                  </button>
-                  <div className="h-12 overflow-hidden rounded-xl bg-black">
-                    <div ref={collapsedVideoHostRef} className="h-full w-full" />
-                  </div>
-                </div>
                 <div className="grid grid-cols-3 gap-2 rounded-full bg-[var(--surface-subtle)] p-1">
                   <button onClick={skipPrevious} className="grid h-11 place-items-center rounded-full" aria-label="Previous"><SkipBack className="h-5 w-5 text-[var(--text)]" /></button>
-                  <button onClick={togglePlayPause} className="grid h-11 place-items-center rounded-full bg-[var(--accent-soft)]" aria-label={isPlaying ? (isBg ? "Пауза" : "Pause playback") : (isBg ? "Пусни" : "Start playback")}>{isPlaying ? <Pause className="h-5 w-5 text-[var(--text)]" /> : <Play className="h-5 w-5 text-[var(--text)]" />}</button>
+                  <button onClick={togglePlayPause} className="grid h-11 place-items-center rounded-full bg-[var(--accent-soft)]" aria-label={isPlaying ? (isBg ? bg.pause : "Pause playback") : (isBg ? bg.play : "Start playback")}>{isPlaying ? <Pause className="h-5 w-5 text-[var(--text)]" /> : <Play className="h-5 w-5 text-[var(--text)]" />}</button>
                   <button onClick={skipNext} className="grid h-11 place-items-center rounded-full" aria-label="Next"><SkipForward className="h-5 w-5 text-[var(--text)]" /></button>
                 </div>
                 <div className="grid grid-cols-5 gap-2">
@@ -250,10 +268,10 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
                   <button onClick={handleQueueClick} className="relative grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Queue"><ListMusic className="h-4 w-4 text-[var(--text)]" />{queue.length > 0 ? <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
                   <button onClick={handleAssistantClick} className="grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="AI assistant"><Sparkles className="h-4 w-4 text-[var(--text)]" /></button>
                   <div className="relative">
-                    <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-10 w-full place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? "Сила на звука" : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
-                    {isVolumePanelOpen ? sharedVolumeSlider : null}
+                    <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-10 w-full place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? bg.volume : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
+                    {isVolumePanelOpen ? volumePanel : null}
                   </div>
-                  <button onClick={() => onNowPlayingExpandedChange(true)} className="grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? "Разгъни" : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
+                  <button onClick={() => onNowPlayingExpandedChange(true)} className="grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? bg.expand : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
                 </div>
               </div>
             </div>

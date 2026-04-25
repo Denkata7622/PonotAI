@@ -834,8 +834,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
       </nav>
       <DualSidebarHost />
       {isNowPlayingExpanded && currentTrack && currentVideoId ? (
-        <div className="fixed inset-0 z-[60]">
-          <div className="absolute inset-0 bg-black/55 backdrop-blur-md" />
+        <div className="now-playing-overlay fixed inset-0 z-[60] bg-black/55 backdrop-blur-md">
           <NowPlayingWorkspace
             workspaceTab={workspaceTab}
             onWorkspaceTabChange={setWorkspaceTab}
