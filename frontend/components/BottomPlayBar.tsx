@@ -66,22 +66,38 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
 
   useEffect(() => {
     const updatePlayerBarHeight = () => {
-      const rect = playerBarRef.current?.getBoundingClientRect();
-      const height = rect?.height ?? 0;
-      document.documentElement.style.setProperty("--player-bar-height", `${Math.round(height || 88)}px`);
+      const node = playerBarRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const height = Math.max(1, Math.round(rect.height));
+      document.documentElement.style.setProperty("--player-bar-height", `${height}px`);
     };
 
-    updatePlayerBarHeight();
-    window.addEventListener("resize", updatePlayerBarHeight);
-    const observer = new ResizeObserver(updatePlayerBarHeight);
+    const scheduleHeightUpdate = () => {
+      window.requestAnimationFrame(updatePlayerBarHeight);
+    };
+
+    scheduleHeightUpdate();
+    window.addEventListener("resize", scheduleHeightUpdate);
+
+    const observer = new ResizeObserver(scheduleHeightUpdate);
     if (playerBarRef.current) observer.observe(playerBarRef.current);
 
     return () => {
-      window.removeEventListener("resize", updatePlayerBarHeight);
+      window.removeEventListener("resize", scheduleHeightUpdate);
       observer.disconnect();
       document.documentElement.style.setProperty("--player-bar-height", "88px");
     };
   }, []);
+
+  useEffect(() => {
+    if (isNowPlayingExpanded) return;
+    const node = playerBarRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    const height = Math.max(1, Math.round(rect.height));
+    document.documentElement.style.setProperty("--player-bar-height", `${height}px`);
+  }, [isNowPlayingExpanded, currentTrack, currentVideoId]);
 
 
   useEffect(() => {
