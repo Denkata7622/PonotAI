@@ -13,6 +13,16 @@ export function getRepeatModeLabel(repeatMode: "normal" | "queue" | "track", isB
   return isBg ? "Повтаряне на песента" : "Repeat track";
 }
 
+export function getRepeatModeTooltip(repeatMode: "normal" | "queue" | "track", isBg: boolean) {
+  if (repeatMode === "normal") {
+    return isBg ? "Без повторение • натисни за повтаряне на опашката" : "Repeat off • click to switch to repeat queue";
+  }
+  if (repeatMode === "queue") {
+    return isBg ? "Повтаряне на опашката • натисни за повтаряне на песента" : "Repeat queue • click to switch to repeat track";
+  }
+  return isBg ? "Повтаряне на песента • натисни за изключване" : "Repeat track • click to turn repeat off";
+}
+
 export function useVolumeUi(volume: number, setVolume: (value: number) => void) {
   const [isVolumePanelOpen, setIsVolumePanelOpen] = useState(false);
   const lastVolumeRef = useRef(70);

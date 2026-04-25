@@ -1,21 +1,21 @@
 'use client';
 
-import { Music, RotateCcw, Trash2, Volume2, X } from 'lucide-react';
+import { ListMusic, Music, RotateCcw, Trash2, Volume2, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { usePlayer } from '@/components/PlayerProvider';
 import { useLanguage } from '@/lib/LanguageContext';
 import { t } from '@/lib/translations';
+import { getRepeatModeLabel, getRepeatModeTooltip } from '@/components/player/playerUiUtils';
 
 export default function QueuePanel({ compact = false }: { compact?: boolean }) {
   const { queue, currentIndex, removeFromQueue, clearQueue, playFromQueue, reorderQueue, repeatMode, cycleRepeatMode } = usePlayer();
   const { language } = useLanguage();
   const dragIndex = useRef<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
-  const repeatLabel = repeatMode === "normal"
-    ? (language === "bg" ? "Нормален ред" : "Normal order")
-    : repeatMode === "queue"
-      ? (language === "bg" ? "Повтаряне на опашката" : "Repeat queue")
-      : (language === "bg" ? "Повтаряне на текущата песен" : "Repeat current song");
+  const isBg = language === "bg";
+  const repeatLabel = getRepeatModeLabel(repeatMode, isBg);
+  const repeatTooltip = getRepeatModeTooltip(repeatMode, isBg);
+  const repeatText = repeatMode === "normal" ? (isBg ? "Без повторение" : "Repeat off") : repeatMode === "queue" ? (isBg ? "Повтаряне на опашката" : "Repeat queue") : (isBg ? "Повтаряне на песента" : "Repeat track");
 
   return (
     <div className="flex h-full flex-col">
@@ -31,10 +31,10 @@ export default function QueuePanel({ compact = false }: { compact?: boolean }) {
                 : "border-[var(--accent-border)] text-[var(--accent)]"
             }`}
             aria-label={repeatLabel}
-            title={repeatLabel}
+            title={repeatTooltip}
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span>{repeatMode === "normal" ? "Normal" : repeatMode === "queue" ? "Repeat queue" : "Repeat song"}</span>
+            {repeatMode === "normal" ? <RotateCcw className="h-3.5 w-3.5" /> : repeatMode === "queue" ? <ListMusic className="h-3.5 w-3.5" /> : <Music className="h-3.5 w-3.5" />}
+            <span>{repeatText}</span>
           </button>
           <button onClick={clearQueue} className="selectable-card rounded-[var(--radius-sm)] border border-transparent p-2" aria-label={t("queue_clear", language)}><Trash2 className="h-4 w-4" /></button>
         </div>
