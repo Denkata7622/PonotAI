@@ -83,6 +83,16 @@ const PLAYER_MOUNT_NODE_ID = "ponotai-yt-player";
 const PLAYER_MOUNT_CONNECTED_EVENT = "ponotai:yt-mount-connected";
 const VIDEO_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
 const PLAYBACK_RECOVERABLE_ERROR_CODES = new Set([100, 101, 150]);
+const DEBUG_PLAYER_PROVIDER = process.env.NODE_ENV !== "production";
+
+function logPlayerDebug(message: string, extra?: Record<string, unknown>) {
+  if (!DEBUG_PLAYER_PROVIDER) return;
+  if (extra) {
+    console.debug(`[PlayerProvider] ${message}`, extra);
+    return;
+  }
+  console.debug(`[PlayerProvider] ${message}`);
+}
 
 function readStoredState(): {
   queue: QueuedTrack[];
@@ -227,6 +237,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!isPlayerMountConnected()) {
       pendingVideoIdRef.current = videoId;
       if (playback) requestedPlaybackRef.current = playback;
+      logPlayerDebug("Deferring loadVideoById until mount reconnects", { videoId, playback });
       return false;
     }
     pendingVideoIdRef.current = null;
@@ -407,7 +418,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const ytWindow = window as YouTubeWindow;
     if (!ytWindow.YT?.Player || playerRef.current) return false;
     const mountNode = document.getElementById(PLAYER_MOUNT_NODE_ID);
-    if (!mountNode || !mountNode.isConnected) return false;
+    if (!mountNode || !mountNode.isConnected) {
+      logPlayerDebug("Cannot initialize player yet because mount node is disconnected");
+      return false;
+    }
     const initialVideoId = pendingVideoIdRef.current ?? currentVideoIdRef.current;
     if (!initialVideoId) return false;
 
@@ -427,6 +441,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       },
       events: {
         onReady: (event: { target: YTPlayerLike }) => {
+          logPlayerDebug("YouTube iframe API ready");
           playerRef.current = event.target;
           isPlayerReadyRef.current = true;
           applyYouTubeIframePolicy();
