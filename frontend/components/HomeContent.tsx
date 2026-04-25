@@ -634,10 +634,9 @@ export function HomeContent() {
   }, []);
 
   return (
-    <main className="min-h-screen w-full overflow-x-hidden transition-colors">
-      <div className="mx-auto w-full max-w-7xl px-3 py-6 sm:px-4 sm:py-8">
-        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-          <div className="space-y-6">
+    <main className="w-full overflow-x-hidden py-6 transition-colors sm:py-8">
+      <div className="grid w-full gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+        <div className="min-w-0 space-y-6">
             {!isAuthenticated && history.length === 0 && !demoSeen && (
               <Card className="resultEnter mb-6">
                 <p className="text-sm uppercase tracking-[0.22em] text-text-muted">Turrex</p>
@@ -865,8 +864,8 @@ export function HomeContent() {
             </section>
           </div>
 
-          {isLibraryOpen && (
-            <aside className="space-y-4">
+        {isLibraryOpen && (
+          <aside className="min-w-0 space-y-4 lg:sticky lg:top-6 lg:self-start">
               <Card className="space-y-3">
                 <h3 className="text-lg font-semibold">{language === "bg" ? "Бърз преглед" : "Library snapshot"}</h3>
                 <div className="grid grid-cols-3 gap-2 text-center">
@@ -908,10 +907,9 @@ export function HomeContent() {
                 <Button variant="secondary" onClick={() => setShowNewPlaylistModal(true)}>{language === "bg" ? "Създай плейлист" : "Create playlist"}</Button>
                 <Link href="/assistant" className="homeQuickLink inline-flex items-center justify-center px-4 py-2 text-sm font-medium transition">{language === "bg" ? "Попитай асистента за идеи" : "Ask assistant for ideas"}</Link>
               </Card>
-            </aside>
-          )}
+          </aside>
+        )}
         </div>
-      </div>
 
       <UploadModal
         language={language}
