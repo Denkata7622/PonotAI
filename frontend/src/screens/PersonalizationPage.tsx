@@ -1,7 +1,7 @@
 'use client';
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Clock, Library, Settings, Sparkles, TrendingUp } from "../../lucide-react";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -24,6 +24,33 @@ function getTopCounts(values: string[], limit = 3): string[] {
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
     .map(([name]) => name);
+}
+
+function formatUtcDateTime(value?: string): string {
+  if (!value) return "Pending";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Pending";
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "UTC",
+  }).format(parsed);
+}
+
+function formatUtcDate(value?: string): string {
+  if (!value) return "Pending";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Pending";
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(parsed);
 }
 
 type ThemeStudioSlotState = "active" | "available" | "bonus-locked" | "reserved";
@@ -139,7 +166,10 @@ export default function PersonalizationPage() {
   const [packLifecycle, setPackLifecycle] = useState<MusicPackLifecycleResponse | null>(null);
   const [selectedTrackKeys, setSelectedTrackKeys] = useState<string[]>([]);
   const [tasteIdentitySummary, setTasteIdentitySummary] = useState<TasteIdentitySummaryResponse | null>(null);
+  const [tasteIdentityNotice, setTasteIdentityNotice] = useState<string | null>(null);
   const [tasteProfile, setTasteProfile] = useState<ReturnType<typeof readTasteProfile>>(null);
+  const featuredPackRequestRef = useRef<{ inFlight: boolean; hasLoaded: boolean }>({ inFlight: false, hasLoaded: false });
+  const tasteSummaryRequestRef = useRef<{ inFlight: boolean; hasLoaded: boolean }>({ inFlight: false, hasLoaded: false });
   const tasteSnapshot = tasteProfile?.structured;
 
   const topGenres = tasteSnapshot?.genres ?? tasteProfile?.genres ?? [];
@@ -153,6 +183,12 @@ export default function PersonalizationPage() {
     () => getTopCounts([...favorites.map((item) => item.artist ?? ""), ...history.map((item) => item.artist ?? "")], 3),
     [favorites, history],
   );
+  const onboardingSeed = useMemo(() => ({
+    genres: topGenres.slice(0, 8),
+    moods: topMoods.slice(0, 8),
+    contexts: topContexts.slice(0, 8),
+    favoriteArtists: topArtists.slice(0, 8),
+  }), [topArtists.join("|"), topContexts.join("|"), topGenres.join("|"), topMoods.join("|")]);
   const recentHistoryCount = useMemo(() => {
     const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
     return history.filter((item) => {
@@ -293,9 +329,7 @@ export default function PersonalizationPage() {
             ctaDisabled: true,
           };
 
-    const nextDropDateLabel = packLifecycle?.nextDrop?.nextDropAt
-      ? new Date(packLifecycle.nextDrop.nextDropAt).toLocaleString()
-      : "Pending";
+    const nextDropDateLabel = formatUtcDateTime(packLifecycle?.nextDrop?.nextDropAt);
     const nextDrop: MusicPackCard = {
       id: "next-drop",
       title: "Next Drop Slot",
@@ -326,7 +360,7 @@ export default function PersonalizationPage() {
     }
   }, [profile.id]);
 
-  async function loadPackLifecycle() {
+  const loadPackLifecycle = useCallback(async () => {
     if (!isAuthenticated) return;
     try {
       const response = await apiFetch("/api/ai/music-packs/featured/lifecycle");
@@ -336,16 +370,15 @@ export default function PersonalizationPage() {
     } catch {
       setPackLifecycle(null);
     }
-  }
+  }, [isAuthenticated]);
 
-  async function loadFeaturedPack() {
+  const loadFeaturedPack = useCallback(async ({ force = false }: { force?: boolean } = {}) => {
     if (!isAuthenticated) return;
-    const onboardingSeed = {
-      genres: topGenres.slice(0, 8),
-      moods: topMoods.slice(0, 8),
-      contexts: topContexts.slice(0, 8),
-      favoriteArtists: topArtists.slice(0, 8),
-    };
+    if (featuredPackRequestRef.current.inFlight) return;
+    if (!force && featuredPackRequestRef.current.hasLoaded) return;
+
+    featuredPackRequestRef.current.inFlight = true;
+    featuredPackRequestRef.current.hasLoaded = true;
     setPackNotice(null);
     setMusicPackLoading(true);
     try {
@@ -353,7 +386,19 @@ export default function PersonalizationPage() {
         method: "POST",
         body: JSON.stringify({ onboardingSeed }),
       });
-      if (!response.ok) throw new Error(`Music pack generation failed (${response.status})`);
+      if (!response.ok) {
+        if (response.status === 429) {
+          setGeneratedPack(null);
+          setPackNotice("Featured pack generation is temporarily rate-limited. Please wait and refresh manually.");
+          return;
+        }
+        if (response.status >= 500) {
+          setGeneratedPack(null);
+          setPackNotice("Featured pack is temporarily unavailable. Showing fallback state.");
+          return;
+        }
+        throw new Error(`Music pack generation failed (${response.status})`);
+      }
       const payload = await response.json() as GeneratedMusicPackResponse;
       setGeneratedPack(payload);
       await loadPackLifecycle();
@@ -361,59 +406,70 @@ export default function PersonalizationPage() {
       setGeneratedPack(null);
       setPackNotice("Could not generate a featured pack right now.");
     } finally {
+      featuredPackRequestRef.current.inFlight = false;
       setMusicPackLoading(false);
     }
-  }
+  }, [isAuthenticated, loadPackLifecycle, onboardingSeed]);
 
   useEffect(() => {
     if (!isAuthenticated) {
+      featuredPackRequestRef.current = { inFlight: false, hasLoaded: false };
       setGeneratedPack(null);
       setPackLifecycle(null);
       return;
     }
-
-    let cancelled = false;
-    async function loadPack() {
-      if (cancelled) return;
-      await loadFeaturedPack();
-    }
-
-    void loadPack();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, topArtists, topContexts, topGenres, topMoods]);
+    void loadFeaturedPack();
+  }, [isAuthenticated, loadFeaturedPack]);
 
   useEffect(() => {
     if (!isAuthenticated) {
+      tasteSummaryRequestRef.current = { inFlight: false, hasLoaded: false };
       setTasteIdentitySummary(null);
+      setTasteIdentityNotice(null);
       return;
     }
-    let cancelled = false;
+    if (tasteSummaryRequestRef.current.inFlight || tasteSummaryRequestRef.current.hasLoaded) return;
+    tasteSummaryRequestRef.current.inFlight = true;
+    tasteSummaryRequestRef.current.hasLoaded = true;
+    const controller = new AbortController();
     async function loadTasteIdentity() {
-      const onboardingSeed = {
-        genres: topGenres.slice(0, 8),
-        moods: topMoods.slice(0, 8),
-        contexts: topContexts.slice(0, 8),
-        favoriteArtists: topArtists.slice(0, 8),
-      };
       try {
         const response = await apiFetch("/api/ai/taste-identity/summary", {
           method: "POST",
           body: JSON.stringify({ onboardingSeed }),
+          signal: controller.signal,
         });
-        if (!response.ok) throw new Error(`Taste identity summary failed (${response.status})`);
+        if (!response.ok) {
+          if (response.status === 429) {
+            setTasteIdentitySummary(null);
+            setTasteIdentityNotice("Taste identity is temporarily rate-limited. Using local fallback summary.");
+            return;
+          }
+          if (response.status >= 500) {
+            setTasteIdentitySummary(null);
+            setTasteIdentityNotice("Taste identity is temporarily unavailable. Using local fallback summary.");
+            return;
+          }
+          throw new Error(`Taste identity summary failed (${response.status})`);
+        }
         const payload = await response.json() as TasteIdentitySummaryResponse;
-        if (!cancelled) setTasteIdentitySummary(payload);
+        setTasteIdentitySummary(payload);
+        setTasteIdentityNotice(null);
       } catch {
-        if (!cancelled) setTasteIdentitySummary(null);
+        if (!controller.signal.aborted) {
+          setTasteIdentitySummary(null);
+          setTasteIdentityNotice("Could not load taste identity summary. Using local fallback.");
+        }
+      } finally {
+        tasteSummaryRequestRef.current.inFlight = false;
       }
     }
     void loadTasteIdentity();
     return () => {
-      cancelled = true;
+      controller.abort();
+      tasteSummaryRequestRef.current.inFlight = false;
     };
-  }, [isAuthenticated, topArtists, topContexts, topGenres, topMoods]);
+  }, [isAuthenticated, onboardingSeed]);
 
   const featuredPackHiddenByDiscard = Boolean(
     generatedPack?.pack?.id
@@ -613,6 +669,7 @@ export default function PersonalizationPage() {
             </ul>
             {tasteIdentitySummary?.confidenceNote ? <p className="mt-2">{tasteIdentitySummary.confidenceNote}</p> : null}
             {!tasteIdentitySummary && sparseData ? <p className="mt-2">Still learning: onboarding and first saves are currently stronger than behavior history.</p> : null}
+            {tasteIdentityNotice ? <p className="mt-2">{tasteIdentityNotice}</p> : null}
           </div>
           <div className="rounded-xl border border-dashed border-[var(--border)] p-3 text-xs text-[var(--muted)]">
             Signal scope stays curated on purpose. Turrex reads weighted signals without exposing raw model weights.
@@ -652,16 +709,18 @@ export default function PersonalizationPage() {
                       ? "border-[var(--border)] bg-[var(--surface-subtle)]/70"
                       : "border-[var(--border)] bg-black/35";
                 return (
-                  <div key={slot.id} className={`rounded-xl border p-3.5 ${stateClassName}`}>
+                  <div key={slot.id} className={`flex min-h-[220px] flex-col rounded-xl border p-4 ${stateClassName}`}>
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-semibold">{slot.title}</p>
                       {slot.state === "active" ? <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">Live</span> : null}
                       {slot.state === "bonus-locked" ? <Sparkles className="h-4 w-4 text-[var(--muted)]" /> : null}
                     </div>
-                    <p className="mt-1 text-xs font-medium text-[var(--muted)]">{slot.subtitle}</p>
-                    <p className="mt-2 break-words text-xs text-[var(--muted)]">{slot.details}</p>
+                    <p className="mt-2 text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">{slot.subtitle}</p>
+                    <div className="mt-4 min-h-[88px] rounded-lg border border-[var(--border)]/80 bg-[var(--surface-subtle)]/40 p-3">
+                      <p className="break-words text-xs leading-relaxed text-[var(--muted)]">{slot.details}</p>
+                    </div>
                     {slot.cta ? (
-                      <div className="mt-3">
+                      <div className="mt-auto pt-5">
                         <Link href={slot.cta.href}>
                           <Button variant="ghost" size="sm">
                             <span className="inline-flex items-center gap-1.5">{slot.cta.label}<ChevronRight className="h-3.5 w-3.5" /></span>
@@ -754,7 +813,7 @@ export default function PersonalizationPage() {
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button variant="ghost" size="sm" onClick={handleBringBackPack}>Bring back pack</Button>
-                  <Button variant="secondary" size="sm" onClick={() => void loadFeaturedPack()}>Generate again</Button>
+                  <Button variant="secondary" size="sm" onClick={() => void loadFeaturedPack({ force: true })}>Generate again</Button>
                 </div>
               </div>
             ) : null}
@@ -766,7 +825,7 @@ export default function PersonalizationPage() {
                   {packLifecycle.history.slice(0, 4).map((entry) => (
                     <li key={`${entry.packId}-${entry.generatedAt}`} className="flex items-center justify-between gap-2">
                       <span className="truncate">{entry.title}</span>
-                      <span>{entry.status}{entry.outcomeAt ? ` · ${new Date(entry.outcomeAt).toLocaleDateString()}` : ""}</span>
+                      <span>{entry.status}{entry.outcomeAt ? ` · ${formatUtcDate(entry.outcomeAt)}` : ""}</span>
                     </li>
                   ))}
                 </ul>
