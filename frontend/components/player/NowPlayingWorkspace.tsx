@@ -1,13 +1,13 @@
 "use client";
 
 import { useMemo, type RefObject } from "react";
-import { ChevronDown, Keyboard, ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "lucide-react";
+import { ChevronDown, Keyboard, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
 import { usePlayer } from "../PlayerProvider";
 import QueuePanel from "@/src/components/player/QueuePanel";
 import MusicAssistantPage from "@/src/features/assistant/components/MusicAssistantPage";
-import { formatPlayerTime, getRepeatModeLabel, useVolumeUi } from "./playerUiUtils";
+import { formatPlayerTime, getRepeatModeLabel, getRepeatModeTooltip, useVolumeUi } from "./playerUiUtils";
 import YouTubePlayerPortalHost from "./YouTubePlayerPortalHost";
 
 type WorkspaceTab = "queue" | "assistant" | "context";
@@ -41,6 +41,7 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
 
   const progress = useMemo(() => (duration ? Math.min(100, (currentTime / duration) * 100) : 0), [currentTime, duration]);
   const repeatLabel = getRepeatModeLabel(repeatMode, isBg);
+  const repeatTooltip = getRepeatModeTooltip(repeatMode, isBg);
   const { isVolumePanelOpen, setIsVolumePanelOpen, toggleMute, updateVolume } = useVolumeUi(volume, setVolume);
   const youtubeSearchUrl = currentTrack
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
@@ -123,7 +124,9 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
 
             <div className="mt-1.5 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-1.5 md:mt-2">
               <div className="flex items-center justify-start gap-1">
-                <button onClick={cycleRepeatMode} className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${repeatMode === "normal" ? "bg-[var(--surface-subtle)] text-[var(--muted)]" : "bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel}><RotateCcw className="h-4 w-4" /></button>
+                <button onClick={cycleRepeatMode} className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${repeatMode === "normal" ? "bg-[var(--surface-subtle)] text-[var(--muted)]" : "bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel} title={repeatTooltip}>
+                  {repeatMode === "normal" ? <RotateCcw className="h-4 w-4" /> : repeatMode === "queue" ? <ListMusic className="h-4 w-4" /> : <Music className="h-4 w-4" />}
+                </button>
                 <button onClick={() => onWorkspaceTabChange("queue")} className={`relative grid h-10 w-10 place-items-center rounded-full ${workspaceTab === "queue" ? "bg-[var(--accent-soft)] text-[var(--text)]" : "bg-[var(--surface-subtle)] text-[var(--text)]"}`} aria-label={queueLabel}><ListMusic className="h-4 w-4" /></button>
               </div>
               <div className="flex items-center justify-center gap-1 rounded-full bg-[var(--surface-subtle)] p-1">

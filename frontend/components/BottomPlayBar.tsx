@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { ChevronDown, ListMusic, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
+import { ChevronDown, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
-import { formatPlayerTime, getRepeatModeLabel, useVolumeUi } from "./player/playerUiUtils";
+import { formatPlayerTime, getRepeatModeLabel, getRepeatModeTooltip, useVolumeUi } from "./player/playerUiUtils";
 import YouTubePlayerPortalHost from "./player/YouTubePlayerPortalHost";
 
 type WorkspaceTab = "queue" | "assistant" | "context";
@@ -59,6 +59,7 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
 
   const progress = useMemo(() => (duration ? Math.min(100, (currentTime / duration) * 100) : 0), [currentTime, duration]);
   const repeatLabel = getRepeatModeLabel(repeatMode, isBg);
+  const repeatTooltip = getRepeatModeTooltip(repeatMode, isBg);
   const { isVolumePanelOpen, setIsVolumePanelOpen, toggleMute, updateVolume } = useVolumeUi(volume, setVolume);
   const youtubeSearchUrl = currentTrack
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
@@ -212,7 +213,9 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
                 </div>
 
                 <div className="hidden items-center gap-1 md:flex">
-                  <button onClick={cycleRepeatMode} className={`grid h-9 w-9 place-items-center rounded-full ${repeatMode === "normal" ? "bg-[var(--surface-subtle)] text-[var(--muted)]" : "bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel}><RotateCcw className="h-4 w-4" /></button>
+                  <button onClick={cycleRepeatMode} className={`grid h-9 w-9 place-items-center rounded-full ${repeatMode === "normal" ? "bg-[var(--surface-subtle)] text-[var(--muted)]" : "bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel} title={repeatTooltip}>
+                    {repeatMode === "normal" ? <RotateCcw className="h-4 w-4" /> : repeatMode === "queue" ? <ListMusic className="h-4 w-4" /> : <Music className="h-4 w-4" />}
+                  </button>
                   <button data-testid="queue-toggle-dock" onClick={handleQueueClick} className="relative grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Queue"><ListMusic className="h-4 w-4 text-[var(--text)]" />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
                   <button onClick={handleAssistantClick} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="AI assistant"><Sparkles className="h-4 w-4 text-[var(--text)]" /></button>
                   <div className="relative">
@@ -240,7 +243,9 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
                   <button onClick={skipNext} className="grid h-11 place-items-center rounded-full" aria-label="Next"><SkipForward className="h-5 w-5 text-[var(--text)]" /></button>
                 </div>
                 <div className="grid grid-cols-5 gap-2">
-                  <button onClick={cycleRepeatMode} className={`grid h-10 place-items-center rounded-full ${repeatMode === "normal" ? "bg-[var(--surface-subtle)] text-[var(--muted)]" : "bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel}><RotateCcw className="h-4 w-4" /></button>
+                  <button onClick={cycleRepeatMode} className={`grid h-10 place-items-center rounded-full ${repeatMode === "normal" ? "bg-[var(--surface-subtle)] text-[var(--muted)]" : "bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel} title={repeatTooltip}>
+                    {repeatMode === "normal" ? <RotateCcw className="h-4 w-4" /> : repeatMode === "queue" ? <ListMusic className="h-4 w-4" /> : <Music className="h-4 w-4" />}
+                  </button>
                   <button onClick={handleQueueClick} className="relative grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Queue"><ListMusic className="h-4 w-4 text-[var(--text)]" />{queue.length > 0 ? <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
                   <button onClick={handleAssistantClick} className="grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="AI assistant"><Sparkles className="h-4 w-4 text-[var(--text)]" /></button>
                   <div className="relative">
