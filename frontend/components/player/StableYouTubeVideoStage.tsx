@@ -30,11 +30,38 @@ const OFFSCREEN_LAYOUT: StageLayout = {
 };
 
 const DEBUG_STAGE = process.env.NODE_ENV !== "production";
+const COLLAPSED_RETRY_MS = [40, 90, 160, 260];
+
+function toStageLayout(rect: DOMRect | { left: number; top: number; width: number; height: number }): StageLayout {
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+    opacity: 1,
+    pointerEvents: "auto",
+  };
+}
+
+function resolveFallbackRectFromPlayerBar(): { left: number; top: number; width: number; height: number } | null {
+  const playerBar = document.querySelector<HTMLElement>("[data-player-bar]");
+  if (!playerBar) return null;
+  const barRect = playerBar.getBoundingClientRect();
+  if (barRect.width < 1 || barRect.height < 1) return null;
+
+  const width = Math.max(90, Math.min(106, Math.floor(barRect.width * 0.18)));
+  const height = Math.max(48, Math.min(56, Math.floor(barRect.height - 12)));
+  const rightInset = 16;
+  const left = Math.max(barRect.left + 8, barRect.right - width - rightInset);
+  const top = Math.max(barRect.top + 8, barRect.top + Math.min(10, barRect.height - height - 8));
+  return { left, top, width, height };
+}
 
 export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, isExpanded, hasActiveVideo }: StableYouTubeVideoStageProps) {
   const pathname = usePathname();
   const rafRef = useRef<number[]>([]);
   const stageMountContainerRef = useRef<HTMLDivElement | null>(null);
+  const collapsedRetryTimeoutsRef = useRef<number[]>([]);
   const [layout, setLayout] = useState<StageLayout>(OFFSCREEN_LAYOUT);
 
   useLayoutEffect(() => {
@@ -64,31 +91,95 @@ export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, i
       rafRef.current = [];
     };
 
+    const clearCollapsedRetries = () => {
+      collapsedRetryTimeoutsRef.current.forEach((id) => window.clearTimeout(id));
+      collapsedRetryTimeoutsRef.current = [];
+    };
+
+    const scheduleCollapsedRetries = () => {
+      if (isExpanded || !hasActiveVideo) return;
+      if (collapsedRetryTimeoutsRef.current.length > 0) return;
+      collapsedRetryTimeoutsRef.current = COLLAPSED_RETRY_MS.map((delayMs) =>
+        window.setTimeout(() => {
+          scheduleUpdate();
+        }, delayMs),
+      );
+    };
+
     const updateLayout = () => {
+      const mode = isExpanded ? "expanded" : "collapsed";
       const target = resolveTarget();
-      if (!target || !hasActiveVideo) {
+      if (!hasActiveVideo) {
         setLayout(OFFSCREEN_LAYOUT);
         return;
       }
-      const rect = target.getBoundingClientRect();
-      if (rect.width < 1 || rect.height < 1) {
+
+      if (isExpanded) {
+        if (!target) {
+          setLayout(OFFSCREEN_LAYOUT);
+          return;
+        }
+        const expandedRect = target.getBoundingClientRect();
+        if (expandedRect.width < 1 || expandedRect.height < 1) {
+          setLayout(OFFSCREEN_LAYOUT);
+          return;
+        }
+        const nextLayout = toStageLayout(expandedRect);
+        setLayout(nextLayout);
+        if (DEBUG_STAGE) {
+          console.debug("[StableYouTubeVideoStage] layout update", {
+            mode,
+            collapsedSlotExists: Boolean(collapsedSlot),
+            collapsedRect: null,
+            fallbackUsed: false,
+            targetType: "expanded-slot",
+            measuredRect: { left: expandedRect.left, top: expandedRect.top, width: expandedRect.width, height: expandedRect.height },
+            finalStageRect: nextLayout,
+          });
+        }
+        return;
+      }
+
+      const collapsedRect = target?.getBoundingClientRect() ?? null;
+      const collapsedReady = Boolean(collapsedRect && collapsedRect.width >= 1 && collapsedRect.height >= 1);
+      if (collapsedReady && collapsedRect) {
+        clearCollapsedRetries();
+        const nextLayout = toStageLayout(collapsedRect);
+        setLayout(nextLayout);
+        if (DEBUG_STAGE) {
+          console.debug("[StableYouTubeVideoStage] layout update", {
+            mode,
+            collapsedSlotExists: Boolean(collapsedSlot),
+            collapsedRect: { width: collapsedRect.width, height: collapsedRect.height },
+            fallbackUsed: false,
+            targetType: "collapsed-slot",
+            measuredRect: { left: collapsedRect.left, top: collapsedRect.top, width: collapsedRect.width, height: collapsedRect.height },
+            finalStageRect: nextLayout,
+          });
+        }
+        return;
+      }
+
+      scheduleCollapsedRetries();
+      const fallbackRect = resolveFallbackRectFromPlayerBar();
+      if (!fallbackRect) {
         setLayout(OFFSCREEN_LAYOUT);
         return;
       }
-      setLayout({
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-        height: rect.height,
-        opacity: 1,
-        pointerEvents: "auto",
-      });
+      const nextLayout = {
+        ...toStageLayout(fallbackRect),
+        pointerEvents: "none" as const,
+      };
+      setLayout(nextLayout);
       if (DEBUG_STAGE) {
-        const stageRect = document.querySelector<HTMLElement>("[data-yt-video-stage]")?.getBoundingClientRect();
-        console.debug("[StableYouTubeVideoStage] slot/stage rect", {
-          mode: isExpanded ? "expanded" : "collapsed",
-          slot: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-          stage: stageRect ? { left: stageRect.left, top: stageRect.top, width: stageRect.width, height: stageRect.height } : null,
+        console.debug("[StableYouTubeVideoStage] layout update", {
+          mode,
+          collapsedSlotExists: Boolean(collapsedSlot),
+          collapsedRect: collapsedRect ? { width: collapsedRect.width, height: collapsedRect.height } : null,
+          fallbackUsed: true,
+          targetType: "fallback-player-bar",
+          measuredRect: collapsedRect ? { left: collapsedRect.left, top: collapsedRect.top, width: collapsedRect.width, height: collapsedRect.height } : null,
+          finalStageRect: nextLayout,
         });
       }
     };
@@ -122,6 +213,7 @@ export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, i
     return () => {
       eventRafIds.forEach((id) => window.cancelAnimationFrame(id));
       timeoutIds.forEach((id) => window.clearTimeout(id));
+      clearCollapsedRetries();
       observer.disconnect();
       window.removeEventListener("resize", scheduleUpdate);
       window.removeEventListener("scroll", scheduleUpdate, true);
