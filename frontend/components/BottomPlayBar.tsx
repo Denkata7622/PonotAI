@@ -59,6 +59,8 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
   } = usePlayer();
 
   const progress = useMemo(() => (duration ? Math.min(100, (currentTime / duration) * 100) : 0), [currentTime, duration]);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [localScrubPercent, setLocalScrubPercent] = useState(progress);
   const repeatLabel = getRepeatModeLabel(repeatMode, isBg);
   const repeatTooltip = getRepeatModeTooltip(repeatMode, isBg);
   const { isVolumePanelOpen, setIsVolumePanelOpen, toggleMute, updateVolume } = useVolumeUi(volume, setVolume);
@@ -143,6 +145,22 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
     onNowPlayingExpandedChange(true);
     onWorkspaceTabChange("assistant");
   }
+
+  useEffect(() => {
+    if (isScrubbing) return;
+    setLocalScrubPercent(progress);
+  }, [isScrubbing, progress]);
+
+  const commitSeek = useCallback(() => {
+    if (!isScrubbing) return;
+    seekToPercent(localScrubPercent);
+    setIsScrubbing(false);
+  }, [isScrubbing, localScrubPercent, seekToPercent]);
+
+  const displayedCurrentTime = useMemo(
+    () => (isScrubbing ? (Math.max(0, Math.min(100, localScrubPercent)) / 100) * duration : currentTime),
+    [currentTime, duration, isScrubbing, localScrubPercent],
+  );
 
   const volumePanel = (
     <div
@@ -251,8 +269,31 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
               </div>
 
               <div className="mt-2 flex items-center gap-2 text-xs text-text-muted">
-                <span className="w-10 shrink-0 text-right">{formatPlayerTime(currentTime)}</span>
-                <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="h-7 min-w-0 flex-1 themed-progress" aria-label={isBg ? bg.progress : "Track progress"} />
+                <span className="w-10 shrink-0 text-right">{formatPlayerTime(displayedCurrentTime)}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  value={isScrubbing ? localScrubPercent : progress}
+                  onPointerDown={() => setIsScrubbing(true)}
+                  onMouseDown={() => setIsScrubbing(true)}
+                  onTouchStart={() => setIsScrubbing(true)}
+                  onChange={(event) => {
+                    const nextPercent = Number(event.target.value);
+                    setLocalScrubPercent(nextPercent);
+                    if (!isScrubbing) seekToPercent(nextPercent);
+                  }}
+                  onPointerUp={commitSeek}
+                  onMouseUp={commitSeek}
+                  onTouchEnd={commitSeek}
+                  onBlur={commitSeek}
+                  onKeyUp={(event) => {
+                    if (event.key === "Enter" || event.key === " ") commitSeek();
+                  }}
+                  className="h-7 min-w-0 flex-1 themed-progress"
+                  aria-label={isBg ? bg.progress : "Track progress"}
+                />
                 <span className="w-10 shrink-0">{formatPlayerTime(duration)}</span>
               </div>
 

@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getNextQueueIndex, mapYouTubeState, type QueueTrack, type RepeatMode } from "../features/player/state";
+import { getNextQueueIndex, mapYouTubeState, percentToDurationSeconds, shouldLoadVideoById, type QueueTrack, type RepeatMode } from "../features/player/state";
 import { YT_STAGE_READY_EVENTS } from "../lib/playerEvents";
 
 export type QueuedTrack = {
@@ -189,6 +189,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playerRef = useRef<YTPlayerLike | null>(null);
   const isPlayerReadyRef = useRef(false);
   const pendingVideoIdRef = useRef<string | null>(null);
+  const loadedVideoIdRef = useRef<string | null>(null);
   const requestedPlaybackRef = useRef<"play" | "pause" | null>(null);
   const failedVideoIdsRef = useRef<Set<string>>(new Set());
   const recoveryInFlightRef = useRef<Set<string>>(new Set());
@@ -226,13 +227,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const requestLoadVideo = useCallback((videoId: string, playback: "play" | "pause" | null = null) => {
+  const requestLoadVideo = useCallback((videoId: string, playback: "play" | "pause" | null = null, options?: { force?: boolean }) => {
     if (!videoId) return false;
+    if (!shouldLoadVideoById(loadedVideoIdRef.current, videoId, options?.force)) {
+      if (playback) requestedPlaybackRef.current = playback;
+      pendingVideoIdRef.current = null;
+      logPlayerDebug("skipping loadVideoById because requested video is already loaded", { videoId, force: options?.force ?? false });
+      return true;
+    }
     pendingVideoIdRef.current = videoId;
     if (playback) requestedPlaybackRef.current = playback;
     logPlayerDebug("loading video id", { videoId, playback });
     const loaded = safePlayerCall((player) => player.loadVideoById?.(videoId));
-    if (loaded) pendingVideoIdRef.current = null;
+    if (loaded) {
+      loadedVideoIdRef.current = videoId;
+      pendingVideoIdRef.current = null;
+    }
     else logPlayerDebug("loadVideoById deferred because player is not ready yet", { videoId });
     return loaded;
   }, [safePlayerCall]);
@@ -444,6 +454,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           logPlayerDebug("onReady");
           playerRef.current = event.target;
           isPlayerReadyRef.current = true;
+          loadedVideoIdRef.current = initialVideoId;
+          if (pendingVideoIdRef.current === initialVideoId) pendingVideoIdRef.current = null;
           applyYouTubeIframePolicy();
           safePlayerCall((player) => player.setVolume?.(volume));
           if (pendingVideoIdRef.current && pendingVideoIdRef.current !== initialVideoId) {
@@ -510,13 +522,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (pendingVideoIdRef.current) {
         const pendingVideoId = pendingVideoIdRef.current;
         requestLoadVideo(pendingVideoId);
-      } else if (
-        currentVideoIdRef.current
-        && playerRef.current
-        && isPlayerReadyRef.current
-        && requestedPlaybackRef.current === "play"
-      ) {
-        requestLoadVideo(currentVideoIdRef.current);
       }
 
       if (requestedPlaybackRef.current === "play" && playerRef.current && isPlayerReadyRef.current) {
@@ -570,6 +575,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (currentTrack) return;
     requestedPlaybackRef.current = "pause";
+    pendingVideoIdRef.current = null;
+    loadedVideoIdRef.current = null;
     setCurrentVideoId(null);
     setCurrentTime(0);
     setDuration(0);
@@ -733,9 +740,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentTime(0);
     setDuration(0);
     setCurrentVideoId(null);
+    pendingVideoIdRef.current = null;
+    loadedVideoIdRef.current = null;
     setIsPlaying(false);
     requestPlayback("pause");
-  }, []);
+  }, [requestPlayback]);
 
   const playFromQueue = useCallback((queueId: string) => {
     const nextIndex = queue.findIndex((entry) => entry.queueId === queueId);
@@ -775,8 +784,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [currentTrack, isPlaying, requestPause, requestPlay]);
 
   const seekToPercent = useCallback((percent: number) => {
+    const seconds = percentToDurationSeconds(percent, duration);
     if (!duration) return;
-    const seconds = (Math.max(0, Math.min(100, percent)) / 100) * duration;
     safePlayerCall((player) => player.seekTo?.(seconds, true));
     setCurrentTime(seconds);
   }, [duration, safePlayerCall]);
