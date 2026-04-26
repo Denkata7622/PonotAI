@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { getNextQueueIndex, mapYouTubeState, type QueueTrack, type RepeatMode } from "../features/player/state";
+import { YT_STAGE_READY_EVENTS } from "../lib/playerEvents";
 
 export type QueuedTrack = {
   queueId: string;
@@ -500,6 +501,36 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!currentVideoId || playerRef.current) return;
     initializePlayer();
   }, [currentVideoId, initializePlayer]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleStageMounted = () => {
+      initializePlayer();
+
+      if (pendingVideoIdRef.current) {
+        const pendingVideoId = pendingVideoIdRef.current;
+        requestLoadVideo(pendingVideoId);
+        pendingVideoIdRef.current = null;
+      } else if (
+        currentVideoIdRef.current
+        && playerRef.current
+        && isPlayerReadyRef.current
+        && requestedPlaybackRef.current === "play"
+      ) {
+        requestLoadVideo(currentVideoIdRef.current);
+      }
+
+      if (requestedPlaybackRef.current === "play" && playerRef.current && isPlayerReadyRef.current) {
+        requestPlayback("play");
+      }
+    };
+
+    YT_STAGE_READY_EVENTS.forEach((eventName) => window.addEventListener(eventName, handleStageMounted));
+    return () => {
+      YT_STAGE_READY_EVENTS.forEach((eventName) => window.removeEventListener(eventName, handleStageMounted));
+    };
+  }, [initializePlayer, requestLoadVideo, requestPlayback]);
 
   useEffect(() => {
     if (!playerRef.current || !isPlayerReadyRef.current) {

@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useLayoutEffect, useRef, useState } from "react";
+import { YT_MOUNT_CONNECTED_EVENT, YT_STAGE_MOUNTED_EVENT } from "../../lib/playerEvents";
 
 type StableYouTubeVideoStageProps = {
   collapsedSlot: HTMLDivElement | null;
@@ -48,7 +49,8 @@ export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, i
       if (mountNode.parentElement !== mountContainer) {
         mountContainer.appendChild(mountNode);
       }
-      window.dispatchEvent(new CustomEvent("ponotai:yt-stage-mounted"));
+      window.dispatchEvent(new CustomEvent(YT_STAGE_MOUNTED_EVENT));
+      window.dispatchEvent(new CustomEvent(YT_MOUNT_CONNECTED_EVENT));
     }
 
     const resolveTarget = () => (isExpanded ? expandedSlot : collapsedSlot);
