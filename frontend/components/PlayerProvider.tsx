@@ -208,6 +208,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const durationRef = useRef(duration);
   const shuffleEnabledRef = useRef(shuffleEnabled);
   const playedQueueIndicesRef = useRef<Set<number>>(new Set(currentIndex >= 0 ? [currentIndex] : []));
+  const lastPlayerEndedRef = useRef(false);
   const currentTrackRef = useRef<QueueTrack | null>(null);
   const currentVideoIdRef = useRef<string | null>(currentVideoId);
   const activeQueueEntryIdRef = useRef<string | null>(null);
@@ -395,8 +396,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setIsPlaying(snapshot.isPlaying);
     setIsBuffering(snapshot.isBuffering);
     if (snapshot.ended) {
-      handleTrackEnded();
+      if (!lastPlayerEndedRef.current) {
+        lastPlayerEndedRef.current = true;
+        handleTrackEnded();
+      }
+      return;
     }
+    lastPlayerEndedRef.current = false;
   }, [handleTrackEnded]);
 
   const applyYouTubeIframePolicy = useCallback(() => {
@@ -611,6 +617,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (currentTrack) return;
+    lastPlayerEndedRef.current = false;
     requestedPlaybackRef.current = "pause";
     pendingVideoIdRef.current = null;
     loadedVideoIdRef.current = null;
@@ -625,6 +632,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!currentTrack) return;
+    lastPlayerEndedRef.current = false;
     const currentQueueEntryId = currentEntry?.queueId ?? null;
     const isQueueEntryChange = currentQueueEntryId !== null && activeQueueEntryIdRef.current !== currentQueueEntryId;
     const resolvedVideoId = normalizeVideoId(currentTrack.videoId);
@@ -787,6 +795,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     pendingVideoIdRef.current = null;
     loadedVideoIdRef.current = null;
     playedQueueIndicesRef.current = new Set();
+    lastPlayerEndedRef.current = false;
     setIsPlaying(false);
     requestPlayback("pause");
   }, [requestPlayback]);

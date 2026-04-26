@@ -134,6 +134,7 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
   if (!currentTrack || !currentVideoId) return null;
 
   const queueLabel = isBg ? "Опашка" : "Queue";
+  const nowPlayingLabel = isBg ? "Сега звучи" : "Now playing";
   const lyricsLabel = isBg ? "Текст" : "Lyrics";
   const openYoutubeLabel = t("open_in_youtube", language);
   const expandedLabel = isBg ? "Разширен плейър" : "Expanded now playing workspace";
@@ -199,7 +200,7 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
 
         <div className="grid min-h-0 flex-1 gap-2 overflow-hidden p-2 md:grid-cols-[minmax(190px,260px)_minmax(0,1fr)] md:p-3 xl:grid-cols-[minmax(220px,280px)_minmax(0,1fr)_minmax(300px,360px)]">
           <aside className="hidden min-h-0 overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3 md:block">
-            <p className="text-xs uppercase text-[var(--muted)]">{lyricsLabel}</p>
+            <p className="text-xs uppercase text-[var(--muted)]">{nowPlayingLabel}</p>
             <p className="mt-2 line-clamp-3 text-base font-semibold text-[var(--text)]">{currentTrack.title}</p>
             <p className="mt-1 text-sm text-[var(--muted)]">{currentTrack.artist}</p>
             <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-3">
