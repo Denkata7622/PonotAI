@@ -79,7 +79,7 @@ export default function AssistantFAB() {
     >
       <span className="assistant-fab__halo" aria-hidden="true" />
       <span className="assistant-fab__shell" aria-hidden="true">
-        <AssistantIcon size={30} state={state.open.assistant ? "open" : "idle"} />
+        <AssistantIcon size={38} state={state.open.assistant ? "happy" : "idle"} variant="flat" />
       </span>
     </button>
   );

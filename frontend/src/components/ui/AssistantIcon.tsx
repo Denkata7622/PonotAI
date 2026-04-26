@@ -7,6 +7,7 @@ export type AssistantIconProps = {
   state?: AssistantIconState;
   className?: string;
   animated?: boolean;
+  variant?: "default" | "flat" | "solid";
 };
 
 export default function AssistantIcon({
@@ -14,6 +15,7 @@ export default function AssistantIcon({
   state = "idle",
   className = "",
   animated = true,
+  variant = "default",
 }: AssistantIconProps) {
   const style = { "--assistant-icon-size": `${size}px` } as CSSProperties;
   return (
@@ -21,6 +23,7 @@ export default function AssistantIcon({
       className={`assistant-icon ${className}`.trim()}
       data-state={state}
       data-animated={animated ? "true" : "false"}
+      data-variant={variant}
       style={style}
       aria-hidden="true"
     >
