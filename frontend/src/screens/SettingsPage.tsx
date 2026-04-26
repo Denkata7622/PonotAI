@@ -50,6 +50,9 @@ export default function SettingsPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [recommendationDataSharingEnabled, setRecommendationDataSharingEnabled] = useState(Boolean(user?.recommendationDataSharingEnabled));
+  const recommendationMode = user?.recommendationMode ?? "balanced";
+  const repeatedArtistTolerance = user?.repeatedArtistTolerance ?? "normal";
+  const energyPreference = user?.energyPreference ?? "mixed";
   const fileInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     try {
@@ -93,6 +96,19 @@ export default function SettingsPage() {
       await updateProfile({ recommendationDataSharingEnabled: nextValue });
     } catch (error) {
       setRecommendationDataSharingEnabled(!nextValue);
+      setSaveError((error as Error).message);
+    }
+  }
+
+  async function handleRecommendationControlChange(
+    field: "recommendationMode" | "repeatedArtistTolerance" | "energyPreference",
+    value: "safe_familiar" | "balanced" | "mostly_discovery" | "lower" | "normal" | "higher" | "calmer" | "mixed" | "more_energetic",
+  ) {
+    if (!isAuthenticated) return;
+    setSaveError(null);
+    try {
+      await updateProfile({ [field]: value });
+    } catch (error) {
       setSaveError((error as Error).message);
     }
   }
@@ -188,16 +204,78 @@ export default function SettingsPage() {
       <Card variant="settings" className="space-y-4">
         <h2 className="text-xl font-semibold">{t("settings_assistant_behavior", language)}</h2>
         <div className="settings-card flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3"><div><p className="font-medium">{t("settings_show_ai_hints", language)}</p><p className="text-sm text-[var(--muted)]">{t("settings_show_ai_hints_desc", language)}</p></div><Button variant="secondary" onClick={() => setAssistantHintsPref(!assistantHints)}>{assistantHints ? t("settings_on", language) : t("settings_off", language)}</Button></div>
+      </Card>
+
+      <Card variant="settings" className="space-y-4">
+        <h2 className="text-xl font-semibold">Recommendation preferences</h2>
+        <p className="text-sm text-[var(--muted)]">Adjust how Turrex balances familiar picks, discovery depth, and listening energy.</p>
         <div id="recommendation-data-sharing" className="settings-card flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--border)] p-3">
           <div>
-            <p className="font-medium">Share usage data to improve recommendations</p>
-            <p className="text-sm text-[var(--muted)]">Allow Turrex to use your activity and preferences for better recommendations and personalization.</p>
+            <p className="font-medium">Data sharing</p>
+            <p className="text-sm text-[var(--muted)]">Allow Turrex to use your activity and preferences for stronger recommendations.</p>
           </div>
           <Button variant="secondary" onClick={() => void handleRecommendationDataSharingToggle()} disabled={!isAuthenticated}>
             {recommendationDataSharingEnabled ? t("settings_on", language) : t("settings_off", language)}
           </Button>
         </div>
-        {!isAuthenticated ? <p className="text-xs text-[var(--muted)]">Sign in to manage recommendation data sharing.</p> : null}
+        {[
+          {
+            key: "recommendationMode" as const,
+            label: "Recommendation mode",
+            description: "Choose how familiar or discovery-forward your recommendations should feel.",
+            options: [
+              { value: "safe_familiar", label: "Safe & familiar" },
+              { value: "balanced", label: "Balanced" },
+              { value: "mostly_discovery", label: "Mostly discovery" },
+            ],
+            active: recommendationMode,
+          },
+          {
+            key: "repeatedArtistTolerance" as const,
+            label: "Repeated artist tolerance",
+            description: "Control how often Turrex can repeat artists already in your listening lane.",
+            options: [
+              { value: "lower", label: "Lower" },
+              { value: "normal", label: "Normal" },
+              { value: "higher", label: "Higher" },
+            ],
+            active: repeatedArtistTolerance,
+          },
+          {
+            key: "energyPreference" as const,
+            label: "Energy preference",
+            description: "Steer overall energy from calmer sequences to more energetic sessions.",
+            options: [
+              { value: "calmer", label: "Calmer" },
+              { value: "mixed", label: "Mixed" },
+              { value: "more_energetic", label: "More energetic" },
+            ],
+            active: energyPreference,
+          },
+        ].map((control) => (
+          <div key={control.key} className="settings-card rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+            <p className="font-medium">{control.label}</p>
+            <p className="text-sm text-[var(--muted)]">{control.description}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {control.options.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => void handleRecommendationControlChange(control.key, option.value as "safe_familiar" | "balanced" | "mostly_discovery" | "lower" | "normal" | "higher" | "calmer" | "mixed" | "more_energetic")}
+                  disabled={!isAuthenticated || control.active === option.value}
+                  className={`rounded-full border px-3 py-2 text-xs font-medium transition ${
+                    control.active === option.value
+                      ? "border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text)]"
+                      : "border-[var(--border)] bg-transparent text-[var(--muted)] hover:border-[var(--accent-border)] hover:text-[var(--text)]"
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+        {!isAuthenticated ? <p className="text-xs text-[var(--muted)]">Sign in to edit recommendation preferences.</p> : null}
       </Card>
 
       <Card variant="settings" className="space-y-4">
