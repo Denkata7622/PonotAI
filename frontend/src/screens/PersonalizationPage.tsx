@@ -660,10 +660,10 @@ export default function PersonalizationPage() {
                 <span key={chip} className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1 break-words">{chip}</span>
               ))}
             </div>
-          <div className="mt-4 grid min-h-[clamp(420px,70svh,760px)] grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:min-h-[clamp(420px,74svh,760px)]">
+            <div className="mt-4 grid min-h-[clamp(420px,70svh,760px)] auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-2 sm:min-h-[clamp(420px,64svh,700px)] xl:grid-cols-4 xl:min-h-[clamp(420px,74svh,760px)]">
               {themeStudioSlots.map((slot) => {
                 const stateClassName = slot.state === "active"
-                  ? "border-[var(--accent-border)] bg-[var(--panel-surface)]"
+                  ? "border-[var(--accent-border)] bg-[var(--panel-surface)] shadow-[0_20px_45px_-30px_var(--accent)]"
                   : slot.state === "available"
                     ? "border-[var(--border)] bg-[var(--panel-surface)]"
                     : slot.state === "bonus-locked"
@@ -679,7 +679,7 @@ export default function PersonalizationPage() {
                     <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]/70 px-2.5 py-1.5">
                       <p className="text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">{slot.subtitle}</p>
                     </div>
-                    <div className="mt-3 flex-1 rounded-lg border border-[var(--border)]/80 bg-[var(--surface-subtle)]/40 p-3.5">
+                    <div className="mt-3 flex flex-1 items-center rounded-lg border border-[var(--border)]/80 bg-[linear-gradient(160deg,var(--surface-subtle),transparent)] p-3.5">
                       <p className="break-words text-xs leading-relaxed text-[var(--muted)]">{slot.details}</p>
                     </div>
                     <div className="mt-4 border-t border-[var(--border)]/70 pt-3">
