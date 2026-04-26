@@ -1211,8 +1211,22 @@ select:focus-visible {
 .assistant-fab:active { transform: translateY(0) scale(0.98); }
 .assistant-fab:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring), 0 16px 32px rgba(6, 10, 20, 0.28); }
 .assistant-fab__halo { position: absolute; inset: 5px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent-border) 56%, transparent); background: radial-gradient(circle at 30% 25%, rgba(255,255,255,0.32), transparent 56%); }
-.assistant-fab__shell { width: 35px; height: 35px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent-border) 58%, var(--border)); background: linear-gradient(165deg, color-mix(in srgb, var(--accent-soft) 65%, var(--surface-elevated)), color-mix(in srgb, var(--surface) 72%, var(--accent-soft))); display: inline-flex; align-items: center; justify-content: center; box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 6px 14px rgba(var(--accent-rgb), 0.2); color: color-mix(in srgb, var(--text) 76%, var(--accent)); }
-.assistant-fab svg { width: 17px; height: 17px; }
+.assistant-fab__shell { width: 35px; height: 35px; border-radius: 11px; border: 1px solid color-mix(in srgb, var(--accent-border) 58%, var(--border)); background: linear-gradient(165deg, color-mix(in srgb, var(--accent-soft) 65%, var(--surface-elevated)), color-mix(in srgb, var(--surface) 72%, var(--accent-soft))); display: inline-flex; align-items: center; justify-content: center; box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 6px 14px rgba(var(--accent-rgb), 0.2); color: color-mix(in srgb, var(--text) 76%, var(--accent)); }
+.assistant-icon { --assistant-icon-size: 20px; position: relative; width: var(--assistant-icon-size); height: var(--assistant-icon-size); display: inline-flex; align-items: center; justify-content: center; border-radius: max(5px, calc(var(--assistant-icon-size) * 0.24)); border: 1px solid color-mix(in srgb, var(--accent-border) 70%, rgba(255,255,255,0.22)); background: radial-gradient(circle at 30% 26%, rgba(255,255,255,0.28), transparent 54%), linear-gradient(150deg, color-mix(in srgb, var(--accent-soft) 64%, var(--surface-elevated)), color-mix(in srgb, var(--accent) 28%, var(--surface))); box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 2px 9px rgba(var(--accent-rgb), 0.28); color: color-mix(in srgb, var(--text) 78%, var(--accent)); flex: 0 0 auto; }
+.assistant-icon__face { width: 70%; height: 68%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--assistant-icon-size) * 0.12); }
+.assistant-icon__eyes { width: 100%; display: flex; align-items: center; justify-content: center; gap: calc(var(--assistant-icon-size) * 0.15); }
+.assistant-icon__eye { width: calc(var(--assistant-icon-size) * 0.14); height: calc(var(--assistant-icon-size) * 0.14); border-radius: 999px; background: currentColor; transform-origin: center; animation: assistant-icon-blink 5.6s ease-in-out infinite; }
+.assistant-icon__mouth { width: calc(var(--assistant-icon-size) * 0.44); height: calc(var(--assistant-icon-size) * 0.11); border-radius: 999px; background: currentColor; opacity: .94; }
+.assistant-icon[data-state="open"] .assistant-icon__mouth,
+.assistant-icon[data-state="happy"] .assistant-icon__mouth { background: transparent; border-bottom: 2px solid currentColor; border-radius: 999px; height: calc(var(--assistant-icon-size) * 0.19); }
+.assistant-icon[data-state="thinking"] .assistant-icon__mouth { animation: assistant-icon-think 1.2s ease-in-out infinite; }
+.assistant-icon[data-state="speaking"] .assistant-icon__mouth { animation: assistant-icon-speak .7s ease-in-out infinite; }
+.assistant-fab:hover .assistant-icon,
+.assistant-fab:focus-visible .assistant-icon { box-shadow: inset 0 1px 0 rgba(255,255,255,0.42), 0 0 0 1px color-mix(in srgb, var(--accent-border) 70%, transparent), 0 4px 11px rgba(var(--accent-rgb), 0.38); }
+.assistant-icon[data-animated="true"] { animation: assistant-icon-glow 4.2s ease-in-out infinite; }
+.assistant-icon[data-animated="false"],
+.assistant-icon[data-animated="false"] .assistant-icon__eye,
+.assistant-icon[data-animated="false"] .assistant-icon__mouth { animation: none !important; }
 .assistant-fab[data-menu-open="true"] {
   opacity: 0.36;
   pointer-events: none;
@@ -1223,6 +1237,15 @@ select:focus-visible {
   50% { box-shadow: 0 0 0 10px rgba(var(--accent-rgb), 0); }
 }
 @keyframes assistantFabIn { from { opacity: 0; transform: translateY(12px);} to { opacity: 1; transform: translateY(0);} }
+@keyframes assistant-icon-blink { 0%, 44%, 100% { transform: scaleY(1); } 46% { transform: scaleY(.14); } 49% { transform: scaleY(1); } }
+@keyframes assistant-icon-glow { 0%, 100% { transform: translateY(0) scale(1); box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 2px 9px rgba(var(--accent-rgb), 0.22); } 50% { transform: translateY(-.4px) scale(1.01); box-shadow: inset 0 1px 0 rgba(255,255,255,0.42), 0 3px 10px rgba(var(--accent-rgb), 0.34); } }
+@keyframes assistant-icon-think { 0%, 100% { opacity: .55; transform: scaleX(.68); } 50% { opacity: 1; transform: scaleX(1); } }
+@keyframes assistant-icon-speak { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.8); } }
+@media (prefers-reduced-motion: reduce) {
+  .assistant-icon,
+  .assistant-icon__eye,
+  .assistant-icon__mouth { animation: none !important; transform: none !important; }
+}
 
 .assistant-page--sidebar {
   height: 100%;
