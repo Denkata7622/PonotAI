@@ -49,3 +49,23 @@ export function getNextQueueIndex(
   if (repeatMode === "queue") return 0;
   return null;
 }
+
+export function shouldLoadVideoById(
+  loadedVideoId: string | null,
+  requestedVideoId: string | null,
+  force = false,
+): boolean {
+  if (!requestedVideoId) return false;
+  if (force) return true;
+  return loadedVideoId !== requestedVideoId;
+}
+
+export function percentToDurationSeconds(percent: number, duration: number): number {
+  if (!Number.isFinite(duration) || duration <= 0) return 0;
+  const normalizedPercent = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 0));
+  return (normalizedPercent / 100) * duration;
+}
+
+export function shouldCommitScrub(currentScrubToken: number, lastCommittedScrubToken: number): boolean {
+  return currentScrubToken > 0 && currentScrubToken !== lastCommittedScrubToken;
+}

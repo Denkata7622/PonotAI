@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getNextQueueIndex, mapYouTubeState, type QueueTrack, type RepeatMode } from "../features/player/state";
+import { getNextQueueIndex, mapYouTubeState, percentToDurationSeconds, shouldLoadVideoById, type QueueTrack, type RepeatMode } from "../features/player/state";
 import { YT_STAGE_READY_EVENTS } from "../lib/playerEvents";
 
 export type QueuedTrack = {
@@ -189,6 +189,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playerRef = useRef<YTPlayerLike | null>(null);
   const isPlayerReadyRef = useRef(false);
   const pendingVideoIdRef = useRef<string | null>(null);
+  const loadedVideoIdRef = useRef<string | null>(null);
   const requestedPlaybackRef = useRef<"play" | "pause" | null>(null);
   const failedVideoIdsRef = useRef<Set<string>>(new Set());
   const recoveryInFlightRef = useRef<Set<string>>(new Set());
@@ -199,6 +200,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const durationRef = useRef(duration);
   const currentTrackRef = useRef<QueueTrack | null>(null);
   const currentVideoIdRef = useRef<string | null>(currentVideoId);
+  const activeQueueEntryIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     queueRef.current = queue;
@@ -226,13 +228,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const requestLoadVideo = useCallback((videoId: string, playback: "play" | "pause" | null = null) => {
+  const requestLoadVideo = useCallback((videoId: string, playback: "play" | "pause" | null = null, options?: { force?: boolean }) => {
     if (!videoId) return false;
+    if (!shouldLoadVideoById(loadedVideoIdRef.current, videoId, options?.force)) {
+      if (playback) requestedPlaybackRef.current = playback;
+      pendingVideoIdRef.current = null;
+      logPlayerDebug("skipping loadVideoById because requested video is already loaded", { videoId, force: options?.force ?? false });
+      return true;
+    }
     pendingVideoIdRef.current = videoId;
     if (playback) requestedPlaybackRef.current = playback;
     logPlayerDebug("loading video id", { videoId, playback });
     const loaded = safePlayerCall((player) => player.loadVideoById?.(videoId));
-    if (loaded) pendingVideoIdRef.current = null;
+    if (loaded) {
+      loadedVideoIdRef.current = videoId;
+      pendingVideoIdRef.current = null;
+    }
     else logPlayerDebug("loadVideoById deferred because player is not ready yet", { videoId });
     return loaded;
   }, [safePlayerCall]);
@@ -444,6 +455,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           logPlayerDebug("onReady");
           playerRef.current = event.target;
           isPlayerReadyRef.current = true;
+          loadedVideoIdRef.current = initialVideoId;
+          if (pendingVideoIdRef.current === initialVideoId) pendingVideoIdRef.current = null;
           applyYouTubeIframePolicy();
           safePlayerCall((player) => player.setVolume?.(volume));
           if (pendingVideoIdRef.current && pendingVideoIdRef.current !== initialVideoId) {
@@ -510,13 +523,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (pendingVideoIdRef.current) {
         const pendingVideoId = pendingVideoIdRef.current;
         requestLoadVideo(pendingVideoId);
-      } else if (
-        currentVideoIdRef.current
-        && playerRef.current
-        && isPlayerReadyRef.current
-        && requestedPlaybackRef.current === "play"
-      ) {
-        requestLoadVideo(currentVideoIdRef.current);
       }
 
       if (requestedPlaybackRef.current === "play" && playerRef.current && isPlayerReadyRef.current) {
@@ -570,16 +576,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (currentTrack) return;
     requestedPlaybackRef.current = "pause";
+    pendingVideoIdRef.current = null;
+    loadedVideoIdRef.current = null;
+    activeQueueEntryIdRef.current = null;
     setCurrentVideoId(null);
     setCurrentTime(0);
     setDuration(0);
     setIsPlaying(false);
     setIsBuffering(false);
     requestPlayback("pause");
-  }, [currentTrack, safePlayerCall]);
+  }, [currentTrack, requestPlayback]);
 
   useEffect(() => {
     if (!currentTrack) return;
+    const currentQueueEntryId = currentEntry?.queueId ?? null;
+    const isQueueEntryChange = currentQueueEntryId !== null && activeQueueEntryIdRef.current !== currentQueueEntryId;
+    const resolvedVideoId = normalizeVideoId(currentTrack.videoId);
+    const isVideoIdChange = resolvedVideoId !== currentVideoIdRef.current;
+    if (!isQueueEntryChange && !isVideoIdChange) return;
+    const shouldForceReload = isQueueEntryChange;
+    activeQueueEntryIdRef.current = currentQueueEntryId;
     setCurrentTime(0);
     setDuration(0);
     setIsBuffering(true);
@@ -587,7 +603,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     trackLoadTokenRef.current += 1;
     const loadToken = trackLoadTokenRef.current;
     const queueId = currentEntry?.queueId;
-    const resolvedVideoId = normalizeVideoId(currentTrack.videoId);
     currentVideoIdRef.current = resolvedVideoId ?? null;
     setCurrentVideoId(resolvedVideoId ?? null);
 
@@ -620,7 +635,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             initializePlayer();
             return;
           }
-          requestLoadVideo(fetchedVideoId, "play");
+          requestLoadVideo(fetchedVideoId, "play", { force: shouldForceReload });
         } catch {
           if (!cancelled) setPlayerError("Could not resolve a playable YouTube video.");
         }
@@ -637,7 +652,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     requestedPlaybackRef.current = "play";
-    requestLoadVideo(resolvedVideoId, "play");
+    requestLoadVideo(resolvedVideoId, "play", { force: shouldForceReload });
     const startPlayback = window.setTimeout(() => {
       if (loadToken !== trackLoadTokenRef.current) return;
       if (requestedPlaybackRef.current === "pause") {
@@ -648,7 +663,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       requestPlayback("play");
     }, 250);
     return () => window.clearTimeout(startPlayback);
-  }, [currentEntry?.queueId, currentTrack, initializePlayer, requestLoadVideo, safePlayerCall]);
+  }, [currentEntry?.queueId, currentTrack, initializePlayer, requestLoadVideo, requestPlayback]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -666,14 +681,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!currentTrackRef.current) return;
     requestedPlaybackRef.current = "play";
     requestPlayback("play");
-  }, [safePlayerCall]);
+  }, [requestPlayback]);
 
   const requestPause = useCallback(() => {
     requestedPlaybackRef.current = "pause";
     setIsPlaying(false);
     setIsBuffering(false);
     requestPlayback("pause");
-  }, [safePlayerCall]);
+  }, [requestPlayback]);
 
   const stopPlayback = useCallback(() => {
     if (!currentTrackRef.current) return;
@@ -733,9 +748,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentTime(0);
     setDuration(0);
     setCurrentVideoId(null);
+    pendingVideoIdRef.current = null;
+    loadedVideoIdRef.current = null;
     setIsPlaying(false);
     requestPlayback("pause");
-  }, []);
+  }, [requestPlayback]);
 
   const playFromQueue = useCallback((queueId: string) => {
     const nextIndex = queue.findIndex((entry) => entry.queueId === queueId);
@@ -775,8 +792,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [currentTrack, isPlaying, requestPause, requestPlay]);
 
   const seekToPercent = useCallback((percent: number) => {
+    const seconds = percentToDurationSeconds(percent, duration);
     if (!duration) return;
-    const seconds = (Math.max(0, Math.min(100, percent)) / 100) * duration;
     safePlayerCall((player) => player.seekTo?.(seconds, true));
     setCurrentTime(seconds);
   }, [duration, safePlayerCall]);

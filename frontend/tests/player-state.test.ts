@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getNextQueueIndex, upsertTrack } from "../features/player/state.ts";
+import { getNextQueueIndex, percentToDurationSeconds, shouldCommitScrub, shouldLoadVideoById, upsertTrack } from "../features/player/state.ts";
 
 const trackA = { id: "a", title: "A", artist: "AA", query: "A AA" };
 const trackB = { id: "b", title: "B", artist: "BB", query: "B BB" };
@@ -35,4 +35,25 @@ test("getNextQueueIndex loops queue when repeat queue is active", () => {
 
 test("getNextQueueIndex repeats current track when repeat track is active", () => {
   assert.equal(getNextQueueIndex(1, 2, "track"), 1);
+});
+
+test("shouldLoadVideoById guards duplicate loadVideoById calls unless forced", () => {
+  assert.equal(shouldLoadVideoById("sameVideo", "sameVideo"), false);
+  assert.equal(shouldLoadVideoById("sameVideo", "sameVideo", true), true);
+  assert.equal(shouldLoadVideoById("oldVideo", "newVideo"), true);
+  assert.equal(shouldLoadVideoById("oldVideo", null), false);
+});
+
+test("percentToDurationSeconds clamps scrub percentages to duration bounds", () => {
+  assert.equal(percentToDurationSeconds(50, 200), 100);
+  assert.equal(percentToDurationSeconds(-10, 200), 0);
+  assert.equal(percentToDurationSeconds(130, 200), 200);
+  assert.equal(percentToDurationSeconds(30, 0), 0);
+});
+
+test("shouldCommitScrub prevents duplicate commit events for the same drag token", () => {
+  assert.equal(shouldCommitScrub(1, 0), true);
+  assert.equal(shouldCommitScrub(1, 1), false);
+  assert.equal(shouldCommitScrub(2, 1), true);
+  assert.equal(shouldCommitScrub(0, 0), false);
 });
