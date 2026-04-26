@@ -1233,6 +1233,13 @@ select:focus-visible {
   box-shadow: none;
   color: #fff;
 }
+.assistant-icon[data-variant="solid"] {
+  border: 1px solid color-mix(in srgb, var(--accent-border) 88%, rgba(0,0,0,0.18));
+  background:
+    radial-gradient(55% 45% at 32% 24%, rgba(255,255,255,0.16), transparent 72%),
+    linear-gradient(152deg, color-mix(in srgb, var(--accent) 88%, #fff 12%), color-mix(in srgb, var(--accent-2) 42%, var(--accent) 58%));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.24), 0 4px 10px rgba(var(--accent-rgb), 0.34);
+}
 .assistant-icon[data-variant="flat"] .assistant-icon__face {
   width: 76%;
   height: 72%;

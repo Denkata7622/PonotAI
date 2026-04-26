@@ -7,7 +7,7 @@ export type AssistantIconProps = {
   state?: AssistantIconState;
   className?: string;
   animated?: boolean;
-  variant?: "default" | "flat";
+  variant?: "default" | "flat" | "solid";
 };
 
 export default function AssistantIcon({
