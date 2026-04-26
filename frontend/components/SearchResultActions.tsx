@@ -4,6 +4,7 @@ import { EllipsisVertical, Plus } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
+import { stopSearchDropdownNestedEvent } from "../lib/searchDropdownEvents";
 import SongActionsMenu from "./SongActionsMenu";
 
 type SearchResultActionsProps = {
@@ -43,16 +44,24 @@ export default function SearchResultActions({
   }
 
   return (
-    <div className="relative flex items-center gap-1" data-result-actions={resultId}>
+    <div
+      className="relative flex items-center gap-1"
+      data-result-actions={resultId}
+      onPointerDown={(event) => stopSearchDropdownNestedEvent(event)}
+      onMouseDown={(event) => stopSearchDropdownNestedEvent(event)}
+      onClick={(event) => stopSearchDropdownNestedEvent(event, false)}
+    >
       <button
         type="button"
         className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
         onPointerDown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
+          stopSearchDropdownNestedEvent(event);
+        }}
+        onMouseDown={(event) => {
+          stopSearchDropdownNestedEvent(event);
         }}
         onClick={(event) => {
-          event.stopPropagation();
+          stopSearchDropdownNestedEvent(event, false);
           handleQuickQueueAdd();
         }}
         aria-label={t("btn_add_to_queue", language)}

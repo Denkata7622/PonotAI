@@ -23,6 +23,7 @@ import {
   size,
   Placement,
 } from '@floating-ui/react';
+import { stopSearchDropdownNestedEvent } from '../../../lib/searchDropdownEvents';
 
 interface SmartDropdownProps {
   trigger: ReactNode;
@@ -149,6 +150,9 @@ export function SmartDropdown({
       <span
         ref={referenceRef}
         {...getReferenceProps()}
+        onPointerDown={(event) => stopSearchDropdownNestedEvent(event)}
+        onMouseDown={(event) => stopSearchDropdownNestedEvent(event)}
+        onClick={(event) => stopSearchDropdownNestedEvent(event, false)}
         style={{ display: 'inline-block', width: matchTriggerWidth ? '100%' : 'auto' }}
       >
         {trigger}
@@ -161,6 +165,9 @@ export function SmartDropdown({
             style={dropdownStyle}
             className={`dropdown-surface ${className ?? ""}`}
             data-smart-dropdown-floating
+            onPointerDown={(event) => stopSearchDropdownNestedEvent(event)}
+            onMouseDown={(event) => stopSearchDropdownNestedEvent(event)}
+            onClick={(event) => stopSearchDropdownNestedEvent(event, false)}
             {...getFloatingProps()}
           >
             {children}

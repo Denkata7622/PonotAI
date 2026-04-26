@@ -5,6 +5,7 @@ import { Heart, ListPlus, Play, Share2, Trash2 } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
+import { stopSearchDropdownNestedEvent } from "../lib/searchDropdownEvents";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
 
 type SongActionsMenuProps = {
@@ -68,8 +69,10 @@ export default function SongActionsMenu({
           type="button"
           className={triggerClassName}
           onPointerDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
+            stopSearchDropdownNestedEvent(event);
+          }}
+          onMouseDown={(event) => {
+            stopSearchDropdownNestedEvent(event);
           }}
           aria-label={t("track_more_options", language)}
           title={t("track_more_options", language)}
@@ -83,8 +86,7 @@ export default function SongActionsMenu({
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
           onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
+            stopSearchDropdownNestedEvent(event);
             onPlay();
             onOpenChange(false);
           }}
@@ -97,8 +99,7 @@ export default function SongActionsMenu({
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
           onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
+            stopSearchDropdownNestedEvent(event);
             onAddToQueue();
             onOpenChange(false);
           }}
@@ -111,8 +112,7 @@ export default function SongActionsMenu({
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
           onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
+            stopSearchDropdownNestedEvent(event);
             onSaveToLibrary();
             onOpenChange(false);
           }}
@@ -125,8 +125,7 @@ export default function SongActionsMenu({
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
           onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
+            stopSearchDropdownNestedEvent(event);
             onToggleFavorite();
             onOpenChange(false);
           }}
@@ -142,8 +141,7 @@ export default function SongActionsMenu({
             type="button"
             className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
             onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
+              stopSearchDropdownNestedEvent(event);
               setShowPlaylists((prev) => !prev);
             }}
           >
@@ -160,8 +158,7 @@ export default function SongActionsMenu({
                   type="button"
                   className="block w-full rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
                   onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
+                    stopSearchDropdownNestedEvent(event);
                     onAddToPlaylist(playlist.id);
                     onOpenChange(false);
                   }}
@@ -181,8 +178,7 @@ export default function SongActionsMenu({
             disabled={isSharing}
             className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)] disabled:opacity-60"
             onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
+              stopSearchDropdownNestedEvent(event);
               onShare();
             }}
           >
@@ -197,8 +193,7 @@ export default function SongActionsMenu({
             type="button"
             className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-red-500 hover:bg-red-500/10"
             onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
+              stopSearchDropdownNestedEvent(event);
               const confirmed = window.confirm(deleteConfirmMessage ?? (language === "bg" ? "Сигурни ли сте, че искате да изтриете това?" : "Are you sure you want to delete this?"));
               if (!confirmed) return;
               onDelete();

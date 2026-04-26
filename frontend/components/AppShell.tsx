@@ -684,9 +684,18 @@ function AppShellContent({ children }: { children: ReactNode }) {
                           <li
                             key={result.videoId}
                             className={`dropdown-item flex items-center gap-3 rounded-xl px-2 py-2 ${highlightedIndex === index ? "bg-[var(--hover-bg)]" : ""}`}
+                            role="button"
+                            tabIndex={0}
                             onMouseDown={(event) => {
                               event.preventDefault();
                               handleSelectSearchResult(result);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.target !== event.currentTarget) return;
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                handleSelectSearchResult(result);
+                              }
                             }}
                           >
                             <img src={result.thumbnailUrl} alt={result.title} className="h-10 w-10 rounded-md object-cover" />
@@ -738,9 +747,18 @@ function AppShellContent({ children }: { children: ReactNode }) {
                               <li
                                 key={result.videoId}
                                 className="flex items-center gap-3 rounded-xl px-2 py-2"
+                                role="button"
+                                tabIndex={0}
                                 onMouseDown={(event) => {
                                   event.preventDefault();
                                   handleSelectSearchResult(result);
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.target !== event.currentTarget) return;
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    handleSelectSearchResult(result);
+                                  }
                                 }}
                               >
                                 <img src={result.thumbnailUrl} alt={result.title} className="h-10 w-10 rounded-md object-cover" />
