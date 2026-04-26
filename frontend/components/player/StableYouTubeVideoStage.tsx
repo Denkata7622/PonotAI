@@ -39,6 +39,7 @@ export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, i
 
   useLayoutEffect(() => {
     const timeoutIds: number[] = [];
+    const eventRafIds: number[] = [];
     const mountContainer = stageMountContainerRef.current;
     if (mountContainer) {
       const existingNode = document.getElementById("ponotai-yt-player");
@@ -50,7 +51,10 @@ export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, i
       if (mountNode.parentElement !== mountContainer) {
         mountContainer.appendChild(mountNode);
       }
-      window.dispatchEvent(new CustomEvent(YT_STAGE_MOUNTED_EVENT));
+      const dispatchMountedEvent = () => window.dispatchEvent(new CustomEvent(YT_STAGE_MOUNTED_EVENT));
+      dispatchMountedEvent();
+      eventRafIds.push(window.requestAnimationFrame(dispatchMountedEvent));
+      timeoutIds.push(window.setTimeout(dispatchMountedEvent, 50));
     }
 
     const resolveTarget = () => (isExpanded ? expandedSlot : collapsedSlot);
@@ -116,6 +120,7 @@ export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, i
     timeoutIds.push(window.setTimeout(scheduleUpdate, 320));
 
     return () => {
+      eventRafIds.forEach((id) => window.cancelAnimationFrame(id));
       timeoutIds.forEach((id) => window.clearTimeout(id));
       observer.disconnect();
       window.removeEventListener("resize", scheduleUpdate);

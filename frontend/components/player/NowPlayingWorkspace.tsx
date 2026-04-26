@@ -47,7 +47,6 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
     : "#";
   const setExpandedSlotNode = useCallback((node: HTMLDivElement | null) => {
-    if (expandedVideoSlotRef.current === node) return;
     expandedVideoSlotRef.current = node;
     onExpandedVideoSlotRefChange?.(node);
   }, [expandedVideoSlotRef, onExpandedVideoSlotRefChange]);

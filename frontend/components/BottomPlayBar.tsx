@@ -65,7 +65,6 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
     : "#";
   const setCollapsedSlotNode = useCallback((node: HTMLDivElement | null) => {
-    if (collapsedVideoSlotRef.current === node) return;
     collapsedVideoSlotRef.current = node;
     onCollapsedVideoSlotRefChange?.(node);
   }, [collapsedVideoSlotRef, onCollapsedVideoSlotRefChange]);

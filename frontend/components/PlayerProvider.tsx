@@ -449,7 +449,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           if (pendingVideoIdRef.current && pendingVideoIdRef.current !== initialVideoId) {
             const queuedVideoId = pendingVideoIdRef.current;
             requestLoadVideo(queuedVideoId);
-            pendingVideoIdRef.current = null;
           }
           if (requestedPlaybackRef.current === "play") {
             requestPlayback("play");
@@ -540,7 +539,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (pendingVideoIdRef.current) {
       const pendingVideoId = pendingVideoIdRef.current;
       requestLoadVideo(pendingVideoId);
-      pendingVideoIdRef.current = null;
     }
 
     if (requestedPlaybackRef.current === "play") {
