@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ChevronDown, Keyboard, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
@@ -8,8 +8,10 @@ import { usePlayer } from "../PlayerProvider";
 import QueuePanel from "@/src/components/player/QueuePanel";
 import MusicAssistantPage from "@/src/features/assistant/components/MusicAssistantPage";
 import { formatPlayerTime, getRepeatModeLabel, getRepeatModeTooltip, useVolumeUi } from "./playerUiUtils";
+import { shouldCommitScrub } from "../../features/player/state";
 
 type WorkspaceTab = "queue" | "assistant" | "context";
+const SCRUB_COMMIT_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown", "Enter", " ", "Spacebar"]);
 
 type NowPlayingWorkspaceProps = {
   workspaceTab: WorkspaceTab;
@@ -42,6 +44,10 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
   const progress = useMemo(() => (duration ? Math.min(100, (currentTime / duration) * 100) : 0), [currentTime, duration]);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [localScrubPercent, setLocalScrubPercent] = useState(progress);
+  const latestScrubPercentRef = useRef(progress);
+  const isScrubbingRef = useRef(false);
+  const scrubTokenRef = useRef(0);
+  const committedScrubTokenRef = useRef(0);
   const repeatLabel = getRepeatModeLabel(repeatMode, isBg);
   const repeatTooltip = getRepeatModeTooltip(repeatMode, isBg);
   const { isVolumePanelOpen, setIsVolumePanelOpen, toggleMute, updateVolume } = useVolumeUi(volume, setVolume);
@@ -55,14 +61,34 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
 
   useEffect(() => {
     if (isScrubbing) return;
+    latestScrubPercentRef.current = progress;
     setLocalScrubPercent(progress);
   }, [isScrubbing, progress]);
 
+  useEffect(() => {
+    isScrubbingRef.current = isScrubbing;
+  }, [isScrubbing]);
+
+  const beginScrub = useCallback(() => {
+    if (isScrubbingRef.current) return;
+    isScrubbingRef.current = true;
+    scrubTokenRef.current += 1;
+    setIsScrubbing(true);
+  }, []);
+
   const commitSeek = useCallback(() => {
-    if (!isScrubbing) return;
-    seekToPercent(localScrubPercent);
+    if (!isScrubbingRef.current) return;
+    const scrubToken = scrubTokenRef.current;
+    if (!shouldCommitScrub(scrubToken, committedScrubTokenRef.current)) {
+      isScrubbingRef.current = false;
+      setIsScrubbing(false);
+      return;
+    }
+    committedScrubTokenRef.current = scrubToken;
+    isScrubbingRef.current = false;
+    seekToPercent(latestScrubPercentRef.current);
     setIsScrubbing(false);
-  }, [isScrubbing, localScrubPercent, seekToPercent]);
+  }, [seekToPercent]);
 
   const displayedCurrentTime = useMemo(
     () => (isScrubbing ? (Math.max(0, Math.min(100, localScrubPercent)) / 100) * duration : currentTime),
@@ -150,20 +176,24 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
                 max={100}
                 step={0.1}
                 value={isScrubbing ? localScrubPercent : progress}
-                onPointerDown={() => setIsScrubbing(true)}
-                onMouseDown={() => setIsScrubbing(true)}
-                onTouchStart={() => setIsScrubbing(true)}
+                onPointerDown={beginScrub}
+                onMouseDown={beginScrub}
+                onTouchStart={beginScrub}
                 onChange={(event) => {
                   const nextPercent = Number(event.target.value);
+                  latestScrubPercentRef.current = nextPercent;
                   setLocalScrubPercent(nextPercent);
-                  if (!isScrubbing) seekToPercent(nextPercent);
+                  if (!isScrubbingRef.current) seekToPercent(nextPercent);
                 }}
                 onPointerUp={commitSeek}
                 onMouseUp={commitSeek}
                 onTouchEnd={commitSeek}
                 onBlur={commitSeek}
+                onKeyDown={(event) => {
+                  if (SCRUB_COMMIT_KEYS.has(event.key)) beginScrub();
+                }}
                 onKeyUp={(event) => {
-                  if (event.key === "Enter" || event.key === " ") commitSeek();
+                  if (SCRUB_COMMIT_KEYS.has(event.key)) commitSeek();
                 }}
                 className="h-6 w-full themed-progress md:h-8"
                 aria-label={t("track_progress", language)}

@@ -65,3 +65,7 @@ export function percentToDurationSeconds(percent: number, duration: number): num
   const normalizedPercent = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 0));
   return (normalizedPercent / 100) * duration;
 }
+
+export function shouldCommitScrub(currentScrubToken: number, lastCommittedScrubToken: number): boolean {
+  return currentScrubToken > 0 && currentScrubToken !== lastCommittedScrubToken;
+}

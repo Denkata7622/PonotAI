@@ -200,6 +200,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const durationRef = useRef(duration);
   const currentTrackRef = useRef<QueueTrack | null>(null);
   const currentVideoIdRef = useRef<string | null>(currentVideoId);
+  const activeQueueEntryIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     queueRef.current = queue;
@@ -577,16 +578,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     requestedPlaybackRef.current = "pause";
     pendingVideoIdRef.current = null;
     loadedVideoIdRef.current = null;
+    activeQueueEntryIdRef.current = null;
     setCurrentVideoId(null);
     setCurrentTime(0);
     setDuration(0);
     setIsPlaying(false);
     setIsBuffering(false);
     requestPlayback("pause");
-  }, [currentTrack, safePlayerCall]);
+  }, [currentTrack, requestPlayback]);
 
   useEffect(() => {
     if (!currentTrack) return;
+    const currentQueueEntryId = currentEntry?.queueId ?? null;
+    const isQueueEntryChange = currentQueueEntryId !== null && activeQueueEntryIdRef.current !== currentQueueEntryId;
+    const resolvedVideoId = normalizeVideoId(currentTrack.videoId);
+    const isVideoIdChange = resolvedVideoId !== currentVideoIdRef.current;
+    if (!isQueueEntryChange && !isVideoIdChange) return;
+    const shouldForceReload = isQueueEntryChange;
+    activeQueueEntryIdRef.current = currentQueueEntryId;
     setCurrentTime(0);
     setDuration(0);
     setIsBuffering(true);
@@ -594,7 +603,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     trackLoadTokenRef.current += 1;
     const loadToken = trackLoadTokenRef.current;
     const queueId = currentEntry?.queueId;
-    const resolvedVideoId = normalizeVideoId(currentTrack.videoId);
     currentVideoIdRef.current = resolvedVideoId ?? null;
     setCurrentVideoId(resolvedVideoId ?? null);
 
@@ -627,7 +635,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             initializePlayer();
             return;
           }
-          requestLoadVideo(fetchedVideoId, "play");
+          requestLoadVideo(fetchedVideoId, "play", { force: shouldForceReload });
         } catch {
           if (!cancelled) setPlayerError("Could not resolve a playable YouTube video.");
         }
@@ -644,7 +652,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     requestedPlaybackRef.current = "play";
-    requestLoadVideo(resolvedVideoId, "play");
+    requestLoadVideo(resolvedVideoId, "play", { force: shouldForceReload });
     const startPlayback = window.setTimeout(() => {
       if (loadToken !== trackLoadTokenRef.current) return;
       if (requestedPlaybackRef.current === "pause") {
@@ -655,7 +663,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       requestPlayback("play");
     }, 250);
     return () => window.clearTimeout(startPlayback);
-  }, [currentEntry?.queueId, currentTrack, initializePlayer, requestLoadVideo, safePlayerCall]);
+  }, [currentEntry?.queueId, currentTrack, initializePlayer, requestLoadVideo, requestPlayback]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -673,14 +681,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!currentTrackRef.current) return;
     requestedPlaybackRef.current = "play";
     requestPlayback("play");
-  }, [safePlayerCall]);
+  }, [requestPlayback]);
 
   const requestPause = useCallback(() => {
     requestedPlaybackRef.current = "pause";
     setIsPlaying(false);
     setIsBuffering(false);
     requestPlayback("pause");
-  }, [safePlayerCall]);
+  }, [requestPlayback]);
 
   const stopPlayback = useCallback(() => {
     if (!currentTrackRef.current) return;
