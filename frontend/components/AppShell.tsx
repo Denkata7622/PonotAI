@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Clock, EllipsisVertical, Headphones, Heart, HelpCircle, Info, Library, LogOut, Music, Play, Search, SearchX, Settings, Sparkles, TrendingUp, User, WifiOff, X } from "../lucide-react";
 import BottomPlayBar from "./BottomPlayBar";
 import DualSidebarHost from "@/src/components/sidebars/DualSidebarHost";
@@ -102,15 +102,17 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [expandedVideoSlotElement, setExpandedVideoSlotElement] = useState<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
-  const setCollapsedVideoSlot = (node: HTMLDivElement | null) => {
+  const setCollapsedVideoSlot = useCallback((node: HTMLDivElement | null) => {
+    if (collapsedVideoSlotRef.current === node) return;
     collapsedVideoSlotRef.current = node;
-    setCollapsedVideoSlotElement(node);
-  };
+    setCollapsedVideoSlotElement((previous) => (previous === node ? previous : node));
+  }, []);
 
-  const setExpandedVideoSlot = (node: HTMLDivElement | null) => {
+  const setExpandedVideoSlot = useCallback((node: HTMLDivElement | null) => {
+    if (expandedVideoSlotRef.current === node) return;
     expandedVideoSlotRef.current = node;
-    setExpandedVideoSlotElement(node);
-  };
+    setExpandedVideoSlotElement((previous) => (previous === node ? previous : node));
+  }, []);
 
   useEffect(() => {
     setMounted(true);

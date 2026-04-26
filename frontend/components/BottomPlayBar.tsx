@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ChevronDown, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
@@ -64,6 +64,11 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
   const youtubeSearchUrl = currentTrack
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
     : "#";
+  const setCollapsedSlotNode = useCallback((node: HTMLDivElement | null) => {
+    if (collapsedVideoSlotRef.current === node) return;
+    collapsedVideoSlotRef.current = node;
+    onCollapsedVideoSlotRefChange?.(node);
+  }, [collapsedVideoSlotRef, onCollapsedVideoSlotRefChange]);
 
   useEffect(() => {
     const updatePlayerBarHeight = () => {
@@ -225,10 +230,7 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
 
                 <div className="h-12 overflow-hidden rounded-xl bg-black md:h-14 md:justify-self-end">
                   <div
-                    ref={(node) => {
-                      collapsedVideoSlotRef.current = node;
-                      onCollapsedVideoSlotRefChange?.(node);
-                    }}
+                    ref={setCollapsedSlotNode}
                     data-yt-video-slot="collapsed"
                     className="h-full w-full"
                   />

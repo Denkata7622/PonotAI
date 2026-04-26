@@ -33,9 +33,24 @@ const DEBUG_STAGE = process.env.NODE_ENV !== "production";
 export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, isExpanded, hasActiveVideo }: StableYouTubeVideoStageProps) {
   const pathname = usePathname();
   const rafRef = useRef<number[]>([]);
+  const stageMountContainerRef = useRef<HTMLDivElement | null>(null);
   const [layout, setLayout] = useState<StageLayout>(OFFSCREEN_LAYOUT);
 
   useLayoutEffect(() => {
+    const mountContainer = stageMountContainerRef.current;
+    if (mountContainer) {
+      const existingNode = document.getElementById("ponotai-yt-player");
+      const mountNode = existingNode ?? document.createElement("div");
+      if (!existingNode) {
+        mountNode.id = "ponotai-yt-player";
+      }
+      mountNode.className = "h-full w-full";
+      if (mountNode.parentElement !== mountContainer) {
+        mountContainer.appendChild(mountNode);
+      }
+      window.dispatchEvent(new CustomEvent("ponotai:yt-stage-mounted"));
+    }
+
     const resolveTarget = () => (isExpanded ? expandedSlot : collapsedSlot);
 
     const cancelRaf = () => {
@@ -119,7 +134,7 @@ export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, i
       className="overflow-hidden rounded-lg bg-black"
       aria-hidden={!hasActiveVideo}
     >
-      <div id="ponotai-yt-player" className="h-full w-full" />
+      <div ref={stageMountContainerRef} className="h-full w-full" />
     </div>
   );
 }
