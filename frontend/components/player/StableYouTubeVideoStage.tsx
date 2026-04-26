@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useLayoutEffect, useRef, useState } from "react";
-import { YT_MOUNT_CONNECTED_EVENT, YT_STAGE_MOUNTED_EVENT } from "../../lib/playerEvents";
+import { YT_STAGE_MOUNTED_EVENT } from "../../lib/playerEvents";
 
 type StableYouTubeVideoStageProps = {
   collapsedSlot: HTMLDivElement | null;
@@ -38,6 +38,7 @@ export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, i
   const [layout, setLayout] = useState<StageLayout>(OFFSCREEN_LAYOUT);
 
   useLayoutEffect(() => {
+    const timeoutIds: number[] = [];
     const mountContainer = stageMountContainerRef.current;
     if (mountContainer) {
       const existingNode = document.getElementById("ponotai-yt-player");
@@ -50,7 +51,6 @@ export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, i
         mountContainer.appendChild(mountNode);
       }
       window.dispatchEvent(new CustomEvent(YT_STAGE_MOUNTED_EVENT));
-      window.dispatchEvent(new CustomEvent(YT_MOUNT_CONNECTED_EVENT));
     }
 
     const resolveTarget = () => (isExpanded ? expandedSlot : collapsedSlot);
@@ -109,9 +109,14 @@ export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, i
     window.addEventListener("scroll", scheduleUpdate, true);
     window.visualViewport?.addEventListener("resize", scheduleUpdate);
 
+    updateLayout();
     scheduleUpdate();
+    timeoutIds.push(window.setTimeout(scheduleUpdate, 80));
+    timeoutIds.push(window.setTimeout(scheduleUpdate, 180));
+    timeoutIds.push(window.setTimeout(scheduleUpdate, 320));
 
     return () => {
+      timeoutIds.forEach((id) => window.clearTimeout(id));
       observer.disconnect();
       window.removeEventListener("resize", scheduleUpdate);
       window.removeEventListener("scroll", scheduleUpdate, true);

@@ -103,13 +103,11 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
   const setCollapsedVideoSlot = useCallback((node: HTMLDivElement | null) => {
-    if (collapsedVideoSlotRef.current === node) return;
     collapsedVideoSlotRef.current = node;
     setCollapsedVideoSlotElement((previous) => (previous === node ? previous : node));
   }, []);
 
   const setExpandedVideoSlot = useCallback((node: HTMLDivElement | null) => {
-    if (expandedVideoSlotRef.current === node) return;
     expandedVideoSlotRef.current = node;
     setExpandedVideoSlotElement((previous) => (previous === node ? previous : node));
   }, []);

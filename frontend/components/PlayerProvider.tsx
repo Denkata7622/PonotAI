@@ -511,7 +511,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (pendingVideoIdRef.current) {
         const pendingVideoId = pendingVideoIdRef.current;
         requestLoadVideo(pendingVideoId);
-        pendingVideoIdRef.current = null;
       } else if (
         currentVideoIdRef.current
         && playerRef.current
