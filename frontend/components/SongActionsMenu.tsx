@@ -5,7 +5,7 @@ import { Heart, ListPlus, Play, Share2, Trash2 } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
-import { stopSearchDropdownNestedEvent } from "../lib/searchDropdownEvents";
+import { stopNestedInteractiveEvent } from "../lib/domEvents";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
 
 type SongActionsMenuProps = {
@@ -53,7 +53,7 @@ export default function SongActionsMenu({
   const [showPlaylists, setShowPlaylists] = useState(false);
   const maybeStopParentActivation = (event: { stopPropagation: () => void; preventDefault?: () => void }, preventDefault = true) => {
     if (!stopParentActivation) return;
-    stopSearchDropdownNestedEvent(event, preventDefault);
+    stopNestedInteractiveEvent(event, preventDefault);
   };
 
   useEffect(() => {

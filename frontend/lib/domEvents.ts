@@ -3,7 +3,7 @@ type PropagationEvent = {
   preventDefault?: () => void;
 };
 
-export function stopSearchDropdownNestedEvent(event: PropagationEvent, preventDefault = true) {
+export function stopNestedInteractiveEvent(event: PropagationEvent, preventDefault = true) {
   if (preventDefault) {
     event.preventDefault?.();
   }

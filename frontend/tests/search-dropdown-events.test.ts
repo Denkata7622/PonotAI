@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { stopSearchDropdownNestedEvent } from "../lib/searchDropdownEvents";
+import { stopNestedInteractiveEvent } from "../lib/domEvents";
 
-test("stopSearchDropdownNestedEvent blocks bubbling and default browser row activation", () => {
+test("stopNestedInteractiveEvent blocks bubbling and default browser row activation", () => {
   let stopped = 0;
   let prevented = 0;
 
-  stopSearchDropdownNestedEvent({
+  stopNestedInteractiveEvent({
     stopPropagation: () => {
       stopped += 1;
     },
@@ -19,11 +19,11 @@ test("stopSearchDropdownNestedEvent blocks bubbling and default browser row acti
   assert.equal(prevented, 1);
 });
 
-test("stopSearchDropdownNestedEvent can skip preventDefault for plain click handlers", () => {
+test("stopNestedInteractiveEvent can skip preventDefault for plain click handlers", () => {
   let stopped = 0;
   let prevented = 0;
 
-  stopSearchDropdownNestedEvent(
+  stopNestedInteractiveEvent(
     {
       stopPropagation: () => {
         stopped += 1;
