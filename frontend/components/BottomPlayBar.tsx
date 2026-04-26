@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ChevronDown, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
@@ -13,6 +13,7 @@ type BottomPlayBarProps = {
   isNowPlayingExpanded: boolean;
   onNowPlayingExpandedChange: (expanded: boolean) => void;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
+  collapsedVideoSlotRef: RefObject<HTMLDivElement | null>;
 };
 
 const bg = {
@@ -30,7 +31,7 @@ const bg = {
   unmute: "Включи звук",
 };
 
-export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange }: BottomPlayBarProps) {
+export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange, collapsedVideoSlotRef }: BottomPlayBarProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -222,7 +223,7 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
                 </div>
 
                 <div className="h-12 overflow-hidden rounded-xl bg-black md:h-14 md:justify-self-end">
-                  <div id="ponotai-yt-player" className="h-full w-full" />
+                  <div ref={collapsedVideoSlotRef} data-yt-video-slot="collapsed" className="h-full w-full" />
                 </div>
               </div>
 

@@ -221,7 +221,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       fn(playerRef.current);
       return true;
     } catch {
-      // Player can be destroyed between checks during fast unmount/remount cycles.
       return false;
     }
   }, []);
@@ -230,6 +229,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!videoId) return false;
     pendingVideoIdRef.current = videoId;
     if (playback) requestedPlaybackRef.current = playback;
+    logPlayerDebug("loading video id", { videoId, playback });
     const loaded = safePlayerCall((player) => player.loadVideoById?.(videoId));
     if (loaded) pendingVideoIdRef.current = null;
     else logPlayerDebug("loadVideoById deferred because player is not ready yet", { videoId });
@@ -239,8 +239,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const requestPlayback = useCallback((playback: "play" | "pause") => {
     requestedPlaybackRef.current = playback;
     return safePlayerCall((player) => {
-      if (playback === "play") player.playVideo?.();
-      else player.pauseVideo?.();
+      if (playback === "play") {
+        logPlayerDebug("playVideo");
+        player.playVideo?.();
+      } else {
+        logPlayerDebug("pauseVideo");
+        player.pauseVideo?.();
+      }
     });
   }, [safePlayerCall]);
 
@@ -381,9 +386,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const payload = (await response.json()) as { videoId?: string };
         const replacementVideoId = normalizeVideoId(payload.videoId);
         if (!replacementVideoId || replacementVideoId === failedVideoId || loadToken !== trackLoadTokenRef.current) {
+          logPlayerDebug("resolver returned null");
           setPlayerError(`Playback error (${errorCode}).`);
           return;
         }
+        logPlayerDebug("resolver returned videoId", { videoId: replacementVideoId });
 
         currentVideoIdRef.current = replacementVideoId;
         setCurrentVideoId(replacementVideoId);
@@ -409,12 +416,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!ytWindow.YT?.Player || playerRef.current) return false;
     const mountNode = document.getElementById(PLAYER_MOUNT_NODE_ID);
     if (!mountNode || !mountNode.isConnected) {
-      logPlayerDebug("Cannot initialize player yet because mount node is disconnected");
+      logPlayerDebug("mount missing", { isConnected: mountNode?.isConnected ?? false });
       return false;
     }
+    logPlayerDebug("mount exists", { tagName: mountNode.tagName, isConnected: mountNode.isConnected });
     const initialVideoId = pendingVideoIdRef.current ?? currentVideoIdRef.current;
     if (!initialVideoId) return false;
 
+    logPlayerDebug("initializing YT.Player", { initialVideoId });
     playerRef.current = new ytWindow.YT.Player(PLAYER_MOUNT_NODE_ID, {
       width: "100%",
       height: "100%",
@@ -431,7 +440,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       },
       events: {
         onReady: (event: { target: YTPlayerLike }) => {
-          logPlayerDebug("YouTube iframe API ready");
+          logPlayerDebug("onReady");
           playerRef.current = event.target;
           isPlayerReadyRef.current = true;
           applyYouTubeIframePolicy();
@@ -567,9 +576,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           const payload = (await response.json()) as { videoId?: string };
           const fetchedVideoId = normalizeVideoId(payload.videoId);
           if (!fetchedVideoId || cancelled) {
+            logPlayerDebug("resolver returned null");
             setPlayerError("Could not resolve a playable YouTube video.");
             return;
           }
+          logPlayerDebug("resolver returned videoId", { videoId: fetchedVideoId });
           if (loadToken !== trackLoadTokenRef.current) return;
           currentVideoIdRef.current = fetchedVideoId;
           setCurrentVideoId(fetchedVideoId);
