@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { ArrowLeftRight, ChevronDown, ListMusic, Pause, Play, RefreshCwOff, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "../../lucide-react";
+import { ArrowLeftRight, ChevronDown, ListMusic, Music, Pause, Play, RefreshCwOff, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "../../lucide-react";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
 import { usePlayer } from "../PlayerProvider";
@@ -56,6 +56,7 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
   const shuffleTooltip = shuffleEnabled ? (isBg ? "Разбъркано • натисни за подредено" : "Shuffle • click for straight order") : (isBg ? "Подредено • натисни за разбъркано" : "Straight order • click to shuffle");
   const [lyrics, setLyrics] = useState<string | null>(null);
   const [isLyricsLoading, setIsLyricsLoading] = useState(false);
+  const lastFetchedLyricsKeyRef = useRef<string | null>(null);
   const { isVolumePanelOpen, setIsVolumePanelOpen, toggleMute, updateVolume } = useVolumeUi(volume, setVolume);
   const youtubeSearchUrl = currentTrack
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
@@ -100,28 +101,44 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
     () => (isScrubbing ? (Math.max(0, Math.min(100, localScrubPercent)) / 100) * duration : currentTime),
     [currentTime, duration, isScrubbing, localScrubPercent],
   );
+  const lyricsKey = useMemo(() => {
+    if (!currentTrack?.artist || !currentTrack?.title) return null;
+    return `${currentTrack.artist}::${currentTrack.title}`;
+  }, [currentTrack?.artist, currentTrack?.title]);
 
   useEffect(() => {
-    let cancelled = false;
     setLyrics(null);
-    if (!currentTrack?.title || !currentTrack?.artist) {
-      setIsLyricsLoading(false);
-      return;
-    }
+    setIsLyricsLoading(false);
+    lastFetchedLyricsKeyRef.current = null;
+  }, [lyricsKey]);
+
+  useEffect(() => {
+    if (workspaceTab !== "lyrics") return;
+    if (!lyricsKey || !currentTrack?.title || !currentTrack?.artist) return;
+    if (lastFetchedLyricsKeyRef.current === lyricsKey) return;
+
+    let cancelled = false;
     setIsLyricsLoading(true);
     void (async () => {
       try {
         const response = await fetch(`/api/lyrics?artist=${encodeURIComponent(currentTrack.artist)}&title=${encodeURIComponent(currentTrack.title)}`);
         if (!response.ok) {
-          if (!cancelled) setLyrics("");
+          if (!cancelled) {
+            setLyrics("");
+            lastFetchedLyricsKeyRef.current = lyricsKey;
+          }
           return;
         }
         const payload = await response.json() as { lyrics?: string | null };
         if (!cancelled) {
           setLyrics(payload.lyrics ?? "");
+          lastFetchedLyricsKeyRef.current = lyricsKey;
         }
       } catch {
-        if (!cancelled) setLyrics("");
+        if (!cancelled) {
+          setLyrics("");
+          lastFetchedLyricsKeyRef.current = lyricsKey;
+        }
       } finally {
         if (!cancelled) setIsLyricsLoading(false);
       }
@@ -129,7 +146,7 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
     return () => {
       cancelled = true;
     };
-  }, [currentTrack?.artist, currentTrack?.title]);
+  }, [currentTrack?.artist, currentTrack?.title, lyricsKey, workspaceTab]);
 
   if (!currentTrack || !currentVideoId) return null;
 
@@ -277,7 +294,7 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
             <div className="mt-1.5 shrink-0 app-tabs md:mt-2 xl:hidden">
               <button onClick={() => onWorkspaceTabChange("queue")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "queue" ? "app-tab-active" : ""}`}><ListMusic className="h-3.5 w-3.5" />{queueLabel}</button>
               <button onClick={() => onWorkspaceTabChange("assistant")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "assistant" ? "app-tab-active" : ""}`}><Sparkles className="h-3.5 w-3.5" />AI</button>
-              <button onClick={() => onWorkspaceTabChange("lyrics")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "lyrics" ? "app-tab-active" : ""}`}>{lyricsLabel}</button>
+              <button onClick={() => onWorkspaceTabChange("lyrics")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "lyrics" ? "app-tab-active" : ""}`}><Music className="h-3.5 w-3.5" />{lyricsLabel}</button>
             </div>
             <div className="mt-1.5 min-h-0 flex-1 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-1 md:mt-2 md:p-2 xl:hidden">
               {workspaceTab === "queue" ? <QueuePanel compact /> : null}
@@ -290,7 +307,7 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
             <div className="shrink-0 app-tabs">
               <button onClick={() => onWorkspaceTabChange("queue")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "queue" ? "app-tab-active" : ""}`}><ListMusic className="h-3.5 w-3.5" />{queueLabel}</button>
               <button onClick={() => onWorkspaceTabChange("assistant")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "assistant" ? "app-tab-active" : ""}`}><Sparkles className="h-3.5 w-3.5" />AI</button>
-              <button onClick={() => onWorkspaceTabChange("lyrics")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "lyrics" ? "app-tab-active" : ""}`}>{lyricsLabel}</button>
+              <button onClick={() => onWorkspaceTabChange("lyrics")} className={`app-tab inline-flex items-center justify-center gap-1 text-xs ${workspaceTab === "lyrics" ? "app-tab-active" : ""}`}><Music className="h-3.5 w-3.5" />{lyricsLabel}</button>
             </div>
             <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-xl bg-[var(--surface-raised)] p-2">
               {workspaceTab === "queue" ? <QueuePanel /> : null}
