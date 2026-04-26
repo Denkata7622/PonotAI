@@ -38,6 +38,8 @@ export type HistoryItem = {
   artist?: string;
   album?: string;
   coverUrl?: string;
+  youtubeVideoId?: string;
+  videoId?: string;
   recognized?: boolean;
   createdAt?: string;
 };
@@ -58,6 +60,8 @@ export type SaveSongInput = {
   artist: string;
   album?: string;
   coverUrl?: string;
+  youtubeVideoId?: string;
+  videoId?: string;
   method?: string;
   recognized?: boolean;
   createdAt?: string;
@@ -563,6 +567,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       artist: canonical.artist,
       album: canonical.album,
       coverUrl: canonical.coverUrl,
+      youtubeVideoId: canonical.videoId,
+      videoId: canonical.videoId,
       method: song.method ?? "library-save",
       recognized: song.recognized ?? true,
       createdAt: song.createdAt ?? new Date().toISOString(),

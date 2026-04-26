@@ -23,7 +23,6 @@ import SmartDropdown from "@/src/components/ui/SmartDropdown";
 import NowPlayingWorkspace from "./player/NowPlayingWorkspace";
 import StableYouTubeVideoStage from "./player/StableYouTubeVideoStage";
 import { runUnifiedSearch, type PersonalizedSearchResult } from "../lib/searchClient";
-import { toSongKey } from "../lib/songIdentity";
 import AssistantIcon from "@/src/components/ui/AssistantIcon";
 
 type HistoryItem = {
@@ -76,9 +75,9 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { language } = useLanguage();
   const { profile } = useProfile();
-  const { user, token, isAuthenticated, logout, history, favorites, saveToLibrary } = useUser();
+  const { user, token, isAuthenticated, logout, history, favorites, saveToLibrary, shareSong } = useUser();
   const { isPreviewSessionActive, previewSession, discardPreviewSession } = useTheme();
-  const { playlists, favoritesSet, toggleFavorite } = useLibrary(profile.id);
+  const { playlists } = useLibrary(profile.id);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -311,6 +310,46 @@ function AppShellContent({ children }: { children: ReactNode }) {
   function handleSelectSearchResult(result: SearchResult) {
     queueTrack(result, true);
     window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: `${t("toast_now_playing", language)}: ${result.title}` } }));
+  }
+
+  async function handleSaveSearchResult(result: SearchResult) {
+    try {
+      await saveToLibrary({
+        title: result.title,
+        artist: result.artist,
+        coverUrl: result.thumbnailUrl,
+        youtubeVideoId: result.videoId,
+        videoId: result.videoId,
+        method: "search-save",
+        recognized: true,
+        createdAt: new Date().toISOString(),
+      });
+      window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Песента е запазена" : "Song saved" } }));
+    } catch {
+      window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Запазването е неуспешно." : "Saving failed." } }));
+    }
+  }
+
+  async function handleShareSearchResult(result: SearchResult) {
+    if (!isAuthenticated) {
+      window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Влез, за да споделяш песни." : "Sign in to share songs." } }));
+      return;
+    }
+    try {
+      const shareUrl = await shareSong({
+        title: result.title,
+        artist: result.artist,
+        coverUrl: result.thumbnailUrl,
+      });
+      if (shareUrl) {
+        await navigator.clipboard.writeText(shareUrl);
+        window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Линкът е копиран." : "Share link copied." } }));
+      } else {
+        window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Споделянето е неуспешно." : "Sharing failed." } }));
+      }
+    } catch {
+      window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Споделянето е неуспешно." : "Sharing failed." } }));
+    }
   }
 
   function openSearchWorkspace(searchValue?: string) {
@@ -722,19 +761,9 @@ function AppShellContent({ children }: { children: ReactNode }) {
                               resultId={result.videoId}
                               isOpen={openActionsId === result.videoId}
                               onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)}
-                              onPlayNow={() => queueTrack(result, true)}
                               onAddToQueue={() => queueTrack(result, false, false)}
-                              onSaveToLibrary={() => {
-                                void saveToLibrary({
-                                  title: result.title,
-                                  artist: result.artist,
-                                  coverUrl: result.thumbnailUrl,
-                                  method: "youtube-search",
-                                  recognized: true,
-                                });
-                              }}
-                              onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
-                              isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))}
+                              onSaveToLibrary={() => handleSaveSearchResult(result)}
+                              onShare={() => handleShareSearchResult(result)}
                               onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })}
                               playlists={playlists}
                             />
@@ -776,7 +805,14 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                   }}
                                   aria-label={t("btn_play", language)}
                                 ><Play className="h-4 w-4 text-[var(--text)]" /></button>
-                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToLibrary={() => { void saveToLibrary({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, method: "youtube-search", recognized: true }); }} onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)} isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} />
+                                <SearchResultActions
+                                  resultId={result.videoId}
+                                  isOpen={openActionsId === result.videoId}
+                                  onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)}
+                                  onAddToQueue={() => queueTrack(result, false, false)}
+                                  showQuickSave={false}
+                                  onShare={() => handleShareSearchResult(result)}
+                                />
                               </li>
                             ))}
                           </ul>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Heart, ListPlus, Play, Share2, Trash2 } from "../lucide-react";
+import { Heart, ListPlus, Play, Save, Share2, Trash2 } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -123,7 +123,7 @@ export default function SongActionsMenu({
             onOpenChange(false);
           }}
         >
-          <Heart className="h-[15px] w-[15px]" /> {t("btn_save", language)}
+          <Save className="h-[15px] w-[15px]" /> {t("btn_save", language)}
         </button>
       )}
       {onToggleFavorite && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { EllipsisVertical, Plus } from "../lucide-react";
+import { EllipsisVertical, Save } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -11,36 +11,30 @@ type SearchResultActionsProps = {
   resultId: string;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onPlayNow: () => void;
   onAddToQueue: () => void;
-  onSaveToLibrary: () => void;
-  onToggleFavorite: () => void;
-  isFavorite: boolean;
-  onAddToPlaylist: (playlistId: string) => void;
-  playlists: Playlist[];
+  onSaveToLibrary?: () => void | Promise<void>;
+  onShare?: () => void | Promise<void>;
+  onAddToPlaylist?: (playlistId: string) => void;
+  playlists?: Playlist[];
+  showQuickSave?: boolean;
 };
 
 export default function SearchResultActions({
   resultId,
   isOpen,
   onOpenChange,
-  onPlayNow,
   onAddToQueue,
   onSaveToLibrary,
-  onToggleFavorite,
-  isFavorite,
+  onShare,
   onAddToPlaylist,
-  playlists,
+  playlists = [],
+  showQuickSave = true,
 }: SearchResultActionsProps) {
   const { language } = useLanguage();
 
-  function handleQuickQueueAdd() {
-    onAddToQueue();
-    window.dispatchEvent(new CustomEvent("ponotai-toast", {
-      detail: {
-        text: language === "bg" ? "Добавено в опашката" : "Added to queue",
-      },
-    }));
+  function handleQuickSave() {
+    if (!onSaveToLibrary) return;
+    void onSaveToLibrary();
   }
 
   return (
@@ -51,24 +45,26 @@ export default function SearchResultActions({
       onMouseDown={(event) => stopNestedInteractiveEvent(event, false)}
       onClick={(event) => stopNestedInteractiveEvent(event, false)}
     >
-      <button
-        type="button"
-        className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
-        onPointerDown={(event) => {
-          stopNestedInteractiveEvent(event);
-        }}
-        onMouseDown={(event) => {
-          stopNestedInteractiveEvent(event);
-        }}
-        onClick={(event) => {
-          stopNestedInteractiveEvent(event, false);
-          handleQuickQueueAdd();
-        }}
-        aria-label={t("btn_add_to_queue", language)}
-        title={t("btn_add_to_queue", language)}
-      >
-        <Plus className="w-4 h-4 text-[var(--text)]" />
-      </button>
+      {showQuickSave && onSaveToLibrary ? (
+        <button
+          type="button"
+          className="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
+          onPointerDown={(event) => {
+            stopNestedInteractiveEvent(event);
+          }}
+          onMouseDown={(event) => {
+            stopNestedInteractiveEvent(event);
+          }}
+          onClick={(event) => {
+            stopNestedInteractiveEvent(event, false);
+            handleQuickSave();
+          }}
+          aria-label={t("btn_save", language)}
+          title={t("btn_save", language)}
+        >
+          <Save className="w-4 h-4 text-[var(--text)]" />
+        </button>
+      ) : null}
 
       <SongActionsMenu
         isOpen={isOpen}
@@ -76,11 +72,8 @@ export default function SearchResultActions({
         trigger={<EllipsisVertical className="w-4 h-4 text-[var(--text)]" />}
         triggerClassName="rounded-full border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]"
         menuClassName="min-w-52 p-2"
-        onPlay={onPlayNow}
         onAddToQueue={onAddToQueue}
-        onSaveToLibrary={onSaveToLibrary}
-        onToggleFavorite={onToggleFavorite}
-        isFavorite={isFavorite}
+        onShare={onShare}
         playlists={playlists}
         onAddToPlaylist={onAddToPlaylist}
         stopParentActivation

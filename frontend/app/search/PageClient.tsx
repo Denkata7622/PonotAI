@@ -55,7 +55,7 @@ export default function SearchPage() {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { addToQueue, playNow } = usePlayer();
-  const { history: userHistory, saveToLibrary } = useUser();
+  const { history: userHistory, saveToLibrary, shareSong, isAuthenticated } = useUser();
   const { playlists, addSongToPlaylist, favoritesSet, toggleFavorite } = useLibrary(profile.id);
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
@@ -232,6 +232,42 @@ export default function SearchPage() {
     addToQueue(track, "manual");
   }
 
+  async function handleSaveSearchResult(result: SearchResult) {
+    try {
+      await saveToLibrary({
+        title: result.title,
+        artist: result.artist,
+        coverUrl: result.thumbnailUrl,
+        youtubeVideoId: result.videoId,
+        videoId: result.videoId,
+        method: "search-save",
+        recognized: true,
+        createdAt: new Date().toISOString(),
+      });
+      window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Песента е запазена" : "Song saved" } }));
+    } catch {
+      window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Запазването е неуспешно." : "Saving failed." } }));
+    }
+  }
+
+  async function handleShareSearchResult(result: SearchResult) {
+    if (!isAuthenticated) {
+      window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Влез, за да споделяш песни." : "Sign in to share songs." } }));
+      return;
+    }
+    try {
+      const shareUrl = await shareSong({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl });
+      if (shareUrl) {
+        await navigator.clipboard.writeText(shareUrl);
+        window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Линкът е копиран." : "Share link copied." } }));
+      } else {
+        window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Споделянето е неуспешно." : "Sharing failed." } }));
+      }
+    } catch {
+      window.dispatchEvent(new CustomEvent("ponotai-toast", { detail: { text: language === "bg" ? "Споделянето е неуспешно." : "Sharing failed." } }));
+    }
+  }
+
   return (
     <section className="card p-3 sm:p-6">
       <header className="rounded-2xl border border-[var(--border)] bg-[color:color-mix(in_srgb,var(--surface)_82%,var(--accent)_18%)] p-4 sm:p-5">
@@ -352,19 +388,9 @@ export default function SearchPage() {
                           resultId={result.videoId}
                           isOpen={openActionsId === result.videoId}
                           onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)}
-                          onPlayNow={() => queueResult(result, "play-now")}
                           onAddToQueue={() => queueResult(result, "add-queue")}
-                          onSaveToLibrary={() => {
-                            void saveToLibrary({
-                              title: result.title,
-                              artist: result.artist,
-                              coverUrl: result.thumbnailUrl,
-                              method: "youtube-search",
-                              recognized: true,
-                            });
-                          }}
-                          onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
-                          isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))}
+                          onSaveToLibrary={() => handleSaveSearchResult(result)}
+                          onShare={() => handleShareSearchResult(result)}
                           onAddToPlaylist={(playlistId) =>
                             addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
                           }
@@ -396,23 +422,9 @@ export default function SearchPage() {
                             resultId={result.videoId}
                             isOpen={openActionsId === result.videoId}
                             onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)}
-                            onPlayNow={() => queueResult(result, "play-now")}
                             onAddToQueue={() => queueResult(result, "add-queue")}
-                            onSaveToLibrary={() => {
-                              void saveToLibrary({
-                                title: result.title,
-                                artist: result.artist,
-                                coverUrl: result.thumbnailUrl,
-                                method: "youtube-search",
-                                recognized: true,
-                              });
-                            }}
-                            onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
-                            isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))}
-                            onAddToPlaylist={(playlistId) =>
-                              addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
-                            }
-                            playlists={playlists}
+                            showQuickSave={false}
+                            onShare={() => handleShareSearchResult(result)}
                           />
                         </div>
                       </article>
