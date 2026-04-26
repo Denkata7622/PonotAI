@@ -17,6 +17,15 @@ export type PlaybackSnapshot = {
 
 export type RepeatMode = "normal" | "queue" | "track";
 
+export type NextQueueIndexOptions = {
+  currentIndex: number;
+  queueLength: number;
+  repeatMode: RepeatMode;
+  shuffleEnabled?: boolean;
+  playedIndices?: number[];
+  randomIndex?: (maxExclusive: number) => number;
+};
+
 export function mapYouTubeState(playerState: number, stateMap: { PLAYING: number; PAUSED: number; ENDED: number; CUED: number; BUFFERING: number }): PlaybackSnapshot {
   if (playerState === stateMap.PLAYING) return { isPlaying: true, isBuffering: false, ended: false };
   if (playerState === stateMap.BUFFERING) return { isPlaying: false, isBuffering: true, ended: false };
@@ -48,6 +57,33 @@ export function getNextQueueIndex(
   if (currentIndex + 1 < queueLength) return currentIndex + 1;
   if (repeatMode === "queue") return 0;
   return null;
+}
+
+export function getNextQueueIndexAdvanced({
+  currentIndex,
+  queueLength,
+  repeatMode,
+  shuffleEnabled = false,
+  playedIndices = [],
+  randomIndex = (maxExclusive) => Math.floor(Math.random() * maxExclusive),
+}: NextQueueIndexOptions): number | null {
+  if (!shuffleEnabled) {
+    return getNextQueueIndex(currentIndex, queueLength, repeatMode);
+  }
+  if (queueLength <= 0 || currentIndex < 0 || currentIndex >= queueLength) return null;
+  if (repeatMode === "track") return currentIndex;
+
+  const allOtherIndices = Array.from({ length: queueLength }, (_, index) => index).filter((index) => index !== currentIndex);
+  if (allOtherIndices.length === 0) return currentIndex;
+
+  const playedSet = new Set(playedIndices.filter((index) => index >= 0 && index < queueLength));
+  if (repeatMode === "normal") {
+    const unplayed = allOtherIndices.filter((index) => !playedSet.has(index));
+    if (unplayed.length === 0) return null;
+    return unplayed[Math.max(0, Math.min(unplayed.length - 1, randomIndex(unplayed.length)))];
+  }
+
+  return allOtherIndices[Math.max(0, Math.min(allOtherIndices.length - 1, randomIndex(allOtherIndices.length)))];
 }
 
 export function shouldLoadVideoById(

@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getNextQueueIndex, percentToDurationSeconds, shouldCommitScrub, shouldLoadVideoById, upsertTrack } from "../features/player/state.ts";
+import { getNextQueueIndex, getNextQueueIndexAdvanced, percentToDurationSeconds, shouldCommitScrub, shouldLoadVideoById, upsertTrack } from "../features/player/state.ts";
 
-const trackA = { id: "a", title: "A", artist: "AA", query: "A AA" };
-const trackB = { id: "b", title: "B", artist: "BB", query: "B BB" };
+const trackA = { id: "a", title: "A", artist: "AA", artistId: "aa", artworkUrl: "", query: "A AA", license: "UNKNOWN" as const };
+const trackB = { id: "b", title: "B", artist: "BB", artistId: "bb", artworkUrl: "", query: "B BB", license: "UNKNOWN" as const };
 
 test("upsertTrack adds new tracks and sets active index", () => {
   const first = upsertTrack([], trackA);
@@ -35,6 +35,51 @@ test("getNextQueueIndex loops queue when repeat queue is active", () => {
 
 test("getNextQueueIndex repeats current track when repeat track is active", () => {
   assert.equal(getNextQueueIndex(1, 2, "track"), 1);
+});
+
+test("getNextQueueIndexAdvanced keeps straight next behavior when shuffle is off", () => {
+  assert.equal(getNextQueueIndexAdvanced({ currentIndex: 0, queueLength: 3, repeatMode: "normal", shuffleEnabled: false }), 1);
+});
+
+test("getNextQueueIndexAdvanced lets repeat track override shuffle", () => {
+  assert.equal(getNextQueueIndexAdvanced({ currentIndex: 1, queueLength: 3, repeatMode: "track", shuffleEnabled: true }), 1);
+});
+
+test("getNextQueueIndexAdvanced picks non-current item when shuffle is on", () => {
+  const next = getNextQueueIndexAdvanced({
+    currentIndex: 1,
+    queueLength: 4,
+    repeatMode: "queue",
+    shuffleEnabled: true,
+    randomIndex: () => 0,
+  });
+  assert.notEqual(next, 1);
+});
+
+test("getNextQueueIndexAdvanced stops in normal shuffle mode after all playable items were played", () => {
+  assert.equal(
+    getNextQueueIndexAdvanced({
+      currentIndex: 2,
+      queueLength: 3,
+      repeatMode: "normal",
+      shuffleEnabled: true,
+      playedIndices: [0, 1, 2],
+      randomIndex: () => 0,
+    }),
+    null,
+  );
+});
+
+test("getNextQueueIndexAdvanced keeps returning random items in repeat queue shuffle mode", () => {
+  const next = getNextQueueIndexAdvanced({
+    currentIndex: 2,
+    queueLength: 3,
+    repeatMode: "queue",
+    shuffleEnabled: true,
+    playedIndices: [0, 1, 2],
+    randomIndex: () => 0,
+  });
+  assert.equal(next, 0);
 });
 
 test("shouldLoadVideoById guards duplicate loadVideoById calls unless forced", () => {

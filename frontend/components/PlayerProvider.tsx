@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getNextQueueIndex, mapYouTubeState, percentToDurationSeconds, shouldLoadVideoById, type QueueTrack, type RepeatMode } from "../features/player/state";
+import { getNextQueueIndexAdvanced, mapYouTubeState, percentToDurationSeconds, shouldLoadVideoById, type QueueTrack, type RepeatMode } from "../features/player/state";
 import { YT_STAGE_READY_EVENTS } from "../lib/playerEvents";
 
 export type QueuedTrack = {
@@ -33,6 +33,7 @@ type PlayerContextValue = {
   playerError: string | null;
   currentVideoId: string | null;
   repeatMode: RepeatMode;
+  shuffleEnabled: boolean;
   addToQueue: (track: Omit<QueueTrack, "id"> & { id?: string }, source?: QueuedTrack["source"]) => void;
   playNow: (track: Omit<QueueTrack, "id"> & { id?: string }, source?: QueuedTrack["source"]) => void;
   addManyToQueue: (tracks: Array<Omit<QueueTrack, "id"> & { id?: string }>, source?: QueuedTrack["source"]) => void;
@@ -48,6 +49,7 @@ type PlayerContextValue = {
   seekToPercent: (percent: number) => void;
   setVolume: (volume: number) => void;
   cycleRepeatMode: () => void;
+  toggleShuffle: () => void;
 };
 
 type YTPlayerLike = {
@@ -80,6 +82,7 @@ type YouTubeStateMap = NonNullable<YouTubeWindow["YT"]>["PlayerState"];
 const QUEUE_STORAGE_KEY = "ponotai.queue.v1";
 const VOLUME_STORAGE_KEY = "ponotai.player.volume.v1";
 const REPEAT_MODE_STORAGE_KEY = "ponotai.player.repeat-mode.v1";
+const SHUFFLE_ENABLED_STORAGE_KEY = "ponotai.player.shuffle-enabled.v1";
 const PLAYER_MOUNT_NODE_ID = "ponotai-yt-player";
 const VIDEO_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
 const PLAYBACK_RECOVERABLE_ERROR_CODES = new Set([100, 101, 150]);
@@ -99,9 +102,10 @@ function readStoredState(): {
   currentIndex: number;
   volume: number;
   repeatMode: RepeatMode;
+  shuffleEnabled: boolean;
 } {
   if (typeof window === "undefined") {
-    return { queue: [] as QueuedTrack[], currentIndex: 0, volume: 70, repeatMode: "normal" as RepeatMode };
+    return { queue: [] as QueuedTrack[], currentIndex: 0, volume: 70, repeatMode: "normal" as RepeatMode, shuffleEnabled: false };
   }
 
   try {
@@ -109,7 +113,9 @@ function readStoredState(): {
     const rawVolume = window.localStorage.getItem(VOLUME_STORAGE_KEY);
     const parsed = raw ? (JSON.parse(raw) as { queue?: QueuedTrack[]; currentIndex?: number }) : {};
     const rawRepeatMode = window.localStorage.getItem(REPEAT_MODE_STORAGE_KEY);
+    const rawShuffleEnabled = window.localStorage.getItem(SHUFFLE_ENABLED_STORAGE_KEY);
     const repeatMode = rawRepeatMode === "queue" || rawRepeatMode === "track" ? rawRepeatMode : "normal";
+    const shuffleEnabled = rawShuffleEnabled === "true";
     const normalizedQueue = Array.isArray(parsed.queue)
       ? parsed.queue
         .filter((item): item is QueuedTrack & { track: Omit<QueueTrack, "id"> & { id?: string } } => Boolean(item?.track?.title && item?.track?.artist))
@@ -121,9 +127,10 @@ function readStoredState(): {
       currentIndex: normalizedQueue.length === 0 ? 0 : Math.min(normalizedCurrentIndex, normalizedQueue.length - 1),
       volume: rawVolume ? Math.max(0, Math.min(100, Number(rawVolume) || 70)) : 70,
       repeatMode,
+      shuffleEnabled,
     };
   } catch {
-    return { queue: [] as QueuedTrack[], currentIndex: 0, volume: 70, repeatMode: "normal" as RepeatMode };
+    return { queue: [] as QueuedTrack[], currentIndex: 0, volume: 70, repeatMode: "normal" as RepeatMode, shuffleEnabled: false };
   }
 }
 
@@ -181,6 +188,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolumeState] = useState(initial.volume);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>(initial.repeatMode ?? "normal");
+  const [shuffleEnabled, setShuffleEnabled] = useState(Boolean(initial.shuffleEnabled));
   const [isInitializing, setIsInitializing] = useState(true);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(false);
@@ -198,6 +206,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const currentIndexRef = useRef(currentIndex);
   const repeatModeRef = useRef(repeatMode);
   const durationRef = useRef(duration);
+  const shuffleEnabledRef = useRef(shuffleEnabled);
+  const playedQueueIndicesRef = useRef<Set<number>>(new Set(currentIndex >= 0 ? [currentIndex] : []));
   const currentTrackRef = useRef<QueueTrack | null>(null);
   const currentVideoIdRef = useRef<string | null>(currentVideoId);
   const activeQueueEntryIdRef = useRef<string | null>(null);
@@ -217,6 +227,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     durationRef.current = duration;
   }, [duration]);
+
+  useEffect(() => {
+    shuffleEnabledRef.current = shuffleEnabled;
+  }, [shuffleEnabled]);
 
   const safePlayerCall = useCallback((fn: (player: YTPlayerLike) => void) => {
     if (!playerRef.current || !isPlayerReadyRef.current) return false;
@@ -280,10 +294,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     );
     window.localStorage.setItem(VOLUME_STORAGE_KEY, String(volume));
     window.localStorage.setItem(REPEAT_MODE_STORAGE_KEY, repeatMode);
-  }, [queue, currentIndex, volume, repeatMode]);
+    window.localStorage.setItem(SHUFFLE_ENABLED_STORAGE_KEY, String(shuffleEnabled));
+  }, [queue, currentIndex, volume, repeatMode, shuffleEnabled]);
+
+  useEffect(() => {
+    const next = new Set<number>(
+      Array.from(playedQueueIndicesRef.current).filter((index) => index >= 0 && index < queue.length),
+    );
+    if (queue.length > 0 && currentIndex >= 0 && currentIndex < queue.length) {
+      next.add(currentIndex);
+    }
+    playedQueueIndicesRef.current = next;
+  }, [queue.length, currentIndex]);
 
   const playNext = useCallback(() => {
-    const nextIndex = getNextQueueIndex(currentIndexRef.current, queueRef.current.length, repeatModeRef.current);
+    const nextIndex = getNextQueueIndexAdvanced({
+      currentIndex: currentIndexRef.current,
+      queueLength: queueRef.current.length,
+      repeatMode: repeatModeRef.current,
+      shuffleEnabled: shuffleEnabledRef.current,
+      playedIndices: Array.from(playedQueueIndicesRef.current),
+    });
     if (nextIndex === null) {
       requestedPlaybackRef.current = "pause";
       setIsPlaying(false);
@@ -301,6 +332,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       });
       return;
     }
+    playedQueueIndicesRef.current.add(nextIndex);
     setCurrentIndex(nextIndex);
     setCurrentTime(0);
     setDuration(0);
@@ -310,6 +342,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     requestedPlaybackRef.current = "play";
     setCurrentIndex((previous) => {
       const nextIndex = Math.max(previous - 1, 0);
+      playedQueueIndicesRef.current.add(nextIndex);
       if (nextIndex === previous) {
         setCurrentTime(0);
         safePlayerCall((player) => {
@@ -322,11 +355,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [safePlayerCall]);
 
   const handleTrackEnded = useCallback(() => {
-    const nextIndex = getNextQueueIndex(
-      currentIndexRef.current,
-      queueRef.current.length,
-      repeatModeRef.current,
-    );
+    const nextIndex = getNextQueueIndexAdvanced({
+      currentIndex: currentIndexRef.current,
+      queueLength: queueRef.current.length,
+      repeatMode: repeatModeRef.current,
+      shuffleEnabled: shuffleEnabledRef.current,
+      playedIndices: Array.from(playedQueueIndicesRef.current),
+    });
 
     if (nextIndex === null) {
       requestedPlaybackRef.current = "pause";
@@ -348,6 +383,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
 
     requestedPlaybackRef.current = "play";
+    playedQueueIndicesRef.current.add(nextIndex);
     setCurrentIndex(nextIndex);
     setCurrentTime(0);
     setDuration(0);
@@ -750,6 +786,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentVideoId(null);
     pendingVideoIdRef.current = null;
     loadedVideoIdRef.current = null;
+    playedQueueIndicesRef.current = new Set();
     setIsPlaying(false);
     requestPlayback("pause");
   }, [requestPlayback]);
@@ -758,6 +795,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const nextIndex = queue.findIndex((entry) => entry.queueId === queueId);
     if (nextIndex >= 0) {
       requestedPlaybackRef.current = "play";
+      playedQueueIndicesRef.current.add(nextIndex);
       setCurrentIndex(nextIndex);
     }
   }, [queue]);
@@ -809,6 +847,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (previous === "normal") return "queue";
       if (previous === "queue") return "track";
       return "normal";
+    });
+  }, []);
+
+  const toggleShuffle = useCallback(() => {
+    setShuffleEnabled((previous) => {
+      const nextEnabled = !previous;
+      const baseSet = new Set<number>();
+      if (currentIndexRef.current >= 0) baseSet.add(currentIndexRef.current);
+      playedQueueIndicesRef.current = baseSet;
+      return nextEnabled;
     });
   }, []);
 
@@ -893,6 +941,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playerError,
     currentVideoId,
     repeatMode,
+    shuffleEnabled,
     addToQueue,
     playNow,
     addManyToQueue,
@@ -908,6 +957,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     seekToPercent,
     setVolume,
     cycleRepeatMode,
+    toggleShuffle,
   }), [
     queue,
     currentIndex,
@@ -921,6 +971,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playerError,
     currentVideoId,
     repeatMode,
+    shuffleEnabled,
     addToQueue,
     playNow,
     addManyToQueue,
@@ -934,6 +985,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     seekToPercent,
     setVolume,
     cycleRepeatMode,
+    toggleShuffle,
   ]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
