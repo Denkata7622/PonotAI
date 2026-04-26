@@ -26,7 +26,7 @@ import { useRecentSearches } from "../../lib/useRecentSearches";
 import { formatArtist } from "../../lib/formatArtist";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
 import SearchResultActions from "../../components/SearchResultActions";
-import { runUnifiedSearch } from "../../lib/searchClient";
+import { runDiscoverSearch } from "../../lib/searchClient";
 import SongRow from "../../components/SongRow";
 import { toCanonicalSong, toSongKey } from "../../lib/songIdentity";
 import type { QueueTrack } from "../../features/player/state";
@@ -55,7 +55,7 @@ export default function SearchPage() {
   const { language } = useLanguage();
   const { profile } = useProfile();
   const { addToQueue, playNow } = usePlayer();
-  const { history: userHistory, token, saveToLibrary } = useUser();
+  const { history: userHistory, saveToLibrary } = useUser();
   const { playlists, addSongToPlaylist, favoritesSet, toggleFavorite } = useLibrary(profile.id);
   const { recentSearches, saveQuery, clearRecent, removeRecent } = useRecentSearches();
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
@@ -67,6 +67,8 @@ export default function SearchPage() {
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const blurTimeoutRef = useRef<number | null>(null);
+  const discoverAbortControllerRef = useRef<AbortController | null>(null);
+  const latestRequestIdRef = useRef(0);
 
   useEffect(() => () => {
     if (blurTimeoutRef.current) {
@@ -90,50 +92,61 @@ export default function SearchPage() {
       setDebouncedQuery("");
       return;
     }
-    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 500);
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
     return () => window.clearTimeout(timer);
   }, [query]);
 
   useEffect(() => {
     if (!debouncedQuery || debouncedQuery.length < 2) {
+      latestRequestIdRef.current += 1;
+      discoverAbortControllerRef.current?.abort();
       setDiscoverResults([]);
       setIsUnavailable(false);
       setIsLoading(false);
       return;
     }
 
-    let cancelled = false;
+    const requestId = latestRequestIdRef.current + 1;
+    latestRequestIdRef.current = requestId;
+    discoverAbortControllerRef.current?.abort();
+    const discoverController = new AbortController();
+    discoverAbortControllerRef.current = discoverController;
     setIsLoading(true);
-    runUnifiedSearch(debouncedQuery, token)
+    setIsUnavailable(false);
+
+    runDiscoverSearch(debouncedQuery, { signal: discoverController.signal })
       .then((response) => {
-        if (cancelled) return;
-        setIsUnavailable(response.isUnavailable);
-        setDiscoverResults(response.discover.map((item) => ({
+        if (latestRequestIdRef.current !== requestId) return;
+        setIsUnavailable(response.unavailable);
+        const formatted = response.items.map((item) => ({
           ...item,
           isTopicChannel: item.isTopicChannel ?? item.artist.endsWith("- Topic"),
           kind: item.kind,
           artist: formatArtist(item.artist),
-        })));
-        if (!response.isUnavailable) {
+        }));
+        setDiscoverResults(formatted);
+        if (!response.unavailable) {
           saveQuery(debouncedQuery);
         }
       })
-      .catch(() => {
-        if (!cancelled) {
+      .catch((error: unknown) => {
+        if (discoverController.signal.aborted) return;
+        if (error instanceof Error && error.name === "AbortError") return;
+        if (latestRequestIdRef.current === requestId) {
           setIsUnavailable(true);
           setDiscoverResults([]);
         }
       })
       .finally(() => {
-        if (!cancelled) {
+        if (latestRequestIdRef.current === requestId) {
           setIsLoading(false);
         }
       });
 
     return () => {
-      cancelled = true;
+      discoverController.abort();
     };
-  }, [debouncedQuery, saveQuery, token]);
+  }, [debouncedQuery, saveQuery]);
 
   const history = useMemo<HistoryItem[]>(() => {
     return userHistory.map((item) => {
@@ -323,10 +336,10 @@ export default function SearchPage() {
               <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{t("songs_heading", language)}</p>
-                  <p className="text-xs text-[var(--muted)]">{groupedResults.songs.length}</p>
+                  <p className="text-xs text-[var(--muted)]">{Math.min(groupedResults.songs.length, 10)} / {groupedResults.songs.length}</p>
                 </div>
                 <div className="space-y-2">
-                  {groupedResults.songs.map((result) => (
+                  {groupedResults.songs.slice(0, 10).map((result) => (
                     <article key={result.videoId} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2.5">
                       <img src={result.thumbnailUrl} alt={result.title} className="h-14 w-14 shrink-0 rounded-lg object-cover" />
                       <div className="min-w-0 flex-1">
