@@ -45,6 +45,14 @@ test("getNextQueueIndexAdvanced lets repeat track override shuffle", () => {
   assert.equal(getNextQueueIndexAdvanced({ currentIndex: 1, queueLength: 3, repeatMode: "track", shuffleEnabled: true }), 1);
 });
 
+test("getNextQueueIndexAdvanced with one item stops in normal mode when shuffle is enabled", () => {
+  assert.equal(getNextQueueIndexAdvanced({ currentIndex: 0, queueLength: 1, repeatMode: "normal", shuffleEnabled: true }), null);
+});
+
+test("getNextQueueIndexAdvanced with one item repeats in repeat queue mode when shuffle is enabled", () => {
+  assert.equal(getNextQueueIndexAdvanced({ currentIndex: 0, queueLength: 1, repeatMode: "queue", shuffleEnabled: true }), 0);
+});
+
 test("getNextQueueIndexAdvanced picks non-current item when shuffle is on", () => {
   const next = getNextQueueIndexAdvanced({
     currentIndex: 1,

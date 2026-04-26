@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { ArrowLeftRight, ChevronDown, ListMusic, Pause, Play, RefreshCwOff, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, ListMusic, Pause, Play, RefreshCwOff, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "../../lucide-react";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
 import { usePlayer } from "../PlayerProvider";
@@ -101,6 +101,36 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
     [currentTime, duration, isScrubbing, localScrubPercent],
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    setLyrics(null);
+    if (!currentTrack?.title || !currentTrack?.artist) {
+      setIsLyricsLoading(false);
+      return;
+    }
+    setIsLyricsLoading(true);
+    void (async () => {
+      try {
+        const response = await fetch(`/api/lyrics?artist=${encodeURIComponent(currentTrack.artist)}&title=${encodeURIComponent(currentTrack.title)}`);
+        if (!response.ok) {
+          if (!cancelled) setLyrics("");
+          return;
+        }
+        const payload = await response.json() as { lyrics?: string | null };
+        if (!cancelled) {
+          setLyrics(payload.lyrics ?? "");
+        }
+      } catch {
+        if (!cancelled) setLyrics("");
+      } finally {
+        if (!cancelled) setIsLyricsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTrack?.artist, currentTrack?.title]);
+
   if (!currentTrack || !currentVideoId) return null;
 
   const queueLabel = isBg ? "Опашка" : "Queue";
@@ -111,26 +141,6 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
   const artworkLabel = t("song_artwork", language);
   const activePlaybackLabel = isBg ? "Възпроизвеждането продължава в долния плеър." : "Playback continues in the dock.";
   const lyricsUnavailableLabel = isBg ? "Текстът не е наличен за тази песен." : "Lyrics are not available yet for this track.";
-
-  useEffect(() => {
-    let cancelled = false;
-    setLyrics(null);
-    if (!currentTrack?.title || !currentTrack?.artist) return;
-    setIsLyricsLoading(true);
-    void (async () => {
-      try {
-        const response = await fetch(`/api/lyrics?artist=${encodeURIComponent(currentTrack.artist)}&title=${encodeURIComponent(currentTrack.title)}`);
-        if (!response.ok) return;
-        const payload = (await response.json()) as { lyrics?: string | null };
-        if (!cancelled) setLyrics(payload.lyrics ?? "");
-      } finally {
-        if (!cancelled) setIsLyricsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentTrack?.artist, currentTrack?.title]);
 
   const lyricsPanel = (
     <div className="h-full overflow-auto rounded-xl bg-[var(--surface)] p-4">

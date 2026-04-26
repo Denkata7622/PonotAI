@@ -74,7 +74,9 @@ export function getNextQueueIndexAdvanced({
   if (repeatMode === "track") return currentIndex;
 
   const allOtherIndices = Array.from({ length: queueLength }, (_, index) => index).filter((index) => index !== currentIndex);
-  if (allOtherIndices.length === 0) return currentIndex;
+  if (allOtherIndices.length === 0) {
+    return repeatMode === "queue" ? currentIndex : null;
+  }
 
   const playedSet = new Set(playedIndices.filter((index) => index >= 0 && index < queueLength));
   if (repeatMode === "normal") {

@@ -336,7 +336,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentIndex(nextIndex);
     setCurrentTime(0);
     setDuration(0);
-  }, [safePlayerCall]);
+  }, [requestPlayback, safePlayerCall]);
 
   const playPrevious = useCallback(() => {
     requestedPlaybackRef.current = "play";
