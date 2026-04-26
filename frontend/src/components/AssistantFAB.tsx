@@ -3,15 +3,15 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useDualSidebar } from "./sidebars/DualSidebarContext";
-import { Sparkles } from "../../lucide-react";
 import { useUser } from "@/src/context/UserContext";
 import { useLanguage } from "@/lib/LanguageContext";
 import { t } from "@/lib/translations";
+import AssistantIcon from "@/src/components/ui/AssistantIcon";
 
 export default function AssistantFAB() {
   const pathname = usePathname();
   const router = useRouter();
-  const { openPanel } = useDualSidebar();
+  const { openPanel, state } = useDualSidebar();
   const { isAuthenticated } = useUser();
   const { language } = useLanguage();
   const [pulse, setPulse] = useState(false);
@@ -79,7 +79,7 @@ export default function AssistantFAB() {
     >
       <span className="assistant-fab__halo" aria-hidden="true" />
       <span className="assistant-fab__shell" aria-hidden="true">
-        <Sparkles width={18} height={18} />
+        <AssistantIcon size={20} state={state.open.assistant ? "open" : "idle"} />
       </span>
     </button>
   );

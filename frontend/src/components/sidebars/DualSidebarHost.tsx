@@ -1,6 +1,6 @@
 'use client';
 
-import { ListMusic, Sparkles } from 'lucide-react';
+import { ListMusic } from 'lucide-react';
 import { useEffect } from 'react';
 import QueuePanelContent from '@/src/components/player/QueuePanel';
 import MusicAssistantPage from '@/src/features/assistant/components/MusicAssistantPage';
@@ -8,6 +8,7 @@ import SidebarShell from './SidebarShell';
 import { useDualSidebar } from './DualSidebarContext';
 import { useLanguage } from '@/lib/LanguageContext';
 import { t } from '@/lib/translations';
+import AssistantIcon from '@/src/components/ui/AssistantIcon';
 
 export default function DualSidebarHost() {
   const { state, closeActive, closePanel } = useDualSidebar();
@@ -34,7 +35,7 @@ export default function DualSidebarHost() {
       <SidebarShell
         id="assistant"
         title={t('nav_assistant', language)}
-        icon={<Sparkles className="h-4 w-4" />}
+        icon={<AssistantIcon size={16} state={state.open.assistant ? 'open' : 'idle'} />}
         open={state.open.assistant}
         active={state.active === 'assistant'}
         stacked={bothOpen && state.active !== 'assistant'}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Clock, EllipsisVertical, Headphones, Heart, HelpCircle, Info, Library, LogOut, Music, Play, Search, SearchX, Settings, Sparkles, TrendingUp, User, WifiOff, X } from "../lucide-react";
+import { BarChart2, ChevronDown, ChevronLeft, ChevronRight, Clock, EllipsisVertical, Headphones, Heart, HelpCircle, Info, Library, LogOut, Music, Play, Search, SearchX, Settings, TrendingUp, User, WifiOff, X } from "../lucide-react";
 import BottomPlayBar from "./BottomPlayBar";
 import DualSidebarHost from "@/src/components/sidebars/DualSidebarHost";
 import { PlayerProvider } from "./PlayerProvider";
@@ -24,6 +24,7 @@ import NowPlayingWorkspace from "./player/NowPlayingWorkspace";
 import StableYouTubeVideoStage from "./player/StableYouTubeVideoStage";
 import { runUnifiedSearch, type PersonalizedSearchResult } from "../lib/searchClient";
 import { toSongKey } from "../lib/songIdentity";
+import AssistantIcon from "@/src/components/ui/AssistantIcon";
 
 type HistoryItem = {
   id: string;
@@ -40,11 +41,13 @@ type SearchResult = {
   isTopicChannel?: boolean;
 };
 
+const AssistantNavIcon = ({ className }: { className?: string }) => <AssistantIcon className={className} size={16} />;
+
 const PRIMARY_NAV = [
   { href: "/", key: "nav_listen", icon: Headphones },
   { href: "/library", key: "nav_library", icon: Library },
   { href: "/search", key: "nav_search", icon: Search },
-  { href: "/assistant", key: "nav_assistant", icon: Sparkles },
+  { href: "/assistant", key: "nav_assistant", icon: AssistantNavIcon },
   { href: "/personalization", key: "nav_personalization", icon: Music },
   { href: "/profile", key: "nav_profile", icon: User },
   { href: "/settings", key: "nav_settings", icon: Settings },
@@ -65,7 +68,7 @@ const MOBILE_PRIMARY_NAV = [
   { href: "/", key: "nav_listen", icon: Headphones },
   { href: "/search", key: "nav_search", icon: Search },
   { href: "/library", key: "nav_library", icon: Library },
-  { href: "/assistant", key: "nav_assistant", icon: Sparkles },
+  { href: "/assistant", key: "nav_assistant", icon: AssistantNavIcon },
 ] as const;
 
 function AppShellContent({ children }: { children: ReactNode }) {
