@@ -31,6 +31,7 @@ const bg = {
   mute: "Изключи звук",
   unmute: "Включи звук",
 };
+const DEBUG_STAGE = process.env.NODE_ENV !== "production";
 
 export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange, collapsedVideoSlotRef, onCollapsedVideoSlotRefChange }: BottomPlayBarProps) {
   const { language } = useLanguage();
@@ -67,7 +68,20 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
   const setCollapsedSlotNode = useCallback((node: HTMLDivElement | null) => {
     collapsedVideoSlotRef.current = node;
     onCollapsedVideoSlotRefChange?.(node);
+    if (DEBUG_STAGE) {
+      console.debug("[BottomPlayBar] collapsed slot ref update", {
+        hasNode: Boolean(node),
+      });
+    }
   }, [collapsedVideoSlotRef, onCollapsedVideoSlotRefChange]);
+
+  useEffect(() => {
+    if (!DEBUG_STAGE || !currentTrack || !currentVideoId) return;
+    console.debug("[BottomPlayBar] collapsed slot state", {
+      mode: isNowPlayingExpanded ? "expanded" : "collapsed",
+      hasCollapsedSlot: Boolean(collapsedVideoSlotRef.current),
+    });
+  }, [collapsedVideoSlotRef, currentTrack, currentVideoId, isNowPlayingExpanded]);
 
   useEffect(() => {
     const updatePlayerBarHeight = () => {
@@ -195,7 +209,7 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
             </div>
           ) : (
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-2.5">
-              <div className="grid grid-cols-[minmax(0,1fr)_90px] items-center gap-2 md:grid-cols-[minmax(220px,1fr)_auto_auto_96px]">
+              <div className="grid grid-cols-[minmax(0,1fr)_96px] items-center gap-2 md:grid-cols-[minmax(220px,1fr)_auto_auto_104px]">
                 <button type="button" onClick={() => onNowPlayingExpandedChange(true)} className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1.5 text-left transition hover:bg-[var(--surface-subtle)]">
                   {currentTrack.artworkUrl ? (
                     <img src={currentTrack.artworkUrl} alt={isBg ? bg.artwork : "Artwork"} className="h-11 w-11 shrink-0 rounded-lg object-cover" />
@@ -227,7 +241,7 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
                   <button onClick={() => onNowPlayingExpandedChange(true)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label={isBg ? bg.expand : "Expand now playing"}><ChevronDown className="h-4 w-4 rotate-180 text-[var(--text)]" /></button>
                 </div>
 
-                <div className="h-12 overflow-hidden rounded-xl bg-black md:h-14 md:justify-self-end">
+                <div className="relative h-12 w-24 min-w-24 overflow-hidden rounded-xl bg-black md:h-14 md:w-[104px] md:min-w-[104px] md:justify-self-end">
                   <div
                     ref={setCollapsedSlotNode}
                     data-yt-video-slot="collapsed"
