@@ -83,6 +83,7 @@ export default function SearchResultActions({
         isFavorite={isFavorite}
         playlists={playlists}
         onAddToPlaylist={onAddToPlaylist}
+        stopParentActivation
       />
     </div>
   );
