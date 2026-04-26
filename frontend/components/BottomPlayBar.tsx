@@ -14,6 +14,7 @@ type BottomPlayBarProps = {
   onNowPlayingExpandedChange: (expanded: boolean) => void;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   collapsedVideoSlotRef: RefObject<HTMLDivElement | null>;
+  onCollapsedVideoSlotRefChange?: (node: HTMLDivElement | null) => void;
 };
 
 const bg = {
@@ -31,7 +32,7 @@ const bg = {
   unmute: "Включи звук",
 };
 
-export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange, collapsedVideoSlotRef }: BottomPlayBarProps) {
+export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange, collapsedVideoSlotRef, onCollapsedVideoSlotRefChange }: BottomPlayBarProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -223,7 +224,14 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
                 </div>
 
                 <div className="h-12 overflow-hidden rounded-xl bg-black md:h-14 md:justify-self-end">
-                  <div ref={collapsedVideoSlotRef} data-yt-video-slot="collapsed" className="h-full w-full" />
+                  <div
+                    ref={(node) => {
+                      collapsedVideoSlotRef.current = node;
+                      onCollapsedVideoSlotRefChange?.(node);
+                    }}
+                    data-yt-video-slot="collapsed"
+                    className="h-full w-full"
+                  />
                 </div>
               </div>
 

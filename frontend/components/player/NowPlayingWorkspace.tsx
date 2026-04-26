@@ -16,9 +16,10 @@ type NowPlayingWorkspaceProps = {
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   onClose: () => void;
   expandedVideoSlotRef: RefObject<HTMLDivElement | null>;
+  onExpandedVideoSlotRefChange?: (node: HTMLDivElement | null) => void;
 };
 
-export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange, onClose, expandedVideoSlotRef }: NowPlayingWorkspaceProps) {
+export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange, onClose, expandedVideoSlotRef, onExpandedVideoSlotRefChange }: NowPlayingWorkspaceProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const {
@@ -113,7 +114,14 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
 
           <main className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-2 md:p-3">
             <div className="shrink-0 overflow-hidden rounded-lg bg-black">
-              <div ref={expandedVideoSlotRef} data-yt-video-slot="expanded" className="aspect-video max-h-[24dvh] w-full sm:max-h-[30dvh] md:max-h-none" />
+              <div
+                ref={(node) => {
+                  expandedVideoSlotRef.current = node;
+                  onExpandedVideoSlotRefChange?.(node);
+                }}
+                data-yt-video-slot="expanded"
+                className="aspect-video max-h-[24dvh] w-full sm:max-h-[30dvh] md:max-h-none"
+              />
             </div>
 
             <div className="mt-1.5 shrink-0 md:mt-2">

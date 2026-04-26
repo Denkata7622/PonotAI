@@ -9,6 +9,7 @@ import Modal from "../components/ui/Modal";
 import { usePlayer } from "../../components/PlayerProvider";
 import { useUser } from "../context/UserContext";
 import { useTheme } from "../../lib/ThemeContext";
+import { formatUtcDate, formatUtcDateTime } from "../../lib/dateFormat";
 import { readTasteProfile } from "../features/onboarding/tasteProfile";
 import { scopedKey, useProfile } from "../../lib/ProfileContext";
 import { apiFetch } from "../lib/apiFetch";
@@ -24,33 +25,6 @@ function getTopCounts(values: string[], limit = 3): string[] {
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
     .map(([name]) => name);
-}
-
-function formatUtcDateTime(value?: string): string {
-  if (!value) return "Pending";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "Pending";
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: "UTC",
-  }).format(parsed);
-}
-
-function formatUtcDate(value?: string): string {
-  if (!value) return "Pending";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "Pending";
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(parsed);
 }
 
 type ThemeStudioSlotState = "active" | "available" | "bonus-locked" | "reserved";

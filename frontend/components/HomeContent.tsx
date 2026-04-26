@@ -169,7 +169,7 @@ export function HomeContent() {
         return {
           id: item.id,
           source: (item.method === "album-image" ? "ocr" : "audio") as "audio" | "ocr",
-          createdAt: item.createdAt ?? new Date().toISOString(),
+          createdAt: item.createdAt ?? "1970-01-01T00:00:00.000Z",
           song: {
             songName: song.title,
             artist: song.artist,

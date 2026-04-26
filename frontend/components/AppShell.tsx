@@ -98,8 +98,19 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const mobileNavRef = useRef<HTMLElement | null>(null);
   const collapsedVideoSlotRef = useRef<HTMLDivElement | null>(null);
   const expandedVideoSlotRef = useRef<HTMLDivElement | null>(null);
+  const [collapsedVideoSlotElement, setCollapsedVideoSlotElement] = useState<HTMLDivElement | null>(null);
+  const [expandedVideoSlotElement, setExpandedVideoSlotElement] = useState<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
+  const setCollapsedVideoSlot = (node: HTMLDivElement | null) => {
+    collapsedVideoSlotRef.current = node;
+    setCollapsedVideoSlotElement(node);
+  };
+
+  const setExpandedVideoSlot = (node: HTMLDivElement | null) => {
+    expandedVideoSlotRef.current = node;
+    setExpandedVideoSlotElement(node);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -844,12 +855,13 @@ function AppShellContent({ children }: { children: ReactNode }) {
             onWorkspaceTabChange={setWorkspaceTab}
             onClose={() => setIsNowPlayingExpanded(false)}
             expandedVideoSlotRef={expandedVideoSlotRef}
+            onExpandedVideoSlotRefChange={setExpandedVideoSlot}
           />
         </div>
       ) : null}
       <StableYouTubeVideoStage
-        collapsedSlotRef={collapsedVideoSlotRef}
-        expandedSlotRef={expandedVideoSlotRef}
+        collapsedSlot={collapsedVideoSlotElement}
+        expandedSlot={expandedVideoSlotElement}
         isExpanded={isNowPlayingExpanded}
         hasActiveVideo={Boolean(currentTrack && currentVideoId)}
       />
@@ -858,6 +870,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
         onNowPlayingExpandedChange={setIsNowPlayingExpanded}
         onWorkspaceTabChange={setWorkspaceTab}
         collapsedVideoSlotRef={collapsedVideoSlotRef}
+        onCollapsedVideoSlotRefChange={setCollapsedVideoSlot}
       />
     </>
   );
