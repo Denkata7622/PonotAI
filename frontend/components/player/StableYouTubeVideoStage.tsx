@@ -1,11 +1,12 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { YT_STAGE_MOUNTED_EVENT } from "../../lib/playerEvents";
 
 type StableYouTubeVideoStageProps = {
-  collapsedSlotRef: RefObject<HTMLDivElement | null>;
-  expandedSlotRef: RefObject<HTMLDivElement | null>;
+  collapsedSlot: HTMLDivElement | null;
+  expandedSlot: HTMLDivElement | null;
   isExpanded: boolean;
   hasActiveVideo: boolean;
 };
@@ -28,15 +29,39 @@ const OFFSCREEN_LAYOUT: StageLayout = {
   pointerEvents: "none",
 };
 
-export default function StableYouTubeVideoStage({ collapsedSlotRef, expandedSlotRef, isExpanded, hasActiveVideo }: StableYouTubeVideoStageProps) {
+const DEBUG_STAGE = process.env.NODE_ENV !== "production";
+
+export default function StableYouTubeVideoStage({ collapsedSlot, expandedSlot, isExpanded, hasActiveVideo }: StableYouTubeVideoStageProps) {
   const pathname = usePathname();
-  const rafRef = useRef<number | null>(null);
+  const rafRef = useRef<number[]>([]);
+  const stageMountContainerRef = useRef<HTMLDivElement | null>(null);
   const [layout, setLayout] = useState<StageLayout>(OFFSCREEN_LAYOUT);
 
   useLayoutEffect(() => {
-    const resolveTarget = () => {
-      if (isExpanded && expandedSlotRef.current) return expandedSlotRef.current;
-      return collapsedSlotRef.current;
+    const timeoutIds: number[] = [];
+    const eventRafIds: number[] = [];
+    const mountContainer = stageMountContainerRef.current;
+    if (mountContainer) {
+      const existingNode = document.getElementById("ponotai-yt-player");
+      const mountNode = existingNode ?? document.createElement("div");
+      if (!existingNode) {
+        mountNode.id = "ponotai-yt-player";
+      }
+      mountNode.className = "h-full w-full";
+      if (mountNode.parentElement !== mountContainer) {
+        mountContainer.appendChild(mountNode);
+      }
+      const dispatchMountedEvent = () => window.dispatchEvent(new CustomEvent(YT_STAGE_MOUNTED_EVENT));
+      dispatchMountedEvent();
+      eventRafIds.push(window.requestAnimationFrame(dispatchMountedEvent));
+      timeoutIds.push(window.setTimeout(dispatchMountedEvent, 50));
+    }
+
+    const resolveTarget = () => (isExpanded ? expandedSlot : collapsedSlot);
+
+    const cancelRaf = () => {
+      rafRef.current.forEach((id) => window.cancelAnimationFrame(id));
+      rafRef.current = [];
     };
 
     const updateLayout = () => {
@@ -58,37 +83,52 @@ export default function StableYouTubeVideoStage({ collapsedSlotRef, expandedSlot
         opacity: 1,
         pointerEvents: "auto",
       });
+      if (DEBUG_STAGE) {
+        const stageRect = document.querySelector<HTMLElement>("[data-yt-video-stage]")?.getBoundingClientRect();
+        console.debug("[StableYouTubeVideoStage] slot/stage rect", {
+          mode: isExpanded ? "expanded" : "collapsed",
+          slot: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+          stage: stageRect ? { left: stageRect.left, top: stageRect.top, width: stageRect.width, height: stageRect.height } : null,
+        });
+      }
     };
 
     const scheduleUpdate = () => {
-      if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current);
-      rafRef.current = window.requestAnimationFrame(() => {
-        rafRef.current = null;
+      cancelRaf();
+      const first = window.requestAnimationFrame(() => {
         updateLayout();
+        const second = window.requestAnimationFrame(updateLayout);
+        rafRef.current = [second];
       });
+      rafRef.current = [first];
     };
 
     const observer = new ResizeObserver(scheduleUpdate);
-    if (collapsedSlotRef.current) observer.observe(collapsedSlotRef.current);
-    if (expandedSlotRef.current) observer.observe(expandedSlotRef.current);
+    if (collapsedSlot) observer.observe(collapsedSlot);
+    if (expandedSlot) observer.observe(expandedSlot);
+    const playerBar = document.querySelector("[data-player-bar]");
+    if (playerBar) observer.observe(playerBar);
 
     window.addEventListener("resize", scheduleUpdate);
     window.addEventListener("scroll", scheduleUpdate, true);
     window.visualViewport?.addEventListener("resize", scheduleUpdate);
 
+    updateLayout();
     scheduleUpdate();
+    timeoutIds.push(window.setTimeout(scheduleUpdate, 80));
+    timeoutIds.push(window.setTimeout(scheduleUpdate, 180));
+    timeoutIds.push(window.setTimeout(scheduleUpdate, 320));
 
     return () => {
+      eventRafIds.forEach((id) => window.cancelAnimationFrame(id));
+      timeoutIds.forEach((id) => window.clearTimeout(id));
       observer.disconnect();
       window.removeEventListener("resize", scheduleUpdate);
       window.removeEventListener("scroll", scheduleUpdate, true);
       window.visualViewport?.removeEventListener("resize", scheduleUpdate);
-      if (rafRef.current !== null) {
-        window.cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
+      cancelRaf();
     };
-  }, [collapsedSlotRef, expandedSlotRef, hasActiveVideo, isExpanded, pathname]);
+  }, [collapsedSlot, expandedSlot, hasActiveVideo, isExpanded, pathname]);
 
   return (
     <div
@@ -101,12 +141,12 @@ export default function StableYouTubeVideoStage({ collapsedSlotRef, expandedSlot
         height: `${layout.height}px`,
         opacity: layout.opacity,
         pointerEvents: layout.pointerEvents,
-        zIndex: isExpanded ? 61 : 52,
+        zIndex: isExpanded ? 63 : 53,
       }}
       className="overflow-hidden rounded-lg bg-black"
       aria-hidden={!hasActiveVideo}
     >
-      <div id="ponotai-yt-player" className="h-full w-full" />
+      <div ref={stageMountContainerRef} className="h-full w-full" />
     </div>
   );
 }

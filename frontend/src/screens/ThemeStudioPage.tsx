@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChevronLeft, Plus, RotateCcw, Save, Sparkles, Trash2 } from "../../lucide-react";
 import { UI_PRESETS, type NamedThemeDraft, type UiPersonalization, useTheme } from "../../lib/ThemeContext";
+import { formatUtcDateTime } from "../../lib/dateFormat";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
@@ -154,7 +155,7 @@ export default function ThemeStudioPage() {
                       ) : (
                         <>
                           <p className="truncate text-sm font-semibold">{draft.name}</p>
-                          <p className="mt-1 text-xs text-[var(--muted)]">Saved {new Date(draft.savedAt).toLocaleString()}</p>
+                          <p className="mt-1 text-xs text-[var(--muted)]">Saved {formatUtcDateTime(draft.savedAt)}</p>
                         </>
                       )}
                     </div>

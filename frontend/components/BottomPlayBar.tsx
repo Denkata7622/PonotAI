@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ChevronDown, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
@@ -14,6 +14,7 @@ type BottomPlayBarProps = {
   onNowPlayingExpandedChange: (expanded: boolean) => void;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   collapsedVideoSlotRef: RefObject<HTMLDivElement | null>;
+  onCollapsedVideoSlotRefChange?: (node: HTMLDivElement | null) => void;
 };
 
 const bg = {
@@ -31,7 +32,7 @@ const bg = {
   unmute: "Включи звук",
 };
 
-export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange, collapsedVideoSlotRef }: BottomPlayBarProps) {
+export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpandedChange, onWorkspaceTabChange, collapsedVideoSlotRef, onCollapsedVideoSlotRefChange }: BottomPlayBarProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -63,6 +64,10 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
   const youtubeSearchUrl = currentTrack
     ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${currentTrack.title} ${currentTrack.artist}`)}`
     : "#";
+  const setCollapsedSlotNode = useCallback((node: HTMLDivElement | null) => {
+    collapsedVideoSlotRef.current = node;
+    onCollapsedVideoSlotRefChange?.(node);
+  }, [collapsedVideoSlotRef, onCollapsedVideoSlotRefChange]);
 
   useEffect(() => {
     const updatePlayerBarHeight = () => {
@@ -223,7 +228,11 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
                 </div>
 
                 <div className="h-12 overflow-hidden rounded-xl bg-black md:h-14 md:justify-self-end">
-                  <div ref={collapsedVideoSlotRef} data-yt-video-slot="collapsed" className="h-full w-full" />
+                  <div
+                    ref={setCollapsedSlotNode}
+                    data-yt-video-slot="collapsed"
+                    className="h-full w-full"
+                  />
                 </div>
               </div>
 
