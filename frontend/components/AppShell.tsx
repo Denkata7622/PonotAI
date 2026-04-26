@@ -21,6 +21,7 @@ import { addSongToPlaylist as addSongToPlaylistApi } from "../features/library/a
 import { formatArtist } from "../lib/formatArtist";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
 import NowPlayingWorkspace from "./player/NowPlayingWorkspace";
+import StableYouTubeVideoStage from "./player/StableYouTubeVideoStage";
 import { runUnifiedSearch, type PersonalizedSearchResult } from "../lib/searchClient";
 import { toSongKey } from "../lib/songIdentity";
 
@@ -95,6 +96,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const blurTimeoutRef = useRef<number | null>(null);
   const mobileNavRef = useRef<HTMLElement | null>(null);
+  const collapsedVideoSlotRef = useRef<HTMLDivElement | null>(null);
+  const expandedVideoSlotRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const suggestedQueries = ["Азис", "Глория", "Слави Трифонов", "Преслава", "Sabaton", "Linkin Park", "The Weeknd", "Eminem"];
 
@@ -840,13 +843,21 @@ function AppShellContent({ children }: { children: ReactNode }) {
             workspaceTab={workspaceTab}
             onWorkspaceTabChange={setWorkspaceTab}
             onClose={() => setIsNowPlayingExpanded(false)}
+            expandedVideoSlotRef={expandedVideoSlotRef}
           />
         </div>
       ) : null}
+      <StableYouTubeVideoStage
+        collapsedSlotRef={collapsedVideoSlotRef}
+        expandedSlotRef={expandedVideoSlotRef}
+        isExpanded={isNowPlayingExpanded}
+        hasActiveVideo={Boolean(currentTrack && currentVideoId)}
+      />
       <BottomPlayBar
         isNowPlayingExpanded={isNowPlayingExpanded}
         onNowPlayingExpandedChange={setIsNowPlayingExpanded}
         onWorkspaceTabChange={setWorkspaceTab}
+        collapsedVideoSlotRef={collapsedVideoSlotRef}
       />
     </>
   );

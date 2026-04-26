@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type RefObject } from "react";
 import { ChevronDown, Keyboard, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
@@ -15,9 +15,10 @@ type NowPlayingWorkspaceProps = {
   workspaceTab: WorkspaceTab;
   onWorkspaceTabChange: (tab: WorkspaceTab) => void;
   onClose: () => void;
+  expandedVideoSlotRef: RefObject<HTMLDivElement | null>;
 };
 
-export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange, onClose }: NowPlayingWorkspaceProps) {
+export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange, onClose, expandedVideoSlotRef }: NowPlayingWorkspaceProps) {
   const { language } = useLanguage();
   const isBg = language === "bg";
   const {
@@ -112,9 +113,7 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
 
           <main className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-2 md:p-3">
             <div className="shrink-0 overflow-hidden rounded-lg bg-black">
-              <div className="flex aspect-video max-h-[24dvh] w-full items-center justify-center bg-black/80 px-4 text-center text-sm text-white/85 sm:max-h-[30dvh] md:max-h-none">
-                {activePlaybackLabel}
-              </div>
+              <div ref={expandedVideoSlotRef} data-yt-video-slot="expanded" className="aspect-video max-h-[24dvh] w-full sm:max-h-[30dvh] md:max-h-none" />
             </div>
 
             <div className="mt-1.5 shrink-0 md:mt-2">
