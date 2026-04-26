@@ -35,7 +35,7 @@ export default function DualSidebarHost() {
       <SidebarShell
         id="assistant"
         title={t('nav_assistant', language)}
-        icon={<AssistantIcon size={16} state={state.open.assistant ? 'open' : 'idle'} />}
+        icon={<AssistantIcon size={22} state={state.open.assistant ? 'open' : 'idle'} animated={false} />}
         open={state.open.assistant}
         active={state.active === 'assistant'}
         stacked={bothOpen && state.active !== 'assistant'}
