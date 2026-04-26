@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { ArrowLeftRight, ChevronDown, ListMusic, Music, Pause, Play, RefreshCwOff, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "../../lucide-react";
+import { ArrowLeftRight, ChevronDown, ListMusic, Music, Pause, Play, RefreshCwOff, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "../icons";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
 import { usePlayer } from "../PlayerProvider";
