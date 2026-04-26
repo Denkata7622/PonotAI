@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, Clock, Library, Settings, Sparkles, TrendingUp } from "../../lucide-react";
+import { ChevronRight, Clock, Library, Sparkles, TrendingUp } from "../../lucide-react";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
@@ -128,7 +128,7 @@ type TasteIdentitySummaryResponse = {
 
 export default function PersonalizationPage() {
   const { playNow, addManyToQueue } = usePlayer();
-  const { user, favorites, history, isAuthenticated, updateProfile } = useUser();
+  const { user, favorites, history, isAuthenticated } = useUser();
   const { profile } = useProfile();
   const { theme, accent, intensity, surfaceStyle, density } = useTheme();
   const [playlistCount, setPlaylistCount] = useState(0);
@@ -462,19 +462,6 @@ export default function PersonalizationPage() {
     setSelectedTrackKeys(generatedPack.pack.tracks.map((track) => track.trackKey));
   }, [generatedPack?.pack?.id]);
 
-  async function handleRecommendationDataSharingToggle() {
-    if (!isAuthenticated) return;
-    await updateProfile({ recommendationDataSharingEnabled: !recommendationDataSharingEnabled });
-  }
-
-  async function handleRecommendationControlChange(
-    field: "recommendationMode" | "repeatedArtistTolerance" | "energyPreference",
-    value: "safe_familiar" | "balanced" | "mostly_discovery" | "lower" | "normal" | "higher" | "calmer" | "mixed" | "more_energetic",
-  ) {
-    if (!isAuthenticated) return;
-    await updateProfile({ [field]: value });
-  }
-
   async function handleSaveFeaturedPack(mode: "all" | "selected") {
     if (!generatedPack?.pack || !isAuthenticated) return;
     const keysToSave = mode === "all" ? allTrackKeys : selectedTrackKeys;
@@ -673,7 +660,7 @@ export default function PersonalizationPage() {
                 <span key={chip} className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1 break-words">{chip}</span>
               ))}
             </div>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid min-h-[clamp(420px,70svh,760px)] grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:min-h-[clamp(420px,74svh,760px)]">
               {themeStudioSlots.map((slot) => {
                 const stateClassName = slot.state === "active"
                   ? "border-[var(--accent-border)] bg-[var(--panel-surface)]"
@@ -683,25 +670,29 @@ export default function PersonalizationPage() {
                       ? "border-[var(--border)] bg-[var(--surface-subtle)]/70"
                       : "border-[var(--border)] bg-black/35";
                 return (
-                  <div key={slot.id} className={`flex min-h-[244px] flex-col rounded-xl border p-4 ${stateClassName}`}>
-                    <div className="flex items-center justify-between gap-2">
+                  <div key={slot.id} className={`flex min-h-[280px] flex-col rounded-xl border p-4 sm:min-h-[320px] xl:h-full ${stateClassName}`}>
+                    <div className="flex items-center justify-between gap-2 border-b border-[var(--border)]/70 pb-3">
                       <p className="text-sm font-semibold">{slot.title}</p>
                       {slot.state === "active" ? <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">Live</span> : null}
                       {slot.state === "bonus-locked" ? <Sparkles className="h-4 w-4 text-[var(--muted)]" /> : null}
                     </div>
-                    <p className="mt-2 text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">{slot.subtitle}</p>
-                    <div className="mt-4 min-h-[108px] rounded-lg border border-[var(--border)]/80 bg-[var(--surface-subtle)]/40 p-3.5">
+                    <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]/70 px-2.5 py-1.5">
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">{slot.subtitle}</p>
+                    </div>
+                    <div className="mt-3 flex-1 rounded-lg border border-[var(--border)]/80 bg-[var(--surface-subtle)]/40 p-3.5">
                       <p className="break-words text-xs leading-relaxed text-[var(--muted)]">{slot.details}</p>
                     </div>
-                    {slot.cta ? (
-                      <div className="mt-auto pt-6">
+                    <div className="mt-4 border-t border-[var(--border)]/70 pt-3">
+                      {slot.cta ? (
                         <Link href={slot.cta.href}>
                           <Button variant="ghost" size="sm">
                             <span className="inline-flex items-center gap-1.5">{slot.cta.label}<ChevronRight className="h-3.5 w-3.5" /></span>
                           </Button>
                         </Link>
-                      </div>
-                    ) : null}
+                      ) : (
+                        <p className="text-[11px] text-[var(--muted)]">Slot status tracked in this preview panel.</p>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -827,93 +818,34 @@ export default function PersonalizationPage() {
         <Card variant="settings" className="order-3 space-y-4 p-4 sm:p-5 lg:order-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Recommendation Controls</p>
-              <h2 className="text-xl font-semibold">How Turrex tunes suggestions</h2>
+              <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Recommendation Snapshot</p>
+              <h2 className="text-xl font-semibold">Current personalization settings</h2>
             </div>
-            <Settings className="h-5 w-5 text-[var(--accent)]" />
+            <TrendingUp className="h-5 w-5 text-[var(--accent)]" />
           </div>
           <p className="text-sm text-[var(--muted)]">
-            Set how familiar vs discovery-forward suggestions should feel. These controls are active now and will be reused by discovery and assistant flows in later passes.
+            Personalization editing moved to Settings. This page now keeps a read-only snapshot for context while you review identity and packs.
           </p>
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">Share listening patterns to improve recommendations</p>
-                <p className="mt-1 text-xs text-[var(--muted)]">Uses your preference account setting and updates instantly.</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleRecommendationDataSharingToggle}
-                disabled={!isAuthenticated}
-                className={`rounded-full border px-3 py-2 text-xs font-medium transition ${recommendationDataSharingEnabled ? "border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text)]" : "border-[var(--border)] bg-transparent text-[var(--muted)]"} disabled:cursor-not-allowed disabled:opacity-60`}
-              >
-                {recommendationDataSharingEnabled ? "Enabled" : "Disabled"}
-              </button>
-            </div>
-            {!isAuthenticated ? <p className="mt-2 text-xs text-[var(--muted)]">Sign in to change this preference.</p> : null}
-          </div>
           <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-4">
-            {[
-              {
-                key: "recommendationMode" as const,
-                label: "Recommendation mode",
-                description: "Controls how often Turrex should prioritize new discoveries.",
-                options: [
-                  { value: "safe_familiar", label: "Safe & familiar" },
-                  { value: "balanced", label: "Balanced" },
-                  { value: "mostly_discovery", label: "Mostly discovery" },
-                ],
-                active: recommendationMode,
-              },
-              {
-                key: "repeatedArtistTolerance" as const,
-                label: "Repeated artist tolerance",
-                description: "Choose how often recommendations can repeat artists you already like.",
-                options: [
-                  { value: "lower", label: "Lower" },
-                  { value: "normal", label: "Normal" },
-                  { value: "higher", label: "Higher" },
-                ],
-                active: repeatedArtistTolerance,
-              },
-              {
-                key: "energyPreference" as const,
-                label: "Energy preference",
-                description: "Steer overall recommendation energy level.",
-                options: [
-                  { value: "calmer", label: "Calmer" },
-                  { value: "mixed", label: "Mixed" },
-                  { value: "more_energetic", label: "More energetic" },
-                ],
-                active: energyPreference,
-              },
-            ].map((control) => (
-              <div key={control.key}>
-                <p className="text-sm font-medium">{control.label}</p>
-                <p className="mt-1 text-xs text-[var(--muted)]">{control.description}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {control.options.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => void handleRecommendationControlChange(control.key, option.value as "safe_familiar" | "balanced" | "mostly_discovery" | "lower" | "normal" | "higher" | "calmer" | "mixed" | "more_energetic")}
-                      disabled={!isAuthenticated || control.active === option.value}
-                      className={`rounded-full border px-3 py-2 text-xs font-medium transition ${
-                        control.active === option.value
-                          ? "border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text)]"
-                          : "border-[var(--border)] bg-transparent text-[var(--muted)] hover:border-[var(--accent-border)] hover:text-[var(--text)]"
-                      } disabled:cursor-not-allowed disabled:opacity-60`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {!isAuthenticated ? <p className="text-xs text-[var(--muted)]">Sign in to change recommendation controls.</p> : null}
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]/60 p-3">
+              <p className="text-sm font-medium">Data sharing</p>
+              <span className="rounded-full border border-[var(--border)] px-2.5 py-1 text-xs">{recommendationDataSharingEnabled ? "On" : "Off"}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]/60 p-3">
+              <p className="text-sm font-medium">Recommendation mode</p>
+              <span className="rounded-full border border-[var(--border)] px-2.5 py-1 text-xs">{recommendationModeLabel}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]/60 p-3">
+              <p className="text-sm font-medium">Repeated artist tolerance</p>
+              <span className="rounded-full border border-[var(--border)] px-2.5 py-1 text-xs capitalize">{repeatedArtistTolerance.replace("_", " ")}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]/60 p-3">
+              <p className="text-sm font-medium">Energy preference</p>
+              <span className="rounded-full border border-[var(--border)] px-2.5 py-1 text-xs">{energyPreference === "more_energetic" ? "More energetic" : energyPreference === "calmer" ? "Calmer" : "Mixed"}</span>
+            </div>
           </div>
           <div className="rounded-xl border border-dashed border-[var(--border)] p-3 text-xs text-[var(--muted)]">
-            These controls are persisted now and intentionally compact. Advanced tuning remains roadmap work.
+            To edit these values, open <Link href="/settings#recommendation-data-sharing" className="underline">Recommendation preferences in Settings</Link>.
           </div>
         </Card>
       </section>
