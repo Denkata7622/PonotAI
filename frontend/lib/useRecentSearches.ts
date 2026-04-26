@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const RECENT_SEARCHES_KEY = "trackly.search.recent";
 
@@ -22,28 +22,39 @@ export function useRecentSearches() {
     }
   }, []);
 
-  function persist(next: string[]) {
+  const persist = useCallback((next: string[]) => {
     setRecentSearches(next);
     if (typeof window === "undefined") return;
     window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
-  }
+  }, []);
 
-  function saveQuery(query: string) {
+  const saveQuery = useCallback((query: string) => {
     const trimmed = query.trim();
     if (trimmed.length < 2) return;
     const normalized = normalizeQuery(trimmed);
-    const next = [trimmed, ...recentSearches.filter((item) => normalizeQuery(item) !== normalized)].slice(0, 5);
-    persist(next);
-  }
+    setRecentSearches((previous) => {
+      const next = [trimmed, ...previous.filter((item) => normalizeQuery(item) !== normalized)].slice(0, 5);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+  }, []);
 
-  function clearRecent() {
+  const clearRecent = useCallback(() => {
     persist([]);
-  }
+  }, [persist]);
 
-  function removeRecent(query: string) {
+  const removeRecent = useCallback((query: string) => {
     const normalized = normalizeQuery(query);
-    persist(recentSearches.filter((item) => normalizeQuery(item) !== normalized));
-  }
+    setRecentSearches((previous) => {
+      const next = previous.filter((item) => normalizeQuery(item) !== normalized);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+  }, []);
 
   return { recentSearches, saveQuery, clearRecent, removeRecent };
 }
