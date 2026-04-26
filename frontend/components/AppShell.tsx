@@ -91,7 +91,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [isNowPlayingExpanded, setIsNowPlayingExpanded] = useState(false);
-  const [workspaceTab, setWorkspaceTab] = useState<"queue" | "assistant" | "context">("queue");
+  const [workspaceTab, setWorkspaceTab] = useState<"queue" | "assistant" | "lyrics">("queue");
   const [todayIsoDate, setTodayIsoDate] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const blurTimeoutRef = useRef<number | null>(null);

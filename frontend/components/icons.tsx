@@ -62,6 +62,11 @@ export const Languages = (props: IconProps) => <BaseIcon {...props}><path d="M5 
 
 export const Sparkles = (props: IconProps) => <BaseIcon {...props}><path d="M12 3l1.6 3.8L17 8.4l-3.4 1.6L12 14l-1.6-4L7 8.4l3.4-1.6z" /><path d="M19 3l.8 1.9L22 5.7l-2.2 1-.8 2.3-.8-2.3-2.2-1 2.2-.8z" /><path d="M5 15l1 2.3L8.3 18 6 19l-1 2.3L4 19l-2.3-1 2.3-.7z" /></BaseIcon>;
 export const RotateCcw = (props: IconProps) => <BaseIcon {...props}><path d="M3 2v6h6" /><path d="M3 8a9 9 0 1 0 3-6.7" /></BaseIcon>;
+export const RefreshCwOff = (props: IconProps) => <BaseIcon {...props}><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 14.13 7.44L21 16" /><path d="M16 16h5v5" /><path d="M2 2l20 20" /></BaseIcon>;
+export const Repeat = (props: IconProps) => <BaseIcon {...props}><path d="m17 2 4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="m7 22-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></BaseIcon>;
+export const Repeat1 = (props: IconProps) => <BaseIcon {...props}><path d="m17 2 4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="m7 22-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /><path d="M11 10h2v8" /></BaseIcon>;
+export const Shuffle = (props: IconProps) => <BaseIcon {...props}><path d="M16 3h5v5" /><path d="M4 20 21 3" /><path d="M21 16v5h-5" /><path d="m15 15 6 6" /><path d="M4 4l5 5" /></BaseIcon>;
+export const ArrowLeftRight = (props: IconProps) => <BaseIcon {...props}><path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" /></BaseIcon>;
 export const Send = (props: IconProps) => <BaseIcon {...props}><path d="M22 2 11 13" /><path d="M22 2 15 22l-4-9-9-4z" /></BaseIcon>;
 export const Zap = (props: IconProps) => <BaseIcon {...props}><path d="M13 2 3 14h7l-1 8 10-12h-7z" /></BaseIcon>;
 export const Mic2 = (props: IconProps) => <BaseIcon {...props}><path d="M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z" /><path d="M19 10a7 7 0 0 1-14 0" /><path d="M12 17v4" /><path d="M8 21h8" /></BaseIcon>;

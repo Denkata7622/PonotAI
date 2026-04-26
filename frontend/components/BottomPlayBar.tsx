@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { ChevronDown, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, ListMusic, Pause, Play, RefreshCwOff, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X } from "./icons";
 import { usePlayer } from "./PlayerProvider";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
 import { formatPlayerTime, getRepeatModeLabel, getRepeatModeTooltip, useVolumeUi } from "./player/playerUiUtils";
 import { shouldCommitScrub } from "../features/player/state";
 
-type WorkspaceTab = "queue" | "assistant" | "context";
+type WorkspaceTab = "queue" | "assistant" | "lyrics";
 
 type BottomPlayBarProps = {
   isNowPlayingExpanded: boolean;
@@ -58,6 +58,8 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
     skipPrevious,
     repeatMode,
     cycleRepeatMode,
+    shuffleEnabled,
+    toggleShuffle,
   } = usePlayer();
 
   const progress = useMemo(() => (duration ? Math.min(100, (currentTime / duration) * 100) : 0), [currentTime, duration]);
@@ -147,10 +149,8 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
     onWorkspaceTabChange("queue");
   }
 
-  function handleAssistantClick() {
-    onNowPlayingExpandedChange(true);
-    onWorkspaceTabChange("assistant");
-  }
+  const shuffleLabel = shuffleEnabled ? (isBg ? "Разбъркано" : "Shuffle") : (isBg ? "Подредено" : "Straight order");
+  const shuffleTooltip = shuffleEnabled ? (isBg ? "Разбъркано • натисни за подредено" : "Shuffle • click for straight order") : (isBg ? "Подредено • натисни за разбъркано" : "Straight order • click to shuffle");
 
   useEffect(() => {
     if (isScrubbing) return;
@@ -256,9 +256,9 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
               <div className="grid grid-cols-[minmax(0,1fr)_96px] items-center gap-2 md:grid-cols-[minmax(220px,1fr)_auto_auto_104px]">
                 <button type="button" onClick={() => onNowPlayingExpandedChange(true)} className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1.5 text-left transition hover:bg-[var(--surface-subtle)]">
                   {currentTrack.artworkUrl ? (
-                    <img src={currentTrack.artworkUrl} alt={isBg ? bg.artwork : "Artwork"} className="h-11 w-11 shrink-0 rounded-lg object-cover" />
+                    <img src={currentTrack.artworkUrl} alt={isBg ? bg.artwork : "Artwork"} className="h-11 w-11 shrink-0 rounded-md object-cover" />
                   ) : (
-                    <div className="h-11 w-11 shrink-0 rounded-lg bg-[var(--surface)]" />
+                    <div className="h-11 w-11 shrink-0 rounded-md bg-[var(--surface)]" />
                   )}
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-[var(--text)]">{currentTrack.title}</p>
@@ -274,10 +274,12 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
 
                 <div className="hidden items-center gap-1 md:flex">
                   <button onClick={cycleRepeatMode} className={`grid h-9 w-9 place-items-center rounded-full ${repeatMode === "normal" ? "bg-[var(--surface-subtle)] text-[var(--muted)]" : "bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel} title={repeatTooltip}>
-                    {repeatMode === "normal" ? <RotateCcw className="h-4 w-4" /> : repeatMode === "queue" ? <ListMusic className="h-4 w-4" /> : <Music className="h-4 w-4" />}
+                    {repeatMode === "normal" ? <RefreshCwOff className="h-4 w-4" /> : repeatMode === "queue" ? <Repeat className="h-4 w-4" /> : <Repeat1 className="h-4 w-4" />}
+                  </button>
+                  <button onClick={toggleShuffle} className={`grid h-9 w-9 place-items-center rounded-full ${shuffleEnabled ? "bg-[var(--accent-soft)] text-[var(--text)]" : "bg-[var(--surface-subtle)] text-[var(--muted)]"}`} aria-label={shuffleLabel} title={shuffleTooltip}>
+                    {shuffleEnabled ? <Shuffle className="h-4 w-4" /> : <ArrowLeftRight className="h-4 w-4" />}
                   </button>
                   <button data-testid="queue-toggle-dock" onClick={handleQueueClick} className="relative grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Queue"><ListMusic className="h-4 w-4 text-[var(--text)]" />{queue.length > 0 ? <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
-                  <button onClick={handleAssistantClick} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="AI assistant"><Sparkles className="h-4 w-4 text-[var(--text)]" /></button>
                   <div className="relative">
                     <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-9 w-9 place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? bg.volume : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
                     {isVolumePanelOpen ? volumePanel : null}
@@ -335,10 +337,12 @@ export default function BottomPlayBar({ isNowPlayingExpanded, onNowPlayingExpand
                 </div>
                 <div className="grid grid-cols-5 gap-2">
                   <button onClick={cycleRepeatMode} className={`grid h-10 place-items-center rounded-full ${repeatMode === "normal" ? "bg-[var(--surface-subtle)] text-[var(--muted)]" : "bg-[var(--accent-soft)] text-[var(--text)]"}`} aria-label={repeatLabel} title={repeatTooltip}>
-                    {repeatMode === "normal" ? <RotateCcw className="h-4 w-4" /> : repeatMode === "queue" ? <ListMusic className="h-4 w-4" /> : <Music className="h-4 w-4" />}
+                    {repeatMode === "normal" ? <RefreshCwOff className="h-4 w-4" /> : repeatMode === "queue" ? <Repeat className="h-4 w-4" /> : <Repeat1 className="h-4 w-4" />}
+                  </button>
+                  <button onClick={toggleShuffle} className={`grid h-10 place-items-center rounded-full ${shuffleEnabled ? "bg-[var(--accent-soft)] text-[var(--text)]" : "bg-[var(--surface-subtle)] text-[var(--muted)]"}`} aria-label={shuffleLabel} title={shuffleTooltip}>
+                    {shuffleEnabled ? <Shuffle className="h-4 w-4" /> : <ArrowLeftRight className="h-4 w-4" />}
                   </button>
                   <button onClick={handleQueueClick} className="relative grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="Queue"><ListMusic className="h-4 w-4 text-[var(--text)]" />{queue.length > 0 ? <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--accent)] px-1 text-[10px] text-white">{queue.length}</span> : null}</button>
-                  <button onClick={handleAssistantClick} className="grid h-10 place-items-center rounded-full bg-[var(--surface-subtle)]" aria-label="AI assistant"><Sparkles className="h-4 w-4 text-[var(--text)]" /></button>
                   <div className="relative">
                     <button onClick={() => setIsVolumePanelOpen((prev) => !prev)} className="grid h-10 w-full place-items-center rounded-full bg-[var(--surface)]" aria-label={isBg ? bg.volume : "Volume controls"}>{volume === 0 ? <VolumeX className="h-4 w-4 text-[var(--muted)]" /> : <Volume2 className="h-4 w-4 text-[var(--text)]" />}</button>
                     {isVolumePanelOpen ? volumePanel : null}
