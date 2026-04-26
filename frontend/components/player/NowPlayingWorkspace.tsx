@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useState, type RefObject } from "react";
 import { ChevronDown, Keyboard, ListMusic, Music, Pause, Play, RotateCcw, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
@@ -40,6 +40,8 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
   } = usePlayer();
 
   const progress = useMemo(() => (duration ? Math.min(100, (currentTime / duration) * 100) : 0), [currentTime, duration]);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [localScrubPercent, setLocalScrubPercent] = useState(progress);
   const repeatLabel = getRepeatModeLabel(repeatMode, isBg);
   const repeatTooltip = getRepeatModeTooltip(repeatMode, isBg);
   const { isVolumePanelOpen, setIsVolumePanelOpen, toggleMute, updateVolume } = useVolumeUi(volume, setVolume);
@@ -50,6 +52,22 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
     expandedVideoSlotRef.current = node;
     onExpandedVideoSlotRefChange?.(node);
   }, [expandedVideoSlotRef, onExpandedVideoSlotRefChange]);
+
+  useEffect(() => {
+    if (isScrubbing) return;
+    setLocalScrubPercent(progress);
+  }, [isScrubbing, progress]);
+
+  const commitSeek = useCallback(() => {
+    if (!isScrubbing) return;
+    seekToPercent(localScrubPercent);
+    setIsScrubbing(false);
+  }, [isScrubbing, localScrubPercent, seekToPercent]);
+
+  const displayedCurrentTime = useMemo(
+    () => (isScrubbing ? (Math.max(0, Math.min(100, localScrubPercent)) / 100) * duration : currentTime),
+    [currentTime, duration, isScrubbing, localScrubPercent],
+  );
 
   if (!currentTrack || !currentVideoId) return null;
 
@@ -126,8 +144,31 @@ export default function NowPlayingWorkspace({ workspaceTab, onWorkspaceTabChange
             </div>
 
             <div className="mt-1.5 shrink-0 md:mt-2">
-              <input type="range" min={0} max={100} step={0.1} value={progress} onChange={(event) => seekToPercent(Number(event.target.value))} className="h-6 w-full themed-progress md:h-8" aria-label={t("track_progress", language)} />
-              <div className="mt-1 flex items-center justify-between text-xs text-[var(--muted)]"><span>{formatPlayerTime(currentTime)}</span><span>{formatPlayerTime(duration)}</span></div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={0.1}
+                value={isScrubbing ? localScrubPercent : progress}
+                onPointerDown={() => setIsScrubbing(true)}
+                onMouseDown={() => setIsScrubbing(true)}
+                onTouchStart={() => setIsScrubbing(true)}
+                onChange={(event) => {
+                  const nextPercent = Number(event.target.value);
+                  setLocalScrubPercent(nextPercent);
+                  if (!isScrubbing) seekToPercent(nextPercent);
+                }}
+                onPointerUp={commitSeek}
+                onMouseUp={commitSeek}
+                onTouchEnd={commitSeek}
+                onBlur={commitSeek}
+                onKeyUp={(event) => {
+                  if (event.key === "Enter" || event.key === " ") commitSeek();
+                }}
+                className="h-6 w-full themed-progress md:h-8"
+                aria-label={t("track_progress", language)}
+              />
+              <div className="mt-1 flex items-center justify-between text-xs text-[var(--muted)]"><span>{formatPlayerTime(displayedCurrentTime)}</span><span>{formatPlayerTime(duration)}</span></div>
             </div>
 
             <div className="mt-1.5 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-1.5 md:mt-2">
