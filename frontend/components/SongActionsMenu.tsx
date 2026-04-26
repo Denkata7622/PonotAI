@@ -5,6 +5,7 @@ import { Heart, ListPlus, Play, Share2, Trash2 } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
+import { stopNestedInteractiveEvent } from "../lib/domEvents";
 import SmartDropdown from "@/src/components/ui/SmartDropdown";
 
 type SongActionsMenuProps = {
@@ -25,6 +26,7 @@ type SongActionsMenuProps = {
   onDelete?: () => void;
   deleteLabel?: string;
   deleteConfirmMessage?: string;
+  stopParentActivation?: boolean;
 };
 
 export default function SongActionsMenu({
@@ -45,9 +47,14 @@ export default function SongActionsMenu({
   onDelete,
   deleteLabel,
   deleteConfirmMessage,
+  stopParentActivation = false,
 }: SongActionsMenuProps) {
   const { language } = useLanguage();
   const [showPlaylists, setShowPlaylists] = useState(false);
+  const maybeStopParentActivation = (event: { stopPropagation: () => void; preventDefault?: () => void }, preventDefault = true) => {
+    if (!stopParentActivation) return;
+    stopNestedInteractiveEvent(event, preventDefault);
+  };
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("trackly-song-menu-toggle", { detail: { open: isOpen } }));
@@ -68,8 +75,10 @@ export default function SongActionsMenu({
           type="button"
           className={triggerClassName}
           onPointerDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
+            maybeStopParentActivation(event);
+          }}
+          onMouseDown={(event) => {
+            maybeStopParentActivation(event);
           }}
           aria-label={t("track_more_options", language)}
           title={t("track_more_options", language)}
@@ -83,8 +92,7 @@ export default function SongActionsMenu({
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
           onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
+            maybeStopParentActivation(event);
             onPlay();
             onOpenChange(false);
           }}
@@ -97,8 +105,7 @@ export default function SongActionsMenu({
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
           onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
+            maybeStopParentActivation(event);
             onAddToQueue();
             onOpenChange(false);
           }}
@@ -111,8 +118,7 @@ export default function SongActionsMenu({
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
           onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
+            maybeStopParentActivation(event);
             onSaveToLibrary();
             onOpenChange(false);
           }}
@@ -125,8 +131,7 @@ export default function SongActionsMenu({
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
           onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
+            maybeStopParentActivation(event);
             onToggleFavorite();
             onOpenChange(false);
           }}
@@ -142,8 +147,7 @@ export default function SongActionsMenu({
             type="button"
             className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
             onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
+              maybeStopParentActivation(event);
               setShowPlaylists((prev) => !prev);
             }}
           >
@@ -160,8 +164,7 @@ export default function SongActionsMenu({
                   type="button"
                   className="block w-full rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
                   onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
+                    maybeStopParentActivation(event);
                     onAddToPlaylist(playlist.id);
                     onOpenChange(false);
                   }}
@@ -181,8 +184,7 @@ export default function SongActionsMenu({
             disabled={isSharing}
             className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)] disabled:opacity-60"
             onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
+              maybeStopParentActivation(event);
               onShare();
             }}
           >
@@ -197,8 +199,7 @@ export default function SongActionsMenu({
             type="button"
             className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-red-500 hover:bg-red-500/10"
             onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
+              maybeStopParentActivation(event);
               const confirmed = window.confirm(deleteConfirmMessage ?? (language === "bg" ? "Сигурни ли сте, че искате да изтриете това?" : "Are you sure you want to delete this?"));
               if (!confirmed) return;
               onDelete();
