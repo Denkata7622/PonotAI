@@ -41,7 +41,7 @@ type SearchResult = {
   isTopicChannel?: boolean;
 };
 
-const AssistantNavIcon = ({ className }: { className?: string }) => <AssistantIcon className={className} size={16} />;
+const AssistantNavIcon = ({ className }: { className?: string }) => <AssistantIcon className={className} size={22} animated={false} />;
 
 const PRIMARY_NAV = [
   { href: "/", key: "nav_listen", icon: Headphones },
