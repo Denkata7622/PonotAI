@@ -1,78 +1,137 @@
 "use client";
 
 import type { Playlist } from "../features/library/types";
-import { Trash2 } from "./icons";
-import { Play } from "../lucide-react";
+import { EllipsisVertical, ListMusic, Play, Plus } from "../lucide-react";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
+import SongActionsMenu from "./SongActionsMenu";
+import { useState } from "react";
+import { Button } from "../src/components/ui/Button";
 
 type PlaylistCardProps = {
   playlist: Playlist;
   onClick: (playlist: Playlist) => void;
   onDelete?: (playlistId: string) => void;
   onPlay?: (playlist: Playlist) => void;
+  onAddToQueue?: (playlist: Playlist) => void;
+  onRename?: (playlist: Playlist) => void;
   showSongPreview?: boolean;
 };
+
+function PlaylistCoverPreview({ playlist }: { playlist: Playlist }) {
+  const previewSongs = playlist.songs.slice(0, 4);
+
+  if (previewSongs.length === 0) {
+    return (
+      <div className="grid h-16 w-16 place-items-center rounded-xl border border-[var(--border)] bg-[var(--surface-2)]">
+        <ListMusic className="h-5 w-5 text-[var(--muted)]" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid h-16 w-16 grid-cols-2 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)]">
+      {previewSongs.map((song, index) => (
+        <div key={`${song.title}-${song.artist}-${index}`} className="bg-[var(--surface-2)]">
+          {song.coverUrl ? (
+            <img src={song.coverUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <div className="grid h-full w-full place-items-center">
+              <ListMusic className="h-3.5 w-3.5 text-[var(--muted)]" />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function PlaylistCard({
   playlist,
   onClick,
   onDelete,
   onPlay,
+  onAddToQueue,
+  onRename,
   showSongPreview = true,
 }: PlaylistCardProps) {
   const { language } = useLanguage();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div
-      onClick={() => onClick(playlist)}
-      className="group rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:border-[var(--accent)]/50 hover:bg-[var(--surface-2)] cursor-pointer"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold text-[var(--text)]">{playlist.name}</p>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            {t("library_songs_count", language, { count: playlist.songs.length })}
-          </p>
+    <article className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 md:p-5">
+      <div className="flex items-start gap-3">
+        <PlaylistCoverPreview playlist={playlist} />
 
-          {showSongPreview && playlist.songs.length > 0 && (
-            <div className="mt-3 space-y-1">
-              {playlist.songs.slice(0, 2).map((song, index) => (
-                <p key={`${song.title}-${song.artist}-${index}`} className="truncate text-xs text-[var(--muted)]">
-                  {song.title} • {song.artist}
-                </p>
-              ))}
-            </div>
-          )}
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => onClick(playlist)}
+            className="w-full text-left"
+            aria-label={`${t("btn_open", language)} ${playlist.name}`}
+          >
+            <p className="truncate text-base font-semibold text-[var(--text)]">{playlist.name}</p>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              {t("library_songs_count", language, { count: playlist.songs.length })}
+            </p>
+            {showSongPreview && playlist.songs.length > 0 ? (
+              <p className="mt-2 truncate text-xs text-[var(--muted)]">
+                {playlist.songs[0]?.title} • {playlist.songs[0]?.artist}
+              </p>
+            ) : null}
+          </button>
         </div>
 
-        {onDelete && (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onDelete(playlist.id);
-            }}
-            className="rounded-lg border border-[color:rgba(var(--status-danger-rgb),0.4)] p-2 status-danger transition hover:bg-[color:rgba(var(--status-danger-rgb),0.12)]"
-            aria-label={t("track_delete_playlist", language)}
-            title={t("track_delete_playlist", language)}
-          >
-            <Trash2 className="w-4 h-4 status-danger" />
-          </button>
-        )}
-        {onPlay && playlist.songs.length > 0 && (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onPlay(playlist);
-            }}
-            className="rounded-full bg-[var(--accent)] px-3 py-1 text-xs text-white md:opacity-0 md:transition md:group-hover:opacity-100"
-          >
-            <span className="inline-flex items-center gap-1"><Play className="h-4 w-4" fill="currentColor" /> Play</span>
-          </button>
-        )}
+        {(onDelete || onAddToQueue) ? (
+          <SongActionsMenu
+            isOpen={menuOpen}
+            onOpenChange={setMenuOpen}
+            trigger={<EllipsisVertical className="h-4 w-4 text-[var(--muted)]" />}
+            onAddToQueue={onAddToQueue ? () => onAddToQueue(playlist) : undefined}
+            onDelete={onDelete ? () => onDelete(playlist.id) : undefined}
+            deleteLabel={t("track_delete_playlist", language)}
+            deleteConfirmMessage={
+              language === "bg"
+                ? `Да изтрия ли плейлист \"${playlist.name}\"?`
+                : `Delete playlist \"${playlist.name}\"?`
+            }
+            stopParentActivation
+          />
+        ) : null}
       </div>
-    </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+        <Button variant="secondary" className="justify-center" onClick={() => onClick(playlist)}>
+          {t("btn_open", language)}
+        </Button>
+        <Button
+          variant="primary"
+          className="justify-center"
+          onClick={() => onPlay?.(playlist)}
+          disabled={playlist.songs.length === 0}
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <Play className="h-4 w-4" fill="currentColor" />
+            {t("song_row_play", language)}
+          </span>
+        </Button>
+        <Button
+          variant="secondary"
+          className="col-span-2 justify-center sm:col-span-1"
+          onClick={() => onAddToQueue?.(playlist)}
+          disabled={playlist.songs.length === 0}
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <Plus className="h-4 w-4" />
+            {t("btn_add_to_queue", language)}
+          </span>
+        </Button>
+        {onRename ? (
+          <Button variant="secondary" className="col-span-2 justify-center sm:col-span-1" onClick={() => onRename(playlist)}>
+            {t("playlist_rename", language)}
+          </Button>
+        ) : null}
+      </div>
+    </article>
   );
 }

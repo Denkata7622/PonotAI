@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { useProfile } from "../../lib/ProfileContext";
 import { useLanguage } from "../../lib/LanguageContext";
@@ -11,667 +11,653 @@ import PlaylistDetail from "../../components/PlaylistDetail";
 import PlaylistCard from "../../components/PlaylistCard";
 import SongRow from "../../components/SongRow";
 import NewPlaylistModal from "../../components/NewPlaylistModal";
-import type { Playlist } from "../../features/library/types";
+import type { Playlist, PlaylistSong } from "../../features/library/types";
 import { useLibrary } from "../../features/library/useLibrary";
 import {
-getPlaylists,
-createPlaylist,
-deletePlaylist,
-updatePlaylistName,
-removeSongFromPlaylist,
+  getPlaylists,
+  createPlaylist,
+  deletePlaylist,
+  updatePlaylistName,
+  removeSongFromPlaylist,
 } from "../../features/library/api";
 import { Button } from "../../src/components/ui/Button";
-import { BarChart2, Clock, Heart, ListMusic, Plus } from "../../components/icons";
+import { Clock, Gem, Heart, ListMusic, Plus } from "../../components/icons";
 import { dedupeByTrack } from "../../lib/dedupe";
 import { toCanonicalSong, toSongKey } from "../../lib/songIdentity";
 
 type Song = {
-id: string;
-title?: string;
-artist?: string;
-album?: string;
-coverUrl?: string;
-albumArtUrl?: string;
-artworkUrl?: string;
-createdAt?: string;
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  coverUrl?: string;
+  createdAt?: string;
+  videoId?: string;
 };
+
+type SongInput = {
+  id?: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  coverUrl?: string;
+  createdAt?: string;
+  videoId?: string;
+};
+
+function EmptyState({ icon, title, hint }: { icon: ReactNode; title: string; hint: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface)] py-10 text-center">
+      {icon}
+      <p className="font-semibold text-[var(--text)]">{title}</p>
+      <p className="cardText px-4">{hint}</p>
+    </div>
+  );
+}
 
 export default function LibraryPage() {
-const { language } = useLanguage();
-const { addManyToQueue, clearQueue, playNow } = usePlayer();
-const { favorites: userFavorites, history: userHistory, deleteHistoryItem, isAuthenticated, isLoading } = useUser();
-const { profile } = useProfile();
+  const { language } = useLanguage();
+  const { addManyToQueue, playNow } = usePlayer();
+  const {
+    favorites: userFavorites,
+    history: userHistory,
+    deleteHistoryItem,
+    isAuthenticated,
+    isLoading,
+  } = useUser();
+  const { profile } = useProfile();
+  const { toggleFavorite, ultraLikedSet, toggleUltraLike } = useLibrary(profile.id);
 
-const { toggleFavorite, ultraLikedSet, toggleUltraLike } = useLibrary(profile.id);
+  const normalizeSong = (item: SongInput): Song => {
+    const canonical = toCanonicalSong(item);
+    return {
+      id: item.id ?? canonical.key,
+      title: canonical.title || t("unknown_song", language),
+      artist: canonical.artist || "-",
+      album: canonical.album,
+      coverUrl: canonical.coverUrl,
+      createdAt: item.createdAt,
+      videoId: item.videoId,
+    };
+  };
 
-const normalizeSong = (item: any): Song => {
-const canonical = toCanonicalSong(item);
-return {
-  id: item.id ?? canonical.key,
-  title: canonical.title,
-  artist: canonical.artist,
-  album: canonical.album,
-  coverUrl: canonical.coverUrl,
-  createdAt: item.createdAt ?? undefined,
-};
-};
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [historySearch, setHistorySearch] = useState("");
+  const [favoritesSearch, setFavoritesSearch] = useState("");
+  const [playlistsSearch, setPlaylistsSearch] = useState("");
+  const [showNewPlaylistModal, setShowNewPlaylistModal] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
+  const [showPlaylistDetail, setShowPlaylistDetail] = useState(false);
+  const [showUndoToast, setShowUndoToast] = useState(false);
+  const [statusToast, setStatusToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
+  const deletedPlaylistRef = useRef<Playlist | null>(null);
+  const deleteTimerRef = useRef<number | null>(null);
 
-const [playlists, setPlaylists] = useState<Playlist[]>([]);
-const [loading, setLoading] = useState(true);
-const [loadError, setLoadError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const playlistFocusId = searchParams.get("playlistId");
 
+  const history = useMemo(
+    () => userHistory.map((item) => normalizeSong(item as SongInput)),
+    [language, userHistory],
+  );
 
-const searchParams = useSearchParams();
-const playlistFocusId = searchParams.get("playlistId");
-const [selectedTab, setSelectedTab] = useState<"favorites" | "playlists" | "history">("history");
-const [searchQuery, setSearchQuery] = useState("");
-const [showNewPlaylistModal, setShowNewPlaylistModal] = useState(false);
-const [isCreating, setIsCreating] = useState(false);
-const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
-const [showPlaylistDetail, setShowPlaylistDetail] = useState(false);
-const [showUndoToast, setShowUndoToast] = useState(false);
-const [statusToast, setStatusToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
-const deletedPlaylistRef = useRef<Playlist | null>(null);
-const deleteTimerRef = useRef<number | null>(null);
+  const dedupedHistory = useMemo(
+    () => dedupeByTrack(history, (item) => item.title ?? "", (item) => item.artist ?? ""),
+    [history],
+  );
 
+  const mergedFavorites = useMemo(() => {
+    const baseFavorites = (userFavorites || []).map((item) => normalizeSong(item as SongInput));
+    return dedupeByTrack(baseFavorites, (item) => item.title ?? "", (item) => item.artist ?? "");
+  }, [language, userFavorites]);
 
-useEffect(() => {
-  const tabParam = searchParams.get("tab");
-  if (tabParam === "favorites" || tabParam === "playlists" || tabParam === "history") {
-    setSelectedTab(tabParam);
-  }
-}, [searchParams]);
+  const ultraLikedFavorites = useMemo(
+    () => mergedFavorites.filter((favorite) => ultraLikedSet.has(toSongKey(favorite))),
+    [mergedFavorites, ultraLikedSet],
+  );
 
-const history = useMemo(() => userHistory.map((item) => normalizeSong(item)), [userHistory, language]);
+  const standardFavorites = useMemo(
+    () => mergedFavorites.filter((favorite) => !ultraLikedSet.has(toSongKey(favorite))),
+    [mergedFavorites, ultraLikedSet],
+  );
 
-const dedupedHistory = useMemo(
-() => dedupeByTrack(history, (item) => item.title ?? "", (item) => item.artist ?? ""),
-[history],
-);
-
-const loadPlaylists = useCallback(async () => {
-  if (isAuthenticated) {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const loaded = await getPlaylists();
-      setPlaylists(loaded);
-    } catch {
-      setLoadError(language === "bg" ? "Грешка при зареждане на плейлистите." : "Failed to load playlists.");
-      setPlaylists([]);
+  const loadPlaylists = useCallback(async () => {
+    if (isAuthenticated) {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const loaded = await getPlaylists();
+        setPlaylists(loaded);
+      } catch {
+        setLoadError(language === "bg" ? "Грешка при зареждане на плейлистите." : "Failed to load playlists.");
+        setPlaylists([]);
+      }
+      setLoading(false);
+      return;
     }
+
+    setLoadError(null);
+    setPlaylists([]);
     setLoading(false);
-    return;
+  }, [isAuthenticated, language]);
+
+  useEffect(() => {
+    void loadPlaylists();
+  }, [loadPlaylists, playlistFocusId]);
+
+  useEffect(() => {
+    if (!playlistFocusId) return;
+    const target = playlists.find((playlist) => playlist.id === playlistFocusId);
+    if (!target) return;
+    setSelectedPlaylist(target);
+    setShowPlaylistDetail(true);
+  }, [playlistFocusId, playlists]);
+
+  useEffect(() => () => {
+    if (deleteTimerRef.current) {
+      window.clearTimeout(deleteTimerRef.current);
+    }
+  }, []);
+
+  const filteredHistory = useMemo(() => {
+    if (!historySearch) return dedupedHistory;
+    const q = historySearch.toLowerCase();
+    return dedupedHistory.filter(
+      (item) =>
+        (item.title ?? "").toLowerCase().includes(q)
+        || (item.artist ?? "").toLowerCase().includes(q)
+        || (item.album ?? "").toLowerCase().includes(q),
+    );
+  }, [dedupedHistory, historySearch]);
+
+  const filteredStandardFavorites = useMemo(() => {
+    if (!favoritesSearch) return standardFavorites;
+    const q = favoritesSearch.toLowerCase();
+    return standardFavorites.filter(
+      (item) =>
+        (item.title ?? "").toLowerCase().includes(q)
+        || (item.artist ?? "").toLowerCase().includes(q)
+        || (item.album ?? "").toLowerCase().includes(q),
+    );
+  }, [standardFavorites, favoritesSearch]);
+
+  const filteredUltraLikedFavorites = useMemo(() => {
+    if (!favoritesSearch) return ultraLikedFavorites;
+    const q = favoritesSearch.toLowerCase();
+    return ultraLikedFavorites.filter(
+      (item) =>
+        (item.title ?? "").toLowerCase().includes(q)
+        || (item.artist ?? "").toLowerCase().includes(q)
+        || (item.album ?? "").toLowerCase().includes(q),
+    );
+  }, [ultraLikedFavorites, favoritesSearch]);
+
+  const filteredPlaylists = useMemo(() => {
+    if (!playlistsSearch) return playlists;
+    const query = playlistsSearch.toLowerCase();
+    return playlists.filter((playlist) => playlist.name.toLowerCase().includes(query));
+  }, [playlists, playlistsSearch]);
+
+  function toPlayableSong(song: Song | PlaylistSong) {
+    const safeTitle = song.title || t("unknown_song", language);
+    const safeArtist = song.artist || "-";
+    return {
+      id: `${safeTitle}-${safeArtist}`.toLowerCase().replace(/\s+/g, "-"),
+      title: safeTitle,
+      artist: safeArtist,
+      artistId: `artist-${safeArtist}`.toLowerCase().replace(/\s+/g, "-"),
+      artworkUrl: song.coverUrl || "https://picsum.photos/seed/library/80",
+      videoId: "videoId" in song ? song.videoId : undefined,
+      license: "COPYRIGHTED" as const,
+      query: `${safeTitle} ${safeArtist} official audio`,
+    };
   }
 
-  setLoadError(null);
-  setPlaylists([]);
-  setLoading(false);
-}, [isAuthenticated, language]);
-
-// load playlists from backend for authenticated users, otherwise from guest library state
-useEffect(() => {
-  void loadPlaylists();
-}, [loadPlaylists, playlistFocusId]);
-
-useEffect(() => {
-  if (!playlistFocusId) return;
-  const target = playlists.find((playlist) => playlist.id === playlistFocusId);
-  if (!target) return;
-  setSelectedTab("playlists");
-  setSelectedPlaylist(target);
-  setShowPlaylistDetail(true);
-}, [playlistFocusId, playlists]);
-
-const mergedFavorites = useMemo(() => {
-const baseFavorites = (userFavorites || []).map(normalizeSong);
-return dedupeByTrack(baseFavorites, (item) => item.title ?? "", (item) => item.artist ?? "");
-}, [userFavorites, language]);
-
-// clear search when switching tabs
-useEffect(() => {
-setSearchQuery("");
-}, [selectedTab]);
-
-const recentSongs = useMemo(() => dedupedHistory.slice(0, 12), [dedupedHistory]);
-
-const filteredHistory = useMemo(() => {
-if (!searchQuery) return recentSongs;
-const q = searchQuery.toLowerCase();
-return recentSongs.filter(
-(item) =>
-(item.title ?? "").toLowerCase().includes(q) ||
-(item.artist ?? "").toLowerCase().includes(q) ||
-(item.album ?? "").toLowerCase().includes(q)
-);
-}, [recentSongs, searchQuery]);
-
-const filteredFavorites = useMemo(() => {
-if (!searchQuery) return mergedFavorites;
-const q = searchQuery.toLowerCase();
-return mergedFavorites.filter(
-(fav) =>
-(fav.title ?? "").toLowerCase().includes(q) ||
-(fav.artist ?? "").toLowerCase().includes(q) ||
-(fav.album ?? "").toLowerCase().includes(q)
-);
-}, [mergedFavorites, searchQuery]);
-
-const filteredUltraLikedFavorites = useMemo(
-  () => filteredFavorites.filter((favorite) => ultraLikedSet.has(toSongKey(favorite))),
-  [filteredFavorites, ultraLikedSet],
-);
-
-const filteredStandardFavorites = useMemo(
-  () => filteredFavorites.filter((favorite) => !ultraLikedSet.has(toSongKey(favorite))),
-  [filteredFavorites, ultraLikedSet],
-);
-
-const filteredPlaylists = useMemo(() => {
-if (!searchQuery) return playlists;
-const query = searchQuery.toLowerCase();
-return playlists.filter((p) => p.name.toLowerCase().includes(query));
-}, [playlists, searchQuery]);
-
-function handlePlaySong(song: Song | any) {
-if (!song?.title || !song?.artist) return;
-
-playNow({
-  id: `${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-  title: song.title,
-  artist: song.artist,
-  artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-  artworkUrl: song.coverUrl || "https://picsum.photos/seed/library/80",
-  license: "COPYRIGHTED",
-  query: `${song.title} ${song.artist} official audio`,
-}, "manual");
-
-}
-
-async function handleDeleteHistoryItem(id: string) {
-if (!isAuthenticated) return;
-await deleteHistoryItem(id);
-}
-
-async function handleCreatePlaylist(name: string) {
-if (isCreating) return null;
-if (!name.trim()) return null;
-
-setIsCreating(true);
-try {
-  if (!isAuthenticated) return null;
-
-  const created = await createPlaylist(name);
-  if (created) {
-    setPlaylists((prev) => [...prev, created]);
+  function handlePlaySong(song: Song | PlaylistSong) {
+    playNow(toPlayableSong(song), "manual");
   }
-  return created;
-} finally {
-  setIsCreating(false);
-}
-}
 
-async function handleDeletePlaylist(playlistId: string) {
-const target = playlists.find((playlist) => playlist.id === playlistId);
-if (!target) return;
-
-if (deleteTimerRef.current) {
-  window.clearTimeout(deleteTimerRef.current);
-}
-
-deletedPlaylistRef.current = target;
-setPlaylists((prev) => prev.filter((playlist) => playlist.id !== playlistId));
-setShowUndoToast(true);
-
-deleteTimerRef.current = window.setTimeout(async () => {
-  if (!deletedPlaylistRef.current) return;
-  if (isAuthenticated) {
-    await deletePlaylist(playlistId);
+  function handleAddPlaylistToQueue(playlist: Playlist) {
+    if (playlist.songs.length === 0) return;
+    addManyToQueue(playlist.songs.map((song) => toPlayableSong(song)), "playlist");
+    showStatusToast("success", t("playlist_added_to_queue", language));
   }
-  deletedPlaylistRef.current = null;
-  setShowUndoToast(false);
-  deleteTimerRef.current = null;
-}, 4000);
-}
 
-function handlePlayPlaylistSong(song: any) {
-if (!song?.title || !song?.artist) return;
-playNow({
-id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-title: song.title,
-artist: song.artist,
-artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-artworkUrl: song.coverUrl || "https://picsum.photos/seed/playlist/80",
-videoId: song.videoId,
-license: "COPYRIGHTED",
-query: `${song.title} ${song.artist} official audio`,
-}, "playlist");
-}
-
-
-function handlePlayPlaylist(playlist: Playlist) {
-  if (playlist.songs.length === 0) return;
-  const [firstSong, ...restSongs] = playlist.songs;
-  if (!firstSong) return;
-  playNow({
-    id: `playlist-${firstSong.title}-${firstSong.artist}`.toLowerCase().replace(/\s+/g, "-"),
-    title: firstSong.title,
-    artist: firstSong.artist,
-    artistId: `artist-${firstSong.artist}`.toLowerCase().replace(/\s+/g, "-"),
-    artworkUrl: firstSong.coverUrl || "https://picsum.photos/seed/playlist/80",
-    videoId: firstSong.videoId,
-    license: "COPYRIGHTED",
-    query: `${firstSong.title} ${firstSong.artist} official audio`,
-  }, "playlist");
-  if (restSongs.length > 0) {
-    addManyToQueue(restSongs.map((song) => ({
-      id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-      title: song.title,
-      artist: song.artist,
-      artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-      artworkUrl: song.coverUrl || "https://picsum.photos/seed/playlist/80",
-      videoId: song.videoId,
-      license: "COPYRIGHTED",
-      query: `${song.title} ${song.artist} official audio`,
-    })), "playlist");
+  function handlePlayPlaylist(playlist: Playlist) {
+    if (playlist.songs.length === 0) return;
+    const [firstSong, ...restSongs] = playlist.songs;
+    if (!firstSong) return;
+    playNow(toPlayableSong(firstSong), "playlist");
+    if (restSongs.length > 0) {
+      addManyToQueue(restSongs.map((song) => toPlayableSong(song)), "playlist");
+    }
   }
-}
 
-function handlePlayAllFromDetail(songs: Array<{ title: string; artist: string; coverUrl?: string; videoId?: string }>) {
-  clearQueue();
-  const [firstSong, ...restSongs] = songs;
-  if (!firstSong) return;
-  playNow({
-    id: `playlist-${firstSong.title}-${firstSong.artist}`.toLowerCase().replace(/\s+/g, "-"),
-    title: firstSong.title,
-    artist: firstSong.artist,
-    artistId: `artist-${firstSong.artist}`.toLowerCase().replace(/\s+/g, "-"),
-    artworkUrl: firstSong.coverUrl || "https://picsum.photos/seed/playlist/80",
-    videoId: firstSong.videoId,
-    license: "COPYRIGHTED",
-    query: `${firstSong.title} ${firstSong.artist} official audio`,
-  }, "playlist");
-  if (restSongs.length > 0) {
-    addManyToQueue(restSongs.map((song) => ({
-      id: `playlist-${song.title}-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-      title: song.title,
-      artist: song.artist,
-      artistId: `artist-${song.artist}`.toLowerCase().replace(/\s+/g, "-"),
-      artworkUrl: song.coverUrl || "https://picsum.photos/seed/playlist/80",
-      videoId: song.videoId,
-      license: "COPYRIGHTED",
-      query: `${song.title} ${song.artist} official audio`,
-    })), "playlist");
+  function handlePlayAllFromDetail(songs: PlaylistSong[]) {
+    const [firstSong, ...restSongs] = songs;
+    if (!firstSong) return;
+    playNow(toPlayableSong(firstSong), "playlist");
+    if (restSongs.length > 0) {
+      addManyToQueue(restSongs.map((song) => toPlayableSong(song)), "playlist");
+    }
   }
-}
-async function handleRemoveSongFromPlaylist(playlistId: string, title: string, artist: string) {
-try {
-const removedPlaylist = await removeSongFromPlaylist(playlistId, title, artist);
-if (!removedPlaylist && isAuthenticated) {
-console.error("Failed to remove song from playlist via API", { playlistId, title, artist });
-}
-} catch (error) {
-console.error("Failed to remove song from playlist", { playlistId, title, artist, error });
-}
-setPlaylists((prev) =>
-prev.map((p) =>
-p.id === playlistId
-? { ...p, songs: p.songs.filter((s) => toSongKey(s) !== toSongKey({ title, artist })) }
-: p
-)
-);
-if (selectedPlaylist?.id === playlistId) {
-setSelectedPlaylist((prev) =>
-prev
-? { ...prev, songs: prev.songs.filter((s) => toSongKey(s) !== toSongKey({ title, artist })) }
-: null
-);
-}
-}
 
-function handlePlaylistDetailClose() {
-setShowPlaylistDetail(false);
-setSelectedPlaylist(null);
-}
+  async function handleDeleteHistoryItem(id: string) {
+    if (!isAuthenticated) return;
+    await deleteHistoryItem(id);
+  }
 
-function handlePlaylistCardClick(playlist: Playlist) {
-setSelectedPlaylist(playlist);
-setShowPlaylistDetail(true);
-}
+  async function handleCreatePlaylist(name: string) {
+    if (isCreating) return null;
+    if (!name.trim()) return null;
 
-async function handlePlaylistDetailDelete(playlistId: string) {
-await handleDeletePlaylist(playlistId);
-handlePlaylistDetailClose();
-}
+    setIsCreating(true);
+    try {
+      if (!isAuthenticated) return null;
+      const created = await createPlaylist(name);
+      if (created) {
+        setPlaylists((prev) => [...prev, created]);
+      }
+      return created;
+    } finally {
+      setIsCreating(false);
+    }
+  }
 
-async function handlePlaylistRename(playlistId: string, newName: string) {
-const success = await updatePlaylistName(playlistId, newName);
-if (success) {
-setPlaylists((prev) =>
-prev.map((p) => (p.id === playlistId ? { ...p, name: newName } : p))
-);
-if (selectedPlaylist?.id === playlistId) {
-setSelectedPlaylist((prev) => (prev ? { ...prev, name: newName } : null));
-}
-}
-}
+  async function handleDeletePlaylist(playlistId: string) {
+    const target = playlists.find((playlist) => playlist.id === playlistId);
+    if (!target) return;
 
-function showStatusToast(kind: "success" | "error", message: string) {
-  setStatusToast({ kind, message });
-  window.setTimeout(() => setStatusToast(null), 3000);
-}
+    if (deleteTimerRef.current) {
+      window.clearTimeout(deleteTimerRef.current);
+    }
 
-function handleSongsAddedToPlaylist(playlistId: string, songs: Array<{ title: string; artist: string; album?: string; coverUrl?: string; videoId?: string }>) {
-  if (songs.length === 0) return;
-  setPlaylists((prev) =>
-    prev.map((playlist) => {
+    deletedPlaylistRef.current = target;
+    setPlaylists((prev) => prev.filter((playlist) => playlist.id !== playlistId));
+    setShowUndoToast(true);
+
+    deleteTimerRef.current = window.setTimeout(async () => {
+      const pendingDelete = deletedPlaylistRef.current;
+      if (!pendingDelete) return;
+      if (isAuthenticated) {
+        try {
+          await deletePlaylist(playlistId);
+        } catch {
+          setPlaylists((prev) => [pendingDelete, ...prev]);
+          showStatusToast("error", language === "bg" ? "Плейлистът не можа да бъде изтрит." : "Failed to delete playlist.");
+        }
+      }
+      deletedPlaylistRef.current = null;
+      setShowUndoToast(false);
+      deleteTimerRef.current = null;
+    }, 4000);
+  }
+
+  async function handleRemoveSongFromPlaylist(playlistId: string, title: string, artist: string) {
+    if (!isAuthenticated) {
+      showStatusToast("error", language === "bg" ? "Влез, за да редактираш плейлисти." : "Sign in to edit playlists.");
+      return;
+    }
+    try {
+      await removeSongFromPlaylist(playlistId, title, artist);
+    } catch {
+      showStatusToast("error", language === "bg" ? "Песента не можа да бъде премахната." : "Failed to remove song from playlist.");
+      return;
+    }
+    setPlaylists((prev) => prev.map((playlist) => (playlist.id === playlistId
+      ? { ...playlist, songs: playlist.songs.filter((song) => toSongKey(song) !== toSongKey({ title, artist })) }
+      : playlist)));
+
+    if (selectedPlaylist?.id === playlistId) {
+      setSelectedPlaylist((prev) => (prev
+        ? { ...prev, songs: prev.songs.filter((song) => toSongKey(song) !== toSongKey({ title, artist })) }
+        : null));
+    }
+  }
+
+  async function handlePlaylistRename(playlistId: string, newName: string) {
+    const success = await updatePlaylistName(playlistId, newName);
+    if (!success) return;
+    setPlaylists((prev) => prev.map((playlist) => (playlist.id === playlistId ? { ...playlist, name: newName } : playlist)));
+    setSelectedPlaylist((prev) => (prev?.id === playlistId ? { ...prev, name: newName } : prev));
+  }
+
+  function handlePromptRename(playlist: Playlist) {
+    const nextName = window.prompt(t("playlist_rename_prompt", language), playlist.name);
+    if (!nextName || nextName.trim() === playlist.name) return;
+    void handlePlaylistRename(playlist.id, nextName.trim());
+  }
+
+  function showStatusToast(kind: "success" | "error", message: string) {
+    setStatusToast({ kind, message });
+    window.setTimeout(() => setStatusToast(null), 3000);
+  }
+
+  function handleSongsAddedToPlaylist(playlistId: string, songs: PlaylistSong[]) {
+    if (songs.length === 0) return;
+    setPlaylists((prev) => prev.map((playlist) => {
       if (playlist.id !== playlistId) return playlist;
       const nextSongs = [...playlist.songs];
       for (const song of songs) {
-        const songKey = toSongKey(song);
-        const exists = nextSongs.some((existingSong) => toSongKey(existingSong) === songKey);
-        if (!exists) {
+        const key = toSongKey(song);
+        if (!nextSongs.some((existing) => toSongKey(existing) === key)) {
           nextSongs.push(song);
         }
       }
       return { ...playlist, songs: nextSongs };
-    }),
-  );
-  setSelectedPlaylist((prev) => {
-    if (!prev || prev.id !== playlistId) return prev;
-    const nextSongs = [...prev.songs];
-    for (const song of songs) {
-      const songKey = toSongKey(song);
-      const exists = nextSongs.some((existingSong) => toSongKey(existingSong) === songKey);
-      if (!exists) {
-        nextSongs.push(song);
+    }));
+
+    setSelectedPlaylist((prev) => {
+      if (!prev || prev.id !== playlistId) return prev;
+      const nextSongs = [...prev.songs];
+      for (const song of songs) {
+        const key = toSongKey(song);
+        if (!nextSongs.some((existing) => toSongKey(existing) === key)) {
+          nextSongs.push(song);
+        }
+      }
+      return { ...prev, songs: nextSongs };
+    });
+  }
+
+  function handleUndoDeletePlaylist() {
+    if (deleteTimerRef.current) {
+      window.clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+    if (deletedPlaylistRef.current) {
+      setPlaylists((prev) => [deletedPlaylistRef.current as Playlist, ...prev]);
+    }
+    deletedPlaylistRef.current = null;
+    setShowUndoToast(false);
+  }
+
+  const uniqueLibrarySongsCount = useMemo(() => {
+    const keys = new Set<string>();
+    for (const favorite of mergedFavorites) {
+      keys.add(toSongKey(favorite));
+    }
+    for (const historySong of dedupedHistory) {
+      keys.add(toSongKey(historySong));
+    }
+    for (const playlist of playlists) {
+      for (const song of playlist.songs) {
+        keys.add(toSongKey(song));
       }
     }
-    return { ...prev, songs: nextSongs };
-  });
-}
+    return keys.size;
+  }, [dedupedHistory, mergedFavorites, playlists]);
 
+  if (isLoading) {
+    return (
+      <section className="space-y-4">
+        <div className="card p-4 sm:p-6"><div className="h-28 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div>
+        <div className="card p-4 sm:p-6"><div className="h-64 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div>
+      </section>
+    );
+  }
 
-function handleUndoDeletePlaylist() {
-if (deleteTimerRef.current) {
-window.clearTimeout(deleteTimerRef.current);
-deleteTimerRef.current = null;
-}
-if (deletedPlaylistRef.current) {
-setPlaylists((prev) => [deletedPlaylistRef.current as Playlist, ...prev]);
-}
-deletedPlaylistRef.current = null;
-setShowUndoToast(false);
-}
+  return (
+    <section className="space-y-5 sm:space-y-6">
+      <header className="card space-y-3 p-4 sm:p-6">
+        <h1 className="cardTitle text-2xl font-bold sm:text-3xl">{t("nav_library", language)}</h1>
+        <p className="cardText">
+          {language === "bg"
+            ? "Всички запазени песни, плейлисти и история на едно място."
+            : "All your saved songs, playlists, and listening history in one place."}
+        </p>
+        {isAuthenticated ? <p className="cardText text-xs">{t("library_cloud_synced", language)}</p> : null}
+      </header>
 
-useEffect(() => () => {
-if (deleteTimerRef.current) {
-window.clearTimeout(deleteTimerRef.current);
-}
-}, []);
-
-if (isLoading) {
-return <section className="space-y-4"><div className="card p-4 sm:p-6"><div className="h-28 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div><div className="card p-4 sm:p-6"><div className="h-64 animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div></section>;
-}
-
-return ( <section className="space-y-5 sm:space-y-6"> <div className="card p-4 sm:p-6"> <h1 className="cardTitle text-2xl font-bold sm:text-3xl">{t("nav_library", language)}</h1> <p className="cardText mt-2">
-{language === "bg"
-? "Управлявай любимите си песни, плейлистите и историята на едно място."
-: "Manage your favorites, playlists and history in one place."} </p>
-{isAuthenticated && <p className="cardText mt-2 text-xs">Cloud synced</p>} </div>
-
-  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-    <div className="card p-5">
-      <p className="cardText text-sm">{t("library_favorites", language)}</p>
-      <p className="cardTitle mt-2 text-2xl font-semibold sm:text-3xl">{mergedFavorites.length}</p>
-    </div>
-    <div className="card p-5">
-      <p className="cardText text-sm">{t("library_playlists", language)}</p>
-      <p className="cardTitle mt-2 text-2xl font-semibold sm:text-3xl">{playlists.length}</p>
-    </div>
-    <div className="card p-5">
-      <p className="cardText text-sm">{t("history_title", language)}</p>
-      <p className="cardTitle mt-2 text-2xl font-semibold sm:text-3xl">{dedupedHistory.length}</p>
-    </div>
-    <div className="card p-5 bg-gradient-to-br from-[var(--accent)]/10 to-[var(--accent-2)]/10">
-      <p className="cardText text-sm">Total Collection</p>
-      <p className="cardTitle mt-2 text-2xl font-semibold sm:text-3xl">
-        {mergedFavorites.length + playlists.reduce((sum, p) => sum + p.songs.length, 0) + dedupedHistory.length}
-      </p>
-    </div>
-  </div>
-
-  {loadError && <div className="card p-4 text-sm status-danger">{loadError}</div>}
-
-  {showUndoToast && (
-    <div className="card relative overflow-hidden p-4 text-sm">
-      <div className="flex items-center justify-between gap-3">
-        <span>{t("toast_playlist_deleted", language)}</span>
-        <button type="button" className="font-semibold text-[var(--accent)]" onClick={handleUndoDeletePlaylist}>{t("toast_undo", language)}</button>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="card p-5"><p className="cardText text-sm">{t("library_saved_songs", language)}</p><p className="cardTitle mt-2 text-2xl font-semibold">{mergedFavorites.length}</p></div>
+        <div className="card p-5"><p className="cardText text-sm">{t("library_super_liked", language)}</p><p className="cardTitle mt-2 text-2xl font-semibold">{ultraLikedFavorites.length}</p></div>
+        <div className="card p-5"><p className="cardText text-sm">{t("library_playlists", language)}</p><p className="cardTitle mt-2 text-2xl font-semibold">{playlists.length}</p></div>
+        <div className="card p-5"><p className="cardText text-sm">{t("library_tracks_total", language)}</p><p className="cardTitle mt-2 text-2xl font-semibold">{uniqueLibrarySongsCount}</p></div>
       </div>
-      <div className="absolute bottom-0 left-0 h-[2px] bg-[var(--accent)]" style={{ animation: "shrink 4s linear forwards" }} />
-    </div>
-  )}
-  {statusToast && (
-    <div className={`card p-4 text-sm ${statusToast.kind === "success" ? "status-surface-success" : "status-surface-danger"}`}>
-      {statusToast.message}
-    </div>
-  )}
 
-  {history.length > 0 && (
-    <div className="card p-4 sm:p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="cardTitle text-xl font-semibold flex items-center gap-2"><BarChart2 className="w-5 h-5 text-[var(--muted)]" />Insights</h2>
-      </div>
-      {mergedFavorites && <p className="cardText">You have {mergedFavorites.length} favorite songs.</p>}
-    </div>
-  )}
-
-  <div className="card p-2">
-    <div className="app-tabs">
-      {(["history", "favorites", "playlists"] as const).map((tab) => (
-        <button
-          key={tab}
-          type="button"
-          onClick={() => setSelectedTab(tab)}
-          className={`app-tab ${selectedTab === tab ? "app-tab-active" : ""}`}
-        >
-          {tab === "history" && "Recent"}
-          {tab === "favorites" && "Favorites"}
-          {tab === "playlists" && "Playlists"}
-        </button>
-      ))}
-    </div>
-  </div>
-
-  <div className="min-h-96">
-    {selectedTab === "history" && (
-      <section className="card space-y-4 p-4 sm:p-6">
-        <div>
-          <h2 className="cardTitle text-2xl font-bold">{t("history_title", language)}</h2>
-          <p className="cardText mt-1">
-            {language === "bg" ? "Търси в историята по песен или изпълнител." : "Search your history by song or artist."}
-          </p>
+      {loadError ? <div className="card p-4 text-sm status-danger">{loadError}</div> : null}
+      {showUndoToast ? (
+        <div className="card relative overflow-hidden p-4 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span>{t("toast_playlist_deleted", language)}</span>
+            <button type="button" className="font-semibold text-[var(--accent)]" onClick={handleUndoDeletePlaylist}>{t("toast_undo", language)}</button>
+          </div>
+          <div className="absolute bottom-0 left-0 h-[2px] bg-[var(--accent)]" style={{ animation: "shrink 4s linear forwards" }} />
         </div>
+      ) : null}
+      {statusToast ? (
+        <div className={`card p-4 text-sm ${statusToast.kind === "success" ? "status-surface-success" : "status-surface-danger"}`}>
+          {statusToast.message}
+        </div>
+      ) : null}
 
+      <section className="card space-y-4 p-4 sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="cardTitle text-xl font-semibold">{t("library_favorites", language)}</h2>
+            <p className="cardText mt-1">{t("library_saved_songs_hint", language)}</p>
+          </div>
+        </div>
         <input
           className="w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-          placeholder={t("history_search_placeholder", language)}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder={t("library_search_saved_songs", language)}
+          value={favoritesSearch}
+          onChange={(event) => setFavoritesSearch(event.target.value)}
         />
 
-        <div className="space-y-2">
-          {filteredHistory.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-6 text-center"><Clock className="w-10 h-10 text-[var(--muted)]" /><p className="font-semibold">{t("empty_history_heading", language)}</p><p className="cardText">{t("empty_history_hint", language)}</p></div>
-          ) : (
-            filteredHistory.map((item) => {
-              const favoriteKey = toSongKey({ title: item.title, artist: item.artist });
-              const isFavorite = mergedFavorites.some((favorite) => toSongKey(favorite) === favoriteKey);
+        {filteredUltraLikedFavorites.length > 0 ? (
+          <div className="space-y-2 rounded-2xl border border-sky-400/30 bg-sky-500/5 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-sky-300">
+                <Gem className="h-4 w-4" />
+                {t("library_super_liked", language)}
+              </p>
+              <span className="rounded-full border border-sky-400/30 px-2 py-0.5 text-xs text-sky-300">{filteredUltraLikedFavorites.length}</span>
+            </div>
+            {filteredUltraLikedFavorites.map((song, index) => {
+              const key = toSongKey({ title: song.title, artist: song.artist });
               return (
                 <SongRow
-                  key={item.id}
-                  id={item.id}
-                  title={item.title ?? t("unknown_song", language)}
-                  artist={item.artist ?? "-"}
-                  artworkUrl={item.coverUrl}
-                  onPlay={() => handlePlaySong(item)}
-                  onDelete={() => void handleDeleteHistoryItem(item.id)}
-                  onFavorite={() => {
-                    toggleFavorite(favoriteKey, item.title, item.artist, item.coverUrl);
-                  }}
-                  isFavorite={isFavorite}
+                  key={song.id ?? index}
+                  id={song.id ?? `${song.title}-${song.artist}-${index}`}
+                  title={song.title ?? t("unknown_song", language)}
+                  artist={song.artist ?? "-"}
+                  artworkUrl={song.coverUrl}
+                  onPlay={() => handlePlaySong(song)}
                   showMoreMenu
+                  isFavorite
+                  onFavorite={() => toggleFavorite(key, song.title, song.artist, song.coverUrl)}
+                  onUltraLikeToggle={() => {
+                    void toggleUltraLike(key);
+                  }}
+                  isUltraLiked
                   playlists={playlists}
                   onAddToPlaylist={(playlistId) => handleSongsAddedToPlaylist(playlistId, [{
-                    title: item.title ?? t("unknown_song", language),
-                    artist: item.artist ?? "-",
-                    album: item.album,
-                    coverUrl: item.coverUrl,
+                    title: song.title ?? t("unknown_song", language),
+                    artist: song.artist ?? "-",
+                    album: song.album,
+                    coverUrl: song.coverUrl,
+                    videoId: song.videoId,
                   }])}
                 />
               );
-            })
-          )}
-        </div>
-      </section>
-    )}
-
-    {selectedTab === "favorites" && (
-      <section className="card space-y-4 p-4 sm:p-6">
-        <div>
-          <h2 className="cardTitle text-2xl font-bold">{t("library_favorites", language)}</h2>
-          <p className="cardText mt-1">{language === "bg" ? "Търси в любимите си песни." : "Search your favorite songs."}</p>
-        </div>
-
-        <input
-          className="w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-          placeholder={`Search favorites...`}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+            })}
+          </div>
+        ) : null}
 
         <div className="space-y-2">
-          {filteredFavorites.length > 0 ? (
-            <>
-              {filteredUltraLikedFavorites.length > 0 && (
-                <div className="space-y-2 rounded-2xl border border-violet-500/30 bg-violet-500/5 p-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-violet-200">
-                      {language === "bg" ? "Ultra-любими" : "Ultra-liked"}
-                    </p>
-                    <span className="rounded-full border border-violet-500/30 px-2 py-0.5 text-xs text-violet-200">
-                      {filteredUltraLikedFavorites.length}
-                    </span>
-                  </div>
-                  {filteredUltraLikedFavorites.map((fav, idx) => (
-                    <SongRow
-                      key={fav.id ?? idx}
-                      id={fav.id ?? `${fav.title}-${fav.artist}-${idx}`}
-                      title={fav.title ?? t("unknown_song", language)}
-                      artist={fav.artist ?? "-"}
-                      artworkUrl={fav.coverUrl}
-                      onPlay={() => handlePlaySong(fav)}
-                      isFavorite
-                      isUltraLiked
-                      onUltraLikeToggle={() => {
-                        const favoriteKey = toSongKey({ title: fav.title, artist: fav.artist });
-                        void toggleUltraLike(favoriteKey);
-                      }}
-                      onFavorite={() => {
-                        const favoriteKey = toSongKey({ title: fav.title, artist: fav.artist });
-                        toggleFavorite(favoriteKey, fav.title, fav.artist, fav.coverUrl);
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {filteredStandardFavorites.map((fav, idx) => (
-                <SongRow
-                  key={fav.id ?? idx}
-                  id={fav.id ?? `${fav.title}-${fav.artist}-${idx}`}
-                  title={fav.title ?? t("unknown_song", language)}
-                  artist={fav.artist ?? "-"}
-                  artworkUrl={fav.coverUrl}
-                  onPlay={() => handlePlaySong(fav)}
-                  isFavorite
-                  onUltraLikeToggle={() => {
-                    const favoriteKey = toSongKey({ title: fav.title, artist: fav.artist });
-                    void toggleUltraLike(favoriteKey);
-                  }}
-                  onFavorite={() => {
-                    const favoriteKey = toSongKey({ title: fav.title, artist: fav.artist });
-                    toggleFavorite(favoriteKey, fav.title, fav.artist, fav.coverUrl);
-                  }}
-                />
-              ))}
-            </>
-          ) : (
-            <div className="flex flex-col items-center gap-2 py-6 text-center"><Heart className="w-10 h-10 text-[var(--muted)]" /><p className="font-semibold">{t("empty_favorites_heading", language)}</p><p className="cardText">{t("empty_favorites_hint", language)}</p></div>
-          )}
+          {filteredStandardFavorites.length === 0 && filteredUltraLikedFavorites.length === 0 ? (
+            <EmptyState
+              icon={<Heart className="h-10 w-10 text-[var(--muted)]" />}
+              title={t("empty_favorites_heading", language)}
+              hint={t("empty_favorites_hint", language)}
+            />
+          ) : filteredStandardFavorites.map((song, index) => {
+            const key = toSongKey({ title: song.title, artist: song.artist });
+            return (
+              <SongRow
+                key={song.id ?? index}
+                id={song.id ?? `${song.title}-${song.artist}-${index}`}
+                title={song.title ?? t("unknown_song", language)}
+                artist={song.artist ?? "-"}
+                artworkUrl={song.coverUrl}
+                onPlay={() => handlePlaySong(song)}
+                showMoreMenu
+                isFavorite
+                onFavorite={() => toggleFavorite(key, song.title, song.artist, song.coverUrl)}
+                onUltraLikeToggle={() => {
+                  void toggleUltraLike(key);
+                }}
+                playlists={playlists}
+                onAddToPlaylist={(playlistId) => handleSongsAddedToPlaylist(playlistId, [{
+                  title: song.title ?? t("unknown_song", language),
+                  artist: song.artist ?? "-",
+                  album: song.album,
+                  coverUrl: song.coverUrl,
+                  videoId: song.videoId,
+                }])}
+              />
+            );
+          })}
         </div>
       </section>
-    )}
 
-    {selectedTab === "playlists" && (
-      <div className="space-y-4">
-        <div className="card p-4">
-          <Button onClick={() => setShowNewPlaylistModal(true)} className="w-full flex items-center justify-center gap-2" disabled={!isAuthenticated}>
-            <Plus className="w-4 h-4 text-[var(--text)]" />
+      <section className="card space-y-4 p-4 sm:p-6">
+        <div>
+          <h2 className="cardTitle text-xl font-semibold">{t("history_title", language)}</h2>
+          <p className="cardText mt-1">{language === "bg" ? "Наскоро разпознати песни." : "Recently recognized songs."}</p>
+        </div>
+        <input
+          className="w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+          placeholder={t("history_search_placeholder", language)}
+          value={historySearch}
+          onChange={(event) => setHistorySearch(event.target.value)}
+        />
+        <div className="space-y-2">
+          {filteredHistory.length === 0 ? (
+            <EmptyState icon={<Clock className="h-10 w-10 text-[var(--muted)]" />} title={t("empty_history_heading", language)} hint={t("empty_history_hint", language)} />
+          ) : filteredHistory.map((song) => {
+            const key = toSongKey({ title: song.title, artist: song.artist });
+            const isFavorite = mergedFavorites.some((favorite) => toSongKey(favorite) === key);
+            return (
+              <SongRow
+                key={song.id}
+                id={song.id}
+                title={song.title ?? t("unknown_song", language)}
+                artist={song.artist ?? "-"}
+                artworkUrl={song.coverUrl}
+                onPlay={() => handlePlaySong(song)}
+                onDelete={() => void handleDeleteHistoryItem(song.id)}
+                showMoreMenu
+                onFavorite={() => toggleFavorite(key, song.title, song.artist, song.coverUrl)}
+                onUltraLikeToggle={() => {
+                  void toggleUltraLike(key);
+                }}
+                isFavorite={isFavorite}
+                isUltraLiked={ultraLikedSet.has(key)}
+                playlists={playlists}
+                onAddToPlaylist={(playlistId) => handleSongsAddedToPlaylist(playlistId, [{
+                  title: song.title ?? t("unknown_song", language),
+                  artist: song.artist ?? "-",
+                  album: song.album,
+                  coverUrl: song.coverUrl,
+                  videoId: song.videoId,
+                }])}
+              />
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="card space-y-4 p-4 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="cardTitle text-xl font-semibold">{t("library_playlists", language)}</h2>
+            <p className="cardText mt-1">{t("library_playlists_hint", language)}</p>
+          </div>
+          <Button onClick={() => setShowNewPlaylistModal(true)} className="inline-flex items-center gap-2" disabled={!isAuthenticated}>
+            <Plus className="h-4 w-4 text-white" />
             {t("playlist_new", language)}
           </Button>
         </div>
 
+        <input
+          className="w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+          placeholder={t("library_search_playlists", language)}
+          value={playlistsSearch}
+          onChange={(event) => setPlaylistsSearch(event.target.value)}
+        />
+
         {loading ? (
-          <div className="card p-12 text-center"><div className="mx-auto h-16 w-full max-w-md animate-pulse rounded-xl bg-[var(--surface-raised)]" /></div>
+          <div className="h-20 animate-pulse rounded-xl bg-[var(--surface-raised)]" />
         ) : !isAuthenticated ? (
-          <div className="col-span-full card p-12 text-center"><div className="flex flex-col items-center gap-2"><ListMusic className="w-10 h-10 text-[var(--muted)]" /><p className="font-semibold">Sign in to manage playlists</p></div></div>
+          <EmptyState
+            icon={<ListMusic className="h-10 w-10 text-[var(--muted)]" />}
+            title={t("library_sign_in_for_playlists", language)}
+            hint={t("library_sign_in_for_playlists_hint", language)}
+          />
         ) : filteredPlaylists.length === 0 ? (
-          <div className="col-span-full card p-12 text-center"><div className="flex flex-col items-center gap-2"><ListMusic className="w-10 h-10 text-[var(--muted)]" /><p className="font-semibold">No playlists yet — create your first one</p></div></div>
+          <EmptyState icon={<ListMusic className="h-10 w-10 text-[var(--muted)]" />} title={t("empty_playlists_heading", language)} hint={t("empty_playlists_hint", language)} />
         ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {filteredPlaylists.map((playlist) => (
               <PlaylistCard
                 key={playlist.id}
                 playlist={playlist}
-                onClick={handlePlaylistCardClick}
-                onDelete={handleDeletePlaylist}
+                onClick={(target) => {
+                  setSelectedPlaylist(target);
+                  setShowPlaylistDetail(true);
+                }}
+                onDelete={(playlistId) => {
+                  void handleDeletePlaylist(playlistId);
+                }}
                 onPlay={handlePlayPlaylist}
+                onAddToQueue={handleAddPlaylistToQueue}
+                onRename={handlePromptRename}
               />
             ))}
           </div>
         )}
-      </div>
-    )}
-  </div>
+      </section>
 
-  {showNewPlaylistModal && (
-    <NewPlaylistModal
-      onClose={() => setShowNewPlaylistModal(false)}
-      onCreatePlaylist={handleCreatePlaylist}
-      onCreated={(playlist) => {
-        setPlaylists((prev) => [...prev.filter((p) => p.id !== playlist.id), playlist]);
-        setShowNewPlaylistModal(false);
-      }}
-    />
-  )}
+      {showNewPlaylistModal ? (
+        <NewPlaylistModal
+          onClose={() => setShowNewPlaylistModal(false)}
+          onCreatePlaylist={handleCreatePlaylist}
+          onCreated={(playlist) => {
+            setPlaylists((prev) => [...prev.filter((entry) => entry.id !== playlist.id), playlist]);
+            setShowNewPlaylistModal(false);
+          }}
+        />
+      ) : null}
 
-  {showPlaylistDetail && selectedPlaylist && (
-    <PlaylistDetail
-      playlist={selectedPlaylist}
-      onClose={handlePlaylistDetailClose}
-      onPlaySong={handlePlayPlaylistSong}
-      onRemoveSong={(title, artist) => handleRemoveSongFromPlaylist(selectedPlaylist.id, title, artist)}
-      onSongsAdded={handleSongsAddedToPlaylist}
-      onToast={showStatusToast}
-      onDeletePlaylist={() => handlePlaylistDetailDelete(selectedPlaylist.id)}
-      onRenamePlaylist={(newName) => handlePlaylistRename(selectedPlaylist.id, newName)}
-      onPlayAll={handlePlayAllFromDetail}
-    />
-  )}
-</section>
-
-);
+      {showPlaylistDetail && selectedPlaylist ? (
+        <PlaylistDetail
+          playlist={selectedPlaylist}
+          onClose={() => {
+            setShowPlaylistDetail(false);
+            setSelectedPlaylist(null);
+          }}
+          onPlaySong={(song) => handlePlaySong(song)}
+          onRemoveSong={(title, artist) => {
+            void handleRemoveSongFromPlaylist(selectedPlaylist.id, title, artist);
+          }}
+          onSongsAdded={handleSongsAddedToPlaylist}
+          onToast={showStatusToast}
+          onDeletePlaylist={() => {
+            void handleDeletePlaylist(selectedPlaylist.id);
+          }}
+          onRenamePlaylist={(newName) => {
+            void handlePlaylistRename(selectedPlaylist.id, newName);
+          }}
+          onPlayAll={handlePlayAllFromDetail}
+        />
+      ) : null}
+    </section>
+  );
 }
