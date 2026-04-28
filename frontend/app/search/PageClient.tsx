@@ -6,7 +6,6 @@ import {
   Library,
   Clock,
   Mic,
-  Play,
   Search,
   SearchX,
   TrendingUp,
@@ -347,7 +346,6 @@ export default function SearchPage() {
                         <p className="truncate text-xs text-[var(--muted)]">{result.artist}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result, "play-now")} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
                         <SearchResultActions
                           resultId={result.videoId}
                           isOpen={openActionsId === result.videoId}
@@ -363,8 +361,7 @@ export default function SearchPage() {
                               recognized: true,
                             });
                           }}
-                          onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
-                          isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))}
+                          sharePayload={{ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl }}
                           onAddToPlaylist={(playlistId) =>
                             addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
                           }
@@ -391,7 +388,6 @@ export default function SearchPage() {
                           <p className="truncate text-xs text-[var(--muted)]">{result.artist}</p>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
-                          <button className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--hover-bg)]" onClick={() => queueResult(result, "play-now")} aria-label={t("btn_play", language)}><Play className="h-4 w-4 text-[var(--text)]" /></button>
                           <SearchResultActions
                             resultId={result.videoId}
                             isOpen={openActionsId === result.videoId}
@@ -407,8 +403,7 @@ export default function SearchPage() {
                                 recognized: true,
                               });
                             }}
-                            onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
-                            isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))}
+                            sharePayload={{ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl }}
                             onAddToPlaylist={(playlistId) =>
                               addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
                             }

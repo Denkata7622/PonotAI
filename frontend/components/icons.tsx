@@ -61,6 +61,7 @@ export const EllipsisVertical = (props: IconProps) => <BaseIcon {...props}><circ
 export const Languages = (props: IconProps) => <BaseIcon {...props}><path d="M5 8h14" /><path d="M5 16h14" /><path d="m9 4 3 16" /><path d="m15 4-3 16" /></BaseIcon>;
 
 export const Sparkles = (props: IconProps) => <BaseIcon {...props}><path d="M12 3l1.6 3.8L17 8.4l-3.4 1.6L12 14l-1.6-4L7 8.4l3.4-1.6z" /><path d="M19 3l.8 1.9L22 5.7l-2.2 1-.8 2.3-.8-2.3-2.2-1 2.2-.8z" /><path d="M5 15l1 2.3L8.3 18 6 19l-1 2.3L4 19l-2.3-1 2.3-.7z" /></BaseIcon>;
+export const Gem = (props: IconProps) => <BaseIcon {...props}><polygon points="6 3 18 3 22 9 12 21 2 9 6 3" /><path d="M2 9h20" /><path d="m7 3 5 6 5-6" /><path d="m12 21-3-12" /><path d="m12 21 3-12" /></BaseIcon>;
 export const RotateCcw = (props: IconProps) => <BaseIcon {...props}><path d="M3 2v6h6" /><path d="M3 8a9 9 0 1 0 3-6.7" /></BaseIcon>;
 export const RefreshCwOff = (props: IconProps) => <BaseIcon {...props}><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 14.13 7.44L21 16" /><path d="M16 16h5v5" /><path d="M2 2l20 20" /></BaseIcon>;
 export const Repeat = (props: IconProps) => <BaseIcon {...props}><path d="m17 2 4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="m7 22-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></BaseIcon>;
