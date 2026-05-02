@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Heart, ListPlus, Play, Share2, Trash2 } from "../lucide-react";
+import { Gem, Heart, ListPlus, Pencil, Play, Save, Share2, Trash2 } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -15,10 +15,16 @@ type SongActionsMenuProps = {
   triggerClassName?: string;
   menuClassName?: string;
   onPlay?: () => void;
+  showPlayAction?: boolean;
   onAddToQueue?: () => void;
   onSaveToLibrary?: () => void;
+  saveLabel?: string;
+  onRename?: () => void;
+  renameLabel?: string;
   onToggleFavorite?: () => void;
   isFavorite?: boolean;
+  onUltraLikeToggle?: () => void;
+  isUltraLiked?: boolean;
   playlists?: Playlist[];
   onAddToPlaylist?: (playlistId: string) => void;
   onShare?: () => void;
@@ -36,10 +42,16 @@ export default function SongActionsMenu({
   triggerClassName = "rounded-lg p-2 hover:bg-[var(--hover-bg)]",
   menuClassName = "min-w-52 p-2",
   onPlay,
+  showPlayAction = true,
   onAddToQueue,
   onSaveToLibrary,
+  saveLabel,
+  onRename,
+  renameLabel,
   onToggleFavorite,
   isFavorite = false,
+  onUltraLikeToggle,
+  isUltraLiked = false,
   playlists = [],
   onAddToPlaylist,
   onShare,
@@ -87,7 +99,7 @@ export default function SongActionsMenu({
         </button>
       )}
     >
-      {onPlay && (
+      {onPlay && showPlayAction && (
         <button
           type="button"
           className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
@@ -123,7 +135,20 @@ export default function SongActionsMenu({
             onOpenChange(false);
           }}
         >
-          <Heart className="h-[15px] w-[15px]" /> {t("btn_save", language)}
+          <Save className="h-[15px] w-[15px]" /> {saveLabel ?? t("btn_save", language)}
+        </button>
+      )}
+      {onRename && (
+        <button
+          type="button"
+          className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
+          onClick={(event) => {
+            maybeStopParentActivation(event);
+            onRename();
+            onOpenChange(false);
+          }}
+        >
+          <Pencil className="h-[15px] w-[15px]" /> {renameLabel ?? t("playlist_rename", language)}
         </button>
       )}
       {onToggleFavorite && (
@@ -138,6 +163,20 @@ export default function SongActionsMenu({
         >
           <Heart className={`h-[15px] w-[15px] ${isFavorite ? "fill-current text-[var(--accent)]" : ""}`} />
           {isFavorite ? t("song_row_unfavorite", language) : t("song_row_favorite", language)}
+        </button>
+      )}
+      {onUltraLikeToggle && (
+        <button
+          type="button"
+          className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
+          onClick={(event) => {
+            maybeStopParentActivation(event);
+            onUltraLikeToggle();
+            onOpenChange(false);
+          }}
+        >
+          <Gem className={`h-[15px] w-[15px] ${isUltraLiked ? "fill-current text-sky-400" : "text-sky-400"}`} />
+          {isUltraLiked ? t("song_row_remove_super_like", language) : t("song_row_super_like", language)}
         </button>
       )}
       {onAddToPlaylist && (

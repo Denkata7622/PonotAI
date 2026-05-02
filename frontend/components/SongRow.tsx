@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Heart, EllipsisVertical, Music, Play, Sparkles } from "../lucide-react";
+import { EllipsisVertical, Music, Play } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -30,6 +30,7 @@ type SongRowProps = {
   isHighlighted?: boolean;
   onUltraLikeToggle?: () => void;
   isUltraLiked?: boolean;
+  deleteLabel?: string;
   className?: string;
 };
 
@@ -51,6 +52,7 @@ export default function SongRow({
   isHighlighted = false,
   onUltraLikeToggle,
   isUltraLiked = false,
+  deleteLabel,
   className = "",
 }: SongRowProps) {
   const { language } = useLanguage();
@@ -85,35 +87,12 @@ export default function SongRow({
         <p className="truncate text-sm text-[var(--muted)]">{formatArtist(safeArtist)}</p>
       </div>
 
-      <div className="relative flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-        {onUltraLikeToggle && (
-          <button
-            type="button"
-            onClick={onUltraLikeToggle}
-            className="rounded-lg p-2 hover:bg-[var(--hover-bg)]"
-            aria-label={isUltraLiked ? "Remove ultra-like" : "Ultra-like this song"}
-            title={isUltraLiked ? "Remove ultra-like" : "Ultra-like this song"}
-          >
-            <Sparkles className={`w-4 h-4 ${isUltraLiked ? "fill-current text-violet-400" : "text-[var(--muted)]"}`} />
-          </button>
-        )}
-        {onFavorite && (
-          <button
-            type="button"
-            onClick={onFavorite}
-            className="rounded-lg p-2 hover:bg-[var(--hover-bg)]"
-            aria-label={isFavorite ? t("song_row_unfavorite", language) : t("song_row_favorite", language)}
-            title={isFavorite ? t("song_row_unfavorite", language) : t("song_row_favorite", language)}
-          >
-            <Heart className={`w-4 h-4 ${isFavorite ? "fill-current text-[var(--accent)]" : "text-[var(--muted)]"}`} />
-          </button>
-        )}
-
+      <div className="relative flex items-center gap-1">
         {onPlay && (
           <button
             type="button"
             onClick={onPlay}
-            className="rounded-full bg-[var(--accent)] p-2 text-[var(--accent-foreground)] shadow-[0_0_0_1px_var(--accent-border)]"
+            className="rounded-full bg-[var(--accent)] p-2.5 text-[var(--accent-foreground)] shadow-[0_0_0_1px_var(--accent-border)]"
             aria-label={actionLabel ?? t("song_row_play", language)}
             title={actionLabel ?? t("song_row_play", language)}
           >
@@ -121,11 +100,12 @@ export default function SongRow({
           </button>
         )}
 
-        {(showMoreMenu || onDelete) && (
+        {(showMoreMenu || onDelete || onFavorite || onUltraLikeToggle) && (
           <SongActionsMenu
             isOpen={menuOpen}
             onOpenChange={setMenuOpen}
             trigger={<EllipsisVertical className="w-4 h-4 text-[var(--muted)]" />}
+            triggerClassName="rounded-lg p-2.5 hover:bg-[var(--hover-bg)]"
             onPlay={onPlay}
             onAddToQueue={() => {
               addToQueue({
@@ -142,6 +122,8 @@ export default function SongRow({
             }}
             onToggleFavorite={onFavorite}
             isFavorite={isFavorite}
+            onUltraLikeToggle={onUltraLikeToggle}
+            isUltraLiked={isUltraLiked}
             playlists={playlists}
             onAddToPlaylist={onAddToPlaylist}
             onShare={() => {
@@ -166,6 +148,7 @@ export default function SongRow({
             }}
             isSharing={isSharing}
             onDelete={onDelete}
+            deleteLabel={deleteLabel}
             deleteConfirmMessage={language === "bg" ? "Наистина ли искате да изтриете тази песен?" : "Are you sure you want to delete this song?"}
           />
         )}
