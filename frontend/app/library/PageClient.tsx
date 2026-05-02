@@ -617,6 +617,13 @@ export default function LibraryPage() {
           </Button>
         </div>
 
+        <input
+          className="w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+          placeholder={t("library_search_playlists", language)}
+          value={playlistsSearch}
+          onChange={(event) => setPlaylistsSearch(event.target.value)}
+        />
+
         {loading ? (
           <div className="h-20 animate-pulse rounded-xl bg-[var(--surface-raised)]" />
         ) : !isAuthenticated ? (
