@@ -22,6 +22,7 @@ import { responseTimeMiddleware } from "./middlewares/responseTime.middleware";
 import { getCorsOptions } from "./config/cors";
 import assistantRouter from "./routes/assistant";
 import coverArtRouter from "./routes/coverArt";
+import musicDownloadRouter from "./routes/musicDownload";
 import aiRouter from "./modules/ai/ai.routes";
 import { getPersistenceHealth, refreshPersistenceHealth } from "./db/persistence";
 
@@ -158,6 +159,7 @@ app.use("/api/admin", adminRouter);
 app.use("/api/assistant", assistantRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/cover-art", coverArtRouter);
+app.use("/api/music", musicDownloadRouter);
 
 app.use(errorMiddleware);
 
