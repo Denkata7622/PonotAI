@@ -78,7 +78,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
   const { profile } = useProfile();
   const { user, token, isAuthenticated, logout, history, favorites, saveToLibrary } = useUser();
   const { isPreviewSessionActive, previewSession, discardPreviewSession } = useTheme();
-  const { playlists } = useLibrary(profile.id);
+  const { playlists, favoritesSet, toggleFavorite } = useLibrary(profile.id);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
