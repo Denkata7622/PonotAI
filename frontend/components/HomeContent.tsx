@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import HeroSection from "./HeroSection";
 import ResultCard from "./ResultCard";
@@ -30,6 +31,7 @@ import { t } from "../lib/translations";
 import { toCanonicalSong, toSongKey } from "../lib/songIdentity";
 import { scopedKey, useProfile } from "../lib/ProfileContext";
 import { useUser } from "../src/context/UserContext";
+import { apiFetch } from "../src/lib/apiFetch";
 import HomeHistorySection from "./home/HomeHistorySection";
 import HomeFavoritesSection from "./home/HomeFavoritesSection";
 import HomePlaylistsSection from "./home/HomePlaylistsSection";
@@ -105,6 +107,7 @@ export function HomeContent() {
   const deletePlaylistTimeoutRef = useRef<number | null>(null);
   const [showPlaylistUndoToast, setShowPlaylistUndoToast] = useState(false);
 
+  const router = useRouter();
   const { addToQueue, playNow } = usePlayer();
   const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
@@ -522,6 +525,24 @@ export function HomeContent() {
     }
   }
 
+
+  async function handleDownloadSong(song: SongMatch) {
+    try {
+      const response = await apiFetch("/api/music/download", {
+        method: "POST",
+        body: JSON.stringify({ songName: `${song.songName} ${song.artist}`.trim() }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || "Download failed.");
+      }
+      const data = await response.json();
+      pushToast("success", language === "bg" ? "Изтеглянето започна успешно." : `Download completed: ${data.filePath ?? song.songName}`);
+    } catch (error) {
+      pushToast("error", (error as Error).message || (language === "bg" ? "Грешка при изтегляне." : "Download failed."));
+    }
+  }
+
   async function handleConfirmSongs(selectedSongs: SongMatch[]) {
     if (!pendingReviewPayload || isSavingReviewedSongs) return;
     setIsSavingReviewedSongs(true);
@@ -583,6 +604,12 @@ export function HomeContent() {
     } finally {
       setIsSavingReviewedSongs(false);
     }
+  }
+
+
+  function goToDownloadForSong(songName: string) {
+    const encoded = encodeURIComponent(songName.trim());
+    router.push(`/download?query=${encoded}`);
   }
 
   function saveSong(song: SongMatch) {
@@ -746,6 +773,17 @@ export function HomeContent() {
             )}
 
             <ResultCard language={language} song={latestResult} onSave={saveSong} onPlay={playSong} onFavorite={favoriteSong} favoritedKeys={favoritedKeys} />
+            {imageResult?.songs[0]?.songName && (
+              <div className="flex justify-end">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => goToDownloadForSong(imageResult.songs[0]!.songName)}
+                >
+                  {language === "bg" ? "Изтегли песента" : "Download Song"}
+                </Button>
+              </div>
+            )}
             {getVisibleOcrCandidates(imageResult).length > 0 && (
               <Card className="space-y-3 p-4">
                 <h3 className="text-base font-semibold">
@@ -753,8 +791,8 @@ export function HomeContent() {
                 </h3>
                 <div className="space-y-2">
                   {getVisibleOcrCandidates(imageResult).map((song, index) => (
-                    <SongRow
-                      key={`${song.songName}-${song.artist}-${index}`}
+                    <div key={`${song.songName}-${song.artist}-${index}`} className="space-y-2">
+                      <SongRow
                       id={`ocr-${song.songName}-${song.artist}-${index}`.toLowerCase().replace(/\s+/g, "-")}
                       title={song.songName}
                       artist={`${song.artist} • ${Math.round((song.confidence ?? 0) * 100)}%`}
@@ -767,6 +805,12 @@ export function HomeContent() {
                       playlists={playlists}
                       onAddToPlaylist={(playlistId) => addSongMatchToPlaylist(song, playlistId)}
                     />
+                      <div className="flex justify-end">
+                        <Button size="sm" variant="secondary" onClick={() => void handleDownloadSong(song)}>
+                          {language === "bg" ? "Изтегли" : "Download"}
+                        </Button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </Card>

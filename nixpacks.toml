@@ -1,0 +1,5 @@
+[phases.setup]
+nixPkgs = ["nodePackages.npm", "python3", "ffmpeg"]
+
+[phases.install]
+cmds = ["npm ci", "pip install -r backend/requirements.txt"]
