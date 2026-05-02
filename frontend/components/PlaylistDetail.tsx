@@ -65,7 +65,7 @@ export default function PlaylistDetail({
                     autoFocus
                   />
                   <div className="flex gap-2">
-                    <Button onClick={handleRename} size="sm">{t("track_create", language)}</Button>
+                    <Button onClick={handleRename} size="sm">{t("playlist_rename", language)}</Button>
                     <Button onClick={() => setIsRenaming(false)} variant="secondary" size="sm">{t("modal_cancel", language)}</Button>
                   </div>
                 </div>

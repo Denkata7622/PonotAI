@@ -84,10 +84,10 @@ export default function LibraryPage() {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [historySearch, setHistorySearch] = useState("");
-  const [favoritesSearch, setFavoritesSearch] = useState("");
-  const [playlistsSearch, setPlaylistsSearch] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [showNewPlaylistModal, setShowNewPlaylistModal] = useState(false);
+  const [selectedTab, setSelectedTab] = useState<"saved" | "playlists" | "history">("saved");
+  const [showAllHistory, setShowAllHistory] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
   const [showPlaylistDetail, setShowPlaylistDetail] = useState(false);
@@ -99,6 +99,15 @@ export default function LibraryPage() {
 
   const searchParams = useSearchParams();
   const playlistFocusId = searchParams.get("playlistId");
+  const tabParam = searchParams.get("tab");
+
+  useEffect(() => {
+    if (tabParam === "saved" || tabParam === "favorites") {
+      setSelectedTab("saved");
+    } else if (tabParam === "playlists" || tabParam === "history") {
+      setSelectedTab(tabParam);
+    }
+  }, [tabParam]);
 
   const history = useMemo(
     () => userHistory.map((item) => normalizeSong(item as SongInput)),
@@ -153,6 +162,7 @@ export default function LibraryPage() {
     if (!playlistFocusId) return;
     const target = playlists.find((playlist) => playlist.id === playlistFocusId);
     if (!target) return;
+    setSelectedTab("playlists");
     setSelectedPlaylist(target);
     setShowPlaylistDetail(true);
   }, [playlistFocusId, playlists]);
@@ -164,43 +174,47 @@ export default function LibraryPage() {
   }, []);
 
   const filteredHistory = useMemo(() => {
-    if (!historySearch) return dedupedHistory;
-    const q = historySearch.toLowerCase();
+    if (selectedTab !== "history" || !searchQuery) return dedupedHistory;
+    const q = searchQuery.toLowerCase();
     return dedupedHistory.filter(
       (item) =>
         (item.title ?? "").toLowerCase().includes(q)
         || (item.artist ?? "").toLowerCase().includes(q)
         || (item.album ?? "").toLowerCase().includes(q),
     );
-  }, [dedupedHistory, historySearch]);
+  }, [dedupedHistory, searchQuery, selectedTab]);
 
   const filteredStandardFavorites = useMemo(() => {
-    if (!favoritesSearch) return standardFavorites;
-    const q = favoritesSearch.toLowerCase();
+    if (selectedTab !== "saved" || !searchQuery) return standardFavorites;
+    const q = searchQuery.toLowerCase();
     return standardFavorites.filter(
       (item) =>
         (item.title ?? "").toLowerCase().includes(q)
         || (item.artist ?? "").toLowerCase().includes(q)
         || (item.album ?? "").toLowerCase().includes(q),
     );
-  }, [standardFavorites, favoritesSearch]);
+  }, [searchQuery, selectedTab, standardFavorites]);
 
   const filteredUltraLikedFavorites = useMemo(() => {
-    if (!favoritesSearch) return ultraLikedFavorites;
-    const q = favoritesSearch.toLowerCase();
+    if (selectedTab !== "saved" || !searchQuery) return ultraLikedFavorites;
+    const q = searchQuery.toLowerCase();
     return ultraLikedFavorites.filter(
       (item) =>
         (item.title ?? "").toLowerCase().includes(q)
         || (item.artist ?? "").toLowerCase().includes(q)
         || (item.album ?? "").toLowerCase().includes(q),
     );
-  }, [ultraLikedFavorites, favoritesSearch]);
+  }, [searchQuery, selectedTab, ultraLikedFavorites]);
 
   const filteredPlaylists = useMemo(() => {
-    if (!playlistsSearch) return playlists;
-    const query = playlistsSearch.toLowerCase();
+    if (selectedTab !== "playlists" || !searchQuery) return playlists;
+    const query = searchQuery.toLowerCase();
     return playlists.filter((playlist) => playlist.name.toLowerCase().includes(query));
-  }, [playlists, playlistsSearch]);
+  }, [playlists, searchQuery, selectedTab]);
+  const visibleHistory = useMemo(() => {
+    if (showAllHistory) return filteredHistory;
+    return filteredHistory.slice(0, 20);
+  }, [filteredHistory, showAllHistory]);
 
   function toPlayableSong(song: Song | PlaylistSong) {
     const safeTitle = song.title || t("unknown_song", language);
@@ -402,22 +416,45 @@ export default function LibraryPage() {
   }
 
   return (
-    <section className="space-y-5 sm:space-y-6">
-      <header className="card space-y-3 p-4 sm:p-6">
-        <h1 className="cardTitle text-2xl font-bold sm:text-3xl">{t("nav_library", language)}</h1>
-        <p className="cardText">
-          {language === "bg"
-            ? "Всички запазени песни, плейлисти и история на едно място."
-            : "All your saved songs, playlists, and listening history in one place."}
-        </p>
+    <section className="mx-auto max-w-6xl space-y-4">
+      <header className="card space-y-2 p-4 sm:p-5">
+        <h1 className="cardTitle text-2xl font-bold">{t("nav_library", language)}</h1>
+        <p className="cardText text-sm">{language === "bg" ? "Бърз достъп до любими, плейлисти и история." : "Quick access to favorites, playlists, and history."}</p>
         {isAuthenticated ? <p className="cardText text-xs">{t("library_cloud_synced", language)}</p> : null}
+        <div className="mt-2 flex flex-wrap gap-2">
+          <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--muted)]">{t("library_saved_songs", language)}: {mergedFavorites.length}</span>
+          <span className="rounded-full border border-sky-400/30 px-3 py-1 text-xs text-sky-300">{t("library_super_liked", language)}: {ultraLikedFavorites.length}</span>
+          <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--muted)]">{t("library_playlists", language)}: {playlists.length}</span>
+          <span className="rounded-full border border-[var(--border)] px-3 py-1 text-xs text-[var(--muted)]">{t("library_tracks_total", language)}: {uniqueLibrarySongsCount}</span>
+        </div>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="card p-5"><p className="cardText text-sm">{t("library_saved_songs", language)}</p><p className="cardTitle mt-2 text-2xl font-semibold">{mergedFavorites.length}</p></div>
-        <div className="card p-5"><p className="cardText text-sm">{t("library_super_liked", language)}</p><p className="cardTitle mt-2 text-2xl font-semibold">{ultraLikedFavorites.length}</p></div>
-        <div className="card p-5"><p className="cardText text-sm">{t("library_playlists", language)}</p><p className="cardTitle mt-2 text-2xl font-semibold">{playlists.length}</p></div>
-        <div className="card p-5"><p className="cardText text-sm">{t("library_tracks_total", language)}</p><p className="cardTitle mt-2 text-2xl font-semibold">{uniqueLibrarySongsCount}</p></div>
+      <div className="card p-2">
+        <div className="app-tabs">
+          {(["saved", "playlists", "history"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => {
+                setSelectedTab(tab);
+                setSearchQuery("");
+              }}
+              className={`app-tab ${selectedTab === tab ? "app-tab-active" : ""}`}
+            >
+              {tab === "saved" ? `${language === "bg" ? "Запазени" : "Saved"} (${mergedFavorites.length})` : null}
+              {tab === "playlists" ? `${t("library_playlists", language)} (${playlists.length})` : null}
+              {tab === "history" ? `${t("history_title", language)} (${dedupedHistory.length})` : null}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="card p-3">
+        <input
+          className="w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+          placeholder={selectedTab === "saved" ? (language === "bg" ? "Търси в запазени песни" : "Search saved songs") : selectedTab === "history" ? (language === "bg" ? "Търси в историята" : "Search history") : (language === "bg" ? "Търси плейлисти" : "Search playlists")}
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+        />
       </div>
 
       {loadError ? <div className="card p-4 text-sm status-danger">{loadError}</div> : null}
@@ -436,20 +473,13 @@ export default function LibraryPage() {
         </div>
       ) : null}
 
-      <section className="card space-y-4 p-4 sm:p-6">
+      {selectedTab === "saved" ? <section className="card space-y-4 p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="cardTitle text-xl font-semibold">{t("library_favorites", language)}</h2>
             <p className="cardText mt-1">{t("library_saved_songs_hint", language)}</p>
           </div>
         </div>
-        <input
-          className="w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-          placeholder={t("library_search_saved_songs", language)}
-          value={favoritesSearch}
-          onChange={(event) => setFavoritesSearch(event.target.value)}
-        />
-
         {filteredUltraLikedFavorites.length > 0 ? (
           <div className="space-y-2 rounded-2xl border border-sky-400/30 bg-sky-500/5 p-3">
             <div className="flex items-center justify-between gap-2">
@@ -525,23 +555,17 @@ export default function LibraryPage() {
             );
           })}
         </div>
-      </section>
+      </section> : null}
 
-      <section className="card space-y-4 p-4 sm:p-6">
+      {selectedTab === "history" ? <section className="card space-y-4 p-4 sm:p-5">
         <div>
           <h2 className="cardTitle text-xl font-semibold">{t("history_title", language)}</h2>
           <p className="cardText mt-1">{language === "bg" ? "Наскоро разпознати песни." : "Recently recognized songs."}</p>
         </div>
-        <input
-          className="w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-          placeholder={t("history_search_placeholder", language)}
-          value={historySearch}
-          onChange={(event) => setHistorySearch(event.target.value)}
-        />
         <div className="space-y-2">
           {filteredHistory.length === 0 ? (
             <EmptyState icon={<Clock className="h-10 w-10 text-[var(--muted)]" />} title={t("empty_history_heading", language)} hint={t("empty_history_hint", language)} />
-          ) : filteredHistory.map((song) => {
+          ) : visibleHistory.map((song) => {
             const key = toSongKey({ title: song.title, artist: song.artist });
             const isFavorite = mergedFavorites.some((favorite) => toSongKey(favorite) === key);
             return (
@@ -571,10 +595,17 @@ export default function LibraryPage() {
               />
             );
           })}
+          {filteredHistory.length > 20 ? (
+            <div className="pt-2">
+              <Button variant="secondary" size="sm" onClick={() => setShowAllHistory((prev) => !prev)}>
+                {showAllHistory ? (language === "bg" ? "Покажи по-малко" : "Show less") : (language === "bg" ? "Покажи още" : "Show more")}
+              </Button>
+            </div>
+          ) : null}
         </div>
-      </section>
+      </section> : null}
 
-      <section className="card space-y-4 p-4 sm:p-6">
+      {selectedTab === "playlists" ? <section className="card space-y-4 p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="cardTitle text-xl font-semibold">{t("library_playlists", language)}</h2>
@@ -623,7 +654,7 @@ export default function LibraryPage() {
             ))}
           </div>
         )}
-      </section>
+      </section> : null}
 
       {showNewPlaylistModal ? (
         <NewPlaylistModal

@@ -15,7 +15,9 @@ type SearchResultActionsProps = {
   onPlayNow: () => void;
   onAddToQueue: () => void;
   onSaveToLibrary: () => void;
-  sharePayload: { title: string; artist: string; coverUrl?: string };
+  onToggleFavorite?: () => void;
+  isFavorite?: boolean;
+  sharePayload?: { title: string; artist: string; coverUrl?: string };
   onAddToPlaylist: (playlistId: string) => void;
   playlists: Playlist[];
 };
@@ -27,6 +29,8 @@ export default function SearchResultActions({
   onPlayNow,
   onAddToQueue,
   onSaveToLibrary,
+  onToggleFavorite,
+  isFavorite = false,
   sharePayload,
   onAddToPlaylist,
   playlists,
@@ -98,9 +102,11 @@ export default function SearchResultActions({
         onPlay={onPlayNow}
         showPlayAction={false}
         onAddToQueue={onAddToQueue}
+        onToggleFavorite={onToggleFavorite}
+        isFavorite={isFavorite}
         playlists={playlists}
         onAddToPlaylist={onAddToPlaylist}
-        onShare={() => {
+        onShare={sharePayload ? () => {
           if (!isAuthenticated) {
             window.dispatchEvent(new CustomEvent("ponotai-toast", {
               detail: { text: language === "bg" ? "Влез, за да споделяш песни." : "Sign in to share songs." },
@@ -122,7 +128,7 @@ export default function SearchResultActions({
           }).finally(() => {
             onOpenChange(false);
           });
-        }}
+        } : undefined}
         stopParentActivation
       />
     </div>

@@ -361,6 +361,8 @@ export default function SearchPage() {
                               recognized: true,
                             });
                           }}
+                          onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
+                          isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))}
                           sharePayload={{ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl }}
                           onAddToPlaylist={(playlistId) =>
                             addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })
@@ -403,6 +405,8 @@ export default function SearchPage() {
                                 recognized: true,
                               });
                             }}
+                            onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
+                            isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))}
                             sharePayload={{ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl }}
                             onAddToPlaylist={(playlistId) =>
                               addSongToPlaylist(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })

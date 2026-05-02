@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Gem, Heart, ListPlus, Play, Save, Share2, Trash2 } from "../lucide-react";
+import { Gem, Heart, ListPlus, Pencil, Play, Save, Share2, Trash2 } from "../lucide-react";
 import type { Playlist } from "../features/library/types";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -18,6 +18,9 @@ type SongActionsMenuProps = {
   showPlayAction?: boolean;
   onAddToQueue?: () => void;
   onSaveToLibrary?: () => void;
+  saveLabel?: string;
+  onRename?: () => void;
+  renameLabel?: string;
   onToggleFavorite?: () => void;
   isFavorite?: boolean;
   onUltraLikeToggle?: () => void;
@@ -42,6 +45,9 @@ export default function SongActionsMenu({
   showPlayAction = true,
   onAddToQueue,
   onSaveToLibrary,
+  saveLabel,
+  onRename,
+  renameLabel,
   onToggleFavorite,
   isFavorite = false,
   onUltraLikeToggle,
@@ -129,7 +135,20 @@ export default function SongActionsMenu({
             onOpenChange(false);
           }}
         >
-          <Save className="h-[15px] w-[15px]" /> {t("btn_save", language)}
+          <Save className="h-[15px] w-[15px]" /> {saveLabel ?? t("btn_save", language)}
+        </button>
+      )}
+      {onRename && (
+        <button
+          type="button"
+          className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--hover-bg)]"
+          onClick={(event) => {
+            maybeStopParentActivation(event);
+            onRename();
+            onOpenChange(false);
+          }}
+        >
+          <Pencil className="h-[15px] w-[15px]" /> {renameLabel ?? t("playlist_rename", language)}
         </button>
       )}
       {onToggleFavorite && (

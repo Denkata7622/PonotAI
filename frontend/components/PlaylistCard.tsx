@@ -81,13 +81,14 @@ export default function PlaylistCard({
             ) : null}
           </button>
         </div>
-
-        {(onDelete || onAddToQueue) ? (
+        {(onDelete || onAddToQueue || onRename) ? (
           <SongActionsMenu
             isOpen={menuOpen}
             onOpenChange={setMenuOpen}
             trigger={<EllipsisVertical className="h-4 w-4 text-[var(--muted)]" />}
             onAddToQueue={onAddToQueue ? () => onAddToQueue(playlist) : undefined}
+            onRename={onRename ? () => onRename(playlist) : undefined}
+            renameLabel={t("playlist_rename", language)}
             onDelete={onDelete ? () => onDelete(playlist.id) : undefined}
             deleteLabel={t("track_delete_playlist", language)}
             deleteConfirmMessage={
@@ -101,36 +102,26 @@ export default function PlaylistCard({
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-        <Button variant="secondary" className="justify-center" onClick={() => onClick(playlist)}>
-          {t("btn_open", language)}
-        </Button>
         <Button
           variant="primary"
-          className="justify-center"
+          className="justify-center sm:px-3"
           onClick={() => onPlay?.(playlist)}
           disabled={playlist.songs.length === 0}
+          aria-label={t("song_row_play", language)}
+          title={t("song_row_play", language)}
         >
-          <span className="inline-flex items-center gap-1.5">
-            <Play className="h-4 w-4" fill="currentColor" />
-            {t("song_row_play", language)}
-          </span>
+          <Play className="h-4 w-4" fill="currentColor" />
         </Button>
         <Button
           variant="secondary"
-          className="col-span-2 justify-center sm:col-span-1"
+          className="justify-center sm:px-3"
           onClick={() => onAddToQueue?.(playlist)}
           disabled={playlist.songs.length === 0}
+          aria-label={t("btn_add_to_queue", language)}
+          title={t("btn_add_to_queue", language)}
         >
-          <span className="inline-flex items-center gap-1.5">
-            <Plus className="h-4 w-4" />
-            {t("btn_add_to_queue", language)}
-          </span>
+          <Plus className="h-4 w-4" />
         </Button>
-        {onRename ? (
-          <Button variant="secondary" className="col-span-2 justify-center sm:col-span-1" onClick={() => onRename(playlist)}>
-            {t("playlist_rename", language)}
-          </Button>
-        ) : null}
       </div>
     </article>
   );

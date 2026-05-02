@@ -8,6 +8,7 @@ import BottomPlayBar from "./BottomPlayBar";
 import DualSidebarHost from "@/src/components/sidebars/DualSidebarHost";
 import { PlayerProvider } from "./PlayerProvider";
 import { useLibrary } from "../features/library/useLibrary";
+import { toSongKey } from "../lib/songIdentity";
 import { useProfile } from "../lib/ProfileContext";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -720,6 +721,8 @@ function AppShellContent({ children }: { children: ReactNode }) {
                                   recognized: true,
                                 });
                               }}
+                              onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)}
+                              isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))}
                               sharePayload={{ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl }}
                               onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })}
                               playlists={playlists}
@@ -752,7 +755,7 @@ function AppShellContent({ children }: { children: ReactNode }) {
                               >
                                 <img src={result.thumbnailUrl} alt={result.title} className="h-10 w-10 rounded-md object-cover" />
                                 <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-[var(--text)]">{result.title}</p><p className="truncate text-xs text-[var(--muted)]">{result.artist}</p></div>
-                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToLibrary={() => { void saveToLibrary({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, method: "youtube-search", recognized: true }); }} sharePayload={{ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl }} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} />
+                                <SearchResultActions resultId={result.videoId} isOpen={openActionsId === result.videoId} onOpenChange={(open) => setOpenActionsId(open ? result.videoId : null)} onPlayNow={() => queueTrack(result, true)} onAddToQueue={() => queueTrack(result, false, false)} onSaveToLibrary={() => { void saveToLibrary({ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, method: "youtube-search", recognized: true }); }} onToggleFavorite={() => toggleFavorite(result.videoId, result.title, result.artist, result.thumbnailUrl, result.videoId)} isFavorite={favoritesSet.has(toSongKey({ title: result.title, artist: result.artist }))} sharePayload={{ title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl }} onAddToPlaylist={(playlistId) => addSongToPlaylistApi(playlistId, { title: result.title, artist: result.artist, coverUrl: result.thumbnailUrl, videoId: result.videoId })} playlists={playlists} />
                               </li>
                             ))}
                           </ul>
