@@ -1,5 +1,22 @@
-import DownloadClient from "./DownloadClient";
+import { Suspense } from "react";
+import DownloadPageClient from "./PageClient";
+
+function DownloadPageSkeleton() {
+  return (
+    <main className="mx-auto w-full max-w-7xl px-4 py-6">
+      <div className="animate-pulse space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+        <div className="h-7 w-64 rounded bg-[var(--surface-2)]" />
+        <div className="h-4 w-96 rounded bg-[var(--surface-2)]" />
+        <div className="h-40 rounded-xl bg-[var(--surface-2)]" />
+      </div>
+    </main>
+  );
+}
 
 export default function DownloadPage() {
-  return <DownloadClient />;
+  return (
+    <Suspense fallback={<DownloadPageSkeleton />}>
+      <DownloadPageClient />
+    </Suspense>
+  );
 }
