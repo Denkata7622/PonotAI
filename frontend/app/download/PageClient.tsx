@@ -7,6 +7,7 @@ import { normalizeTrackKey } from "@/lib/songIdentity";
 import { useLanguage } from "@/lib/LanguageContext";
 import { t } from "@/lib/translations";
 import { getApiBaseUrl } from "@/lib/apiConfig";
+import DownloadClient from "./DownloadClient";
 
 type BatchImageJob = {
   id: string;
@@ -341,6 +342,10 @@ export default function DownloadPageClient() {
         />
         {jobs.length > 0 && songs.length === 0 && jobsCanCollapse ? <p className="text-sm text-[var(--muted)]">{t("download_empty_songs", language)}</p> : null}
       </div>
+
+      <section className="mt-6">
+        <DownloadClient />
+      </section>
 
       <StickyReviewBar
         language={language}

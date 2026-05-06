@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import DownloadClient from "./DownloadClient";
+import DownloadPageClient from "./PageClient";
 
 function DownloadPageSkeleton() {
   return (
@@ -17,7 +17,7 @@ function DownloadPageSkeleton() {
 export default function DownloadPage() {
   return (
     <Suspense fallback={<DownloadPageSkeleton />}>
-      <DownloadClient />
+      <DownloadPageClient />
     </Suspense>
   );
 }
