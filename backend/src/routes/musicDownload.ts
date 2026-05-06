@@ -1,11 +1,24 @@
 import { Router } from "express";
 import path from "node:path";
 import { spawn } from "node:child_process";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const archiver = require("archiver") as (format: "zip", options: { zlib: { level: number } }) => {
+  on: (event: string, cb: (error: Error) => void) => void;
+  pipe: (stream: NodeJS.WritableStream) => void;
+  file: (filename: string, data: { name: string }) => void;
+  finalize: () => Promise<void>;
+};
+import fs from "node:fs";
+import fsp from "node:fs/promises";
 
 const musicDownloadRouter = Router();
 const MAX_QUERY_LENGTH = 200;
 const MAX_CAPTURE_BYTES = 256 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 8 * 60 * 1000;
+const ZIP_RETENTION_MS = 24 * 60 * 60 * 1000; // ZIP files are temporary artifacts and are cleaned after this retention window.
+
+const repoRoot = path.resolve(__dirname, "../../..");
+const downloadsDir = path.join(repoRoot, "data", "downloads");
 
 function appendWithCap(current: string, chunk: Buffer | string, cap = MAX_CAPTURE_BYTES): string {
   const next = current + chunk.toString();
@@ -25,6 +38,37 @@ function extractLastJsonLine(stdout: string): Record<string, unknown> | null {
   return null;
 }
 
+function sanitizeDownloadPath(rawPath: string): string | null {
+  const base = path.basename(rawPath || "").replace(/\u0000/g, "").trim();
+  if (!base) return null;
+  const resolved = path.resolve(downloadsDir, base);
+  const relative = path.relative(downloadsDir, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  return resolved;
+}
+
+async function cleanupOldZipFiles(): Promise<void> {
+  try {
+    const entries = await fsp.readdir(downloadsDir, { withFileTypes: true });
+    const cutoff = Date.now() - ZIP_RETENTION_MS;
+    await Promise.all(entries
+      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".zip"))
+      .map(async (entry) => {
+        const targetPath = path.join(downloadsDir, entry.name);
+        try {
+          const stats = await fsp.stat(targetPath);
+          if (stats.mtimeMs < cutoff) {
+            await fsp.unlink(targetPath);
+          }
+        } catch (error) {
+          console.warn("[music/zip-folder] Could not cleanup zip", targetPath, error);
+        }
+      }));
+  } catch (error) {
+    console.warn("[music/zip-folder] Cleanup scan failed", error);
+  }
+}
+
 musicDownloadRouter.post("/download", (req, res) => {
   const songNameRaw = typeof req.body?.songName === "string" ? req.body.songName : "";
   const songName = songNameRaw.replace(/\u0000/g, "").trim();
@@ -39,7 +83,6 @@ musicDownloadRouter.post("/download", (req, res) => {
     return;
   }
 
-  const repoRoot = path.resolve(__dirname, "../../..");
   const scriptPath = path.join(repoRoot, "services", "downloader.py");
   const outputDir = path.join(repoRoot, "data", "downloads");
 
@@ -107,6 +150,99 @@ musicDownloadRouter.post("/download", (req, res) => {
     }
 
     res.status(200).json(payload);
+  });
+});
+
+musicDownloadRouter.post("/zip-folder", async (req, res) => {
+  const filePaths: unknown[] | null = Array.isArray(req.body?.filePaths) ? (req.body.filePaths as unknown[]) : null;
+  if (!filePaths) {
+    res.status(400).json({ code: "FILE_PATHS_REQUIRED", message: "filePaths must be an array." });
+    return;
+  }
+
+  await cleanupOldZipFiles();
+
+  const safePaths = Array.from(new Set(filePaths
+     .filter((item: unknown): item is string => typeof item === "string")
+    .map((item: string) => sanitizeDownloadPath(item))
+    .filter((item: string | null): item is string => Boolean(item))
+    .filter((item: string) => path.extname(item).toLowerCase() === ".mp3")));
+
+  const existingPaths: string[] = [];
+  const missingFiles: string[] = [];
+  for (const safePath of safePaths) {
+    try {
+      await fsp.access(safePath, fs.constants.R_OK);
+      existingPaths.push(safePath);
+    } catch {
+      missingFiles.push(path.basename(safePath));
+    }
+  }
+
+  if (existingPaths.length === 0) {
+    res.status(400).json({ code: "NO_VALID_FILES", message: "No valid downloadable files were found.", missingFiles });
+    return;
+  }
+
+  const zipName = `downloads-${Date.now()}.zip`;
+  const zipPath = path.join(downloadsDir, zipName);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const output = fs.createWriteStream(zipPath);
+      const archive = archiver("zip", { zlib: { level: 9 } });
+      output.on("close", () => resolve());
+      output.on("error", (error: Error) => reject(error));
+      archive.on("error", (error: Error) => reject(error));
+      archive.pipe(output);
+      for (const filePath of existingPaths) {
+        archive.file(filePath, { name: path.basename(filePath) });
+      }
+      archive.finalize().catch(reject);
+    });
+
+    res.status(200).json({
+      ok: true,
+      zipFileName: zipName,
+      zipUrl: `/api/music/files/${encodeURIComponent(zipName)}`,
+      includedCount: existingPaths.length,
+      missingFiles,
+    });
+  } catch (error) {
+    res.status(500).json({
+      code: "ZIP_CREATION_FAILED",
+      message: error instanceof Error ? error.message : "Failed to create ZIP archive.",
+      missingFiles,
+    });
+  }
+});
+
+musicDownloadRouter.get("/files/:fileName", (req, res) => {
+  const safePath = sanitizeDownloadPath(req.params.fileName);
+  if (!safePath) {
+    res.status(400).json({ code: "INVALID_FILE", message: "Invalid file path." });
+    return;
+  }
+
+  if (path.extname(safePath).toLowerCase() !== ".zip") {
+    res.status(400).json({ code: "UNSUPPORTED_FILE", message: "Only ZIP downloads are supported." });
+    return;
+  }
+
+  res.download(safePath, path.basename(safePath), (error) => {
+    if (!error) return;
+
+    if (res.headersSent) {
+      console.warn("[music/files] Download failed after headers were sent", error);
+      return;
+    }
+
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      res.status(404).json({ code: "FILE_NOT_FOUND", message: "Requested file was not found." });
+      return;
+    }
+
+    res.status(500).json({ code: "FILE_DOWNLOAD_FAILED", message: "Unable to serve the requested file." });
   });
 });
 
