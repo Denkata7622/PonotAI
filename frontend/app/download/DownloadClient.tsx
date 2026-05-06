@@ -6,6 +6,7 @@ import { Card } from "@/src/components/ui/Card";
 import { Input } from "@/src/components/ui/Input";
 import { Button } from "@/src/components/ui/Button";
 import SongReviewModal from "@/components/SongReviewModal";
+import { apiFetch } from "@/src/lib/apiFetch";
 import type { SongMatch } from "@/features/recognition/api";
 
 type DownloadState = "idle" | "loading" | "success" | "error";
@@ -112,7 +113,7 @@ export default function DownloadClient() {
     setSuccessPath("");
 
     try {
-      const response = await fetch("/api/music/download", {
+      const response = await apiFetch("/api/music/download", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ songName: query }),
@@ -182,7 +183,7 @@ export default function DownloadClient() {
       const currentSong = normalized[i] as string;
       setProgress({ total: normalized.length, current: i + 1, status: `Downloading ${i + 1} of ${normalized.length}...`, running: true });
       try {
-        const response = await fetch("/api/music/download", {
+        const response = await apiFetch("/api/music/download", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ songName: currentSong }),
@@ -203,7 +204,7 @@ export default function DownloadClient() {
     if (success.length > 0) {
       setProgress({ total: normalized.length, current: normalized.length, status: "Creating ZIP archive...", running: true });
       try {
-        const zipResponse = await fetch("/api/music/zip-folder", {
+        const zipResponse = await apiFetch("/api/music/zip-folder", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ filePaths: success }),
@@ -241,7 +242,7 @@ export default function DownloadClient() {
   const progressPercent = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-10">
+    <section className="mx-auto w-full max-w-2xl px-4 py-10">
       <Card className="space-y-5 rounded-2xl p-6">
         <div>
           <h1 className="text-2xl font-semibold text-text-primary">Music Downloader</h1>
@@ -286,6 +287,6 @@ export default function DownloadClient() {
         {state === "error" && (<div className="rounded-xl border border-danger bg-surface-raised px-4 py-3 text-sm text-danger">{errorMessage}</div>)}
       </Card>
       {showReviewModal ? <SongReviewModal songs={importedSongs.map(toSongMatch)} onCancel={() => { setShowReviewModal(false); resetBulkResults(); }} onConfirm={startBulkDownload} /> : null}
-    </main>
+    </section>
   );
 }
