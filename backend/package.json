@@ -38,8 +38,7 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^20.17.24",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.2",
-    "@types/archiver": "^6.0.3"
+    "typescript": "^5.8.2"
   },
   "overrides": {
     "music-metadata": {
