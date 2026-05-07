@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Card } from "@/src/components/ui/Card";
 import { Input } from "@/src/components/ui/Input";
 import { Button } from "@/src/components/ui/Button";
@@ -11,7 +10,7 @@ import type { SongMatch } from "@/features/recognition/api";
 
 type DownloadState = "idle" | "loading" | "success" | "error";
 
-type DownloadPayload = { filePath?: string; message?: string; error?: string };
+type DownloadPayload = { filePath?: string; message?: string; error?: string; details?: string; code?: string };
 type ZipPayload = { zipUrl?: string; message?: string; missingFiles?: string[] };
 
 type ProgressState = {
@@ -70,18 +69,14 @@ function toSongMatch(query: string, index: number): SongMatch {
 }
 
 export default function DownloadClient() {
-  const searchParams = useSearchParams();
-  const prefillQuery = useMemo(() => searchParams.get("query")?.trim() ?? "", [searchParams]);
-  const autoTriggeredRef = useRef(false);
-
-  const [songName, setSongName] = useState(prefillQuery);
+  const [songName, setSongName] = useState("");
   const [state, setState] = useState<DownloadState>("idle");
   const [successPath, setSuccessPath] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [importedSongs, setImportedSongs] = useState<string[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [progress, setProgress] = useState<ProgressState>({ total: 0, current: 0, status: "", running: false });
-  const [summary, setSummary] = useState<{ success: string[]; failed: string[] } | null>(null);
+  const [summary, setSummary] = useState<{ success: string[]; failed: Array<{ song: string; reason: string }> } | null>(null);
   const [zipUrl, setZipUrl] = useState("");
 
   function resetProgress() {
@@ -95,8 +90,9 @@ export default function DownloadClient() {
   }
 
   useEffect(() => {
-    setSongName(prefillQuery);
-  }, [prefillQuery]);
+    const query = new URLSearchParams(window.location.search).get("query")?.trim() ?? "";
+    setSongName(query);
+  }, []);
 
   async function runDownload(nameOverride?: string) {
     const query = (nameOverride ?? songName).trim();
@@ -123,7 +119,7 @@ export default function DownloadClient() {
 
       if (!response.ok) {
         setState("error");
-        setErrorMessage(payload.message || payload.error || "Download failed. Please try again.");
+        setErrorMessage(payload.details || payload.message || payload.error || "Download failed. Please try again.");
         return;
       }
 
@@ -177,7 +173,7 @@ export default function DownloadClient() {
     setState("loading");
     resetBulkResults();
     const success: string[] = [];
-    const failed: string[] = [];
+    const failed: Array<{ song: string; reason: string }> = [];
 
     for (let i = 0; i < normalized.length; i += 1) {
       const currentSong = normalized[i] as string;
@@ -191,12 +187,12 @@ export default function DownloadClient() {
         const payload = (await response.json().catch(() => ({}))) as DownloadPayload;
         const filePath = typeof payload.filePath === "string" ? payload.filePath : "";
         if (!response.ok || !filePath) {
-          failed.push(currentSong);
+          failed.push({ song: currentSong, reason: payload.details || payload.message || payload.error || payload.code || "Download failed." });
           continue;
         }
         success.push(filePath);
       } catch {
-        failed.push(currentSong);
+        failed.push({ song: currentSong, reason: "Network error while contacting downloader service." });
       }
     }
 
@@ -229,15 +225,9 @@ export default function DownloadClient() {
       setErrorMessage("");
     } else {
       setState("error");
-      setErrorMessage(zipError || "All downloads failed.");
+      setErrorMessage(zipError || (failed[0]?.reason ?? "All downloads failed."));
     }
   }
-
-  useEffect(() => {
-    if (!prefillQuery || autoTriggeredRef.current) return;
-    autoTriggeredRef.current = true;
-    void runDownload(prefillQuery);
-  }, [prefillQuery]);
 
   const progressPercent = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
 
@@ -281,7 +271,18 @@ export default function DownloadClient() {
 
         {zipUrl ? <a className="inline-flex rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white" href={zipUrl}>Download ZIP</a> : null}
 
-        {summary ? <div className="rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm"><p>Bulk download complete.</p><p>Success: {summary.success.length}</p><p>Failed: {summary.failed.length}</p></div> : null}
+        {summary ? (
+          <div className="rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm">
+            <p>Bulk download complete.</p>
+            <p>Success: {summary.success.length}</p>
+            <p>Failed: {summary.failed.length}</p>
+            {summary.failed.length > 0 ? (
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-text-muted">
+                {summary.failed.map((item) => <li key={`${item.song}-${item.reason}`}>{item.song}: {item.reason}</li>)}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
 
         {state === "success" && (<div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">Download completed. File: {successPath}</div>)}
         {state === "error" && (<div className="rounded-xl border border-danger bg-surface-raised px-4 py-3 text-sm text-danger">{errorMessage}</div>)}

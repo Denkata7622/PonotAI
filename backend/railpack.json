@@ -4,6 +4,18 @@
   "packages": {
     "python": "3"
   },
+  "install": {
+    "commands": [
+      "npm ci"
+    ]
+  },
+  "build": {
+    "commands": [
+      "python3 -m pip install --upgrade pip",
+      "python3 -m pip install -r requirements.txt",
+      "npm run build"
+    ]
+  },
   "buildAptPackages": ["ffmpeg"],
   "deploy": {
     "aptPackages": ["ffmpeg"]
