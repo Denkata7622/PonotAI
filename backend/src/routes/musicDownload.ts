@@ -23,6 +23,16 @@ const downloadsDir = path.join(backendRoot, "data", "downloads");
 const pythonPackagesDir = path.join(backendRoot, ".python_packages");
 const pythonYtDlpDir = path.join(pythonPackagesDir, "yt_dlp");
 
+const isServerDownloaderEnabled = (): boolean => String(process.env.ENABLE_SERVER_DOWNLOADER || "").toLowerCase() === "true";
+
+function sendDisabledResponse(res: import("express").Response): void {
+  res.status(410).json({
+    code: "SERVER_DOWNLOADER_DISABLED",
+    message: "Server-side downloading is disabled. Export the local downloader package instead.",
+  });
+}
+
+
 function buildPythonEnv(): NodeJS.ProcessEnv {
   return {
     ...process.env,
@@ -115,6 +125,10 @@ async function cleanupOldZipFiles(): Promise<void> {
 }
 
 musicDownloadRouter.post("/download", (req, res) => {
+  if (!isServerDownloaderEnabled()) {
+    sendDisabledResponse(res);
+    return;
+  }
   const songNameRaw = typeof req.body?.songName === "string" ? req.body.songName : "";
   const songName = songNameRaw.replace(/\u0000/g, "").trim();
 
@@ -276,7 +290,9 @@ musicDownloadRouter.get("/downloader-health", async (_req, res) => {
     && pythonPackagesProbe.ok
     && pythonPackagesHasYtDlpProbe.ok;
 
-  res.status(ok ? 200 : 503).json({
+  const serverDownloaderEnabled = isServerDownloaderEnabled();
+
+  res.status(serverDownloaderEnabled ? (ok ? 200 : 503) : 200).json({
     ok,
     python: pythonProbe.ok,
     ytDlp: ytDlpProbe.ok,
@@ -285,10 +301,15 @@ musicDownloadRouter.get("/downloader-health", async (_req, res) => {
     pythonPackages: pythonPackagesProbe.ok,
     pythonPackagesHasYtDlp: pythonPackagesHasYtDlpProbe.ok,
     details,
+    serverDownloaderEnabled,
   });
 });
 
 musicDownloadRouter.post("/zip-folder", async (req, res) => {
+  if (!isServerDownloaderEnabled()) {
+    sendDisabledResponse(res);
+    return;
+  }
   const filePaths: unknown[] | null = Array.isArray(req.body?.filePaths) ? (req.body.filePaths as unknown[]) : null;
   if (!filePaths) {
     res.status(400).json({ code: "FILE_PATHS_REQUIRED", message: "filePaths must be an array." });

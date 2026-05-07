@@ -28,7 +28,10 @@ const FALLBACK_COVER = "/album-placeholder.svg";
 function normalizeUrl(input: unknown): string | null {
   if (typeof input !== "string") return null;
   const trimmed = input.trim();
-  return trimmed ? trimmed : null;
+  if (!trimmed) return null;
+  if (trimmed.startsWith("/")) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return null;
 }
 
 function normalizeCandidates(song: SongMatch): { selectedCoverUrl?: string; coverCandidates: CoverCandidate[] } {
@@ -108,7 +111,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
 
   const selectedCount = editableSongs.filter((s) => s.selected).length;
   const currentSong = editableSongs.find((song) => song.selected) ?? editableSongs[0];
-  const currentSongHasCover = Boolean(currentSong?.selectedCoverUrl);
+  const currentSongHasCover = Boolean(currentSong?.selectedCoverUrl && normalizeUrl(currentSong.selectedCoverUrl));
 
   function updateSong(reviewId: string, updater: (song: EditableSong) => EditableSong) {
     setEditableSongs((prev) => prev.map((song) => (song.reviewId === reviewId ? updater(song) : song)));
@@ -132,7 +135,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
       setInlineMessage("Choose a cover first.");
       return;
     }
-    const selectedCoverUrl = currentSong.selectedCoverUrl;
+    const selectedCoverUrl = currentSong.selectedCoverUrl.trim();
     setEditableSongs((prev) => prev.map((song) => {
       const exists = song.coverCandidates.some((candidate) => candidate.url === selectedCoverUrl);
       return {
