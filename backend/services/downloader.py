@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -59,6 +60,10 @@ def run(song_name: str, output_dir: Path) -> dict:
         "-o",
         str(output_template),
     ]
+
+    node_path = shutil.which("node")
+    if node_path:
+        cmd.extend(["--js-runtimes", f"node:{node_path}"])
 
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:

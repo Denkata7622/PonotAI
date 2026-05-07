@@ -67,13 +67,22 @@ function toSongMatch(query: string, index: number): SongMatch {
     genre: "",
     releaseYear: null,
     platformLinks: {},
-    albumArtUrl: "https://picsum.photos/seed/recognized/120",
+    albumArtUrl: "/album-placeholder.svg",
     confidence: 1,
     durationSec: 0,
     youtubeVideoId: `import-${index}`,
   };
 }
 
+
+function classifyDownloadFailure(payload: DownloadPayload): { category: string; message: string; details: string } {
+  const code = (payload.code || "").toUpperCase();
+  const details = (payload.details || payload.message || payload.error || "Download failed.").trim();
+  if (code === "YOUTUBE_BOT_CHECK_REQUIRED") return { category: code, message: "YouTube blocked the downloader and requested sign-in/bot verification.", details };
+  if (code === "YTDLP_JS_RUNTIME_MISSING") return { category: code, message: "The downloader is missing a supported JavaScript runtime for YouTube extraction.", details };
+  if (code === "YTDLP_EXTRACTION_FAILED") return { category: code, message: "yt-dlp could not extract this track.", details };
+  return { category: code || "DOWNLOAD_FAILED", message: details, details };
+}
 export default function DownloadClient() {
   const [songName, setSongName] = useState("");
   const [state, setState] = useState<DownloadState>("idle");
@@ -82,7 +91,8 @@ export default function DownloadClient() {
   const [importedSongs, setImportedSongs] = useState<string[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [progress, setProgress] = useState<ProgressState>({ total: 0, current: 0, status: "", running: false });
-  const [summary, setSummary] = useState<{ success: string[]; failed: Array<{ song: string; reason: string }> } | null>(null);
+  type BulkFailure = { song: string; reason: string; code?: string; details?: string };
+  const [summary, setSummary] = useState<{ success: string[]; failed: BulkFailure[]; stoppedReason?: string } | null>(null);
   const [zipUrl, setZipUrl] = useState("");
 
   function resetProgress() {
@@ -204,7 +214,9 @@ export default function DownloadClient() {
     }
 
     const success: string[] = [];
-    const failed: Array<{ song: string; reason: string }> = [];
+    const failed: BulkFailure[] = [];
+    let stoppedReason = "";
+    const failureCategoryCounts = new Map<string, { count: number; message: string }>();
 
     for (let i = 0; i < normalized.length; i += 1) {
       const currentSong = normalized[i] as string;
@@ -218,12 +230,19 @@ export default function DownloadClient() {
         const payload = (await response.json().catch(() => ({}))) as DownloadPayload;
         const filePath = typeof payload.filePath === "string" ? payload.filePath : "";
         if (!response.ok || !filePath) {
-          failed.push({ song: currentSong, reason: payload.details || payload.message || payload.error || payload.code || "Download failed." });
+          const classified = classifyDownloadFailure(payload);
+          failed.push({ song: currentSong, reason: classified.message, code: classified.category, details: classified.details });
+          if (classified.category === "YOUTUBE_BOT_CHECK_REQUIRED") {
+            stoppedReason = "Stopped after YouTube bot verification. No more songs were attempted.";
+            break;
+          }
+          const current = failureCategoryCounts.get(classified.category) ?? { count: 0, message: classified.message };
+          failureCategoryCounts.set(classified.category, { count: current.count + 1, message: current.message });
           continue;
         }
         success.push(filePath);
       } catch {
-        failed.push({ song: currentSong, reason: "Network error while contacting downloader service." });
+        failed.push({ song: currentSong, reason: "Network error while contacting downloader service.", code: "NETWORK_ERROR" });
       }
     }
 
@@ -247,8 +266,10 @@ export default function DownloadClient() {
       }
     }
 
-    setSummary({ success, failed });
+    setSummary({ success, failed, stoppedReason });
     resetProgress();
+
+    const summarizedFailures = Array.from(failureCategoryCounts.values()).filter((item) => item.count > 1);
 
     if (success.length > 0 && !zipError) {
       setState("success");
@@ -256,7 +277,8 @@ export default function DownloadClient() {
       setErrorMessage("");
     } else {
       setState("error");
-      setErrorMessage(zipError || (failed[0]?.reason ?? "All downloads failed."));
+      const repeated = summarizedFailures[0];
+      setErrorMessage(zipError || (repeated ? `${repeated.message} ${repeated.count} songs failed for this reason.` : (failed[0]?.reason ?? "All downloads failed.")));
     }
   }
 
@@ -306,12 +328,8 @@ export default function DownloadClient() {
           <div className="rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm">
             <p>Bulk download complete.</p>
             <p>Success: {summary.success.length}</p>
-            <p>Failed: {summary.failed.length}</p>
-            {summary.failed.length > 0 ? (
-              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-text-muted">
-                {summary.failed.map((item) => <li key={`${item.song}-${item.reason}`}>{item.song}: {item.reason}</li>)}
-              </ul>
-            ) : null}
+            <p>Failed: {summary.failed.length}</p>{summary.stoppedReason ? <p className="text-xs text-amber-300">{summary.stoppedReason}</p> : null}
+            {summary.failed.length > 0 ? (<details className="mt-2"><summary className="cursor-pointer text-xs text-text-muted">View per-song failures</summary><ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-text-muted">{summary.failed.map((item) => <li key={`${item.song}-${item.reason}`}>{item.song}: {item.reason}</li>)}</ul></details>) : null}
           </div>
         ) : null}
 

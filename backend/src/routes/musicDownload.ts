@@ -65,6 +65,20 @@ function safeTrimmedDetails(input: unknown): string {
   return text.slice(0, 1200);
 }
 
+
+function classifyDownloadError(rawDetails: string): { code: string; message: string } {
+  const details = rawDetails.toLowerCase();
+  if (details.includes("sign in to confirm you’re not a bot") || details.includes("sign in to confirm you're not a bot")) {
+    return { code: "YOUTUBE_BOT_CHECK_REQUIRED", message: "YouTube blocked this request and asked for sign-in/bot verification." };
+  }
+  if (details.includes("no supported javascript runtime could be found")) {
+    return { code: "YTDLP_JS_RUNTIME_MISSING", message: "The downloader is missing a supported JavaScript runtime required by yt-dlp." };
+  }
+  if (details.includes("error: [youtube]") || details.includes("yt-dlp")) {
+    return { code: "YTDLP_EXTRACTION_FAILED", message: "yt-dlp could not extract this track." };
+  }
+  return { code: "DOWNLOAD_FAILED", message: "Downloader failed." };
+}
 async function assertPythonDependenciesInstalled(): Promise<{ ok: boolean; details?: string }> {
   try {
     await fsp.access(pythonYtDlpDir, fs.constants.R_OK);
@@ -192,9 +206,10 @@ musicDownloadRouter.post("/download", (req, res) => {
             || stdout
             || "Download failed.",
         );
+        const classified = classifyDownloadError(details);
         res.status(500).json({
-          code: "DOWNLOAD_FAILED",
-          message: "Downloader failed.",
+          code: classified.code,
+          message: classified.message,
           details,
         });
         return;
