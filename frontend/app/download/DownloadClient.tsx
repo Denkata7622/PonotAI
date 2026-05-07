@@ -185,13 +185,18 @@ export default function DownloadClient() {
   const songsTxt = useMemo(() => normalizeSongsForText(exportSongs).join("\n"), [exportSongs]);
   const songsJson = useMemo(() => JSON.stringify(exportSongs.map((song) => ({
     songName: song.songName,
-    title: song.songName,
+    title: (song as { title?: string }).title ?? song.songName,
     artist: song.artist,
+    album: song.album,
     albumArtUrl: song.albumArtUrl,
     coverUrl: song.coverUrl ?? song.albumArtUrl,
+    coverCandidates: (song as { coverCandidates?: unknown }).coverCandidates ?? [],
     selected: song.selected !== false,
     confidence: song.confidence,
     source: song.source,
+    rawText: (song as { rawText?: unknown }).rawText,
+    sourceImageIds: (song as { sourceImageIds?: unknown }).sourceImageIds,
+    youtubeVideoId: song.youtubeVideoId,
   })), null, 2), [exportSongs]);
 
   return (
