@@ -9,6 +9,13 @@ import sys
 import time
 from pathlib import Path
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+VENDOR_DIR = BACKEND_ROOT / ".python_packages"
+
+if VENDOR_DIR.exists():
+    sys.path.insert(0, str(VENDOR_DIR))
+    os.environ["PYTHONPATH"] = str(VENDOR_DIR) + os.pathsep + os.environ.get("PYTHONPATH", "")
+
 
 def sanitize_filename(name: str) -> str:
     cleaned = re.sub(r"[^a-zA-Z0-9._ -]", "", name).strip()

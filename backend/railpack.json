@@ -6,13 +6,14 @@
   },
   "install": {
     "commands": [
-      "npm ci"
+      "npm ci",
+      "python3 -m pip install --upgrade pip",
+      "rm -rf .python_packages",
+      "python3 -m pip install --target .python_packages -r requirements.txt"
     ]
   },
   "build": {
     "commands": [
-      "python3 -m pip install --upgrade pip",
-      "python3 -m pip install -r requirements.txt",
       "npm run build"
     ]
   },

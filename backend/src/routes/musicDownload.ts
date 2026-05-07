@@ -20,6 +20,17 @@ const ZIP_RETENTION_MS = 24 * 60 * 60 * 1000; // ZIP files are temporary artifac
 const backendRoot = process.cwd();
 const scriptPath = path.join(backendRoot, "services", "downloader.py");
 const downloadsDir = path.join(backendRoot, "data", "downloads");
+const pythonPackagesDir = path.join(backendRoot, ".python_packages");
+
+function buildPythonEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PYTHONPATH: [
+      pythonPackagesDir,
+      process.env.PYTHONPATH,
+    ].filter(Boolean).join(path.delimiter),
+  };
+}
 
 function appendWithCap(current: string, chunk: Buffer | string, cap = MAX_CAPTURE_BYTES): string {
   const next = current + chunk.toString();
@@ -107,7 +118,7 @@ musicDownloadRouter.post("/download", (req, res) => {
     const py = spawn("python3", [scriptPath, songName, "--output-dir", outputDir], {
       cwd: backendRoot,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env },
+    env: buildPythonEnv(),
   });
 
   let stdout = "";
@@ -186,7 +197,7 @@ musicDownloadRouter.post("/download", (req, res) => {
 musicDownloadRouter.get("/downloader-health", async (_req, res) => {
   const details: string[] = [];
   const checkCommand = async (cmd: string, args: string[]) => new Promise<{ ok: boolean; output: string }>((resolve) => {
-    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env } });
+    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], env: buildPythonEnv() });
     let out = "";
     let err = "";
     child.stdout.on("data", (chunk) => { out = appendWithCap(out, chunk); });
@@ -201,19 +212,24 @@ musicDownloadRouter.get("/downloader-health", async (_req, res) => {
   const downloaderScriptProbe = await fsp.access(scriptPath, fs.constants.R_OK)
     .then(() => ({ ok: true, output: "" }))
     .catch(() => ({ ok: false, output: `Expected downloader.py at ${safeTrimmedDetails(scriptPath)}` }));
+  const pythonPackagesProbe = await fsp.access(pythonPackagesDir, fs.constants.R_OK)
+    .then(() => ({ ok: true, output: "" }))
+    .catch(() => ({ ok: false, output: `Expected vendored packages at ${safeTrimmedDetails(pythonPackagesDir)}` }));
 
   if (!pythonProbe.ok) details.push(`python: ${pythonProbe.output}`);
   if (!ytDlpProbe.ok) details.push(`yt-dlp: ${ytDlpProbe.output}`);
   if (!ffmpegProbe.ok) details.push(`ffmpeg: ${ffmpegProbe.output}`);
   if (!downloaderScriptProbe.ok) details.push(`downloaderScript: ${downloaderScriptProbe.output}`);
+  if (!pythonPackagesProbe.ok) details.push(`pythonPackages: ${pythonPackagesProbe.output}`);
 
-  const ok = pythonProbe.ok && ytDlpProbe.ok && ffmpegProbe.ok && downloaderScriptProbe.ok;
+  const ok = pythonProbe.ok && ytDlpProbe.ok && ffmpegProbe.ok && downloaderScriptProbe.ok && pythonPackagesProbe.ok;
   res.status(ok ? 200 : 503).json({
     ok,
     python: pythonProbe.ok,
     ytDlp: ytDlpProbe.ok,
     ffmpeg: ffmpegProbe.ok,
     downloaderScript: downloaderScriptProbe.ok,
+    pythonPackages: pythonPackagesProbe.ok,
     ...(details.length > 0 ? { details } : {}),
   });
 });
