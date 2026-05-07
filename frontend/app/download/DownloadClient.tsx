@@ -12,6 +12,12 @@ type DownloadState = "idle" | "loading" | "success" | "error";
 
 type DownloadPayload = { filePath?: string; message?: string; error?: string; details?: string; code?: string };
 type ZipPayload = { zipUrl?: string; message?: string; missingFiles?: string[] };
+type DownloaderHealthPayload = {
+  ok?: boolean;
+  ytDlp?: boolean;
+  pythonPackagesHasYtDlp?: boolean;
+  details?: string[];
+};
 
 type ProgressState = {
   total: number;
@@ -109,6 +115,15 @@ export default function DownloadClient() {
     setSuccessPath("");
 
     try {
+      const healthResponse = await apiFetch("/api/music/downloader-health");
+      const healthPayload = (await healthResponse.json().catch(() => ({}))) as DownloaderHealthPayload;
+      if (!healthResponse.ok || !healthPayload.ok) {
+        const details = Array.isArray(healthPayload.details) ? healthPayload.details.join(" | ") : "";
+        setState("error");
+        setErrorMessage(`Downloader is not ready: ytDlp=${Boolean(healthPayload.ytDlp)}, pythonPackagesHasYtDlp=${Boolean(healthPayload.pythonPackagesHasYtDlp)}.${details ? ` ${details}` : ""}`);
+        return;
+      }
+
       const response = await apiFetch("/api/music/download", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,6 +187,22 @@ export default function DownloadClient() {
     setShowReviewModal(false);
     setState("loading");
     resetBulkResults();
+
+    try {
+      const healthResponse = await apiFetch("/api/music/downloader-health");
+      const healthPayload = (await healthResponse.json().catch(() => ({}))) as DownloaderHealthPayload;
+      if (!healthResponse.ok || !healthPayload.ok) {
+        const details = Array.isArray(healthPayload.details) ? healthPayload.details.join(" | ") : "";
+        setState("error");
+        setErrorMessage(`Downloader is not ready: ytDlp=${Boolean(healthPayload.ytDlp)}, pythonPackagesHasYtDlp=${Boolean(healthPayload.pythonPackagesHasYtDlp)}.${details ? ` ${details}` : ""}`);
+        return;
+      }
+    } catch {
+      setState("error");
+      setErrorMessage("Downloader is not ready: failed to check downloader health.");
+      return;
+    }
+
     const success: string[] = [];
     const failed: Array<{ song: string; reason: string }> = [];
 

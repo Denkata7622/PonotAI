@@ -72,7 +72,7 @@ async function assertPythonDependenciesInstalled(): Promise<{ ok: boolean; detai
   } catch {
     return {
       ok: false,
-      details: `Expected yt_dlp at ${safeTrimmedDetails(pythonYtDlpDir)}. Check Railway install logs.`,
+      details: `Expected yt_dlp at ${safeTrimmedDetails(pythonYtDlpDir)}. Check Railway startup logs for python:deps.`,
     };
   }
 }
@@ -269,7 +269,7 @@ musicDownloadRouter.get("/downloader-health", async (_req, res) => {
     downloaderScript: downloaderScriptProbe.ok,
     pythonPackages: pythonPackagesProbe.ok,
     pythonPackagesHasYtDlp: pythonPackagesHasYtDlpProbe.ok,
-    ...(details.length > 0 ? { details } : {}),
+    details,
   });
 });
 
