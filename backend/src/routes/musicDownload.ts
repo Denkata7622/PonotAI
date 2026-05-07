@@ -196,23 +196,22 @@ musicDownloadRouter.get("/downloader-health", async (_req, res) => {
   });
 
   const pythonProbe = await checkCommand("python3", ["--version"]);
-  const ytImportProbe = await checkCommand("python3", ["-c", "import yt_dlp; print(yt_dlp.version.__version__)"]);
-  const ytCliProbe = ytImportProbe.ok ? { ok: true, output: "" } : await checkCommand("yt-dlp", ["--version"]);
+  const ytDlpProbe = await checkCommand("python3", ["-m", "yt_dlp", "--version"]);
   const ffmpegProbe = await checkCommand("ffmpeg", ["-version"]);
   const downloaderScriptProbe = await fsp.access(scriptPath, fs.constants.R_OK)
     .then(() => ({ ok: true, output: "" }))
     .catch(() => ({ ok: false, output: `Expected downloader.py at ${safeTrimmedDetails(scriptPath)}` }));
 
   if (!pythonProbe.ok) details.push(`python: ${pythonProbe.output}`);
-  if (!ytImportProbe.ok && !ytCliProbe.ok) details.push(`yt-dlp: ${ytImportProbe.output || ytCliProbe.output}`);
+  if (!ytDlpProbe.ok) details.push(`yt-dlp: ${ytDlpProbe.output}`);
   if (!ffmpegProbe.ok) details.push(`ffmpeg: ${ffmpegProbe.output}`);
   if (!downloaderScriptProbe.ok) details.push(`downloaderScript: ${downloaderScriptProbe.output}`);
 
-  const ok = pythonProbe.ok && (ytImportProbe.ok || ytCliProbe.ok) && ffmpegProbe.ok && downloaderScriptProbe.ok;
+  const ok = pythonProbe.ok && ytDlpProbe.ok && ffmpegProbe.ok && downloaderScriptProbe.ok;
   res.status(ok ? 200 : 503).json({
     ok,
     python: pythonProbe.ok,
-    ytDlp: ytImportProbe.ok || ytCliProbe.ok,
+    ytDlp: ytDlpProbe.ok,
     ffmpeg: ffmpegProbe.ok,
     downloaderScript: downloaderScriptProbe.ok,
     ...(details.length > 0 ? { details } : {}),
