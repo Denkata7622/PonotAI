@@ -17,8 +17,9 @@ const MAX_CAPTURE_BYTES = 256 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 8 * 60 * 1000;
 const ZIP_RETENTION_MS = 24 * 60 * 60 * 1000; // ZIP files are temporary artifacts and are cleaned after this retention window.
 
-const repoRoot = path.resolve(__dirname, "../../..");
-const downloadsDir = path.join(repoRoot, "data", "downloads");
+const backendRoot = process.cwd();
+const scriptPath = path.join(backendRoot, "services", "downloader.py");
+const downloadsDir = path.join(backendRoot, "data", "downloads");
 
 function appendWithCap(current: string, chunk: Buffer | string, cap = MAX_CAPTURE_BYTES): string {
   const next = current + chunk.toString();
@@ -53,6 +54,7 @@ function safeTrimmedDetails(input: unknown): string {
 }
 
 async function cleanupOldZipFiles(): Promise<void> {
+  await fsp.mkdir(downloadsDir, { recursive: true });
   try {
     const entries = await fsp.readdir(downloadsDir, { withFileTypes: true });
     const cutoff = Date.now() - ZIP_RETENTION_MS;
@@ -88,11 +90,22 @@ musicDownloadRouter.post("/download", (req, res) => {
     return;
   }
 
-  const scriptPath = path.join(repoRoot, "services", "downloader.py");
-  const outputDir = path.join(repoRoot, "data", "downloads");
+  const outputDir = path.join(backendRoot, "data", "downloads");
+  const run = async (): Promise<void> => {
+    await fsp.mkdir(downloadsDir, { recursive: true });
+    try {
+      await fsp.access(scriptPath, fs.constants.R_OK);
+    } catch {
+      res.status(500).json({
+        code: "DOWNLOADER_SCRIPT_NOT_FOUND",
+        message: "Downloader script was not found.",
+        details: `Expected downloader.py at ${safeTrimmedDetails(scriptPath)}`,
+      });
+      return;
+    }
 
-  const py = spawn("python3", [scriptPath, songName, "--output-dir", outputDir], {
-    cwd: repoRoot,
+    const py = spawn("python3", [scriptPath, songName, "--output-dir", outputDir], {
+      cwd: backendRoot,
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env },
   });
@@ -106,59 +119,67 @@ musicDownloadRouter.post("/download", (req, res) => {
     py.kill("SIGKILL");
   }, DOWNLOAD_TIMEOUT_MS);
 
-  py.stdout.on("data", (chunk) => {
-    stdout = appendWithCap(stdout, chunk);
-  });
+    py.stdout.on("data", (chunk) => {
+      stdout = appendWithCap(stdout, chunk);
+    });
 
-  py.stderr.on("data", (chunk) => {
-    stderr = appendWithCap(stderr, chunk);
-  });
+    py.stderr.on("data", (chunk) => {
+      stderr = appendWithCap(stderr, chunk);
+    });
 
-  py.on("error", (error) => {
-    if (finished) return;
-    finished = true;
-    clearTimeout(timer);
-    res.status(500).json({ code: "DOWNLOADER_PROCESS_ERROR", message: error.message });
-  });
+    py.on("error", (error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      res.status(500).json({ code: "DOWNLOADER_PROCESS_ERROR", message: error.message });
+    });
 
-  py.on("close", (code, signal) => {
-    if (finished) return;
-    finished = true;
-    clearTimeout(timer);
+    py.on("close", (code, signal) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
 
-    if (signal) {
-      const isTimeout = signal === "SIGKILL";
-      res.status(500).json({
-        code: isTimeout ? "DOWNLOAD_TIMEOUT" : "DOWNLOAD_ABORTED",
-        message: isTimeout ? "Download timed out." : `Downloader terminated by signal ${signal}.`,
-      });
-      return;
-    }
+      if (signal) {
+        const isTimeout = signal === "SIGKILL";
+        res.status(500).json({
+          code: isTimeout ? "DOWNLOAD_TIMEOUT" : "DOWNLOAD_ABORTED",
+          message: isTimeout ? "Download timed out." : `Downloader terminated by signal ${signal}.`,
+        });
+        return;
+      }
 
-    const payload = extractLastJsonLine(stdout);
+      const payload = extractLastJsonLine(stdout);
 
-    if (code !== 0) {
-      const details = safeTrimmedDetails(
-        (payload?.error as string | undefined)
-          || (payload?.message as string | undefined)
-          || stderr
-          || stdout
-          || "Download failed.",
-      );
-      res.status(500).json({
-        code: "DOWNLOAD_FAILED",
-        message: "Downloader failed.",
-        details,
-      });
-      return;
-    }
+      if (code !== 0) {
+        const details = safeTrimmedDetails(
+          (payload?.error as string | undefined)
+            || (payload?.message as string | undefined)
+            || stderr
+            || stdout
+            || "Download failed.",
+        );
+        res.status(500).json({
+          code: "DOWNLOAD_FAILED",
+          message: "Downloader failed.",
+          details,
+        });
+        return;
+      }
 
-    if (!payload) {
-      res.status(500).json({ code: "DOWNLOAD_PARSE_FAILED", message: "Downloader response could not be parsed." });
-      return;
-    }
+      if (!payload) {
+        res.status(500).json({ code: "DOWNLOAD_PARSE_FAILED", message: "Downloader response could not be parsed." });
+        return;
+      }
 
-    res.status(200).json(payload);
+      res.status(200).json(payload);
+    });
+  };
+
+  run().catch((error) => {
+    res.status(500).json({
+      code: "DOWNLOAD_PREP_FAILED",
+      message: error instanceof Error ? error.message : "Unable to prepare download.",
+    });
   });
 });
 
@@ -178,17 +199,22 @@ musicDownloadRouter.get("/downloader-health", async (_req, res) => {
   const ytImportProbe = await checkCommand("python3", ["-c", "import yt_dlp; print(yt_dlp.version.__version__)"]);
   const ytCliProbe = ytImportProbe.ok ? { ok: true, output: "" } : await checkCommand("yt-dlp", ["--version"]);
   const ffmpegProbe = await checkCommand("ffmpeg", ["-version"]);
+  const downloaderScriptProbe = await fsp.access(scriptPath, fs.constants.R_OK)
+    .then(() => ({ ok: true, output: "" }))
+    .catch(() => ({ ok: false, output: `Expected downloader.py at ${safeTrimmedDetails(scriptPath)}` }));
 
   if (!pythonProbe.ok) details.push(`python: ${pythonProbe.output}`);
   if (!ytImportProbe.ok && !ytCliProbe.ok) details.push(`yt-dlp: ${ytImportProbe.output || ytCliProbe.output}`);
   if (!ffmpegProbe.ok) details.push(`ffmpeg: ${ffmpegProbe.output}`);
+  if (!downloaderScriptProbe.ok) details.push(`downloaderScript: ${downloaderScriptProbe.output}`);
 
-  const ok = pythonProbe.ok && (ytImportProbe.ok || ytCliProbe.ok) && ffmpegProbe.ok;
+  const ok = pythonProbe.ok && (ytImportProbe.ok || ytCliProbe.ok) && ffmpegProbe.ok && downloaderScriptProbe.ok;
   res.status(ok ? 200 : 503).json({
     ok,
     python: pythonProbe.ok,
     ytDlp: ytImportProbe.ok || ytCliProbe.ok,
     ffmpeg: ffmpegProbe.ok,
+    downloaderScript: downloaderScriptProbe.ok,
     ...(details.length > 0 ? { details } : {}),
   });
 });
@@ -201,6 +227,7 @@ musicDownloadRouter.post("/zip-folder", async (req, res) => {
   }
 
   await cleanupOldZipFiles();
+  await fsp.mkdir(downloadsDir, { recursive: true });
 
   const safePaths = Array.from(new Set(filePaths
      .filter((item: unknown): item is string => typeof item === "string")
