@@ -16,7 +16,9 @@
     "prisma:generate": "npm exec -- prisma generate --schema prisma/schema.prisma",
     "prisma:migrate:deploy": "npm exec -- prisma migrate deploy --schema prisma/schema.prisma",
     "prebuild": "npm run prisma:generate",
-    "pretest": "npm run prisma:generate"
+    "pretest": "npm run prisma:generate",
+    "python:deps": "python3 -m pip install --upgrade pip && rm -rf .python_packages && python3 -m pip install --target .python_packages -r requirements.txt",
+    "postinstall": "npm run python:deps"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

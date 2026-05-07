@@ -21,6 +21,7 @@ const backendRoot = process.cwd();
 const scriptPath = path.join(backendRoot, "services", "downloader.py");
 const downloadsDir = path.join(backendRoot, "data", "downloads");
 const pythonPackagesDir = path.join(backendRoot, ".python_packages");
+const pythonYtDlpDir = path.join(pythonPackagesDir, "yt_dlp");
 
 function buildPythonEnv(): NodeJS.ProcessEnv {
   return {
@@ -62,6 +63,18 @@ function sanitizeDownloadPath(rawPath: string): string | null {
 function safeTrimmedDetails(input: unknown): string {
   const text = String(input ?? "").replace(/\u0000/g, "").trim();
   return text.slice(0, 1200);
+}
+
+async function assertPythonDependenciesInstalled(): Promise<{ ok: boolean; details?: string }> {
+  try {
+    await fsp.access(pythonYtDlpDir, fs.constants.R_OK);
+    return { ok: true };
+  } catch {
+    return {
+      ok: false,
+      details: `Expected yt_dlp at ${safeTrimmedDetails(pythonYtDlpDir)}. Check Railway install logs.`,
+    };
+  }
 }
 
 async function cleanupOldZipFiles(): Promise<void> {
@@ -115,11 +128,21 @@ musicDownloadRouter.post("/download", (req, res) => {
       return;
     }
 
+    const dependencyCheck = await assertPythonDependenciesInstalled();
+    if (!dependencyCheck.ok) {
+      res.status(500).json({
+        code: "PYTHON_DEPENDENCIES_MISSING",
+        message: "Python dependencies are not installed.",
+        details: dependencyCheck.details,
+      });
+      return;
+    }
+
     const py = spawn("python3", [scriptPath, songName, "--output-dir", outputDir], {
       cwd: backendRoot,
-    stdio: ["ignore", "pipe", "pipe"],
-    env: buildPythonEnv(),
-  });
+      stdio: ["ignore", "pipe", "pipe"],
+      env: buildPythonEnv(),
+    });
 
   let stdout = "";
   let stderr = "";
@@ -215,14 +238,29 @@ musicDownloadRouter.get("/downloader-health", async (_req, res) => {
   const pythonPackagesProbe = await fsp.access(pythonPackagesDir, fs.constants.R_OK)
     .then(() => ({ ok: true, output: "" }))
     .catch(() => ({ ok: false, output: `Expected vendored packages at ${safeTrimmedDetails(pythonPackagesDir)}` }));
+  const pythonPackagesHasYtDlpProbe = await fsp.access(pythonYtDlpDir, fs.constants.R_OK)
+    .then(() => ({ ok: true, output: "" }))
+    .catch(() => ({ ok: false, output: `Expected yt_dlp at ${safeTrimmedDetails(pythonYtDlpDir)}` }));
 
   if (!pythonProbe.ok) details.push(`python: ${pythonProbe.output}`);
-  if (!ytDlpProbe.ok) details.push(`yt-dlp: ${ytDlpProbe.output}`);
+  if (!ytDlpProbe.ok) {
+    details.push(`yt-dlp: ${ytDlpProbe.output}`);
+    details.push(`yt-dlp-expected-path: ${safeTrimmedDetails(pythonYtDlpDir)}`);
+    details.push(`pythonPackagesExists: ${pythonPackagesProbe.ok}`);
+    details.push(`pythonPackagesHasYtDlp: ${pythonPackagesHasYtDlpProbe.ok}`);
+  }
   if (!ffmpegProbe.ok) details.push(`ffmpeg: ${ffmpegProbe.output}`);
   if (!downloaderScriptProbe.ok) details.push(`downloaderScript: ${downloaderScriptProbe.output}`);
   if (!pythonPackagesProbe.ok) details.push(`pythonPackages: ${pythonPackagesProbe.output}`);
+  if (!pythonPackagesHasYtDlpProbe.ok) details.push(`pythonPackagesHasYtDlp: ${pythonPackagesHasYtDlpProbe.output}`);
 
-  const ok = pythonProbe.ok && ytDlpProbe.ok && ffmpegProbe.ok && downloaderScriptProbe.ok && pythonPackagesProbe.ok;
+  const ok = pythonProbe.ok
+    && ytDlpProbe.ok
+    && ffmpegProbe.ok
+    && downloaderScriptProbe.ok
+    && pythonPackagesProbe.ok
+    && pythonPackagesHasYtDlpProbe.ok;
+
   res.status(ok ? 200 : 503).json({
     ok,
     python: pythonProbe.ok,
@@ -230,6 +268,7 @@ musicDownloadRouter.get("/downloader-health", async (_req, res) => {
     ffmpeg: ffmpegProbe.ok,
     downloaderScript: downloaderScriptProbe.ok,
     pythonPackages: pythonPackagesProbe.ok,
+    pythonPackagesHasYtDlp: pythonPackagesHasYtDlpProbe.ok,
     ...(details.length > 0 ? { details } : {}),
   });
 });

@@ -6,10 +6,7 @@
   },
   "install": {
     "commands": [
-      "npm ci",
-      "python3 -m pip install --upgrade pip",
-      "rm -rf .python_packages",
-      "python3 -m pip install --target .python_packages -r requirements.txt"
+      "npm ci"
     ]
   },
   "build": {
@@ -17,8 +14,12 @@
       "npm run build"
     ]
   },
-  "buildAptPackages": ["ffmpeg"],
+  "buildAptPackages": [
+    "ffmpeg"
+  ],
   "deploy": {
-    "aptPackages": ["ffmpeg"]
+    "aptPackages": [
+      "ffmpeg"
+    ]
   }
 }
