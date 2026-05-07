@@ -1,13 +1,6 @@
 import { Router } from "express";
 import path from "node:path";
 import { spawn } from "node:child_process";
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const archiver = require("archiver") as (format: "zip", options: { zlib: { level: number } }) => {
-  on: (event: string, cb: (error: Error) => void) => void;
-  pipe: (stream: NodeJS.WritableStream) => void;
-  file: (filename: string, data: { name: string }) => void;
-  finalize: () => Promise<void>;
-};
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 
@@ -345,6 +338,13 @@ musicDownloadRouter.post("/zip-folder", async (req, res) => {
   const zipPath = path.join(downloadsDir, zipName);
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const archiver = require("archiver") as (format: "zip", options: { zlib: { level: number } }) => {
+      on: (event: string, cb: (error: Error) => void) => void;
+      pipe: (stream: NodeJS.WritableStream) => void;
+      file: (filename: string, data: { name: string }) => void;
+      finalize: () => Promise<void>;
+    };
     await new Promise<void>((resolve, reject) => {
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });

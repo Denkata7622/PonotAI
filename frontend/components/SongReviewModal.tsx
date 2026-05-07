@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Modal from "../src/components/ui/Modal";
 import type { SongMatch } from "../features/recognition/api";
 import { useLanguage } from "../lib/LanguageContext";
@@ -24,22 +24,47 @@ type EditableSong = SongMatch & {
 };
 
 const FALLBACK_COVER = "/album-placeholder.svg";
+const BG_NO_MISSING = "Всички песни вече имат корици.";
 
 function normalizeUrl(input: unknown): string | null {
   if (typeof input !== "string") return null;
   const trimmed = input.trim();
   if (!trimmed) return null;
-  if (trimmed.startsWith("/")) return trimmed;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("/") || /^https?:\/\//i.test(trimmed)) return trimmed;
   return null;
+}
+
+function normalizeLabel(input: unknown): string | undefined {
+  return typeof input === "string" && input.trim() ? input.trim() : undefined;
+}
+
+function dedupeCoverCandidates(candidates: CoverCandidate[]): CoverCandidate[] {
+  const seen = new Set<string>();
+  const deduped: CoverCandidate[] = [];
+  for (const candidate of candidates) {
+    const normalized = normalizeUrl(candidate.url);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    deduped.push({ ...candidate, url: normalized });
+  }
+  return deduped;
+}
+
+function getSongCover(song: EditableSong): string | undefined {
+  return normalizeUrl(song.selectedCoverUrl) ?? normalizeUrl(song.coverUrl) ?? normalizeUrl(song.albumArtUrl) ?? undefined;
+}
+
+function setSongCover(song: EditableSong, coverUrl: string): EditableSong {
+  const normalized = normalizeUrl(coverUrl);
+  if (!normalized) return { ...song, selectedCoverUrl: undefined, albumArtUrl: "", coverUrl: "" };
+  const merged = dedupeCoverCandidates([{ url: normalized, source: "Selected" }, ...song.coverCandidates]);
+  return { ...song, selectedCoverUrl: normalized, albumArtUrl: normalized, coverUrl: normalized, coverCandidates: merged };
 }
 
 function normalizeCandidates(song: SongMatch): { selectedCoverUrl?: string; coverCandidates: CoverCandidate[] } {
   const rawSong = song as SongMatch & { coverUrl?: unknown; coverCandidates?: unknown };
-  const selectedCoverUrl = normalizeUrl(rawSong.coverUrl) ?? normalizeUrl(song.albumArtUrl) ?? undefined;
-  const rawCandidates = Array.isArray(rawSong.coverCandidates) ? rawSong.coverCandidates : [];
   const options: CoverCandidate[] = [];
-
+  const rawCandidates = Array.isArray(rawSong.coverCandidates) ? rawSong.coverCandidates : [];
   for (const entry of rawCandidates) {
     if (typeof entry === "string") {
       const url = normalizeUrl(entry);
@@ -49,24 +74,11 @@ function normalizeCandidates(song: SongMatch): { selectedCoverUrl?: string; cove
     if (entry && typeof entry === "object") {
       const candidate = entry as { url?: unknown; imageUrl?: unknown; coverUrl?: unknown; source?: unknown; label?: unknown };
       const url = normalizeUrl(candidate.url) ?? normalizeUrl(candidate.imageUrl) ?? normalizeUrl(candidate.coverUrl);
-      if (url) {
-        const source = normalizeUrl(candidate.source) ?? normalizeUrl(candidate.label) ?? undefined;
-        options.push({ url, source });
-      }
+      if (url) options.push({ url, source: normalizeLabel(candidate.source) ?? normalizeLabel(candidate.label) });
     }
   }
-
-  if (selectedCoverUrl) options.unshift({ url: selectedCoverUrl, source: "Selected" });
-
-  const deduped: CoverCandidate[] = [];
-  const seen = new Set<string>();
-  for (const option of options) {
-    if (seen.has(option.url)) continue;
-    seen.add(option.url);
-    deduped.push(option);
-  }
-
-  return { selectedCoverUrl, coverCandidates: deduped };
+  const selectedCoverUrl = normalizeUrl(rawSong.coverUrl) ?? normalizeUrl(song.albumArtUrl) ?? normalizeUrl(options[0]?.url) ?? undefined;
+  return { selectedCoverUrl, coverCandidates: dedupeCoverCandidates(selectedCoverUrl ? [{ url: selectedCoverUrl, source: "Selected" }, ...options] : options) };
 }
 
 type SongReviewModalProps = {
@@ -77,75 +89,42 @@ type SongReviewModalProps = {
 
 function CoverThumb({ url, alt }: { url: string; alt: string }) {
   const [failed, setFailed] = useState(false);
-  return failed ? (
-    <div className="flex h-full w-full items-center justify-center bg-surface-overlay text-[10px] text-text-muted">No image</div>
-  ) : (
-    <img src={url} alt={alt} className="h-full w-full object-cover" onError={() => setFailed(true)} />
-  );
+  return failed ? <div className="flex h-full w-full items-center justify-center bg-surface-overlay text-[10px] text-text-muted">No image</div> : <img src={url} alt={alt} className="h-full w-full object-cover" onError={() => setFailed(true)} />;
 }
 
 export default function SongReviewModal({ songs, onConfirm, onCancel }: SongReviewModalProps) {
   const apiBaseUrl = getApiBaseUrl();
   const [editableSongs, setEditableSongs] = useState<EditableSong[]>(() => songs.map((song, index) => {
     const { selectedCoverUrl, coverCandidates } = normalizeCandidates(song);
-    return {
-      ...song,
-      reviewId: `${song.youtubeVideoId || "song"}-${song.songName}-${song.artist}-${index}`,
-      selected: true,
-      selectedCoverUrl,
-      coverCandidates,
-      loadingCovers: false,
-    };
+    return { ...song, reviewId: `${song.youtubeVideoId || "song"}-${song.songName}-${song.artist}-${index}`, selected: true, selectedCoverUrl, coverCandidates, loadingCovers: false };
   }));
   const { language } = useLanguage();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customCoverUrl, setCustomCoverUrl] = useState("");
   const [inlineMessage, setInlineMessage] = useState("");
-
-  useEffect(() => {
-    editableSongs.forEach((song) => {
-      void loadCoverOptions(song.reviewId, false);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const [batchCoverLoading, setBatchCoverLoading] = useState(false);
 
   const selectedCount = editableSongs.filter((s) => s.selected).length;
   const currentSong = editableSongs.find((song) => song.selected) ?? editableSongs[0];
-  const currentSongHasCover = Boolean(currentSong?.selectedCoverUrl && normalizeUrl(currentSong.selectedCoverUrl));
+  const currentSongHasCover = Boolean(currentSong && getSongCover(currentSong));
 
   function updateSong(reviewId: string, updater: (song: EditableSong) => EditableSong) {
     setEditableSongs((prev) => prev.map((song) => (song.reviewId === reviewId ? updater(song) : song)));
   }
 
   function setSelectedCover(reviewId: string, coverUrl: string) {
-    const normalized = coverUrl.trim();
-    updateSong(reviewId, (song) => {
-      if (!normalized) {
-        return { ...song, selectedCoverUrl: undefined, albumArtUrl: "", coverUrl: "" };
-      }
-      const exists = song.coverCandidates.some((candidate) => candidate.url === normalized);
-      const coverCandidates = exists ? song.coverCandidates : [{ url: normalized, source: "Custom" }, ...song.coverCandidates];
-      return { ...song, selectedCoverUrl: normalized, albumArtUrl: normalized, coverUrl: normalized, coverCandidates };
-    });
+    updateSong(reviewId, (song) => setSongCover(song, coverUrl));
     setInlineMessage("");
   }
 
   function setCoverToAllSongs() {
-    if (!currentSong?.selectedCoverUrl) {
+    if (!currentSong) return;
+    const selectedCoverUrl = getSongCover(currentSong);
+    if (!selectedCoverUrl) {
       setInlineMessage("Choose a cover first.");
       return;
     }
-    const selectedCoverUrl = currentSong.selectedCoverUrl.trim();
-    setEditableSongs((prev) => prev.map((song) => {
-      const exists = song.coverCandidates.some((candidate) => candidate.url === selectedCoverUrl);
-      return {
-        ...song,
-        selectedCoverUrl,
-        albumArtUrl: selectedCoverUrl,
-        coverUrl: selectedCoverUrl,
-        coverCandidates: exists ? song.coverCandidates : [{ url: selectedCoverUrl, source: "Set for all" }, ...song.coverCandidates],
-      };
-    }));
+    setEditableSongs((prev) => prev.map((song) => setSongCover(song, selectedCoverUrl)));
     setInlineMessage("");
   }
 
@@ -154,39 +133,53 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
     if (!target) return;
     const title = target.editedSongName?.trim() || target.songName;
     const artist = target.editedArtist?.trim() || target.artist;
-
     updateSong(reviewId, (song) => ({ ...song, loadingCovers: true }));
     try {
-      const coverUrls = await lookupCoverArtUrls(apiBaseUrl, title, artist, {
-        exclude: useExclude ? target.coverCandidates.map((item) => item.url) : [],
-        limit: 8,
-      });
-      if (coverUrls.length === 0) return;
-
+      const coverUrls = await lookupCoverArtUrls(apiBaseUrl, title, artist, { exclude: useExclude ? target.coverCandidates.map((item) => item.url) : [], limit: 8 });
+      if (!coverUrls.length) return;
       updateSong(reviewId, (song) => {
-        const incoming = coverUrls.map((url, idx) => ({ url, source: `Candidate ${idx + 1}` }));
-        const merged = [...incoming, ...song.coverCandidates];
-        const deduped = merged.filter((item, index, arr) => arr.findIndex((x) => x.url === item.url) === index);
-        const selectedCoverUrl = song.selectedCoverUrl ?? deduped[0]?.url;
-        return { ...song, coverCandidates: deduped, selectedCoverUrl, albumArtUrl: selectedCoverUrl || "", coverUrl: selectedCoverUrl || "" };
+        const merged = dedupeCoverCandidates([...song.coverCandidates, ...coverUrls.map((url, idx) => ({ url, source: `Candidate ${idx + 1}` }))]);
+        const next = { ...song, coverCandidates: merged };
+        return getSongCover(next) ? next : setSongCover(next, merged[0]?.url || "");
       });
-    } catch {
-      // noop
     } finally {
       updateSong(reviewId, (song) => ({ ...song, loadingCovers: false }));
     }
   }
 
+  async function findCoversForMissingSongs() {
+    const missing = editableSongs.filter((song) => !normalizeUrl(song.selectedCoverUrl) && !normalizeUrl(song.coverUrl) && !normalizeUrl(song.albumArtUrl));
+    if (!missing.length) {
+      setInlineMessage(BG_NO_MISSING);
+      return;
+    }
+    setBatchCoverLoading(true);
+    let found = 0;
+    for (let i = 0; i < missing.length; i += 1) {
+      const target = missing[i] as EditableSong;
+      setInlineMessage(`Търсене на корици ${i + 1}/${missing.length}...`);
+      try {
+        const title = target.editedSongName?.trim() || target.songName;
+        const artist = target.editedArtist?.trim() || target.artist;
+        const coverUrls = await lookupCoverArtUrls(apiBaseUrl, title, artist, { exclude: target.coverCandidates.map((item) => item.url), limit: 8 });
+        if (!coverUrls.length) continue;
+        found += 1;
+        updateSong(target.reviewId, (song) => {
+          const merged = dedupeCoverCandidates([...song.coverCandidates, ...coverUrls.map((url, idx) => ({ url, source: `Candidate ${idx + 1}` }))]);
+          const next = { ...song, coverCandidates: merged };
+          return getSongCover(next) ? next : setSongCover(next, merged[0]?.url || "");
+        });
+      } catch {
+        // keep partial success
+      }
+    }
+    setBatchCoverLoading(false);
+    setInlineMessage(`Намерени корици за ${found} от ${missing.length} песни.`);
+  }
+
   async function handleConfirm() {
     if (isSubmitting) return;
-    const selected = editableSongs.filter((song) => song.selected).map((song) => ({
-      ...song,
-      songName: song.editedSongName?.trim() || song.songName,
-      artist: song.editedArtist?.trim() || song.artist,
-      albumArtUrl: song.selectedCoverUrl || "",
-      coverUrl: song.selectedCoverUrl,
-      coverCandidates: song.coverCandidates.map((candidate) => candidate.url),
-    }));
+    const selected = editableSongs.filter((song) => song.selected).map((song) => ({ ...song, albumArtUrl: getSongCover(song) || "", coverUrl: getSongCover(song), coverCandidates: song.coverCandidates.map((candidate) => candidate.url) }));
     setIsSubmitting(true);
     try { await onConfirm(selected); } finally { setIsSubmitting(false); }
   }
@@ -196,16 +189,17 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
   return <Modal isOpen onClose={onCancel} title={t("modal_review_title", language)} maxWidth="1024px" centerOnMobile panelClassName="overflow-hidden p-4 sm:p-6">
     <div className="flex h-full max-h-[min(78dvh,760px)] w-full max-w-5xl flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 sm:p-5">
       <p className="mb-2 shrink-0 text-sm text-text-muted">{t("modal_selected_count", language, { selected: selectedCount, total: editableSongs.length })}</p>
+      <div className="mb-3 flex gap-2"><Button variant="secondary" onClick={() => void findCoversForMissingSongs()} disabled={batchCoverLoading}>Намери корици за липсващите</Button></div>
       {currentSong ? <div className="mb-4 rounded-xl border border-border bg-surface-raised p-3">
         <p className="text-xs text-text-muted">Selected cover for</p><p className="text-sm font-medium">{chosenSongSummary}</p>
         <div className="mt-2 flex items-center gap-2">
-          <div className="h-14 w-14 overflow-hidden rounded-lg border border-border"><CoverThumb url={currentSong.selectedCoverUrl || FALLBACK_COVER} alt="Selected cover preview" /></div>
+          <div className="h-14 w-14 overflow-hidden rounded-lg border border-border"><CoverThumb url={getSongCover(currentSong) || FALLBACK_COVER} alt="Selected cover preview" /></div>
           <Button onClick={setCoverToAllSongs} disabled={!currentSongHasCover}>Set cover to all songs</Button>
           <Button variant="secondary" onClick={() => currentSong && setSelectedCover(currentSong.reviewId, "")}>Clear cover</Button>
         </div>
         <div className="mt-2 flex gap-2">
           <Input aria-label="Custom cover URL" value={customCoverUrl} onChange={(e) => setCustomCoverUrl(e.target.value)} placeholder="https://example.com/cover.jpg" />
-          <Button variant="secondary" onClick={() => { const candidate = customCoverUrl.trim(); if (!/^https?:\/\//i.test(candidate)) { setInlineMessage("Enter a valid http/https URL."); return; } if (currentSong) setSelectedCover(currentSong.reviewId, candidate); }}>Use custom cover</Button>
+          <Button variant="secondary" onClick={() => { const candidate = customCoverUrl.trim(); if (!/^https?:\/\//i.test(candidate)) { setInlineMessage("Enter a valid http/https URL."); return; } if (currentSong) setSelectedCover(currentSong.reviewId, candidate); }}>Use for this song</Button>
         </div>
         {inlineMessage ? <p className="mt-2 text-xs text-amber-300">{inlineMessage}</p> : null}
       </div> : null}

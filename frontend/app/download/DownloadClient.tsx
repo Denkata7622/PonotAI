@@ -34,39 +34,61 @@ function normalizeSongsForText(songs: ExportSong[]): string[] {
   return Array.from(deduped);
 }
 
-function parseSongList(raw: unknown): string[] {
+function parseImportedSongs(raw: unknown): SongMatch[] {
   const root = Array.isArray(raw)
     ? raw
     : (raw && typeof raw === "object" && Array.isArray((raw as { songs?: unknown }).songs)
       ? (raw as { songs: unknown[] }).songs
       : []);
-  const deduped = new Set<string>();
 
-  for (const entry of root) {
-    let normalized = "";
-    if (typeof entry === "string") normalized = entry;
-    else if (entry && typeof entry === "object") {
-      const item = entry as Record<string, unknown>;
-      if (item.selected === false) continue;
-      const title = typeof item.title === "string" ? item.title.trim() : "";
-      const artist = typeof item.artist === "string" ? item.artist.trim() : "";
-      const name = typeof item.name === "string" ? item.name.trim() : "";
-      const songName = typeof item.songName === "string" ? item.songName.trim() : "";
-      const rawText = typeof item.rawText === "string" ? item.rawText.trim() : "";
-      if (title && artist) normalized = `${artist} - ${title}`;
-      else if (songName && artist) normalized = `${artist} - ${songName}`;
-      else if (songName) normalized = songName;
-      else if (name) normalized = name;
-      else if (title) normalized = title;
-      else if (rawText) normalized = rawText;
+  const normalizedSongs: SongMatch[] = [];
+  for (let index = 0; index < root.length; index += 1) {
+    const entry = root[index];
+    if (typeof entry === "string") {
+      normalizedSongs.push(toSongMatch(entry, index));
+      continue;
     }
+    if (!entry || typeof entry !== "object") continue;
+    const item = entry as Record<string, unknown>;
+    if (item.selected === false) continue;
+    const songName = [item.songName, item.title, item.name, item.rawText].find((v) => typeof v === "string" && v.trim()) as string | undefined;
+    if (!songName) continue;
+    const candidates = Array.isArray(item.coverCandidates) ? item.coverCandidates : [];
+    const firstCandidate = candidates.find((candidate) => {
+      if (typeof candidate === "string") return candidate.trim().length > 0;
+      if (candidate && typeof candidate === "object") {
+        const c = candidate as Record<string, unknown>;
+        return typeof c.url === "string" || typeof c.coverUrl === "string" || typeof c.imageUrl === "string";
+      }
+      return false;
+    });
+    const firstCandidateUrl = typeof firstCandidate === "string"
+      ? firstCandidate
+      : (firstCandidate && typeof firstCandidate === "object"
+        ? (firstCandidate as Record<string, unknown>).url || (firstCandidate as Record<string, unknown>).coverUrl || (firstCandidate as Record<string, unknown>).imageUrl
+        : "");
+    const albumArtUrl = ((typeof item.coverUrl === "string" && item.coverUrl) || (typeof item.albumArtUrl === "string" && item.albumArtUrl) || (typeof firstCandidateUrl === "string" && firstCandidateUrl) || "").trim();
 
-    const cleaned = normalized.trim().replace(/\s+/g, " ");
-    if (!cleaned) continue;
-    deduped.add(cleaned);
+    normalizedSongs.push({
+      songName: songName.trim(),
+      artist: typeof item.artist === "string" ? item.artist.trim() : "",
+      album: typeof item.album === "string" ? item.album.trim() : "Unknown Album",
+      genre: typeof item.genre === "string" ? item.genre : "",
+      releaseYear: typeof item.releaseYear === "number" ? item.releaseYear : null,
+      platformLinks: typeof item.platformLinks === "object" && item.platformLinks ? item.platformLinks as SongMatch["platformLinks"] : {},
+      albumArtUrl,
+      confidence: typeof item.confidence === "number" ? item.confidence : 1,
+      durationSec: typeof item.durationSec === "number" ? item.durationSec : 0,
+      youtubeVideoId: typeof item.youtubeVideoId === "string" ? item.youtubeVideoId : `import-${index}`,
+      ...(albumArtUrl ? { coverUrl: albumArtUrl } : {}),
+      ...(Array.isArray(item.coverCandidates) ? { coverCandidates: item.coverCandidates } : {}),
+      ...(typeof item.rawText === "string" ? { rawText: item.rawText } : {}),
+      ...(Array.isArray(item.sourceImageIds) ? { sourceImageIds: item.sourceImageIds } : {}),
+      ...(item.source ? { source: item.source } : {}),
+      ...(item.selected !== undefined ? { selected: item.selected } : {}),
+    } as SongMatch);
   }
-
-  return Array.from(deduped);
+  return normalizedSongs;
 }
 
 function toSongMatch(query: string, index: number): SongMatch {
@@ -109,7 +131,7 @@ export default function DownloadClient() {
   const [songName, setSongName] = useState("");
   const [state, setState] = useState<DownloadState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
-  const [importedSongs, setImportedSongs] = useState<string[]>([]);
+  const [importedSongs, setImportedSongs] = useState<SongMatch[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [exportSongs, setExportSongs] = useState<ExportSong[]>([]);
 
@@ -125,7 +147,7 @@ export default function DownloadClient() {
     try {
       const text = await file.text();
       const parsed = JSON.parse(text) as unknown;
-      const songs = parseSongList(parsed);
+      const songs = parseImportedSongs(parsed);
       if (songs.length === 0) {
         setState("error");
         setErrorMessage("No valid songs were found in this JSON file.");
@@ -201,7 +223,7 @@ export default function DownloadClient() {
           <Button onClick={() => triggerDownload("README-local-download.md", buildReadmeContent(), "text/markdown;charset=utf-8")}>Export README</Button>
         </div> : null}
       </Card>
-      {showReviewModal ? <SongReviewModal songs={importedSongs.map(toSongMatch)} onCancel={() => setShowReviewModal(false)} onConfirm={handleConfirmSongs} /> : null}
+      {showReviewModal ? <SongReviewModal songs={importedSongs} onCancel={() => setShowReviewModal(false)} onConfirm={handleConfirmSongs} /> : null}
     </section>
   );
 }
