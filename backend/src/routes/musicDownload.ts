@@ -47,6 +47,11 @@ function sanitizeDownloadPath(rawPath: string): string | null {
   return resolved;
 }
 
+function safeTrimmedDetails(input: unknown): string {
+  const text = String(input ?? "").replace(/\u0000/g, "").trim();
+  return text.slice(0, 1200);
+}
+
 async function cleanupOldZipFiles(): Promise<void> {
   try {
     const entries = await fsp.readdir(downloadsDir, { withFileTypes: true });
@@ -133,13 +138,17 @@ musicDownloadRouter.post("/download", (req, res) => {
     const payload = extractLastJsonLine(stdout);
 
     if (code !== 0) {
+      const details = safeTrimmedDetails(
+        (payload?.error as string | undefined)
+          || (payload?.message as string | undefined)
+          || stderr
+          || stdout
+          || "Download failed.",
+      );
       res.status(500).json({
         code: "DOWNLOAD_FAILED",
-        message:
-          (payload?.error as string | undefined)
-          || (payload?.message as string | undefined)
-          || stderr.trim()
-          || "Download failed.",
+        message: "Downloader failed.",
+        details,
       });
       return;
     }
@@ -150,6 +159,37 @@ musicDownloadRouter.post("/download", (req, res) => {
     }
 
     res.status(200).json(payload);
+  });
+});
+
+musicDownloadRouter.get("/downloader-health", async (_req, res) => {
+  const details: string[] = [];
+  const checkCommand = async (cmd: string, args: string[]) => new Promise<{ ok: boolean; output: string }>((resolve) => {
+    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env } });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (chunk) => { out = appendWithCap(out, chunk); });
+    child.stderr.on("data", (chunk) => { err = appendWithCap(err, chunk); });
+    child.on("error", (error) => resolve({ ok: false, output: error.message }));
+    child.on("close", (code) => resolve({ ok: code === 0, output: safeTrimmedDetails(err || out) }));
+  });
+
+  const pythonProbe = await checkCommand("python3", ["--version"]);
+  const ytImportProbe = await checkCommand("python3", ["-c", "import yt_dlp; print(yt_dlp.version.__version__)"]);
+  const ytCliProbe = ytImportProbe.ok ? { ok: true, output: "" } : await checkCommand("yt-dlp", ["--version"]);
+  const ffmpegProbe = await checkCommand("ffmpeg", ["-version"]);
+
+  if (!pythonProbe.ok) details.push(`python: ${pythonProbe.output}`);
+  if (!ytImportProbe.ok && !ytCliProbe.ok) details.push(`yt-dlp: ${ytImportProbe.output || ytCliProbe.output}`);
+  if (!ffmpegProbe.ok) details.push(`ffmpeg: ${ffmpegProbe.output}`);
+
+  const ok = pythonProbe.ok && (ytImportProbe.ok || ytCliProbe.ok) && ffmpegProbe.ok;
+  res.status(ok ? 200 : 503).json({
+    ok,
+    python: pythonProbe.ok,
+    ytDlp: ytImportProbe.ok || ytCliProbe.ok,
+    ffmpeg: ffmpegProbe.ok,
+    ...(details.length > 0 ? { details } : {}),
   });
 });
 

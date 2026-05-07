@@ -15,7 +15,7 @@
     "db:migrate:json:dry-run": "tsx scripts/migrate-json-to-postgres.ts --dry-run",
     "prisma:generate": "npm exec -- prisma generate --schema prisma/schema.prisma",
     "prisma:migrate:deploy": "npm exec -- prisma migrate deploy --schema prisma/schema.prisma",
-    "prebuild": "npm run prisma:generate",
+    "prebuild": "python3 -m pip install --upgrade pip && python3 -m pip install -r requirements.txt && npm run prisma:generate",
     "pretest": "npm run prisma:generate"
   },
   "dependencies": {
