@@ -37,7 +37,9 @@ def run(song_name: str, output_dir: Path) -> dict:
     output_template = output_dir / f"{unique_stem}.%(ext)s"
 
     cmd = [
-        "yt-dlp",
+        sys.executable,
+        "-m",
+        "yt_dlp",
         f"ytsearch1:{song_name}",
         "-x",
         "--audio-format",
