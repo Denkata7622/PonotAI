@@ -82,14 +82,12 @@ export default function ThemeStudioPage() {
       && preset.bodyFont === themeApi.bodyFont
     ));
     return entry?.[0] ?? null;
-  }, [themeApi]);
-
-  const cardShadow = {
-    off: "shadow-none",
-    light: "shadow-[0_10px_26px_rgba(0,0,0,0.25)]",
-    medium: "shadow-[0_14px_36px_rgba(0,0,0,0.38)]",
-    heavy: "shadow-[0_20px_52px_rgba(0,0,0,0.52)]",
-  }[shadowDepth];
+  }, [themeApi.theme, themeApi.accent, themeApi.surfaceStyle, themeApi.density, themeApi.radius, themeApi.displayFont, themeApi.bodyFont]);
+  const availableFeaturedPresets = useMemo(() => {
+    const existing = FEATURED_PRESETS.filter((name) => Boolean(UI_PRESETS[name]));
+    if (existing.length > 0) return existing;
+    return Object.keys(UI_PRESETS).slice(0, 7);
+  }, []);
 
   function resolvedDraftName(base: string) {
     const trimmed = base.trim();
@@ -172,14 +170,14 @@ export default function ThemeStudioPage() {
 
       <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
         <div className="space-y-6">
-          <Card className={`space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5 ${cardShadow}`}>
+          <Card className="space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-[var(--text)]"><Sparkles className="h-4 w-4 text-[var(--accent)]" />Theme Presets</h2>
               <p className="text-xs text-[var(--muted)]">Click a card to apply in preview</p>
             </div>
             <div className="overflow-x-auto pb-2">
               <div className="flex min-w-max gap-3">
-                {FEATURED_PRESETS.map((name) => {
+                {availableFeaturedPresets.map((name) => {
                   const isActive = activePresetName === name;
                   return (
                     <button
@@ -189,18 +187,18 @@ export default function ThemeStudioPage() {
                       aria-label={`Apply ${name} preset`}
                       className={`w-56 rounded-2xl border bg-[var(--surface)] p-3 text-left transition ${isActive ? "border-[var(--accent-border)] shadow-[0_0_0_1px_var(--accent-border),0_0_26px_rgba(var(--accent-rgb),0.24)]" : "border-[var(--border)] hover:border-[var(--accent-border)]"}`}
                     >
-                      <div className={`h-24 rounded-xl bg-gradient-to-r ${PRESET_GRADIENT[name]}`} />
+                      <div className={`h-24 rounded-xl bg-gradient-to-r ${PRESET_GRADIENT[name] ?? "from-violet-500/60 via-indigo-500/40 to-zinc-900"}`} />
                       <div className="mt-3 flex items-center justify-between">
                         <p className="font-medium text-[var(--text)]">{name}</p>
                         {isActive ? <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-[var(--text)]">Active</span> : null}
                       </div>
-                      <p className="mt-1 text-xs text-[var(--muted)]">{PRESET_COPY[name]}</p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">{PRESET_COPY[name] ?? "Balanced custom theme."}</p>
                     </button>
                   );
                 })}
                 <button type="button" onClick={duplicateCurrentTheme} className="w-56 rounded-2xl border border-dashed border-[var(--accent-border)] bg-[var(--accent-soft)] p-3 text-left text-[var(--text)]">
-                  <p className="inline-flex items-center gap-2 font-semibold"><Plus className="h-4 w-4" />Create New</p>
-                  <p className="mt-1 text-xs text-[var(--muted)]">Creates a duplicate using “Profile name” or an automatic fallback.</p>
+                  <p className="inline-flex items-center gap-2 font-semibold"><Plus className="h-4 w-4" />Create copy</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">Duplicates current theme using “Profile name” or an automatic fallback.</p>
                 </button>
               </div>
             </div>
@@ -213,7 +211,7 @@ export default function ThemeStudioPage() {
             {saveError ? <p className="text-xs text-danger">{saveError}</p> : null}
           </Card>
 
-          <Card className={`space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5 ${cardShadow}`}>
+          <Card className="space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5">
             <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-[var(--text)]"><Settings className="h-4 w-4 text-[var(--accent)]" />Design your own theme</h2>
             <p className="text-xs text-[var(--muted)]">Preview-only controls for this mock canvas: accent hex, typography scale, corner radius, shadow depth, animation speed.</p>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -251,7 +249,7 @@ export default function ThemeStudioPage() {
         </div>
 
         <div className="space-y-6">
-          <Card className={`space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5 ${cardShadow}`}>
+          <Card className="space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-[var(--text)]">Session status</h3>
               {themeApi.isPreviewSessionActive ? (
@@ -270,7 +268,7 @@ export default function ThemeStudioPage() {
             </div>
             <p className="text-sm text-[var(--text)]">{statusMeta.label}</p>
             <p className="text-xs text-[var(--muted)]">{statusMeta.detail}</p>
-            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3 text-xs text-[var(--muted)]">Current active theme: {formatThemeSummary(themeApi)}</div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3 text-xs text-[var(--muted)]">Current/preview theme: {formatThemeSummary(themeApi)}</div>
             <div className="flex flex-wrap gap-2">
               {!themeApi.isPreviewSessionActive ? <Button variant="secondary" size="sm" onClick={() => themeApi.startPreviewSession("theme-studio")}><Sparkles className="h-4 w-4" />Start preview session</Button> : null}
               {themeApi.isPreviewSessionActive ? <Button variant="ghost" size="sm" onClick={themeApi.discardPreviewSession}><RotateCcw className="h-4 w-4" />Discard preview</Button> : null}
@@ -278,9 +276,9 @@ export default function ThemeStudioPage() {
             </div>
           </Card>
 
-          <Card className={`space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5 ${cardShadow}`}>
+          <Card className="space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5">
             <h3 className="text-lg font-semibold text-[var(--text)]">Live Preview</h3>
-            <div className="rounded-2xl border border-[var(--border)] bg-[radial-gradient(circle_at_top,rgba(var(--accent-rgb),0.12)_0%,transparent_60%)] bg-[var(--surface)] p-4" style={{ borderRadius: `${cornerRadius}px`, fontSize: `${typographyScale}%`, transitionDuration: animationSpeed === "slow" ? "450ms" : animationSpeed === "medium" ? "260ms" : "140ms" }}>
+            <div className="rounded-2xl border border-[var(--border)] bg-[radial-gradient(circle_at_top,rgba(var(--accent-rgb),0.12)_0%,transparent_60%)] bg-[var(--surface)] p-4 transition-all" style={{ borderRadius: `${cornerRadius}px`, fontSize: `${typographyScale}%`, transitionDuration: animationSpeed === "slow" ? "450ms" : animationSpeed === "medium" ? "260ms" : "140ms", transitionProperty: "all" }}>
               <div className="flex items-center justify-between"><p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Preview app</p><span className="text-[10px] text-[var(--muted)]">Theme {themeApi.theme}</span></div>
               <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3" style={{ boxShadow: shadowDepth === "off" ? "none" : `0 10px 24px ${previewAccent}33` }}><p className="text-sm font-semibold text-[var(--text)]">Recognition Hero</p><p className="text-xs text-[var(--muted)]">Drop an image to identify tracks instantly.</p></div>
               <div className="mt-3 grid grid-cols-3 gap-2">{["Discover", "Library", "Queue"].map((feature) => <div key={feature} className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-2 text-center text-[11px] text-[var(--muted)]">{feature}</div>)}</div>
@@ -289,7 +287,7 @@ export default function ThemeStudioPage() {
             </div>
           </Card>
 
-          <Card className={`space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5 ${cardShadow}`}>
+          <Card className="space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-[var(--text)]">Saved Profiles</h3>
               <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text)]"><option value="newest">Newest</option><option value="name">Name</option></select>
@@ -309,6 +307,19 @@ export default function ThemeStudioPage() {
                 </div>
               </article>
             ))}
+            {sortedDrafts.length === 0 ? <p className="text-xs text-[var(--muted)]">No saved profiles yet.</p> : null}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <article className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+                <p className="text-xs uppercase tracking-[0.08em] text-[var(--muted)]">Roadmap</p>
+                <p className="mt-1 text-sm font-medium text-[var(--text)]">Bonus slot</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">Space reserved for upcoming profile automation tools.</p>
+              </article>
+              <article className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+                <p className="text-xs uppercase tracking-[0.08em] text-[var(--muted)]">Roadmap</p>
+                <p className="mt-1 text-sm font-medium text-[var(--text)]">Reserved roadmap slot</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">Additional Theme Studio enhancements will land here in a future pass.</p>
+              </article>
+            </div>
             {saveError ? <p className="text-xs text-danger">{saveError}</p> : null}
           </Card>
         </div>
