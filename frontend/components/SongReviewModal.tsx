@@ -30,8 +30,12 @@ function normalizeUrl(input: unknown): string | null {
   if (typeof input !== "string") return null;
   const trimmed = input.trim();
   if (!trimmed) return null;
-  if (trimmed.startsWith("/") || /^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith("/")) return trimmed;
   return null;
+}
+
+function isValidCoverUrl(value: unknown): value is string {
+  return typeof value === "string" && /^https?:\/\//i.test(value.trim());
 }
 
 function isRealCoverUrl(input: unknown): boolean {
@@ -47,8 +51,9 @@ function dedupeCoverCandidates(candidates: CoverCandidate[]): CoverCandidate[] {
   const seen = new Set<string>();
   const deduped: CoverCandidate[] = [];
   for (const candidate of candidates) {
-    const normalized = normalizeUrl(candidate.url);
-    if (!normalized || seen.has(normalized)) continue;
+    if (!isValidCoverUrl(candidate.url)) continue;
+    const normalized = candidate.url.trim();
+    if (seen.has(normalized)) continue;
     seen.add(normalized);
     deduped.push({ ...candidate, url: normalized });
   }
@@ -120,6 +125,20 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
     setEditableSongs((prev) => prev.map((song) => (song.reviewId === reviewId ? updater(song) : song)));
   }
 
+
+
+  function missingCover(song: EditableSong): boolean {
+    return !isValidCoverUrl(song.selectedCoverUrl) && !isValidCoverUrl(song.coverUrl) && !isValidCoverUrl(song.albumArtUrl);
+  }
+
+  async function searchCoverCandidatesForSong(song: EditableSong): Promise<string[]> {
+    const title = song.editedSongName?.trim() || song.songName;
+    const artist = song.editedArtist?.trim() || song.artist;
+    const exclude = song.coverCandidates.map((item) => item.url);
+    const urls = await lookupCoverArtUrls(apiBaseUrl, title, artist, { exclude, limit: 8 });
+    return dedupeCoverCandidates(urls.map((url) => ({ url }))).map((item) => item.url);
+  }
+
   function setSelectedCover(reviewId: string, coverUrl: string) {
     setActiveReviewId(reviewId);
     updateSong(reviewId, (song) => setSongCover(song, coverUrl));
@@ -157,36 +176,64 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
   }
 
   async function findCoversForMissingSongs() {
-    const missing = editableSongs.filter((song) => !isRealCoverUrl(song.selectedCoverUrl) && !isRealCoverUrl(song.coverUrl) && !isRealCoverUrl(song.albumArtUrl));
+    const missing = editableSongs.filter((song) => missingCover(song));
     if (!missing.length) {
       setInlineMessage(BG_NO_MISSING);
       return;
     }
+
     setBatchCoverLoading(true);
     let found = 0;
     let failures = 0;
+    const maxConcurrent = 3;
+
     try {
-      for (let i = 0; i < missing.length; i += 1) {
-        const target = missing[i] as EditableSong;
-        setInlineMessage(`Търсене на корици ${i + 1}/${missing.length}...`);
-        try {
-          const title = target.editedSongName?.trim() || target.songName;
-          const artist = target.editedArtist?.trim() || target.artist;
-          const coverUrls = await lookupCoverArtUrls(apiBaseUrl, title, artist, { exclude: target.coverCandidates.map((item) => item.url), limit: 8 });
-          if (!coverUrls.length) continue;
-          found += 1;
-          updateSong(target.reviewId, (song) => {
-            const merged = dedupeCoverCandidates([...song.coverCandidates, ...coverUrls.map((url, idx) => ({ url, source: `Candidate ${idx + 1}` }))]);
-            const next = { ...song, coverCandidates: merged };
-            return isRealCoverUrl(getSongCover(next)) ? next : setSongCover(next, merged[0]?.url || "");
-          });
-        } catch {
-          failures += 1;
+      const queue = [...missing];
+      let processed = 0;
+
+      const worker = async () => {
+        while (queue.length > 0) {
+          const target = queue.shift();
+          if (!target) return;
+
+          setInlineMessage(`Търсене на корици ${processed + 1}/${missing.length}...`);
+          try {
+            const coverUrls = await searchCoverCandidatesForSong(target);
+            if (coverUrls.length > 0) {
+              let addedCover = false;
+              updateSong(target.reviewId, (song) => {
+                const merged = dedupeCoverCandidates([
+                  ...song.coverCandidates,
+                  ...coverUrls.map((url, idx) => ({ url, source: `Candidate ${idx + 1}` })),
+                ]);
+                const next = { ...song, coverCandidates: merged };
+                const hadCoverBefore = !missingCover(song);
+                if (!hadCoverBefore && merged[0]?.url) {
+                  addedCover = true;
+                  return setSongCover(next, merged[0].url);
+                }
+                return next;
+              });
+              if (addedCover) found += 1;
+            }
+          } catch {
+            failures += 1;
+          } finally {
+            processed += 1;
+            setInlineMessage(`Търсене на корици ${processed}/${missing.length}...`);
+          }
         }
+      };
+
+      await Promise.all(Array.from({ length: Math.min(maxConcurrent, missing.length) }, () => worker()));
+
+      if (found === 0) {
+        setInlineMessage(failures > 0 ? "Не бяха намерени нови корици. Някои корици не можаха да бъдат намерени." : "Не бяха намерени нови корици.");
+      } else if (failures > 0) {
+        setInlineMessage(`Намерени корици за ${found} от ${missing.length} песни. Някои корици не можаха да бъдат намерени.`);
+      } else {
+        setInlineMessage(`Намерени корици за ${found} от ${missing.length} песни.`);
       }
-      setInlineMessage(failures > 0
-        ? `Намерени корици за ${found} от ${missing.length} песни. Някои търсения се провалиха.`
-        : `Намерени корици за ${found} от ${missing.length} песни.`);
     } finally {
       setBatchCoverLoading(false);
     }
