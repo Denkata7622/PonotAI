@@ -168,10 +168,12 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
   const [activeReviewId, setActiveReviewId] = useState<string | null>(null);
 
   const selectedCount = editableSongs.filter((s) => s.selected).length;
+  const currentSongFromActive = activeReviewId
+    ? editableSongs.find((song) => song.reviewId === activeReviewId)
+    : undefined;
+
   const currentSong =
-    activeReviewId
-      ? editableSongs.find((song) => song.reviewId === activeReviewId)
-      : undefined
+    currentSongFromActive
     || editableSongs.find((song) => song.selected)
     || editableSongs[0];
 
@@ -298,15 +300,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
       setBatchCoverLoading(false);
     }
 
-    setInlineMessage(
-      failures > 0
-        ? `Намерени корици за ${found} от ${missing.length} песни. Някои търсения се провалиха.`
-        : `Намерени корици за ${found} от ${missing.length} песни.`
-    );
-  } finally {
-    setBatchCoverLoading(false);
   }
-}
 
   async function handleConfirm() {
     if (isSubmitting) return;
