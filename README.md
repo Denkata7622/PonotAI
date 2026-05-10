@@ -117,3 +117,12 @@ npm run typecheck
 
 ## Лиценз
 MIT (`LICENSE`)
+
+## Local YouTube audio download (frontend API)
+
+For local/personal usage, the Next.js frontend exposes `POST /api/download` that can download YouTube audio as MP3 on the server side using `yt-dlp` (`yt-dlp-exec`).
+
+- Requires internet access.
+- YouTube may block some requests (bot checks/CAPTCHA/rate limits).
+- If needed, you can modify `frontend/app/api/download/route.ts` to pass your own cookies/options to yt-dlp for local use.
+- This is intended for local development/personal workflows only.
