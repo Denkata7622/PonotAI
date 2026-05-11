@@ -123,19 +123,30 @@ MIT (`LICENSE`)
 For local/personal usage, the Next.js frontend exposes `POST /api/download` that shells out to your locally installed `yt-dlp` and `ffmpeg`/`ffprobe` to produce MP3 files server-side (Node runtime).
 
 - Requires internet access and local CLI tools (`yt-dlp`, `ffmpeg`, `ffprobe`).
-- For Railway deployment, `frontend/nixpacks.toml` installs `yt-dlp` and `ffmpeg` via Nix packages. If deploying elsewhere, install both tools in the server image and ensure `yt-dlp` is in `PATH`, or set `YTDLP_PATH`.
-- Railway can install `yt-dlp`/`ffmpeg`, but YouTube may still block datacenter/shared cloud IP ranges.
-- Optional env vars:
-  - `YTDLP_PATH` (custom path to the `yt-dlp` binary)
-  - `YTDLP_COOKIES` (path to a local `cookies.txt`)
-  - `FFMPEG_LOCATION` (custom ffmpeg location for yt-dlp post-processing)
-- Railway can install `yt-dlp`/`ffmpeg`, but YouTube may still block datacenter IP ranges.
-- Throttling can reduce bursty requests, but it cannot fix bot/CAPTCHA challenges that are already triggered.
-- For reliable YouTube fallback, run locally or on a private machine/network and keep `yt-dlp` updated.
-- If cloud YouTube is blocked, exports fail fast for YouTube-dependent tracks and write those songs to `search-list.txt`.
+- Railway/Railpack deployments should include `yt-dlp` and `ffmpeg` in the runtime image and set: `RAILPACK_DEPLOY_APT_PACKAGES=yt-dlp ffmpeg`, plus `YTDLP_PATH` / `FFMPEG_LOCATION` as needed.
+- Optional env vars: `YTDLP_PATH`, `YTDLP_COOKIES`, `FFMPEG_LOCATION`, `YTDLP_CACHE_DIR`, `YTDLP_CACHE_DISABLED`, `YTDLP_TIMEOUT_MS`, `NEXT_PUBLIC_YOUTUBE_BATCH_DELAY_MS`.
+- Cloud/datacenter IPs may still be blocked by YouTube.
+- Local/private machine execution is the most reliable YouTube fallback path.
 - The app does not bypass CAPTCHA/bot checks.
-- Large YouTube batches can be throttled via env config, but throttling cannot fix bot/CAPTCHA challenges that are already triggered.
-- Cloud hosts can still be blocked due to shared/datacenter IP ranges.
-- For reliable YouTube fallback, run locally or on a private machine/network and keep `yt-dlp` updated.
-- The app does not bypass CAPTCHA/bot checks. If cloud YouTube is blocked, export fails fast for YouTube items and writes them to `search-list.txt`.
-- This workflow is intended for local/personal development only (not public hosted downloading).
+- Blocked/failed YouTube items are written to `search-list.txt` and `failed-items.json` during ZIP export.
+
+## Local downloader reliability (yt-dlp + ffmpeg)
+
+Run locally for best results:
+
+- macOS: `brew install yt-dlp ffmpeg`
+- Windows: `winget install yt-dlp.yt-dlp` and `winget install Gyan.FFmpeg`
+- Linux: `sudo apt install ffmpeg` and `python3 -m pip install -U yt-dlp`
+
+Then:
+
+```bash
+cd frontend
+npm install
+npm run doctor:download
+npm run dev
+```
+
+Environment variables: `YTDLP_PATH`, `FFMPEG_LOCATION`, `YTDLP_COOKIES` (optional local user path), `YTDLP_CACHE_DIR`, `YTDLP_CACHE_DISABLED`, `YTDLP_TIMEOUT_MS`, `NEXT_PUBLIC_YOUTUBE_BATCH_DELAY_MS`.
+
+Cloud hosts (including Railway) can install binaries but still be blocked by YouTube datacenter IP controls. The app now fails fast, classifies errors, and writes unresolved items into `search-list.txt`/`failed-items.json`.
