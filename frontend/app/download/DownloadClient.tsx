@@ -11,6 +11,14 @@ import { createLocalExportZip, saveBlobAsDownload, type LocalExportProgress, typ
 type DownloadState = "idle" | "ready" | "exporting" | "done" | "error";
 type ExportSong = SongMatch & { coverUrl?: string; selected?: boolean; selectedCoverUrl?: string; source?: string; rawText?: string; sourceImageIds?: string[]; title?: string; name?: string; file?: File; blob?: Blob; audioUrl?: string; sourceUrl?: string; coverCandidates?: unknown };
 
+const YOUTUBE_VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
+
+function normalizeYoutubeVideoId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return YOUTUBE_VIDEO_ID_REGEX.test(trimmed) ? trimmed : undefined;
+}
+
 function getPlatformAudioCandidate(platformLinks: unknown): string | undefined {
   if (!platformLinks || typeof platformLinks !== "object") return undefined;
   const record = platformLinks as Record<string, unknown>;
@@ -74,7 +82,7 @@ function parseImportedSongs(raw: unknown): SongMatch[] {
       albumArtUrl,
       confidence: typeof item.confidence === "number" ? item.confidence : 1,
       durationSec: typeof item.durationSec === "number" ? item.durationSec : 0,
-      youtubeVideoId: typeof item.youtubeVideoId === "string" ? item.youtubeVideoId : `import-${index}`,
+      ...(normalizeYoutubeVideoId(item.youtubeVideoId) ? { youtubeVideoId: normalizeYoutubeVideoId(item.youtubeVideoId) } : {}),
       ...(typeof item.coverUrl === "string" ? { coverUrl: item.coverUrl } : {}),
       ...(typeof item.selectedCoverUrl === "string" ? { selectedCoverUrl: item.selectedCoverUrl } : {}),
       ...(Array.isArray(item.coverCandidates) ? { coverCandidates: item.coverCandidates } : {}),
@@ -93,16 +101,17 @@ function toSongMatch(query: string, index: number): SongMatch {
   const [left, ...rest] = query.split(" - ");
   const artist = rest.length > 0 ? left.trim() : "";
   const songName = rest.length > 0 ? rest.join(" - ").trim() : query.trim();
-  return { songName, artist, album: "Unknown Album", genre: "", releaseYear: null, platformLinks: {}, albumArtUrl: "/album-placeholder.svg", confidence: 1, durationSec: 0, youtubeVideoId: `import-${index}` };
+  return { songName, artist, album: "Unknown Album", genre: "", releaseYear: null, platformLinks: {}, albumArtUrl: "/album-placeholder.svg", confidence: 1, durationSec: 0 };
 }
 
 function toLocalExportSong(song: ExportSong, idx: number): LocalExportSong {
   const title = song.songName?.trim() || song.title?.trim() || song.name?.trim() || "Unknown Title";
   const artist = song.artist?.trim() || "";
   const platformAudio = getPlatformAudioCandidate(song.platformLinks);
+  const youtubeVideoId = normalizeYoutubeVideoId(song.youtubeVideoId);
 
   return {
-    id: song.youtubeVideoId || `${title}-${artist}-${idx}`,
+    id: youtubeVideoId || `${title}-${artist}-${idx}`,
     title,
     artist,
     originalTitle: song.songName,
@@ -115,7 +124,7 @@ function toLocalExportSong(song: ExportSong, idx: number): LocalExportSong {
     selectedCoverUrl: song.selectedCoverUrl,
     coverUrl: song.coverUrl,
     albumArtUrl: song.albumArtUrl,
-    youtubeVideoId: song.youtubeVideoId,
+    youtubeVideoId,
     durationSec: song.durationSec,
   };
 }
@@ -200,7 +209,7 @@ export default function DownloadClient() {
   }
 
   const selectedCount = useMemo(() => exportSongs.filter((song) => song.selected !== false).length, [exportSongs]);
-  const phaseText = useMemo(() => ({ preparing: "Preparing export...", "fetching-audio": "Fetching audio...", "fetching-cover": "Fetching cover...", "adding-files": "Adding files to ZIP...", finalizing: "Finalizing ZIP..." }[progress?.phase ?? "preparing"] || ""), [progress]);
+  const phaseText = useMemo(() => ({ preparing: "Preparing export...", "fetching-audio": "Fetching audio...", "downloading-youtube": "Downloading audio via local yt-dlp...", "fetching-cover": "Fetching cover...", "adding-files": "Adding files to ZIP...", finalizing: "Finalizing ZIP..." }[progress?.phase ?? "preparing"] || ""), [progress]);
 
   return (
     <section className="mx-auto w-full max-w-2xl px-4 py-10">

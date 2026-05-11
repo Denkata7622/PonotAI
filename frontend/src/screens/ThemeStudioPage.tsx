@@ -14,25 +14,15 @@ type SortMode = "name" | "newest";
 type ShadowDepth = "off" | "light" | "medium" | "heavy";
 type AnimationSpeed = "slow" | "medium" | "fast";
 
-const FEATURED_PRESETS = ["Ember", "Aurora", "Midnight", "Ocean", "Forest", "Rose", "Void"] as const;
-const PRESET_COPY: Record<string, string> = {
-  Ember: "Warm orange glow with dark backdrop",
-  Aurora: "Purple neon gradients with soft bloom",
-  Midnight: "Deep blue contrast for low-light focus",
-  Ocean: "Cyan-blue ambient pulse",
-  Forest: "Emerald glow with calm depth",
-  Rose: "Pink neon highlights",
-  Void: "Grayscale cinematic black",
-};
-const PRESET_GRADIENT: Record<string, string> = {
-  Ember: "from-orange-400/70 via-amber-500/45 to-zinc-900",
-  Aurora: "from-violet-400/70 via-fuchsia-500/45 to-zinc-900",
-  Midnight: "from-blue-500/65 via-indigo-600/40 to-zinc-950",
-  Ocean: "from-cyan-400/70 via-blue-500/45 to-zinc-900",
-  Forest: "from-emerald-400/70 via-green-500/40 to-zinc-900",
-  Rose: "from-pink-400/70 via-rose-500/45 to-zinc-900",
-  Void: "from-zinc-500/50 via-zinc-700/55 to-black",
-};
+const FEATURED_PRESET_CARDS = [
+  { label: "Ember", presetName: "Arcade Pulse", description: "Warm orange glow with dark backdrop", gradient: "from-orange-400/70 via-amber-500/45 to-zinc-900" },
+  { label: "Aurora", presetName: "Neon Circuit", description: "Purple neon gradients with soft bloom", gradient: "from-violet-400/70 via-fuchsia-500/45 to-zinc-900" },
+  { label: "Midnight", presetName: "AI Minimal", description: "Deep blue contrast for low-light focus", gradient: "from-blue-500/65 via-indigo-600/40 to-zinc-950" },
+  { label: "Ocean", presetName: "Cyber Grid", description: "Cyan-blue ambient pulse", gradient: "from-cyan-400/70 via-blue-500/45 to-zinc-900" },
+  { label: "Forest", presetName: "Steel Console", description: "Emerald glow with calm depth", gradient: "from-emerald-400/70 via-green-500/40 to-zinc-900" },
+  { label: "Rose", presetName: "Velvet Script", description: "Pink neon highlights", gradient: "from-pink-400/70 via-rose-500/45 to-zinc-900" },
+  { label: "Void", presetName: "Noir Gothic", description: "Grayscale cinematic black", gradient: "from-zinc-500/50 via-zinc-700/55 to-black" },
+] as const;
 const PREVIEW_SWATCHES = ["#ff8a1f", "#8b5cf6", "#3b82f6", "#06b6d4", "#22c55e", "#ec4899"];
 
 function formatThemeSummary(themeApi: ReturnType<typeof useTheme>) {
@@ -84,9 +74,9 @@ export default function ThemeStudioPage() {
     return entry?.[0] ?? null;
   }, [themeApi.theme, themeApi.accent, themeApi.surfaceStyle, themeApi.density, themeApi.radius, themeApi.displayFont, themeApi.bodyFont]);
   const availableFeaturedPresets = useMemo(() => {
-    const existing = FEATURED_PRESETS.filter((name) => Boolean(UI_PRESETS[name]));
-    if (existing.length > 0) return existing;
-    return Object.keys(UI_PRESETS).slice(0, 7);
+    const existingCards = FEATURED_PRESET_CARDS.filter((card) => Boolean(UI_PRESETS[card.presetName]));
+    if (existingCards.length > 0) return existingCards;
+    return Object.keys(UI_PRESETS).slice(0, 7).map((name) => ({ label: name, presetName: name, description: "Featured preset", gradient: "from-violet-500/60 via-indigo-500/40 to-zinc-900" }));
   }, []);
 
   function resolvedDraftName(base: string) {
@@ -95,12 +85,20 @@ export default function ThemeStudioPage() {
     return `Untitled theme ${themeApi.namedThemeDrafts.length + 1}`;
   }
 
+  function applyStudioPatch(patch: Partial<UiPersonalization>) {
+    if (!themeApi.isPreviewSessionActive) {
+      themeApi.startPreviewSession("theme-studio", patch);
+      return;
+    }
+    themeApi.applyPersonalization(patch);
+  }
+
   function updateStudioSetting<K extends keyof UiPersonalization>(key: K, value: UiPersonalization[K]) {
     if (!themeApi.isPreviewSessionActive) {
       themeApi.startPreviewSession("theme-studio", { [key]: value });
       return;
     }
-    themeApi.updateUiSetting(key, value);
+    applyStudioPatch({ [key]: value });
   }
 
   function applyPreset(presetName: string) {
@@ -161,71 +159,71 @@ export default function ThemeStudioPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1320px] space-y-6 px-4 pb-[calc(var(--layout-bottom-offset)+24px)] pt-2 sm:px-6 sm:pt-4">
-      <section className="rounded-3xl border border-[var(--border)] bg-[radial-gradient(circle_at_top_left,rgba(var(--accent-rgb),0.12)_0%,transparent_55%)] bg-[var(--panel-surface)] p-6 text-[var(--text)]">
+    <div className="mx-auto w-full min-w-0 max-w-[1320px] space-y-6 overflow-x-hidden px-3 pb-[calc(var(--layout-bottom-offset)+32px)] pt-2 sm:px-5 sm:pt-4">
+      <section className="overflow-hidden rounded-3xl border border-[var(--border)] bg-[radial-gradient(circle_at_top_left,rgba(var(--accent-rgb),0.12)_0%,transparent_55%)] bg-[var(--panel-surface)] p-4 text-[var(--text)] sm:p-6">
         <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Theme studio</p>
-        <h1 className="display-styled text-4xl font-semibold tracking-tight">Theme Studio</h1>
+        <h1 className="display-styled text-3xl font-semibold tracking-tight sm:text-4xl">Theme Studio</h1>
         <p className="mt-2 max-w-3xl text-sm text-[var(--muted)]">Premium neon styling with safe preview sessions. Sidebar and player bar stay untouched until you apply.</p>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-        <div className="space-y-6">
-          <Card className="space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
+        <div className="min-w-0 space-y-6">
+          <Card className="min-w-0 overflow-hidden space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-4 sm:p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-[var(--text)]"><Sparkles className="h-4 w-4 text-[var(--accent)]" />Theme Presets</h2>
               <p className="text-xs text-[var(--muted)]">Click a card to apply in preview</p>
             </div>
-            <div className="overflow-x-auto pb-2">
-              <div className="flex min-w-max gap-3">
-                {availableFeaturedPresets.map((name) => {
-                  const isActive = activePresetName === name;
+            <div className="-mx-2 overflow-x-auto overscroll-x-contain px-2 pb-2">
+              <div className="flex min-w-full gap-3">
+                {availableFeaturedPresets.map((card) => {
+                  const isActive = activePresetName === card.presetName;
                   return (
                     <button
-                      key={name}
+                      key={card.presetName}
                       type="button"
-                      onClick={() => applyPreset(name)}
-                      aria-label={`Apply ${name} preset`}
-                      className={`w-56 rounded-2xl border bg-[var(--surface)] p-3 text-left transition ${isActive ? "border-[var(--accent-border)] shadow-[0_0_0_1px_var(--accent-border),0_0_26px_rgba(var(--accent-rgb),0.24)]" : "border-[var(--border)] hover:border-[var(--accent-border)]"}`}
+                      onClick={() => applyPreset(card.presetName)}
+                      aria-label={`Apply ${card.presetName} preset`}
+                      className={`w-[min(14rem,calc(100vw-4rem))] shrink-0 rounded-2xl border bg-[var(--surface)] p-3 text-left transition ${isActive ? "border-[var(--accent-border)] shadow-[0_0_0_1px_var(--accent-border),0_0_26px_rgba(var(--accent-rgb),0.24)]" : "border-[var(--border)] hover:border-[var(--accent-border)]"}`}
                     >
-                      <div className={`h-24 rounded-xl bg-gradient-to-r ${PRESET_GRADIENT[name] ?? "from-violet-500/60 via-indigo-500/40 to-zinc-900"}`} />
+                      <div className={`h-24 rounded-xl bg-gradient-to-r ${card.gradient}`} />
                       <div className="mt-3 flex items-center justify-between">
-                        <p className="font-medium text-[var(--text)]">{name}</p>
+                        <p className="truncate font-medium text-[var(--text)]">{card.label}</p>
                         {isActive ? <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-[var(--text)]">Active</span> : null}
                       </div>
-                      <p className="mt-1 text-xs text-[var(--muted)]">{PRESET_COPY[name] ?? "Balanced custom theme."}</p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">{card.description}</p>
                     </button>
                   );
                 })}
-                <button type="button" onClick={duplicateCurrentTheme} className="w-56 rounded-2xl border border-dashed border-[var(--accent-border)] bg-[var(--accent-soft)] p-3 text-left text-[var(--text)]">
+                <button type="button" onClick={duplicateCurrentTheme} className="w-[min(14rem,calc(100vw-4rem))] shrink-0 rounded-2xl border border-dashed border-[var(--accent-border)] bg-[var(--accent-soft)] p-3 text-left text-[var(--text)]">
                   <p className="inline-flex items-center gap-2 font-semibold"><Plus className="h-4 w-4" />Create copy</p>
                   <p className="mt-1 text-xs text-[var(--muted)]">Duplicates current theme using “Profile name” or an automatic fallback.</p>
                 </button>
               </div>
             </div>
 
-            <div className="grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-              <Input value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="Profile name" aria-label="Profile name" />
-              <Button size="sm" variant="secondary" onClick={saveNamedDraft}><Sparkles className="h-4 w-4" />Save current as profile</Button>
-              <Button size="sm" variant="ghost" onClick={duplicateCurrentTheme}><Plus className="h-4 w-4" />Create copy</Button>
+            <div className="grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
+              <Input className="min-w-0" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="Profile name" aria-label="Profile name" />
+              <Button className="w-full sm:w-auto" size="sm" variant="secondary" onClick={saveNamedDraft}><Sparkles className="h-4 w-4" />Save current as profile</Button>
+              <Button className="w-full sm:w-auto" size="sm" variant="ghost" onClick={duplicateCurrentTheme}><Plus className="h-4 w-4" />Create copy</Button>
             </div>
             {saveError ? <p className="text-xs text-danger">{saveError}</p> : null}
           </Card>
 
-          <Card className="space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5">
+          <Card className="min-w-0 overflow-hidden space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-4 sm:p-5">
             <h2 className="inline-flex items-center gap-2 text-lg font-semibold text-[var(--text)]"><Settings className="h-4 w-4 text-[var(--accent)]" />Design your own theme</h2>
             <p className="text-xs text-[var(--muted)]">Preview-only controls for this mock canvas: accent hex, typography scale, corner radius, shadow depth, animation speed.</p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="text-xs text-[var(--muted)]">Preview accent (hex)</label>
-                <div className="mt-1 flex gap-2">
-                  <Input value={hexInput} onChange={(e) => setHexInput(e.target.value)} />
+                <div className="mt-1 flex min-[420px]:flex-row flex-col gap-2">
+                  <Input className="min-w-0 flex-1" value={hexInput} onChange={(e) => setHexInput(e.target.value)} />
                   <Button size="sm" onClick={applyHexPreview}>Apply</Button>
                 </div>
                 {hexError ? <p className="mt-1 text-xs text-danger">{hexError}</p> : null}
               </div>
               <div>
                 <p className="text-xs text-[var(--muted)]">Neon swatches (preview-only)</p>
-                <div className="mt-2 flex gap-2">{PREVIEW_SWATCHES.map((swatch) => <button key={swatch} type="button" aria-label={`Use ${swatch}`} className="h-7 w-7 rounded-full border border-[var(--border)]" style={{ backgroundColor: swatch }} onClick={() => { setHexInput(swatch); setPreviewAccent(swatch); }} />)}</div>
+                <div className="mt-2 flex flex-wrap gap-2">{PREVIEW_SWATCHES.map((swatch) => <button key={swatch} type="button" aria-label={`Use ${swatch}`} className="h-7 w-7 rounded-full border border-[var(--border)]" style={{ backgroundColor: swatch }} onClick={() => { setHexInput(swatch); setPreviewAccent(swatch); }} />)}</div>
               </div>
               <div className="sm:col-span-2">
                 <label className="text-xs text-[var(--muted)]">Typography Scale: {typographyScale}% (Preview-only)</label>
@@ -241,16 +239,16 @@ export default function ThemeStudioPage() {
               </div>
               <div className="sm:col-span-2">
                 <p className="text-xs text-[var(--muted)]">Animation speed (Preview-only)</p>
-                <div className="mt-1 flex gap-1">{(["slow", "medium", "fast"] as const).map((v) => <button key={v} type="button" onClick={() => setAnimationSpeed(v)} className={`rounded-full border px-2 py-1 text-xs ${animationSpeed === v ? "border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text)]" : "border-[var(--border)] text-[var(--muted)]"}`}>{v}</button>)}</div>
+                <div className="mt-1 flex flex-wrap gap-1">{(["slow", "medium", "fast"] as const).map((v) => <button key={v} type="button" onClick={() => setAnimationSpeed(v)} className={`rounded-full border px-2 py-1 text-xs ${animationSpeed === v ? "border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text)]" : "border-[var(--border)] text-[var(--muted)]"}`}>{v}</button>)}</div>
               </div>
             </div>
-            <ThemeStudioControls ui={themeApi} onUpdate={updateStudioSetting} onApplyPreset={applyPreset} onApplyPatch={themeApi.applyPersonalization} />
+            <ThemeStudioControls ui={themeApi} onUpdate={updateStudioSetting} onApplyPreset={applyPreset} onApplyPatch={applyStudioPatch} />
           </Card>
         </div>
 
-        <div className="space-y-6">
-          <Card className="space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5">
-            <div className="flex items-center justify-between">
+        <div className="min-w-0 space-y-6">
+          <Card className="min-w-0 overflow-hidden space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-lg font-semibold text-[var(--text)]">Session status</h3>
               {themeApi.isPreviewSessionActive ? (
                 <Button
@@ -276,30 +274,30 @@ export default function ThemeStudioPage() {
             </div>
           </Card>
 
-          <Card className="space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5">
+          <Card className="min-w-0 overflow-hidden space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-4 sm:p-5">
             <h3 className="text-lg font-semibold text-[var(--text)]">Live Preview</h3>
-            <div className="rounded-2xl border border-[var(--border)] bg-[radial-gradient(circle_at_top,rgba(var(--accent-rgb),0.12)_0%,transparent_60%)] bg-[var(--surface)] p-4 transition-all" style={{ borderRadius: `${cornerRadius}px`, fontSize: `${typographyScale}%`, transitionDuration: animationSpeed === "slow" ? "450ms" : animationSpeed === "medium" ? "260ms" : "140ms", transitionProperty: "all" }}>
+            <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[radial-gradient(circle_at_top,rgba(var(--accent-rgb),0.12)_0%,transparent_60%)] bg-[var(--surface)] p-3 transition-all sm:p-4" style={{ borderRadius: `${cornerRadius}px`, fontSize: `${typographyScale}%`, transitionDuration: animationSpeed === "slow" ? "450ms" : animationSpeed === "medium" ? "260ms" : "140ms", transitionProperty: "all" }}>
               <div className="flex items-center justify-between"><p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Preview app</p><span className="text-[10px] text-[var(--muted)]">Theme {themeApi.theme}</span></div>
               <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3" style={{ boxShadow: shadowDepth === "off" ? "none" : `0 10px 24px ${previewAccent}33` }}><p className="text-sm font-semibold text-[var(--text)]">Recognition Hero</p><p className="text-xs text-[var(--muted)]">Drop an image to identify tracks instantly.</p></div>
-              <div className="mt-3 grid grid-cols-3 gap-2">{["Discover", "Library", "Queue"].map((feature) => <div key={feature} className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-2 text-center text-[11px] text-[var(--muted)]">{feature}</div>)}</div>
+              <div className="mt-3 grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">{["Discover", "Library", "Queue"].map((feature) => <div key={feature} className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-2 text-center text-[11px] text-[var(--muted)]">{feature}</div>)}</div>
               <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-2"><p className="text-sm text-[var(--text)]">Midnight Echo — Nova Coast</p><p className="text-[11px] text-[var(--muted)]">Album mix · 3:21</p></div>
               <div className="mt-3 rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] p-2"><div className="h-1.5 rounded-full bg-[var(--border)]"><div className="h-1.5 rounded-full" style={{ width: "52%", backgroundColor: previewAccent }} /></div></div>
             </div>
           </Card>
 
-          <Card className="space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-5">
+          <Card className="min-w-0 overflow-hidden space-y-4 border border-[var(--border)] bg-[var(--panel-surface)] p-4 sm:p-5">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-[var(--text)]">Saved Profiles</h3>
               <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text)]"><option value="newest">Newest</option><option value="name">Name</option></select>
             </div>
             {sortedDrafts.map((draft) => (
-              <article key={draft.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+              <article key={draft.id} className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
                 <div className="flex items-center justify-between gap-2">
-                  {renamingDraftId === draft.id ? <Input value={renameDraftValue} onChange={(event) => setRenameDraftValue(event.target.value)} className="h-8" /> : <p className="font-medium text-[var(--text)]">{draft.name}</p>}
+                  {renamingDraftId === draft.id ? <Input value={renameDraftValue} onChange={(event) => setRenameDraftValue(event.target.value)} className="h-8" /> : <p className="truncate font-medium text-[var(--text)]">{draft.name}</p>}
                   <span className="text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">Profile</span>
                 </div>
-                <p className="mt-1 text-xs text-[var(--muted)]">Saved {formatUtcDateTime(draft.savedAt)}</p>
-                <p className="mt-1 text-xs text-[var(--muted)]">{formatDraftSummary(draft)}</p>
+                <p className="mt-1 break-words text-xs text-[var(--muted)]">Saved {formatUtcDateTime(draft.savedAt)}</p>
+                <p className="mt-1 break-words text-xs text-[var(--muted)]">{formatDraftSummary(draft)}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button size="sm" variant="secondary" onClick={() => themeApi.applyNamedThemeDraft(draft.id)}>Open in preview</Button>
                   {renamingDraftId === draft.id ? <Button size="sm" onClick={() => submitRename(draft.id)}>Save rename</Button> : <Button size="sm" variant="ghost" onClick={() => startRename(draft)}>Rename</Button>}
