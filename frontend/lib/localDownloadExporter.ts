@@ -50,6 +50,20 @@ export type LocalExportProgress = {
   failed: number;
 };
 
+export class YoutubeDownloadError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "YoutubeDownloadError";
+    this.code = code;
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const YOUTUBE_BATCH_DELAY_MS = Math.max(0, Math.min(120000, Number(process.env.NEXT_PUBLIC_YOUTUBE_BATCH_DELAY_MS || 15000)));
 
 export async function downloadFromYouTube(idOrQuery: { youtubeId?: string; query?: string }): Promise<Blob> {
   const response = await fetch("/api/download", {
@@ -59,13 +73,15 @@ export async function downloadFromYouTube(idOrQuery: { youtubeId?: string; query
   });
   if (!response.ok) {
     let detail = "";
+    let code: string | undefined;
     try {
-      const payload = await response.json() as { error?: string; detail?: string };
+      const payload = await response.json() as { error?: string; detail?: string; code?: string };
       detail = payload.detail || payload.error || "";
+      code = payload.code;
     } catch {
       detail = await response.text();
     }
-    throw new Error(`YouTube download failed: ${(detail || `HTTP ${response.status}`).slice(0, 240)}`);
+    throw new YoutubeDownloadError(`YouTube download failed: ${(detail || `HTTP ${response.status}`).slice(0, 240)}`, code);
   }
   return response.blob();
 }
@@ -225,6 +241,9 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   let exportedCount = 0;
   let failedCount = 0;
   let skippedCount = 0;
+  let youtubeAttemptCount = 0;
+  let consecutiveYouTubeBlocks = 0;
+  let youtubeCircuitOpen = false;
 
   onProgress?.({ phase: "preparing", completed: 0, total: songs.length, failed: 0 });
 
@@ -270,14 +289,34 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
           item.error = "Source URL did not provide a valid audio file.";
         }
       } else if (song.youtubeVideoId || line) {
-        onProgress?.({ phase: "downloading-youtube", currentSong: line, completed: index, total: songs.length, failed: failedCount + skippedCount });
-        const youtubeId = song.youtubeVideoId && YOUTUBE_VIDEO_ID_REGEX.test(song.youtubeVideoId) ? song.youtubeVideoId : undefined;
-        const ytBlob = await downloadFromYouTube({
-          youtubeId,
-          query: youtubeId ? undefined : line,
-        });
-        audioBlob = ytBlob;
-        audioExt = ".mp3";
+        if (youtubeCircuitOpen) {
+          item.status = "skipped";
+          item.error = "Stopped YouTube downloads after repeated blocking/rate-limit errors. Try again later, lower the batch size, or run locally.";
+        } else {
+          if (youtubeAttemptCount > 0 && YOUTUBE_BATCH_DELAY_MS > 0) await delay(YOUTUBE_BATCH_DELAY_MS);
+          youtubeAttemptCount += 1;
+          onProgress?.({ phase: "downloading-youtube", currentSong: line, completed: index, total: songs.length, failed: failedCount + skippedCount });
+          const youtubeId = song.youtubeVideoId && YOUTUBE_VIDEO_ID_REGEX.test(song.youtubeVideoId) ? song.youtubeVideoId : undefined;
+          try {
+            const ytBlob = await downloadFromYouTube({
+              youtubeId,
+              query: youtubeId ? undefined : line,
+            });
+            consecutiveYouTubeBlocks = 0;
+            audioBlob = ytBlob;
+            audioExt = ".mp3";
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "YouTube download failed.";
+            const code = error instanceof YoutubeDownloadError ? error.code : undefined;
+            if (code === "youtube-blocked") {
+              consecutiveYouTubeBlocks += 1;
+              if (consecutiveYouTubeBlocks >= 3) youtubeCircuitOpen = true;
+            } else {
+              consecutiveYouTubeBlocks = 0;
+            }
+            throw new YoutubeDownloadError(message, code);
+          }
+        }
       }
     } catch (error) {
       item.status = "failed";
@@ -297,7 +336,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
       searchList.push(line);
     } else {
       item.status = "skipped";
-      item.error = "No audio source available for local export.";
+      item.error ||= "No audio source available for local export.";
       skippedCount += 1;
       searchList.push(line);
     }

@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -47,6 +48,26 @@ function firstUsefulDetail(message?: string): string {
   return (line || "unknown error").slice(0, 500);
 }
 
+function classifyDownloadError(detail: string): { code: "missing-binary" | "ffmpeg-missing" | "youtube-blocked" | "timeout" | "not-found" | "download-failed"; status: number; detail: string } {
+  const normalized = detail.toLowerCase();
+  if (normalized.includes("enoent") || normalized.includes("spawn yt-dlp")) {
+    return { code: "missing-binary", status: 500, detail: "yt-dlp is not installed or not available in PATH. Install yt-dlp in the deployment image or set YTDLP_PATH." };
+  }
+  if (normalized.includes("ffmpeg not found") || normalized.includes("ffprobe not found") || (normalized.includes("postprocessing") && normalized.includes("ffmpeg"))) {
+    return { code: "ffmpeg-missing", status: 500, detail: "ffmpeg/ffprobe is not installed or not available to yt-dlp. Install ffmpeg in the deployment image." };
+  }
+  if (normalized.includes("timed out")) {
+    return { code: "timeout", status: 504, detail };
+  }
+  if (normalized.includes("sign in to confirm") || normalized.includes("captcha") || normalized.includes("bot") || normalized.includes("blocked") || normalized.includes("429") || normalized.includes("rate-limit") || normalized.includes("http error 403")) {
+    return { code: "youtube-blocked", status: 429, detail };
+  }
+  if (normalized.includes("video unavailable") || normalized.includes("no video results") || normalized.includes("unable to find video")) {
+    return { code: "not-found", status: 404, detail };
+  }
+  return { code: "download-failed", status: 503, detail };
+}
+
 export async function handleDownloadPost(request: Request, runner: YtdlpRunner = defaultRunner): Promise<Response> {
   let body: { youtubeId?: string; query?: string };
   try {
@@ -63,10 +84,32 @@ export async function handleDownloadPost(request: Request, runner: YtdlpRunner =
     if (youtubeId && !YOUTUBE_ID_REGEX.test(youtubeId)) return NextResponse.json({ error: "Invalid youtubeId" }, { status: 400 });
 
     const target = youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : `ytsearch1:${query}`;
+    const cacheDir = process.env.YTDLP_CACHE_DIR || path.join(tmpdir(), "ponotai-ytdlp-cache");
+    const cacheKey = createHash("sha256").update(target).digest("hex");
+    const cacheMp3Path = path.join(cacheDir, `${cacheKey}.mp3`);
+    const cacheMetaPath = path.join(cacheDir, `${cacheKey}.json`);
+    try {
+      const cachedStat = await fs.stat(cacheMp3Path);
+      if (cachedStat.isFile() && cachedStat.size > 0) {
+        const cachedAudio = await fs.readFile(cacheMp3Path);
+        return new Response(new Uint8Array(cachedAudio), {
+          status: 200,
+          headers: {
+            "Content-Type": "audio/mpeg",
+            "Content-Length": String(cachedAudio.byteLength),
+            "Content-Disposition": contentDisposition(`${cacheKey}.mp3`),
+            "Cache-Control": "no-store",
+          },
+        });
+      }
+    } catch {
+      // best-effort cache
+    }
+
     tempDir = await fs.mkdtemp(path.join(tmpdir(), "ponotai-ytdlp-"));
     const outputTemplate = path.join(tempDir, "%(title).200B.%(ext)s");
 
-    const args = ["--no-playlist", "--no-progress", "-f", "bestaudio/best", "-x", "--audio-format", "mp3", "--audio-quality", "0", "-o", outputTemplate];
+    const args = ["--no-playlist", "--no-progress", "--retries", "3", "--fragment-retries", "3", "--retry-sleep", "http:exp=3:30", "--retry-sleep", "fragment:exp=3:30", "--sleep-requests", "1", "--sleep-interval", "5", "--max-sleep-interval", "15", "-f", "bestaudio/best", "-x", "--audio-format", "mp3", "--audio-quality", "0", "-o", outputTemplate];
     if (process.env.YTDLP_COOKIES) args.push("--cookies", process.env.YTDLP_COOKIES);
     if (process.env.FFMPEG_LOCATION) args.push("--ffmpeg-location", process.env.FFMPEG_LOCATION);
     args.push(target);
@@ -80,6 +123,13 @@ export async function handleDownloadPost(request: Request, runner: YtdlpRunner =
 
     const filePath = path.join(tempDir, mp3Name);
     const audio = await fs.readFile(filePath);
+    try {
+      await fs.mkdir(cacheDir, { recursive: true });
+      await fs.writeFile(cacheMp3Path, audio);
+      await fs.writeFile(cacheMetaPath, JSON.stringify({ target, createdAt: new Date().toISOString(), filename: mp3Name }, null, 2), "utf8");
+    } catch {
+      // best-effort cache
+    }
     return new Response(new Uint8Array(audio), {
       status: 200,
       headers: {
@@ -90,7 +140,9 @@ export async function handleDownloadPost(request: Request, runner: YtdlpRunner =
       },
     });
   } catch (error) {
-    return NextResponse.json({ error: "YouTube download failed. Update yt-dlp, check ffmpeg, or provide cookies locally.", detail: firstUsefulDetail(error instanceof Error ? error.message : String(error)) }, { status: 503 });
+    const rawDetail = firstUsefulDetail(error instanceof Error ? error.message : String(error));
+    const classified = classifyDownloadError(rawDetail);
+    return NextResponse.json({ error: "YouTube download failed.", code: classified.code, detail: classified.detail }, { status: classified.status });
   } finally {
     if (tempDir) {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
