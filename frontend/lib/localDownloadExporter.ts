@@ -304,6 +304,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
             youtubeSuccessCount += 1;
             audioBlob = ytBlob;
             audioExt = ".mp3";
+            youtubeSuccessCount += 1;
           } catch (error) {
             const message = error instanceof Error ? error.message : "YouTube download failed.";
             const code = error instanceof YoutubeDownloadError ? error.code : undefined;
