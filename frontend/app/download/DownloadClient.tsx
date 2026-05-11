@@ -9,6 +9,8 @@ import type { SongMatch } from "@/features/recognition/api";
 import { createLocalExportZip, saveBlobAsDownload, type LocalExportProgress, type LocalExportResultItem, type LocalExportSong } from "@/lib/localDownloadExporter";
 
 type DownloadState = "idle" | "ready" | "exporting" | "done" | "error";
+
+type Diagnostics = { ok: boolean; mode: "local" | "cloud" | "unknown"; downloader: { found: boolean }; ffmpeg: { found: boolean }; cache: { writable: boolean }; warnings: string[]; fixes: string[] };
 type ExportSong = SongMatch & { coverUrl?: string; selected?: boolean; selectedCoverUrl?: string; source?: string; rawText?: string; sourceImageIds?: string[]; title?: string; name?: string; file?: File; blob?: Blob; audioUrl?: string; sourceUrl?: string; coverCandidates?: unknown };
 
 const YOUTUBE_VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
@@ -139,10 +141,24 @@ export default function DownloadClient() {
   const [progress, setProgress] = useState<LocalExportProgress | null>(null);
   const [summary, setSummary] = useState("");
   const [resultItems, setResultItems] = useState<LocalExportResultItem[]>([]);
+  const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
+  const [diagnosticsError, setDiagnosticsError] = useState("");
+
+  async function loadDiagnostics() {
+    try {
+      setDiagnosticsError("");
+      const res = await fetch("/api/download/diagnostics", { cache: "no-store" });
+      const data = await res.json() as Diagnostics;
+      setDiagnostics(data);
+    } catch {
+      setDiagnosticsError("Could not load downloader diagnostics.");
+    }
+  }
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search).get("query")?.trim() ?? "";
     setSongName(query);
+    void loadDiagnostics();
   }, []);
 
   async function handleJsonImport(file: File | null) {
@@ -221,6 +237,22 @@ export default function DownloadClient() {
         <div className="space-y-2"><label htmlFor="songName" className="text-sm text-text-muted">Single song</label><Input id="songName" value={songName} onChange={(event) => setSongName(event.target.value)} placeholder="e.g. The Weeknd - Blinding Lights" /></div>
         <div className="space-y-2"><label htmlFor="songsJson" className="text-sm text-text-muted">Import OCR songs JSON</label><input id="songsJson" type="file" accept=".json" onChange={(event) => void handleJsonImport(event.target.files?.[0] ?? null)} className="block w-full rounded-lg border border-border bg-surface-overlay px-3 py-2 text-sm text-text-muted" /></div>
         <div className="flex flex-wrap items-center gap-3"><Button onClick={addSingleSongToExport}>Add single song to export</Button><Button onClick={() => void handleLocalZipExport()} disabled={selectedCount === 0 || state === "exporting"}>Export ZIP locally</Button></div>
+
+        <div className="rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm">
+          <div className="flex items-center justify-between">
+            <strong>Downloader diagnostics</strong>
+            <Button onClick={() => void loadDiagnostics()}>Recheck downloader</Button>
+          </div>
+          {diagnosticsError ? <p className="mt-2 text-danger">{diagnosticsError}</p> : null}
+          {diagnostics ? <div className="mt-2 space-y-1 text-text-muted">
+            <p>{diagnostics.ok ? "Local downloader ready" : (!diagnostics.downloader.found ? "Missing yt-dlp" : !diagnostics.ffmpeg.found ? "Missing ffmpeg" : "Downloader needs attention")}</p>
+            {diagnostics.mode === "cloud" ? <p>Cloud server detected. yt-dlp can be installed here, but YouTube may block datacenter IPs. For reliable YouTube fallback, run locally/private network.</p> : null}
+            {!diagnostics.cache.writable ? <p>Cache not writable. Set YTDLP_CACHE_DIR to a writable path.</p> : null}
+            {!diagnostics.downloader.found ? <p>yt-dlp is missing on the machine running the server. Install it or set YTDLP_PATH.</p> : null}
+            {diagnostics.fixes?.[0] ? <p>Fix: {diagnostics.fixes[0]}</p> : null}
+          </div> : null}
+        </div>
+
         {selectedCount > 0 ? <div className="rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm">Selected songs: {selectedCount}</div> : null}
         {state === "exporting" && progress ? <div className="rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm space-y-1"><div>{phaseText}</div><div>Current song: {progress.currentSong || "-"}</div><div>Completed: {progress.completed} / {progress.total}</div><div>Failed/skipped: {progress.failed}</div></div> : null}
         {state === "done" ? <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"><div>{summary}</div>{resultItems.filter((item) => item.status !== "exported").map((item) => <div key={`${item.id}-${item.status}`} className="mt-1 text-xs">{item.artist ? `${item.artist} - ${item.title}` : item.title}: {item.error || "Skipped"}</div>)}</div> : null}

@@ -52,10 +52,12 @@ export type LocalExportProgress = {
 
 export class YoutubeDownloadError extends Error {
   code?: string;
-  constructor(message: string, code?: string) {
+  fix?: string;
+  constructor(message: string, code?: string, fix?: string) {
     super(message);
     this.name = "YoutubeDownloadError";
     this.code = code;
+    this.fix = fix;
   }
 }
 
@@ -74,14 +76,16 @@ export async function downloadFromYouTube(idOrQuery: { youtubeId?: string; query
   if (!response.ok) {
     let detail = "";
     let code: string | undefined;
+    let fix: string | undefined;
     try {
-      const payload = await response.json() as { error?: string; detail?: string; code?: string };
+      const payload = await response.json() as { error?: string; detail?: string; code?: string; fix?: string };
       detail = payload.detail || payload.error || "";
       code = payload.code;
+      fix = payload.fix;
     } catch {
       detail = await response.text();
     }
-    throw new YoutubeDownloadError(`YouTube download failed: ${(detail || `HTTP ${response.status}`).slice(0, 240)}`, code);
+    throw new YoutubeDownloadError(`YouTube download failed: ${((detail || fix || `HTTP ${response.status}`)).slice(0, 240)}`, code, fix);
   }
   return response.blob();
 }
@@ -193,6 +197,20 @@ export function isImageContentType(contentType: string): boolean {
   return IMAGE_CONTENT_TYPES.has(contentType.split(";")[0].trim().toLowerCase());
 }
 
+
+function isGlobalYoutubeFailure(code?: string): boolean {
+  return code === "youtube-blocked"
+    || code === "missing-binary"
+    || code === "ffmpeg-missing"
+    || code === "binary-permission";
+}
+
+function messageForGlobalYoutubeFailure(code: string | undefined, youtubeBlockedMessage: string): string {
+  if (code === "missing-binary") return "yt-dlp is missing on the server. On Railway set RAILPACK_DEPLOY_APT_PACKAGES=yt-dlp ffmpeg and YTDLP_PATH=/usr/bin/yt-dlp, then redeploy.";
+  if (code === "ffmpeg-missing") return "ffmpeg/ffprobe is missing on the server. On Railway set RAILPACK_DEPLOY_APT_PACKAGES=yt-dlp ffmpeg and FFMPEG_LOCATION=/usr/bin, then redeploy.";
+  return youtubeBlockedMessage;
+}
+
 const encoder = new TextEncoder();
 function crc32(bytes: Uint8Array): number { let c = ~0; for (let i = 0; i < bytes.length; i += 1) { c ^= bytes[i]; for (let j = 0; j < 8; j += 1) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); } return (~c) >>> 0; }
 function u16(n: number): Uint8Array { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n, true); return b; }
@@ -244,6 +262,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   let youtubeSuccessCount = 0;
   let youtubeCircuitOpen = false;
   const youtubeBlockedMessage = "YouTube downloads are currently blocked by the server environment. Try local mode, lower the batch size, provide direct audio files, or configure a private server.";
+  let youtubeCircuitMessage = youtubeBlockedMessage;
 
   onProgress?.({ phase: "preparing", completed: 0, total: songs.length, failed: 0 });
 
@@ -291,7 +310,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
       } else if (song.youtubeVideoId || line) {
         if (youtubeCircuitOpen) {
           item.status = "skipped";
-          item.error = youtubeBlockedMessage;
+          item.error = youtubeCircuitMessage;
         } else {
           if (youtubeSuccessCount > 0 && YOUTUBE_BATCH_DELAY_MS > 0) await delay(YOUTUBE_BATCH_DELAY_MS);
           onProgress?.({ phase: "downloading-youtube", currentSong: line, completed: index, total: songs.length, failed: failedCount + skippedCount });
@@ -304,14 +323,15 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
             youtubeSuccessCount += 1;
             audioBlob = ytBlob;
             audioExt = ".mp3";
-            youtubeSuccessCount += 1;
           } catch (error) {
             const message = error instanceof Error ? error.message : "YouTube download failed.";
             const code = error instanceof YoutubeDownloadError ? error.code : undefined;
-            if (code === "youtube-blocked") {
+            if (isGlobalYoutubeFailure(code)) {
+              const globalMessage = messageForGlobalYoutubeFailure(code, youtubeBlockedMessage);
               youtubeCircuitOpen = true;
+              youtubeCircuitMessage = globalMessage;
               item.status = "skipped";
-              item.error = youtubeBlockedMessage;
+              item.error = globalMessage;
               skippedCount += 1;
               searchList.push(line);
               items.push(item);
