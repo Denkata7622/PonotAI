@@ -7,6 +7,19 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function parseYtDlpBuildDate(version?: string): Date | null {
+  if (!version) return null;
+  const m = version.trim().match(/^(\d{4})\.(\d{2})\.(\d{2})/);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+
 function run(bin: string, args: string[]): Promise<{ ok: boolean; out: string; code?: string }> {
   return new Promise((resolve) => {
     const child = spawn(bin, args, { shell: false });
@@ -43,6 +56,19 @@ export async function GET(req: Request): Promise<Response> {
   if (mode !== "local") warnings.push("Cloud server detected. yt-dlp can be installed here, but YouTube may block datacenter IPs. For reliable YouTube fallback, run locally/private network.");
   if (!downloader.ok) fixes.push("Install yt-dlp: macOS brew install yt-dlp; Windows winget install yt-dlp.yt-dlp; Linux python3 -m pip install -U yt-dlp.");
   if (!ffmpeg.ok || !ffprobe.ok) fixes.push("Install ffmpeg/ffprobe: macOS brew install ffmpeg; Windows winget install Gyan.FFmpeg; Linux sudo apt install ffmpeg.");
+
+  const downloaderVersion = downloader.ok ? downloader.out.trim() : undefined;
+  const ytDlpDate = parseYtDlpBuildDate(downloaderVersion);
+  if (ytDlpDate) {
+    const now = new Date();
+    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+    const ageMs = now.getTime() - ytDlpDate.getTime();
+    const olderThan90Days = ageMs > ninetyDaysMs;
+    const olderThanCurrentYear = ytDlpDate.getUTCFullYear() < now.getUTCFullYear();
+    if (olderThan90Days || olderThanCurrentYear) {
+      warnings.push("yt-dlp is installed but appears old. YouTube extraction may fail. Update yt-dlp.");
+    }
+  }
 
   const cacheDir = process.env.YTDLP_CACHE_DIR || path.join(tmpdir(), "ponotai-ytdlp-cache");
   let cacheWritable = true; let cacheError = "";
