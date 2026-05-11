@@ -120,9 +120,12 @@ MIT (`LICENSE`)
 
 ## Local YouTube audio download (frontend API)
 
-For local/personal usage, the Next.js frontend exposes `POST /api/download` that can download YouTube audio as MP3 on the server side using `yt-dlp` (`yt-dlp-exec`).
+For local/personal usage, the Next.js frontend exposes `POST /api/download` that shells out to your locally installed `yt-dlp` and `ffmpeg`/`ffprobe` to produce MP3 files server-side (Node runtime).
 
-- Requires internet access.
+- Requires internet access and local CLI tools (`yt-dlp`, `ffmpeg`, `ffprobe`).
+- Optional env vars:
+  - `YTDLP_PATH` (custom path to the `yt-dlp` binary)
+  - `YTDLP_COOKIES` (path to a local `cookies.txt`)
+  - `FFMPEG_LOCATION` (custom ffmpeg location for yt-dlp post-processing)
 - YouTube may block some requests (bot checks/CAPTCHA/rate limits).
-- If needed, you can modify `frontend/app/api/download/route.ts` to pass your own cookies/options to yt-dlp for local use.
-- This is intended for local development/personal workflows only.
+- This workflow is intended for local/personal development only (not public hosted downloading).
