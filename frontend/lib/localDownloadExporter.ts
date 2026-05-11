@@ -63,7 +63,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const YOUTUBE_BATCH_DELAY_MS = Math.max(0, Math.min(120000, Number(process.env.NEXT_PUBLIC_YOUTUBE_BATCH_DELAY_MS || 15000)));
+const YOUTUBE_BATCH_DELAY_MS = Math.max(0, Math.min(120000, Number(process.env.NEXT_PUBLIC_YOUTUBE_BATCH_DELAY_MS || 0)));
 
 export async function downloadFromYouTube(idOrQuery: { youtubeId?: string; query?: string }): Promise<Blob> {
   const response = await fetch("/api/download", {
@@ -241,8 +241,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   let exportedCount = 0;
   let failedCount = 0;
   let skippedCount = 0;
-  let youtubeAttemptCount = 0;
-  let consecutiveYouTubeBlocks = 0;
+  let youtubeSuccessCount = 0;
   let youtubeCircuitOpen = false;
 
   onProgress?.({ phase: "preparing", completed: 0, total: songs.length, failed: 0 });
@@ -291,10 +290,9 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
       } else if (song.youtubeVideoId || line) {
         if (youtubeCircuitOpen) {
           item.status = "skipped";
-          item.error = "Stopped YouTube downloads after repeated blocking/rate-limit errors. Try again later, lower the batch size, or run locally.";
+          item.error = "YouTube downloads are currently blocked by the server environment. Try local mode, lower the batch size, provide direct audio files, or configure a private server.";
         } else {
-          if (youtubeAttemptCount > 0 && YOUTUBE_BATCH_DELAY_MS > 0) await delay(YOUTUBE_BATCH_DELAY_MS);
-          youtubeAttemptCount += 1;
+          if (youtubeSuccessCount > 0 && YOUTUBE_BATCH_DELAY_MS > 0) await delay(YOUTUBE_BATCH_DELAY_MS);
           onProgress?.({ phase: "downloading-youtube", currentSong: line, completed: index, total: songs.length, failed: failedCount + skippedCount });
           const youtubeId = song.youtubeVideoId && YOUTUBE_VIDEO_ID_REGEX.test(song.youtubeVideoId) ? song.youtubeVideoId : undefined;
           try {
@@ -302,18 +300,13 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
               youtubeId,
               query: youtubeId ? undefined : line,
             });
-            consecutiveYouTubeBlocks = 0;
             audioBlob = ytBlob;
             audioExt = ".mp3";
+            youtubeSuccessCount += 1;
           } catch (error) {
             const message = error instanceof Error ? error.message : "YouTube download failed.";
             const code = error instanceof YoutubeDownloadError ? error.code : undefined;
-            if (code === "youtube-blocked") {
-              consecutiveYouTubeBlocks += 1;
-              if (consecutiveYouTubeBlocks >= 3) youtubeCircuitOpen = true;
-            } else {
-              consecutiveYouTubeBlocks = 0;
-            }
+            if (code === "youtube-blocked") youtubeCircuitOpen = true;
             throw new YoutubeDownloadError(message, code);
           }
         }

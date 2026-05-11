@@ -124,12 +124,13 @@ For local/personal usage, the Next.js frontend exposes `POST /api/download` that
 
 - Requires internet access and local CLI tools (`yt-dlp`, `ffmpeg`, `ffprobe`).
 - For Railway deployment, `frontend/nixpacks.toml` installs `yt-dlp` and `ffmpeg` via Nix packages. If deploying elsewhere, install both tools in the server image and ensure `yt-dlp` is in `PATH`, or set `YTDLP_PATH`.
+- Railway can install `yt-dlp`/`ffmpeg`, but YouTube may still block datacenter/shared cloud IP ranges.
 - Optional env vars:
   - `YTDLP_PATH` (custom path to the `yt-dlp` binary)
   - `YTDLP_COOKIES` (path to a local `cookies.txt`)
   - `FFMPEG_LOCATION` (custom ffmpeg location for yt-dlp post-processing)
-- Large YouTube batches are intentionally throttled and queued to reduce bursty requests.
+- Large YouTube batches can be throttled via env config, but throttling cannot fix bot/CAPTCHA challenges that are already triggered.
 - Cloud hosts can still be blocked due to shared/datacenter IP ranges.
-- For best reliability, run locally or on a private machine and keep `yt-dlp` updated.
-- The app does not bypass CAPTCHA/bot checks. If YouTube blocks a request, the item is added to `search-list.txt`.
+- For reliable YouTube fallback, run locally or on a private machine/network and keep `yt-dlp` updated.
+- The app does not bypass CAPTCHA/bot checks. If cloud YouTube is blocked, export fails fast for YouTube items and writes them to `search-list.txt`.
 - This workflow is intended for local/personal development only (not public hosted downloading).
