@@ -128,8 +128,9 @@ For local/personal usage, the Next.js frontend exposes `POST /api/download` that
   - `YTDLP_PATH` (custom path to the `yt-dlp` binary)
   - `YTDLP_COOKIES` (path to a local `cookies.txt`)
   - `FFMPEG_LOCATION` (custom ffmpeg location for yt-dlp post-processing)
-- Large YouTube batches are intentionally throttled and queued to reduce bursty requests.
-- Cloud hosts can still be blocked due to shared/datacenter IP ranges.
-- For best reliability, run locally or on a private machine and keep `yt-dlp` updated.
-- The app does not bypass CAPTCHA/bot checks. If YouTube blocks a request, the item is added to `search-list.txt`.
+- Railway can install `yt-dlp`/`ffmpeg`, but YouTube may still block datacenter IP ranges.
+- Throttling can reduce bursty requests, but it cannot fix bot/CAPTCHA challenges that are already triggered.
+- For reliable YouTube fallback, run locally or on a private machine/network and keep `yt-dlp` updated.
+- If cloud YouTube is blocked, exports fail fast for YouTube-dependent tracks and write those songs to `search-list.txt`.
+- The app does not bypass CAPTCHA/bot checks.
 - This workflow is intended for local/personal development only (not public hosted downloading).
