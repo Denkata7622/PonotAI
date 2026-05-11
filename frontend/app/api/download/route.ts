@@ -59,7 +59,20 @@ function classifyDownloadError(detail: string): { code: "missing-binary" | "ffmp
   if (normalized.includes("timed out")) {
     return { code: "timeout", status: 504, detail };
   }
-  if (normalized.includes("sign in to confirm") || normalized.includes("confirm you’re not a bot") || normalized.includes("confirm you're not a bot") || normalized.includes("captcha") || normalized.includes("bot") || normalized.includes("blocked") || normalized.includes("429") || normalized.includes("too many requests") || normalized.includes("rate limit") || normalized.includes("rate-limit") || normalized.includes("http error 403") || normalized.includes("forbidden")) {
+  if (
+    normalized.includes("sign in to confirm")
+    || normalized.includes("confirm you’re not a bot")
+    || normalized.includes("confirm you're not a bot")
+    || normalized.includes("captcha")
+    || normalized.includes("bot")
+    || normalized.includes("blocked")
+    || normalized.includes("429")
+    || normalized.includes("too many requests")
+    || normalized.includes("rate limit")
+    || normalized.includes("rate-limit")
+    || normalized.includes("http error 403")
+    || normalized.includes("forbidden")
+  ) {
     return { code: "youtube-blocked", status: 429, detail };
   }
   if (normalized.includes("video unavailable") || normalized.includes("no video results") || normalized.includes("unable to find video")) {

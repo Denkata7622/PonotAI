@@ -243,6 +243,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   let skippedCount = 0;
   let youtubeSuccessCount = 0;
   let youtubeCircuitOpen = false;
+  const youtubeBlockedMessage = "YouTube downloads are currently blocked by the server environment. Try local mode, lower the batch size, provide direct audio files, or configure a private server.";
 
   onProgress?.({ phase: "preparing", completed: 0, total: songs.length, failed: 0 });
 
@@ -290,7 +291,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
       } else if (song.youtubeVideoId || line) {
         if (youtubeCircuitOpen) {
           item.status = "skipped";
-          item.error = "YouTube downloads are currently blocked by the server environment. Try local mode, lower the batch size, provide direct audio files, or configure a private server.";
+          item.error = youtubeBlockedMessage;
         } else {
           if (youtubeSuccessCount > 0 && YOUTUBE_BATCH_DELAY_MS > 0) await delay(YOUTUBE_BATCH_DELAY_MS);
           onProgress?.({ phase: "downloading-youtube", currentSong: line, completed: index, total: songs.length, failed: failedCount + skippedCount });
@@ -300,13 +301,23 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
               youtubeId,
               query: youtubeId ? undefined : line,
             });
+            youtubeSuccessCount += 1;
             audioBlob = ytBlob;
             audioExt = ".mp3";
             youtubeSuccessCount += 1;
           } catch (error) {
             const message = error instanceof Error ? error.message : "YouTube download failed.";
             const code = error instanceof YoutubeDownloadError ? error.code : undefined;
-            if (code === "youtube-blocked") youtubeCircuitOpen = true;
+            if (code === "youtube-blocked") {
+              youtubeCircuitOpen = true;
+              item.status = "skipped";
+              item.error = youtubeBlockedMessage;
+              skippedCount += 1;
+              searchList.push(line);
+              items.push(item);
+              onProgress?.({ phase: "adding-files", currentSong: line, completed: index + 1, total: songs.length, failed: failedCount + skippedCount });
+              continue;
+            }
             throw new YoutubeDownloadError(message, code);
           }
         }
