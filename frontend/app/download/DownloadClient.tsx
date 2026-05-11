@@ -216,7 +216,7 @@ export default function DownloadClient() {
       <Card className="space-y-5 rounded-2xl p-6">
         <div>
           <h1 className="text-2xl font-semibold text-text-primary">Local ZIP Export</h1>
-          <p className="mt-1 text-sm text-text-muted">Export one ZIP locally in your browser with real audio (when accessible), covers, and metadata.</p>
+          <p className="mt-1 text-sm text-text-muted">Export one ZIP locally in your browser with real audio (when accessible), covers, and metadata. YouTube fallback is queued and throttled. Large batches may be skipped if YouTube blocks the server.</p>
         </div>
         <div className="space-y-2"><label htmlFor="songName" className="text-sm text-text-muted">Single song</label><Input id="songName" value={songName} onChange={(event) => setSongName(event.target.value)} placeholder="e.g. The Weeknd - Blinding Lights" /></div>
         <div className="space-y-2"><label htmlFor="songsJson" className="text-sm text-text-muted">Import OCR songs JSON</label><input id="songsJson" type="file" accept=".json" onChange={(event) => void handleJsonImport(event.target.files?.[0] ?? null)} className="block w-full rounded-lg border border-border bg-surface-overlay px-3 py-2 text-sm text-text-muted" /></div>

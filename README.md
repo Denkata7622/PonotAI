@@ -123,9 +123,13 @@ MIT (`LICENSE`)
 For local/personal usage, the Next.js frontend exposes `POST /api/download` that shells out to your locally installed `yt-dlp` and `ffmpeg`/`ffprobe` to produce MP3 files server-side (Node runtime).
 
 - Requires internet access and local CLI tools (`yt-dlp`, `ffmpeg`, `ffprobe`).
+- For Railway deployment, `frontend/nixpacks.toml` installs `yt-dlp` and `ffmpeg` via Nix packages. If deploying elsewhere, install both tools in the server image and ensure `yt-dlp` is in `PATH`, or set `YTDLP_PATH`.
 - Optional env vars:
   - `YTDLP_PATH` (custom path to the `yt-dlp` binary)
   - `YTDLP_COOKIES` (path to a local `cookies.txt`)
   - `FFMPEG_LOCATION` (custom ffmpeg location for yt-dlp post-processing)
-- YouTube may block some requests (bot checks/CAPTCHA/rate limits).
+- Large YouTube batches are intentionally throttled and queued to reduce bursty requests.
+- Cloud hosts can still be blocked due to shared/datacenter IP ranges.
+- For best reliability, run locally or on a private machine and keep `yt-dlp` updated.
+- The app does not bypass CAPTCHA/bot checks. If YouTube blocks a request, the item is added to `search-list.txt`.
 - This workflow is intended for local/personal development only (not public hosted downloading).

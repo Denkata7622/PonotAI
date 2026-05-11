@@ -1,5 +1,8 @@
+[phases.setup]
+nixPkgs = ["...", "yt-dlp", "ffmpeg"]
+
 [phases.install]
 cmds = ["npm ci --include=dev"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["yt-dlp --version", "ffmpeg -version", "npm run build"]
