@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyAccentVariables, UI_PRESETS, themeStorageKeys } from "../lib/ThemeContext";
-import { getAccentCssVariables, normalizeAccentPreset } from "../lib/themePresets";
+import {
+  THEME_PRESET_DEFINITIONS,
+  UI_PRESETS,
+  applyAccentVariables,
+  findMatchingThemePresetId,
+  getThemePreviewTokens,
+  isValidThemePresetId,
+  themeStorageKeys,
+} from "../lib/ThemeContext";
+import { ACCENT_TOKENS, getAccentCssVariables, normalizeAccentPreset } from "../lib/themePresets";
+import ThemePresetCard, { THEME_PRESET_CARD_CLASS } from "../src/components/theme/ThemePresetCard";
+import { THEME_PRESET_IDS as BACKEND_THEME_PRESET_IDS } from "../../backend/src/modules/personalization/themePresetCatalog.ts";
 
 test("normalizeAccentPreset falls back for unsupported accent values", () => {
   assert.equal(normalizeAccentPreset("ocean"), "ocean");
@@ -34,6 +44,7 @@ test("applyAccentVariables writes accent data and css variables to root", () => 
 
 
 test("theme storage includes typography split keys", () => {
+  assert.equal(themeStorageKeys.presetId, "ponotai-theme-preset-id");
   assert.equal(themeStorageKeys.cardEmphasis, "ponotai-card-emphasis");
   assert.equal(themeStorageKeys.chartStyle, "ponotai-chart-style");
   assert.equal(themeStorageKeys.bodyFont, "ponotai-body-font");
@@ -53,4 +64,55 @@ test("creative presets are registered", () => {
   assert.equal(UI_PRESETS["Stock Clean"]?.theme, "light");
   assert.equal(UI_PRESETS["Cyber Grid"]?.displayFont, "orbitron");
   assert.equal(UI_PRESETS["Noir Gothic"]?.displayFont, "pirata-one");
+});
+
+test("theme preset registry has unique real IDs and names", () => {
+  const ids = THEME_PRESET_DEFINITIONS.map((preset) => preset.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.deepEqual(BACKEND_THEME_PRESET_IDS, ids);
+  for (const preset of THEME_PRESET_DEFINITIONS) {
+    assert.equal(preset.id, preset.name);
+    assert.ok(isValidThemePresetId(preset.id));
+    assert.deepEqual(UI_PRESETS[preset.id], preset.personalization);
+    assert.equal(findMatchingThemePresetId(preset.personalization), preset.id);
+  }
+});
+
+test("theme preview tokens are derived from the selected preset accent and mode", () => {
+  for (const preset of THEME_PRESET_DEFINITIONS) {
+    const preview = getThemePreviewTokens(preset);
+    const accent = ACCENT_TOKENS[preset.personalization.accent];
+    assert.equal(preview.accent, accent.accent);
+    assert.equal(preview.accent2, accent.accent2);
+    if (preset.personalization.theme === "light") {
+      assert.equal(preview.background, "#f5f7fa");
+    } else {
+      assert.equal(preview.background, "#0b0d12");
+    }
+  }
+});
+
+test("theme preset cards render directly from registry metadata", () => {
+  assert.ok(THEME_PRESET_CARD_CLASS.includes("h-[22rem]"));
+  assert.ok(THEME_PRESET_CARD_CLASS.includes("max-w-[12rem]"));
+
+  for (const preset of THEME_PRESET_DEFINITIONS) {
+    const element = ThemePresetCard({
+      preset,
+      selected: false,
+      saved: false,
+      onSelect: () => undefined,
+    }) as {
+      props: {
+        "aria-label": string;
+        id: string;
+        style: { background: string; color: string };
+      };
+    };
+    const tokens = getThemePreviewTokens(preset);
+    assert.equal(element.props.id, `theme-preset-${preset.id.replace(/\s+/g, "-").toLowerCase()}`);
+    assert.equal(element.props["aria-label"], `Preview ${preset.name} theme preset`);
+    assert.ok(element.props.style.background.includes(tokens.background));
+    assert.equal(element.props.style.color, tokens.text);
+  }
 });

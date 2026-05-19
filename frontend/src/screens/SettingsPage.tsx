@@ -12,7 +12,7 @@ import Modal from "../components/ui/Modal";
 import { useUser } from "../context/UserContext";
 import { useLanguage } from "../../lib/LanguageContext";
 import { t } from "../../lib/translations";
-import { useTheme, UI_PRESETS } from "../../lib/ThemeContext";
+import { getThemePresetById, useTheme } from "../../lib/ThemeContext";
 import { exportLibraryAsJSON, exportLibraryAsCSV, importLibraryFromJSON, LIBRARY_EXPORT_VERSION } from "../lib/libraryExport";
 import type { Playlist } from "../../features/library/types";
 import { syncLibraryState } from "../../features/library/api";
@@ -190,7 +190,10 @@ export default function SettingsPage() {
         <ThemeStudioControls
           ui={themeApi}
           onUpdate={themeApi.updateUiSetting}
-          onApplyPreset={(presetName) => themeApi.applyPersonalization(UI_PRESETS[presetName])}
+          onApplyPreset={(presetName) => {
+            const preset = getThemePresetById(presetName);
+            if (preset) themeApi.applyPersonalization(preset.personalization);
+          }}
         />
       </Card>
 

@@ -2,7 +2,8 @@
 
 ## 1) Provision PostgreSQL on Railway
 1. Add a PostgreSQL service in Railway.
-2. Copy the connection string into backend `DATABASE_URL`.
+2. Set backend `DATABASE_URL=${{Postgres.DATABASE_URL}}` so Railway resolves the linked PostgreSQL service URL at deploy time.
+   - Local `.env` files must use a fully resolved `postgresql://...` URL instead of Railway variable-reference syntax.
 3. Ensure backend service exposes:
    - `DATABASE_URL`
    - `PERSISTENCE_MODE=postgres`

@@ -3,6 +3,14 @@ import multer from "multer";
 import { ErrorCatalog, sendError } from "../errors/errorCatalog";
 import { HttpError } from "../utils/httpError";
 
+function isJsonParseError(error: unknown): boolean {
+  if (!(error instanceof SyntaxError) || !error || typeof error !== "object") return false;
+  const candidate = error as { status?: unknown; statusCode?: unknown; type?: unknown; body?: unknown };
+  return (candidate.status === 400 || candidate.statusCode === 400)
+    && candidate.type === "entity.parse.failed"
+    && candidate.body !== undefined;
+}
+
 export function errorMiddleware(error: unknown, _req: Request, res: Response, _next: NextFunction): void {
   if (error instanceof HttpError) {
     const candidate = error.code ? (ErrorCatalog as Record<string, (typeof ErrorCatalog)[keyof typeof ErrorCatalog]>)[error.code] : undefined;
@@ -24,6 +32,11 @@ export function errorMiddleware(error: unknown, _req: Request, res: Response, _n
     }
 
     sendError(res, ErrorCatalog.INVALID_PAYLOAD, { code: error.code, field: error.field, message: error.message });
+    return;
+  }
+
+  if (isJsonParseError(error)) {
+    sendError(res, ErrorCatalog.INVALID_PAYLOAD, { message: "Request body must be valid JSON." });
     return;
   }
 

@@ -50,6 +50,7 @@ export function SmartDropdown({
   enableClickTrigger = true,
 }: SmartDropdownProps) {
   const [playerBarPadding, setPlayerBarPadding] = useState(0);
+  const [hasReferenceNode, setHasReferenceNode] = useState(false);
   const referenceNodeRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
@@ -116,6 +117,7 @@ export function SmartDropdown({
 
   const referenceRef = useCallback((node: HTMLSpanElement | null) => {
     referenceNodeRef.current = node;
+    setHasReferenceNode(Boolean(node));
     refs.setReference(node);
   }, [refs]);
 
@@ -154,7 +156,7 @@ export function SmartDropdown({
         {trigger}
       </span>
 
-      {isOpen && referenceNodeRef.current && (
+      {isOpen && hasReferenceNode && (
         <FloatingPortal>
           <div
             ref={floatingRef}

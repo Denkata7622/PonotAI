@@ -30,6 +30,7 @@ model User {
   recommendationMode RecommendationMode @default(balanced)
   repeatedArtistTolerance RepeatedArtistTolerance @default(normal)
   energyPreference EnergyPreference @default(mixed)
+  themePresetId String?
   emailVerifiedAt DateTime?
   role         String          @default("user")
   isDemo       Boolean         @default(false)

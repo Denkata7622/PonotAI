@@ -45,12 +45,12 @@ test("assistant request keeps rich context in body and avoids unsafe custom head
     const payload = await sendAssistantMessage([], "hello");
     assert.equal(payload.reply, "ok");
     assert.ok(capturedInit);
-    const headers = capturedInit?.headers as Record<string, string>;
-    assert.equal(headers["Content-Type"], "application/json");
-    assert.equal(headers.Authorization, "Bearer token-123");
-    assert.equal(headers["X-Trackly-Queue"], undefined);
-    assert.equal(headers["X-Trackly-Preferences"], undefined);
-    assert.equal(headers["X-Trackly-Device"], undefined);
+    const headers = new Headers(capturedInit?.headers);
+    assert.equal(headers.get("Content-Type"), "application/json");
+    assert.equal(headers.get("Authorization"), "Bearer token-123");
+    assert.equal(headers.get("X-Trackly-Queue"), null);
+    assert.equal(headers.get("X-Trackly-Preferences"), null);
+    assert.equal(headers.get("X-Trackly-Device"), null);
 
     const body = JSON.parse(String(capturedInit?.body)) as {
       context?: { queueTitles?: string[]; theme?: string; language?: string; device?: string };

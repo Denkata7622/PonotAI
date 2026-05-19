@@ -10,7 +10,12 @@ function splitCsv(value: string | undefined): string[] {
 function resolveAllowedOrigins(): string[] {
   const isProduction = process.env.NODE_ENV === "production";
   const defaultOrigins = ["https://trackly-production.up.railway.app"];
-  const devOrigins = ["http://localhost:3000", "http://localhost:3001"];
+  const devOrigins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+  ];
   const envOrigins = [
     ...splitCsv(process.env.ALLOWED_ORIGINS),
     ...splitCsv(process.env.CORS_ORIGINS),

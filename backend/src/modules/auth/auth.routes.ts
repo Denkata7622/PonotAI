@@ -14,6 +14,7 @@ import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 import { hashPassword, verifyPassword } from "./password";
 import { issueEmailVerificationForUser, resendVerificationByEmail, verifyEmailToken } from "../../services/emailVerification";
 import { isEmailVerificationBypassEnabled } from "../../config/env";
+import { isValidThemePresetId } from "../personalization/themePresetCatalog";
 
 const authRouter = Router();
 
@@ -53,7 +54,7 @@ async function ensureAdminRoleForConfiguredEmail(
   return user;
 }
 
-function toUserPayload(user: {
+export function toUserPayload(user: {
   id: string;
   username: string;
   email: string;
@@ -61,6 +62,7 @@ function toUserPayload(user: {
   recommendationMode?: "safe_familiar" | "balanced" | "mostly_discovery";
   repeatedArtistTolerance?: "lower" | "normal" | "higher";
   energyPreference?: "calmer" | "mixed" | "more_energetic";
+  themePresetId?: string | null;
   avatarBase64?: string;
   bio?: string;
   createdAt: string;
@@ -76,6 +78,7 @@ function toUserPayload(user: {
     recommendationMode: user.recommendationMode ?? "balanced",
     repeatedArtistTolerance: user.repeatedArtistTolerance ?? "normal",
     energyPreference: user.energyPreference ?? "mixed",
+    themePresetId: isValidThemePresetId(user.themePresetId) ? user.themePresetId : null,
     avatarBase64: user.avatarBase64 ?? null,
     bio: user.bio ?? null,
     createdAt: user.createdAt,

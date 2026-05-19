@@ -104,6 +104,42 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
     assert.equal(sharingMeBody.user.repeatedArtistTolerance, "higher");
     assert.equal(sharingMeBody.user.energyPreference, "more_energetic");
 
+    const invalidPersonalizationResponse = await fetch(`${running.baseUrl}/api/personalization`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization: `Bearer ${sharingToken}` },
+      body: JSON.stringify({ themePresetId: "Made Up Preset" }),
+    });
+    assert.equal(invalidPersonalizationResponse.status, 400);
+
+    const savePersonalizationResponse = await fetch(`${running.baseUrl}/api/personalization`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization: `Bearer ${sharingToken}` },
+      body: JSON.stringify({ themePresetId: "Organic Signal" }),
+    });
+    assert.equal(savePersonalizationResponse.status, 200);
+    const savedPersonalization = (await savePersonalizationResponse.json()) as {
+      preferences: { themePresetId?: string | null };
+      source: string;
+    };
+    assert.equal(savedPersonalization.preferences.themePresetId, "Organic Signal");
+    assert.equal(savedPersonalization.source, "database");
+
+    const invalidPersonalizationAfterSaveResponse = await fetch(`${running.baseUrl}/api/personalization`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization: `Bearer ${sharingToken}` },
+      body: JSON.stringify({ themePresetId: "Made Up Preset" }),
+    });
+    assert.equal(invalidPersonalizationAfterSaveResponse.status, 400);
+
+    const loadPersonalizationResponse = await fetch(`${running.baseUrl}/api/personalization`, {
+      headers: { authorization: `Bearer ${sharingToken}` },
+    });
+    assert.equal(loadPersonalizationResponse.status, 200);
+    const loadedPersonalization = (await loadPersonalizationResponse.json()) as {
+      preferences: { themePresetId?: string | null };
+    };
+    assert.equal(loadedPersonalization.preferences.themePresetId, "Organic Signal");
+
     const reloginResponse = await fetch(`${running.baseUrl}/api/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -111,17 +147,29 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
     });
     assert.equal(reloginResponse.status, 200);
     const reloginBody = (await reloginResponse.json()) as {
+      token: string;
       user: {
         recommendationDataSharingEnabled?: boolean;
         recommendationMode?: string;
         repeatedArtistTolerance?: string;
         energyPreference?: string;
+        themePresetId?: string | null;
       };
     };
     assert.equal(reloginBody.user.recommendationDataSharingEnabled, true);
     assert.equal(reloginBody.user.recommendationMode, "mostly_discovery");
     assert.equal(reloginBody.user.repeatedArtistTolerance, "higher");
     assert.equal(reloginBody.user.energyPreference, "more_energetic");
+    assert.equal(reloginBody.user.themePresetId, "Organic Signal");
+
+    const reloadedPersonalizationResponse = await fetch(`${running.baseUrl}/api/personalization`, {
+      headers: { authorization: `Bearer ${reloginBody.token}` },
+    });
+    assert.equal(reloadedPersonalizationResponse.status, 200);
+    const reloadedPersonalization = (await reloadedPersonalizationResponse.json()) as {
+      preferences: { themePresetId?: string | null };
+    };
+    assert.equal(reloadedPersonalization.preferences.themePresetId, "Organic Signal");
 
     const assistantResponse = await fetch(`${running.baseUrl}/api/assistant`, {
       method: "POST",

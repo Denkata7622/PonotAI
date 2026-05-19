@@ -90,13 +90,42 @@ test("production CORS excludes localhost defaults unless explicitly configured",
   }
 });
 
+test("development CORS allows localhost and loopback dev origins", async () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+
+  try {
+    process.env.NODE_ENV = "development";
+    const { getCorsOptions } = await import("../src/config/cors.ts");
+    const cors = getCorsOptions();
+
+    async function allows(origin: string): Promise<boolean> {
+      return new Promise<boolean>((resolve, reject) => {
+        if (typeof cors.origin !== "function") {
+          reject(new Error("origin function missing"));
+          return;
+        }
+        cors.origin(origin, (error, allow) => {
+          if (error) return reject(error);
+          resolve(Boolean(allow));
+        });
+      });
+    }
+
+    assert.equal(await allows("http://localhost:3000"), true);
+    assert.equal(await allows("http://127.0.0.1:3000"), true);
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+  }
+});
+
 test("/api/health reports degraded status when postgres is unavailable", async () => {
   const previousDatabaseUrl = process.env.DATABASE_URL;
   const previousMode = process.env.PERSISTENCE_MODE;
   process.env.DATABASE_URL = "postgresql://127.0.0.1:1/trackly";
   process.env.PERSISTENCE_MODE = "postgres";
 
-  const running = await startTestServer();
+  const running = await startTestServer({ allowUnavailablePostgresForHealthProbe: true });
 
   try {
     const response = await fetch(`${running.baseUrl}/api/health`);

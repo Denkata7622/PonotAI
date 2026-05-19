@@ -20,22 +20,25 @@ export type UserRecord = {
   recommendationMode: RecommendationMode;
   repeatedArtistTolerance: RepeatedArtistTolerance;
   energyPreference: EnergyPreference;
+  themePresetId?: string | null;
   emailVerifiedAt?: string | null;
   role?: "user" | "admin";
   isDemo?: boolean;
   avatarBase64?: string;
   bio?: string;
   createdAt: string;
+  updatedAt: string;
 };
 
 type CreateUserInput = Omit<
   UserRecord,
-  "id" | "createdAt" | "recommendationDataSharingEnabled" | "recommendationMode" | "repeatedArtistTolerance" | "energyPreference"
+  "id" | "createdAt" | "updatedAt" | "recommendationDataSharingEnabled" | "recommendationMode" | "repeatedArtistTolerance" | "energyPreference"
 > & {
   recommendationDataSharingEnabled?: boolean;
   recommendationMode?: UserRecord["recommendationMode"];
   repeatedArtistTolerance?: UserRecord["repeatedArtistTolerance"];
   energyPreference?: UserRecord["energyPreference"];
+  themePresetId?: UserRecord["themePresetId"];
 };
 
 export type SearchHistoryRecord = {
@@ -207,12 +210,14 @@ function mapUser(user: User): UserRecord {
     recommendationMode: user.recommendationMode,
     repeatedArtistTolerance: user.repeatedArtistTolerance,
     energyPreference: user.energyPreference,
+    themePresetId: user.themePresetId ?? null,
     emailVerifiedAt: user.emailVerifiedAt ? toIso(user.emailVerifiedAt) : undefined,
     role: toUserRole(user.role),
     isDemo: user.isDemo,
     avatarBase64: user.avatarBase64 ?? undefined,
     bio: user.bio ?? undefined,
     createdAt: toIso(user.createdAt),
+    updatedAt: toIso(user.updatedAt),
   };
 }
 
@@ -368,6 +373,7 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
     recommendationMode: input.recommendationMode ?? "balanced",
     repeatedArtistTolerance: input.repeatedArtistTolerance ?? "normal",
     energyPreference: input.energyPreference ?? "mixed",
+    themePresetId: input.themePresetId,
     role: input.role ?? "user",
     isDemo: input.isDemo ?? false,
     avatarBase64: input.avatarBase64,
@@ -399,6 +405,7 @@ export async function updateUser(
     recommendationMode: updates.recommendationMode,
     repeatedArtistTolerance: updates.repeatedArtistTolerance,
     energyPreference: updates.energyPreference,
+    themePresetId: updates.themePresetId,
     role: updates.role,
     isDemo: updates.isDemo,
     avatarBase64: updates.avatarBase64,

@@ -97,15 +97,21 @@ function logPlayerDebug(message: string, extra?: Record<string, unknown>) {
   console.debug(`[PlayerProvider] ${message}`);
 }
 
-function readStoredState(): {
+type StoredPlayerState = {
   queue: QueuedTrack[];
   currentIndex: number;
   volume: number;
   repeatMode: RepeatMode;
   shuffleEnabled: boolean;
-} {
+};
+
+function getDefaultStoredState(): StoredPlayerState {
+  return { queue: [], currentIndex: 0, volume: 70, repeatMode: "normal", shuffleEnabled: false };
+}
+
+function readStoredState(): StoredPlayerState {
   if (typeof window === "undefined") {
-    return { queue: [] as QueuedTrack[], currentIndex: 0, volume: 70, repeatMode: "normal" as RepeatMode, shuffleEnabled: false };
+    return getDefaultStoredState();
   }
 
   try {
@@ -130,7 +136,7 @@ function readStoredState(): {
       shuffleEnabled,
     };
   } catch {
-    return { queue: [] as QueuedTrack[], currentIndex: 0, volume: 70, repeatMode: "normal" as RepeatMode, shuffleEnabled: false };
+    return getDefaultStoredState();
   }
 }
 
@@ -180,7 +186,7 @@ function normalizeTrack(track: Omit<QueueTrack, "id"> & { id?: string }): QueueT
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
-  const initial = readStoredState();
+  const initial = getDefaultStoredState();
   const [queue, setQueue] = useState<QueuedTrack[]>(initial.queue);
   const [currentIndex, setCurrentIndex] = useState(initial.currentIndex);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -193,6 +199,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(false);
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
+  const [hasLoadedStoredState, setHasLoadedStoredState] = useState(false);
   const lastVolumeBeforeMuteRef = useRef(initial.volume || 70);
   const playerRef = useRef<YTPlayerLike | null>(null);
   const isPlayerReadyRef = useRef(false);
@@ -212,6 +219,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const currentTrackRef = useRef<QueueTrack | null>(null);
   const currentVideoIdRef = useRef<string | null>(currentVideoId);
   const activeQueueEntryIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const stored = readStoredState();
+    setQueue(stored.queue);
+    setCurrentIndex(stored.currentIndex);
+    setVolumeState(stored.volume);
+    setRepeatMode(stored.repeatMode);
+    setShuffleEnabled(stored.shuffleEnabled);
+    lastVolumeBeforeMuteRef.current = stored.volume || 70;
+    setHasLoadedStoredState(true);
+  }, []);
 
   useEffect(() => {
     queueRef.current = queue;
@@ -289,6 +307,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!hasLoadedStoredState) return;
     window.localStorage.setItem(
       QUEUE_STORAGE_KEY,
       JSON.stringify({ queue, currentIndex }),
@@ -296,7 +315,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(VOLUME_STORAGE_KEY, String(volume));
     window.localStorage.setItem(REPEAT_MODE_STORAGE_KEY, repeatMode);
     window.localStorage.setItem(SHUFFLE_ENABLED_STORAGE_KEY, String(shuffleEnabled));
-  }, [queue, currentIndex, volume, repeatMode, shuffleEnabled]);
+  }, [currentIndex, hasLoadedStoredState, queue, repeatMode, shuffleEnabled, volume]);
 
   useEffect(() => {
     const next = new Set<number>(

@@ -6,7 +6,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 function runMigration(args: string[], dataDir: string) {
-  return spawnSync("npx", ["tsx", "scripts/migrate-json-to-postgres.ts", ...args], {
+  return spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/migrate-json-to-postgres.ts", ...args], {
     cwd: process.cwd(),
     env: {
       ...process.env,

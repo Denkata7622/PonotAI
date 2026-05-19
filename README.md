@@ -109,6 +109,84 @@ npm run typecheck
 
 Тестовите инструкции за Codex/CI и изолация на данни са в `docs/testing.md`.
 
+## PostgreSQL environment setup
+
+### Railway production backend
+
+Set the backend Railway service variable to Railway's resolved Postgres reference:
+
+```env
+NODE_ENV=production
+PERSISTENCE_MODE=postgres
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+JWT_SECRET=<strong-production-secret>
+ALLOWED_ORIGINS=https://<frontend-domain>
+CORS_ORIGINS=https://<frontend-domain>
+FRONTEND_URL=https://<frontend-domain>
+FRONTEND_URLS=https://<frontend-domain>
+AUTH_BYPASS_EMAIL_VERIFICATION=false
+```
+
+`DATABASE_URL=${{Postgres.DATABASE_URL}}` is Railway variable-reference syntax. Do not copy that syntax into local `.env` files; local Prisma needs a fully resolved `postgresql://...` URL.
+
+Before or during deploy, run Prisma migrations for the backend database:
+
+```bash
+cd backend
+npm run prisma:generate
+npm run prisma:migrate:deploy
+```
+
+### Local backend development
+
+Create `backend/.env` with a real local development database URL:
+
+```env
+NODE_ENV=development
+PORT=4000
+PERSISTENCE_MODE=postgres
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/ponotai_dev?schema=public
+JWT_SECRET=dev-secret-change-me
+AUTH_BYPASS_EMAIL_VERIFICATION=true
+ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+FRONTEND_URL=http://localhost:3000
+FRONTEND_URLS=http://localhost:3000,http://127.0.0.1:3000
+```
+
+### Local backend tests
+
+Create `backend/.env.test` with a separate disposable test database. The test harness refuses to fall back to production `DATABASE_URL`.
+
+```env
+NODE_ENV=test
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/ponotai_test?schema=public
+TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/ponotai_test?schema=public
+TEST_PERSISTENCE_MODE=postgres
+JWT_SECRET=test-secret
+AUTH_BYPASS_EMAIL_VERIFICATION=true
+```
+
+Then run:
+
+```bash
+cd backend
+npm install
+npm run prisma:generate
+npm run typecheck
+npm run build
+npm test
+npm run test:smoke
+```
+
+### GitHub Actions CI
+
+The repository workflow starts a disposable Postgres service and sets both `DATABASE_URL` and `TEST_DATABASE_URL` to:
+
+```env
+postgresql://postgres:postgres@localhost:5432/ponotai_test?schema=public
+```
+
 ## API (накратко)
 - `GET /health`
 - `POST /api/recognition/audio` (`multipart/form-data`, поле `audio`)

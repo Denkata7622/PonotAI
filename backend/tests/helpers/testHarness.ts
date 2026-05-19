@@ -12,25 +12,61 @@ export type RunningTestServer = {
 
 type StartTestServerOptions = {
   persistenceMode?: "postgres" | "file-legacy";
+  allowUnavailablePostgresForHealthProbe?: boolean;
 };
 
 function resolveTestPersistenceMode(override?: "postgres" | "file-legacy"): "postgres" | "file-legacy" {
   if (override) return override;
   if (process.env.TEST_PERSISTENCE_MODE === "postgres") return "postgres";
   if (process.env.TEST_PERSISTENCE_MODE === "file-legacy") return "file-legacy";
+  if (process.env.TEST_DATABASE_URL?.trim()) return "postgres";
   return process.env.DATABASE_URL ? "postgres" : "file-legacy";
 }
 
 export async function startTestServer(options: StartTestServerOptions = {}): Promise<RunningTestServer> {
   const tempDataDir = await mkdtemp(path.join(os.tmpdir(), "ponotai-tests-"));
+  const previousEnv = {
+    NODE_ENV: process.env.NODE_ENV,
+    DATABASE_URL: process.env.DATABASE_URL,
+    TEST_DATABASE_URL: process.env.TEST_DATABASE_URL,
+    TEST_PERSISTENCE_MODE: process.env.TEST_PERSISTENCE_MODE,
+    PERSISTENCE_MODE: process.env.PERSISTENCE_MODE,
+    PONOTAI_DATA_DIR: process.env.PONOTAI_DATA_DIR,
+    JWT_SECRET: process.env.JWT_SECRET,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    SHAZAM_MOCK_RESPONSE: process.env.SHAZAM_MOCK_RESPONSE,
+    AUTH_BYPASS_EMAIL_VERIFICATION: process.env.AUTH_BYPASS_EMAIL_VERIFICATION,
+  };
   const persistenceMode = resolveTestPersistenceMode(options.persistenceMode);
+  const testDatabaseUrl = options.allowUnavailablePostgresForHealthProbe
+    ? undefined
+    : process.env.TEST_DATABASE_URL?.trim();
 
   process.env.NODE_ENV = "test";
+  if (testDatabaseUrl) {
+    process.env.DATABASE_URL = testDatabaseUrl;
+  }
   process.env.JWT_SECRET = "test-secret";
   process.env.PONOTAI_DATA_DIR = tempDataDir;
   process.env.PERSISTENCE_MODE = persistenceMode;
+  if (options.allowUnavailablePostgresForHealthProbe) {
+    process.env.TEST_DATABASE_URL = " ";
+    process.env.TEST_PERSISTENCE_MODE = " ";
+  }
+  process.env.AUTH_BYPASS_EMAIL_VERIFICATION = process.env.AUTH_BYPASS_EMAIL_VERIFICATION || "true";
   process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
   process.env.SHAZAM_MOCK_RESPONSE = process.env.SHAZAM_MOCK_RESPONSE ?? "";
+
+  if (persistenceMode === "postgres") {
+    if (!testDatabaseUrl) {
+      if (!options.allowUnavailablePostgresForHealthProbe) {
+        throw new Error("TEST_DATABASE_URL is required for PostgreSQL-backed backend tests. Refusing to use DATABASE_URL in NODE_ENV=test.");
+      }
+    } else {
+      const { resetPostgresTestDatabase } = await import("./postgresTestDb.ts");
+      await resetPostgresTestDatabase(testDatabaseUrl);
+    }
+  }
 
   const { validateEnvironment } = await import("../../src/config/env.ts");
   validateEnvironment();
@@ -50,11 +86,13 @@ export async function startTestServer(options: StartTestServerOptions = {}): Pro
         server.close((error) => (error ? reject(error) : resolve()));
       });
       await rm(tempDataDir, { recursive: true, force: true });
-      delete process.env.PONOTAI_DATA_DIR;
-      delete process.env.PERSISTENCE_MODE;
-      if (process.env.GEMINI_API_KEY === "") delete process.env.GEMINI_API_KEY;
-      if (process.env.SHAZAM_MOCK_RESPONSE === "") delete process.env.SHAZAM_MOCK_RESPONSE;
-      delete process.env.JWT_SECRET;
+      for (const [key, value] of Object.entries(previousEnv)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
     },
   };
 }

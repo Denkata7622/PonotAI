@@ -24,6 +24,7 @@ export type User = {
   recommendationMode?: "safe_familiar" | "balanced" | "mostly_discovery";
   repeatedArtistTolerance?: "lower" | "normal" | "higher";
   energyPreference?: "calmer" | "mixed" | "more_energetic";
+  themePresetId?: string | null;
   emailVerified?: boolean;
   role: "user" | "admin";
   avatarBase64?: string | null;

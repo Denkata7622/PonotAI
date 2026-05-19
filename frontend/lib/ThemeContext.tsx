@@ -76,6 +76,7 @@ type ThemeContextValue = UiPersonalization & {
   applyPreviewSession: () => void;
   discardPreviewSession: () => void;
   namedThemeDrafts: NamedThemeDraft[];
+  isUiHydrated: boolean;
   saveNamedThemeDraft: (name: string) => { ok: boolean; reason?: "empty-name" };
   renameNamedThemeDraft: (id: string, name: string) => { ok: boolean; reason?: "empty-name" | "not-found" };
   deleteNamedThemeDraft: (id: string) => void;
@@ -98,6 +99,7 @@ export type NamedThemeDraft = {
 };
 
 const STORAGE = {
+  presetId: "ponotai-theme-preset-id",
   theme: "ponotai-theme",
   accent: "ponotai-accent",
   density: "ponotai-density",
@@ -144,27 +146,180 @@ const defaults: UiPersonalization = {
 };
 export const DEFAULT_UI_PERSONALIZATION = defaults;
 
+export type ThemePresetDefinition = {
+  id: string;
+  name: string;
+  category: "Classic" | "Minimal" | "Cyber" | "Expressive" | "Console" | "Organic";
+  description: string;
+  personalization: UiPersonalization;
+};
+
+export const THEME_PRESET_DEFINITIONS = [
+  {
+    id: "Stock Clean",
+    name: "Stock Clean",
+    category: "Classic",
+    description: "Light, flat surfaces with a restrained slate accent.",
+    personalization: { ...defaults, theme: "light", accent: "slate", intensity: "subtle", surfaceStyle: "flat", radius: "default", density: "default", motionLevel: "reduced", bodyFont: "inter", displayFont: "space-grotesk", textScale: "md", displayTextStyle: "static" },
+  },
+  {
+    id: "AI Minimal",
+    name: "AI Minimal",
+    category: "Minimal",
+    description: "Compact dark surfaces with graphite controls and quiet depth.",
+    personalization: { ...defaults, theme: "dark", accent: "graphite", intensity: "subtle", surfaceStyle: "soft", radius: "rounded", density: "compact", bodyFont: "manrope", displayFont: "sora", textScale: "sm", displayTextStyle: "slight-depth" },
+  },
+  {
+    id: "Cyber Grid",
+    name: "Cyber Grid",
+    category: "Cyber",
+    description: "Elevated dark panels with ocean accents and technical type.",
+    personalization: { ...defaults, theme: "dark", accent: "ocean", intensity: "balanced", surfaceStyle: "elevated", radius: "compact", density: "compact", bodyFont: "ibm-plex-sans", displayFont: "orbitron", textScale: "sm", displayTextStyle: "subtle-glow" },
+  },
+  {
+    id: "Neon Circuit",
+    name: "Neon Circuit",
+    category: "Cyber",
+    description: "Vivid magenta circuitry with rounded elevated panels.",
+    personalization: { ...defaults, theme: "dark", accent: "magenta", intensity: "vivid", surfaceStyle: "elevated", radius: "rounded", density: "compact", bodyFont: "outfit", displayFont: "oxanium", textScale: "md", displayTextStyle: "cyber-pulse" },
+  },
+  {
+    id: "Urban Poster",
+    name: "Urban Poster",
+    category: "Expressive",
+    description: "Light poster styling with sunset accents and larger type.",
+    personalization: { ...defaults, theme: "light", accent: "sunset", intensity: "vivid", surfaceStyle: "soft", radius: "compact", density: "comfortable", bodyFont: "dm-sans", displayFont: "archivo-black", textScale: "lg", displayTextStyle: "shadowed-poster" },
+  },
+  {
+    id: "Velvet Script",
+    name: "Velvet Script",
+    category: "Expressive",
+    description: "Dark ruby styling with soft surfaces and script display text.",
+    personalization: { ...defaults, theme: "dark", accent: "ruby", intensity: "balanced", surfaceStyle: "soft", radius: "rounded", density: "comfortable", bodyFont: "nunito", displayFont: "marck-script", textScale: "lg", displayTextStyle: "soft-gradient" },
+  },
+  {
+    id: "Steel Console",
+    name: "Steel Console",
+    category: "Console",
+    description: "Flat dark console surfaces with graphite controls.",
+    personalization: { ...defaults, theme: "dark", accent: "graphite", intensity: "subtle", surfaceStyle: "flat", radius: "default", density: "compact", bodyFont: "ibm-plex-sans", displayFont: "michroma", textScale: "sm", displayTextStyle: "slight-depth" },
+  },
+  {
+    id: "Arcade Pulse",
+    name: "Arcade Pulse",
+    category: "Expressive",
+    description: "Dark arcade styling with vivid amber action color.",
+    personalization: { ...defaults, theme: "dark", accent: "amber", intensity: "vivid", surfaceStyle: "soft", radius: "rounded", density: "default", bodyFont: "poppins", displayFont: "bungee", textScale: "md", displayTextStyle: "cyber-pulse" },
+  },
+  {
+    id: "Noir Gothic",
+    name: "Noir Gothic",
+    category: "Expressive",
+    description: "Compact dark gothic direction with violet accents.",
+    personalization: { ...defaults, theme: "dark", accent: "violet", intensity: "balanced", surfaceStyle: "soft", radius: "compact", density: "default", bodyFont: "plus-jakarta-sans", displayFont: "pirata-one", textScale: "md", displayTextStyle: "slight-depth" },
+  },
+  {
+    id: "Organic Signal",
+    name: "Organic Signal",
+    category: "Organic",
+    description: "Light organic styling with emerald accents and warm spacing.",
+    personalization: { ...defaults, theme: "light", accent: "emerald", intensity: "balanced", surfaceStyle: "soft", radius: "rounded", density: "comfortable", bodyFont: "plus-jakarta-sans", displayFont: "kalam", textScale: "lg", displayTextStyle: "soft-gradient" },
+  },
+] as const satisfies readonly ThemePresetDefinition[];
+
+export type ThemePresetId = (typeof THEME_PRESET_DEFINITIONS)[number]["id"];
+export const THEME_PRESET_IDS = THEME_PRESET_DEFINITIONS.map((preset) => preset.id) as ThemePresetId[];
+
 function areUiPersonalizationsEqual(a: UiPersonalization, b: UiPersonalization): boolean {
   return (Object.keys(defaults) as Array<keyof UiPersonalization>).every((key) => a[key] === b[key]);
 }
 
 export const ACCENT_TOKENS = THEME_ACCENT_TOKENS;
 
-export const UI_PRESETS: Record<string, UiPersonalization> = {
-  "Stock Clean": { ...defaults, theme: "light", accent: "slate", intensity: "subtle", surfaceStyle: "flat", radius: "default", density: "default", motionLevel: "reduced", bodyFont: "inter", displayFont: "space-grotesk", textScale: "md", displayTextStyle: "static" },
-  "AI Minimal": { ...defaults, theme: "dark", accent: "graphite", intensity: "subtle", surfaceStyle: "soft", radius: "rounded", density: "compact", bodyFont: "manrope", displayFont: "sora", textScale: "sm", displayTextStyle: "slight-depth" },
-  "Cyber Grid": { ...defaults, theme: "dark", accent: "ocean", intensity: "balanced", surfaceStyle: "elevated", radius: "compact", density: "compact", bodyFont: "ibm-plex-sans", displayFont: "orbitron", textScale: "sm", displayTextStyle: "subtle-glow" },
-  "Neon Circuit": { ...defaults, theme: "dark", accent: "magenta", intensity: "vivid", surfaceStyle: "elevated", radius: "rounded", density: "compact", bodyFont: "outfit", displayFont: "oxanium", textScale: "md", displayTextStyle: "cyber-pulse" },
-  "Urban Poster": { ...defaults, theme: "light", accent: "sunset", intensity: "vivid", surfaceStyle: "soft", radius: "compact", density: "comfortable", bodyFont: "dm-sans", displayFont: "archivo-black", textScale: "lg", displayTextStyle: "shadowed-poster" },
-  "Velvet Script": { ...defaults, theme: "dark", accent: "ruby", intensity: "balanced", surfaceStyle: "soft", radius: "rounded", density: "comfortable", bodyFont: "nunito", displayFont: "marck-script", textScale: "lg", displayTextStyle: "soft-gradient" },
-  "Steel Console": { ...defaults, theme: "dark", accent: "graphite", intensity: "subtle", surfaceStyle: "flat", radius: "default", density: "compact", bodyFont: "ibm-plex-sans", displayFont: "michroma", textScale: "sm", displayTextStyle: "slight-depth" },
-  "Arcade Pulse": { ...defaults, theme: "dark", accent: "amber", intensity: "vivid", surfaceStyle: "soft", radius: "rounded", density: "default", bodyFont: "poppins", displayFont: "bungee", textScale: "md", displayTextStyle: "cyber-pulse" },
-  "Noir Gothic": { ...defaults, theme: "dark", accent: "violet", intensity: "balanced", surfaceStyle: "soft", radius: "compact", density: "default", bodyFont: "plus-jakarta-sans", displayFont: "pirata-one", textScale: "md", displayTextStyle: "slight-depth" },
-  "Organic Signal": { ...defaults, theme: "light", accent: "emerald", intensity: "balanced", surfaceStyle: "soft", radius: "rounded", density: "comfortable", bodyFont: "plus-jakarta-sans", displayFont: "kalam", textScale: "lg", displayTextStyle: "soft-gradient" },
+export const UI_PRESETS = Object.fromEntries(
+  THEME_PRESET_DEFINITIONS.map((preset) => [preset.id, preset.personalization]),
+) as Record<ThemePresetId, UiPersonalization>;
+
+export function isValidThemePresetId(value: unknown): value is ThemePresetId {
+  return typeof value === "string" && THEME_PRESET_IDS.includes(value as ThemePresetId);
+}
+
+export function getThemePresetById(value: unknown): ThemePresetDefinition | null {
+  if (!isValidThemePresetId(value)) return null;
+  return THEME_PRESET_DEFINITIONS.find((preset) => preset.id === value) ?? null;
+}
+
+export function findMatchingThemePresetId(ui: UiPersonalization): ThemePresetId | null {
+  return THEME_PRESET_DEFINITIONS.find((preset) => areUiPersonalizationsEqual(preset.personalization, ui))?.id ?? null;
+}
+
+type BasePreviewTokens = {
+  background: string;
+  backgroundAlt: string;
+  surface: string;
+  surfaceSubtle: string;
+  surfaceElevated: string;
+  border: string;
+  text: string;
+  muted: string;
 };
+
+const basePreviewTokens: Record<"dark" | "light", BasePreviewTokens> = {
+  dark: {
+    background: "#0b0d12",
+    backgroundAlt: "#07080c",
+    surface: "rgba(255, 255, 255, 0.05)",
+    surfaceSubtle: "rgba(255, 255, 255, 0.04)",
+    surfaceElevated: "rgba(255, 255, 255, 0.14)",
+    border: "rgba(255, 255, 255, 0.1)",
+    text: "rgba(255, 255, 255, 0.92)",
+    muted: "rgba(255, 255, 255, 0.62)",
+  },
+  light: {
+    background: "#f5f7fa",
+    backgroundAlt: "#e9eef7",
+    surface: "rgba(255, 255, 255, 0.8)",
+    surfaceSubtle: "rgba(255, 255, 255, 0.62)",
+    surfaceElevated: "rgba(255, 255, 255, 0.96)",
+    border: "rgba(0, 0, 0, 0.1)",
+    text: "rgba(0, 0, 0, 0.87)",
+    muted: "rgba(0, 0, 0, 0.62)",
+  },
+};
+
+export function getThemePreviewTokens(preset: ThemePresetDefinition | UiPersonalization) {
+  const personalization = "personalization" in preset ? preset.personalization : preset;
+  const resolved = personalization.theme === "light" ? "light" : "dark";
+  const base = basePreviewTokens[resolved];
+  const accent = ACCENT_TOKENS[personalization.accent];
+  const accentVariables = getAccentCssVariables(personalization.accent, personalization.intensity, personalization.chartStyle);
+  const surfaceSubtle = personalization.surfaceStyle === "flat"
+    ? `color-mix(in srgb, ${base.surface} 97%, transparent)`
+    : personalization.surfaceStyle === "elevated"
+      ? `color-mix(in srgb, ${base.surface} 78%, ${resolved === "dark" ? "black" : "white"} 22%)`
+      : `color-mix(in srgb, ${base.surface} 88%, transparent)`;
+  const surfaceElevated = personalization.surfaceStyle === "flat"
+    ? base.surface
+    : personalization.surfaceStyle === "elevated"
+      ? `color-mix(in srgb, ${base.surface} 64%, white 36%)`
+      : `color-mix(in srgb, ${base.surface} 86%, white 14%)`;
+
+  return {
+    ...base,
+    surfaceSubtle,
+    surfaceElevated,
+    accent: accent.accent,
+    accent2: accent.accent2,
+    accentForeground: accent.accentForeground,
+    accentSoft: accentVariables["--accent-soft"],
+    accentBorder: accentVariables["--accent-border"],
+    accentRing: accentVariables["--accent-ring"],
+  };
+}
 
 function resolveTheme(theme: Theme): "light" | "dark" {
   if (theme !== "system") return theme;
+  if (typeof window === "undefined") return "dark";
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
@@ -227,46 +382,50 @@ function legacyToBodyFont(value: string | null): BodyFont {
   return defaults.bodyFont;
 }
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [persistedUi, setPersistedUi] = useState<UiPersonalization>(() => {
-    if (typeof window === "undefined") return defaults;
-    const savedTheme = window.localStorage.getItem(STORAGE.theme);
-    const savedAccent = window.localStorage.getItem(STORAGE.accent);
-    const legacyFont = window.localStorage.getItem(STORAGE.legacyFontFamily);
-    const bodyFont = readAllowedValue(STORAGE.bodyFont, allowed.bodyFont, legacyToBodyFont(legacyFont));
+function readPersistedUiFromStorage(): UiPersonalization {
+  if (typeof window === "undefined") return defaults;
+  const savedTheme = window.localStorage.getItem(STORAGE.theme);
+  const savedAccent = window.localStorage.getItem(STORAGE.accent);
+  const legacyFont = window.localStorage.getItem(STORAGE.legacyFontFamily);
+  const bodyFont = readAllowedValue(STORAGE.bodyFont, allowed.bodyFont, legacyToBodyFont(legacyFont));
 
-    const saved = {
-      theme: savedTheme === "dark" || savedTheme === "light" || savedTheme === "system" ? savedTheme : defaults.theme,
-      accent: isAccentPreset(savedAccent) ? savedAccent : defaults.accent,
-      density: readAllowedValue(STORAGE.density, allowed.density, defaults.density),
-      intensity: readAllowedValue(STORAGE.intensity, allowed.intensity, defaults.intensity),
-      surfaceStyle: readAllowedValue(STORAGE.surfaceStyle, allowed.surfaceStyle, defaults.surfaceStyle),
-      radius: readAllowedValue(STORAGE.radius, allowed.radius, defaults.radius),
-      chartStyle: readAllowedValue(STORAGE.chartStyle, allowed.chartStyle, defaults.chartStyle),
-      sidebarStyle: readAllowedValue(STORAGE.sidebarStyle, allowed.sidebarStyle, defaults.sidebarStyle),
-      motionLevel: readAllowedValue(STORAGE.motionLevel, allowed.motionLevel, defaults.motionLevel),
-      cardEmphasis: readAllowedValue(STORAGE.cardEmphasis, allowed.cardEmphasis, defaults.cardEmphasis),
-      bodyFont,
-      displayFont: readAllowedValue(STORAGE.displayFont, allowed.displayFont, defaults.displayFont),
-      textScale: readAllowedValue(STORAGE.textScale, allowed.textScale, defaults.textScale),
-      glowLevel: readAllowedValue(STORAGE.glowLevel, allowed.glowLevel, defaults.glowLevel),
-      panelTint: readAllowedValue(STORAGE.panelTint, allowed.panelTint, defaults.panelTint),
-      displayTextStyle: readAllowedValue(STORAGE.displayTextStyle, allowed.displayTextStyle, defaults.displayTextStyle),
-    } satisfies UiPersonalization;
-    return saved;
-  });
+  return {
+    theme: savedTheme === "dark" || savedTheme === "light" || savedTheme === "system" ? savedTheme : defaults.theme,
+    accent: isAccentPreset(savedAccent) ? savedAccent : defaults.accent,
+    density: readAllowedValue(STORAGE.density, allowed.density, defaults.density),
+    intensity: readAllowedValue(STORAGE.intensity, allowed.intensity, defaults.intensity),
+    surfaceStyle: readAllowedValue(STORAGE.surfaceStyle, allowed.surfaceStyle, defaults.surfaceStyle),
+    radius: readAllowedValue(STORAGE.radius, allowed.radius, defaults.radius),
+    chartStyle: readAllowedValue(STORAGE.chartStyle, allowed.chartStyle, defaults.chartStyle),
+    sidebarStyle: readAllowedValue(STORAGE.sidebarStyle, allowed.sidebarStyle, defaults.sidebarStyle),
+    motionLevel: readAllowedValue(STORAGE.motionLevel, allowed.motionLevel, defaults.motionLevel),
+    cardEmphasis: readAllowedValue(STORAGE.cardEmphasis, allowed.cardEmphasis, defaults.cardEmphasis),
+    bodyFont,
+    displayFont: readAllowedValue(STORAGE.displayFont, allowed.displayFont, defaults.displayFont),
+    textScale: readAllowedValue(STORAGE.textScale, allowed.textScale, defaults.textScale),
+    glowLevel: readAllowedValue(STORAGE.glowLevel, allowed.glowLevel, defaults.glowLevel),
+    panelTint: readAllowedValue(STORAGE.panelTint, allowed.panelTint, defaults.panelTint),
+    displayTextStyle: readAllowedValue(STORAGE.displayTextStyle, allowed.displayTextStyle, defaults.displayTextStyle),
+  };
+}
+
+function readNamedThemeDraftsFromStorage(): NamedThemeDraft[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE.namedThemeDrafts) ?? "[]";
+    const parsed = JSON.parse(raw) as NamedThemeDraft[];
+    return Array.isArray(parsed) ? parsed.slice(0, 20) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [persistedUi, setPersistedUi] = useState<UiPersonalization>(defaults);
   const [previewSession, setPreviewSession] = useState<ThemePreviewSession | null>(null);
   const [isComparingWithActiveTheme, setComparingWithActiveTheme] = useState(false);
-  const [namedThemeDrafts, setNamedThemeDrafts] = useState<NamedThemeDraft[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = window.localStorage.getItem(STORAGE.namedThemeDrafts) ?? "[]";
-      const parsed = JSON.parse(raw) as NamedThemeDraft[];
-      return Array.isArray(parsed) ? parsed.slice(0, 20) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [namedThemeDrafts, setNamedThemeDrafts] = useState<NamedThemeDraft[]>([]);
+  const [isUiHydrated, setUiHydrated] = useState(false);
   const ui = previewSession?.previewThemePayload ?? persistedUi;
   const uiForDocument = previewSession && isComparingWithActiveTheme ? persistedUi : ui;
   const hasPreviewChanges = Boolean(previewSession && !areUiPersonalizationsEqual(previewSession.previewThemePayload, persistedUi));
@@ -371,10 +530,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    applyUiStateToDocument(uiForDocument);
-  }, [uiForDocument]);
+    setPersistedUi(readPersistedUiFromStorage());
+    setNamedThemeDrafts(readNamedThemeDraftsFromStorage());
+    setUiHydrated(true);
+  }, []);
 
   useEffect(() => {
+    if (!isUiHydrated) return;
+    applyUiStateToDocument(uiForDocument);
+  }, [isUiHydrated, uiForDocument]);
+
+  useEffect(() => {
+    if (!isUiHydrated) return;
     if (previewSession) return;
     window.localStorage.setItem(STORAGE.theme, persistedUi.theme);
     window.localStorage.setItem(STORAGE.accent, persistedUi.accent);
@@ -400,7 +567,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       return () => media.removeEventListener("change", listener);
     }
     return undefined;
-  }, [persistedUi, previewSession]);
+  }, [isUiHydrated, persistedUi, previewSession]);
 
   const value = useMemo(
     () => ({
@@ -434,13 +601,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       applyPreviewSession,
       discardPreviewSession,
       namedThemeDrafts,
+      isUiHydrated,
       saveNamedThemeDraft,
       renameNamedThemeDraft,
       deleteNamedThemeDraft,
       duplicateCurrentThemeAsDraft,
       applyNamedThemeDraft,
     }),
-    [ui, persistedUi, hasPreviewChanges, isComparingWithActiveTheme, previewSession, namedThemeDrafts],
+    [ui, persistedUi, hasPreviewChanges, isComparingWithActiveTheme, previewSession, namedThemeDrafts, isUiHydrated],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

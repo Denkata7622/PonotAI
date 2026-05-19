@@ -2,17 +2,35 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, Clock, Library, Sparkles, TrendingUp } from "../../lucide-react";
+import { AlertCircle, CheckCircle, Clock, Library, RotateCcw, Save, Sparkles, TrendingUp } from "../../lucide-react";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import { usePlayer } from "../../components/PlayerProvider";
 import { useUser } from "../context/UserContext";
-import { useTheme } from "../../lib/ThemeContext";
+import {
+  DEFAULT_UI_PERSONALIZATION,
+  THEME_PRESET_DEFINITIONS,
+  findMatchingThemePresetId,
+  getThemePresetById,
+  isValidThemePresetId,
+  themeStorageKeys,
+  useTheme,
+  type ThemePresetId,
+} from "../../lib/ThemeContext";
 import { formatUtcDate, formatUtcDateTime } from "../../lib/dateFormat";
 import { readTasteProfile } from "../features/onboarding/tasteProfile";
 import { scopedKey, useProfile } from "../../lib/ProfileContext";
 import { apiFetch } from "../lib/apiFetch";
+import ThemePresetCard from "../components/theme/ThemePresetCard";
+import {
+  getPersonalizationPreferences,
+  getPersonalizationRecommendations,
+  resolveThemeRecommendationPresetId,
+  savePersonalizationPreferences,
+  type PersonalizationRecommendation,
+  type PersonalizationSource,
+} from "../features/personalization/api";
 
 function getTopCounts(values: string[], limit = 3): string[] {
   const counter = new Map<string, number>();
@@ -27,19 +45,20 @@ function getTopCounts(values: string[], limit = 3): string[] {
     .map(([name]) => name);
 }
 
-type ThemeStudioSlotState = "active" | "available" | "bonus-locked" | "reserved";
+function readStoredThemePresetId(): ThemePresetId | null {
+  if (typeof window === "undefined") return null;
+  const stored = window.localStorage.getItem(themeStorageKeys.presetId);
+  return isValidThemePresetId(stored) ? stored : null;
+}
 
-type ThemeStudioSlot = {
-  id: number;
-  title: string;
-  state: ThemeStudioSlotState;
-  subtitle: string;
-  details: string;
-  cta?: {
-    label: string;
-    href: string;
-  };
-};
+function writeStoredThemePresetId(presetId: ThemePresetId | null) {
+  if (typeof window === "undefined") return;
+  if (presetId) {
+    window.localStorage.setItem(themeStorageKeys.presetId, presetId);
+  } else {
+    window.localStorage.removeItem(themeStorageKeys.presetId);
+  }
+}
 
 type MusicPackState = "no-pack-yet" | "available-generated" | "limited-generated" | "future-cadence-locked";
 
@@ -130,8 +149,21 @@ export default function PersonalizationPage() {
   const { playNow, addManyToQueue } = usePlayer();
   const { user, favorites, history, isAuthenticated } = useUser();
   const { profile } = useProfile();
-  const { theme, accent, intensity, surfaceStyle, density } = useTheme();
+  const themeApi = useTheme();
+  const { theme, accent, intensity, surfaceStyle, density, persistedUi, isUiHydrated } = themeApi;
   const [playlistCount, setPlaylistCount] = useState(0);
+  const [selectedThemePresetId, setSelectedThemePresetId] = useState<ThemePresetId | null>(null);
+  const [savedThemePresetId, setSavedThemePresetId] = useState<ThemePresetId | null>(null);
+  const [personalizationSource, setPersonalizationSource] = useState<PersonalizationSource>("local-default");
+  const [personalizationLoading, setPersonalizationLoading] = useState(false);
+  const [personalizationSaving, setPersonalizationSaving] = useState(false);
+  const [personalizationNotice, setPersonalizationNotice] = useState<string | null>(null);
+  const [personalizationError, setPersonalizationError] = useState<string | null>(null);
+  const [recommendations, setRecommendations] = useState<PersonalizationRecommendation[]>([]);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
+  const [recommendationNotice, setRecommendationNotice] = useState<string | null>(null);
+  const [dismissedRecommendationIds, setDismissedRecommendationIds] = useState<Set<string>>(() => new Set());
   const [generatedPack, setGeneratedPack] = useState<GeneratedMusicPackResponse | null>(null);
   const [musicPackLoading, setMusicPackLoading] = useState(false);
   const [packModalOpen, setPackModalOpen] = useState(false);
@@ -142,6 +174,8 @@ export default function PersonalizationPage() {
   const [tasteIdentitySummary, setTasteIdentitySummary] = useState<TasteIdentitySummaryResponse | null>(null);
   const [tasteIdentityNotice, setTasteIdentityNotice] = useState<string | null>(null);
   const [tasteProfile, setTasteProfile] = useState<ReturnType<typeof readTasteProfile>>(null);
+  const [clientNowMs, setClientNowMs] = useState<number | null>(null);
+  const personalizationLoadedForRef = useRef<string | null>(null);
   const featuredPackRequestRef = useRef<{ inFlight: boolean; hasLoaded: boolean }>({ inFlight: false, hasLoaded: false });
   const tasteSummaryRequestRef = useRef<{ inFlight: boolean; hasLoaded: boolean }>({ inFlight: false, hasLoaded: false });
   const tasteSnapshot = tasteProfile?.structured;
@@ -152,6 +186,7 @@ export default function PersonalizationPage() {
 
   useEffect(() => {
     setTasteProfile(readTasteProfile());
+    setClientNowMs(Date.now());
   }, []);
   const topArtists = useMemo(
     () => getTopCounts([...favorites.map((item) => item.artist ?? ""), ...history.map((item) => item.artist ?? "")], 3),
@@ -164,13 +199,14 @@ export default function PersonalizationPage() {
     favoriteArtists: topArtists.slice(0, 8),
   }), [topArtists.join("|"), topContexts.join("|"), topGenres.join("|"), topMoods.join("|")]);
   const recentHistoryCount = useMemo(() => {
-    const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+    if (clientNowMs === null) return 0;
+    const cutoff = clientNowMs - 14 * 24 * 60 * 60 * 1000;
     return history.filter((item) => {
       if (!item.createdAt) return false;
       const parsed = Date.parse(item.createdAt);
       return Number.isFinite(parsed) && parsed >= cutoff;
     }).length;
-  }, [history]);
+  }, [clientNowMs, history]);
   const sparseData = history.length < 5 && favorites.length < 3;
   const fallbackTasteSummary = useMemo(() => {
     const coreIdentity = topGenres.length
@@ -202,46 +238,12 @@ export default function PersonalizationPage() {
       ? "Mostly discovery"
       : "Balanced";
   const currentThemeSummary = `${theme} · ${accent} · ${surfaceStyle}`;
-  const themeStudioSlots = useMemo<ThemeStudioSlot[]>(() => ([
-    {
-      id: 1,
-      title: "Slot 1",
-      state: "active",
-      subtitle: "Active free slot",
-      details: `Current setup is applied here (${currentThemeSummary}).`,
-      cta: { label: "Open Theme Studio", href: "/theme-studio" },
-    },
-    {
-      id: 2,
-      title: "Slot 2",
-      state: "available",
-      subtitle: "Free slot",
-      details: "Available for your next saved theme profile once Theme Studio editing ships.",
-    },
-    recommendationDataSharingEnabled
-      ? {
-        id: 3,
-        title: "Slot 3",
-        state: "available",
-        subtitle: "Bonus slot ready",
-        details: "Recommendation data sharing is enabled, so this bonus slot is available.",
-      }
-      : {
-        id: 3,
-        title: "Slot 3",
-        state: "bonus-locked",
-        subtitle: "Bonus slot paused",
-        details: "Enable recommendation data sharing to activate this bonus slot.",
-        cta: { label: "Enable in settings", href: "/settings#recommendation-data-sharing" },
-      },
-    {
-      id: 4,
-      title: "Slot 4",
-      state: "reserved",
-      subtitle: "Reserved roadmap slot",
-      details: "Held for a later beta expansion. No premium or purchase flow is active today.",
-    },
-  ]), [accent, currentThemeSummary, recommendationDataSharingEnabled, surfaceStyle, theme]);
+  const selectedThemePreset = selectedThemePresetId ? getThemePresetById(selectedThemePresetId) : null;
+  const savedThemePreset = savedThemePresetId ? getThemePresetById(savedThemePresetId) : null;
+  const hasUnsavedThemePreset = isAuthenticated
+    ? selectedThemePresetId !== savedThemePresetId
+    : false;
+  const visibleRecommendations = recommendations.filter((item) => !dismissedRecommendationIds.has(item.id));
 
   const musicPackCards = useMemo<MusicPackCard[]>(() => {
     const primaryMood = topMoods[0] ?? "Adaptive";
@@ -333,6 +335,164 @@ export default function PersonalizationPage() {
       setPlaylistCount(0);
     }
   }, [profile.id]);
+
+  const applyThemePreset = useCallback((presetId: ThemePresetId, options: { markLocalSaved?: boolean; notice?: string } = {}) => {
+    const preset = getThemePresetById(presetId);
+    if (!preset) return;
+    const resolvedPresetId = preset.id as ThemePresetId;
+    themeApi.applyPersonalization(preset.personalization);
+    setSelectedThemePresetId(resolvedPresetId);
+    writeStoredThemePresetId(resolvedPresetId);
+    setPersonalizationError(null);
+    setPersonalizationNotice(options.notice ?? null);
+    if (options.markLocalSaved) {
+      setSavedThemePresetId(resolvedPresetId);
+      setPersonalizationSource("local-default");
+    }
+  }, [themeApi]);
+
+  const syncLocalThemePresetSelection = useCallback(() => {
+    const storedPreset = readStoredThemePresetId();
+    const matchedPreset = findMatchingThemePresetId(persistedUi);
+    const nextPreset = storedPreset ?? matchedPreset;
+    setSelectedThemePresetId(nextPreset);
+    if (!isAuthenticated) {
+      setSavedThemePresetId(nextPreset);
+      setPersonalizationSource("local-default");
+    }
+  }, [isAuthenticated, persistedUi]);
+
+  const loadPersonalization = useCallback(async () => {
+    if (!isAuthenticated || !isUiHydrated) return;
+    setPersonalizationLoading(true);
+    setPersonalizationError(null);
+    try {
+      const payload = await getPersonalizationPreferences();
+      setPersonalizationSource(payload.source);
+      if (payload.preferences.themePresetId) {
+        applyThemePreset(payload.preferences.themePresetId, {
+          notice: "Loaded your saved account theme.",
+        });
+        setSavedThemePresetId(payload.preferences.themePresetId);
+      } else {
+        syncLocalThemePresetSelection();
+        setSavedThemePresetId(null);
+        setPersonalizationNotice("No account theme is saved yet. Your local theme is being used as the starting point.");
+      }
+    } catch (error) {
+      syncLocalThemePresetSelection();
+      setPersonalizationError((error as Error).message || "Could not load personalization settings.");
+    } finally {
+      setPersonalizationLoading(false);
+    }
+  }, [applyThemePreset, isAuthenticated, isUiHydrated, syncLocalThemePresetSelection]);
+
+  const loadRecommendations = useCallback(async () => {
+    setRecommendationsLoading(true);
+    setRecommendationsError(null);
+    try {
+      const payload = await getPersonalizationRecommendations(selectedThemePresetId);
+      setRecommendations(payload.recommendations);
+      setDismissedRecommendationIds(new Set());
+    } catch (error) {
+      setRecommendationsError((error as Error).message || "Could not load recommendations.");
+    } finally {
+      setRecommendationsLoading(false);
+    }
+  }, [selectedThemePresetId]);
+
+  useEffect(() => {
+    if (!isUiHydrated) return;
+    syncLocalThemePresetSelection();
+  }, [isUiHydrated, syncLocalThemePresetSelection]);
+
+  useEffect(() => {
+    if (!isUiHydrated) return;
+    if (!isAuthenticated) {
+      personalizationLoadedForRef.current = null;
+      setPersonalizationError(null);
+      setPersonalizationNotice("Theme choices are saved locally on this device. Sign in to sync them to your account.");
+      return;
+    }
+    const userKey = user?.id ?? "authenticated";
+    if (personalizationLoadedForRef.current === userKey) return;
+    personalizationLoadedForRef.current = userKey;
+    void loadPersonalization();
+  }, [isAuthenticated, isUiHydrated, loadPersonalization, user?.id]);
+
+  useEffect(() => {
+    if (!isUiHydrated) return;
+    void loadRecommendations();
+  }, [isUiHydrated, loadRecommendations]);
+
+  async function handleSaveThemePreset() {
+    if (!selectedThemePresetId) {
+      setPersonalizationError("Choose a real theme preset before saving.");
+      return;
+    }
+    setPersonalizationSaving(true);
+    setPersonalizationError(null);
+    setPersonalizationNotice(null);
+    try {
+      if (!isAuthenticated) {
+        writeStoredThemePresetId(selectedThemePresetId);
+        setSavedThemePresetId(selectedThemePresetId);
+        setPersonalizationSource("local-default");
+        setPersonalizationNotice("Saved locally on this device. Sign in to sync this preset.");
+        return;
+      }
+      const saved = await savePersonalizationPreferences({ themePresetId: selectedThemePresetId });
+      setSavedThemePresetId(saved.preferences.themePresetId);
+      setPersonalizationSource(saved.source);
+      setPersonalizationNotice(`Saved ${selectedThemePresetId} to your account.`);
+    } catch (error) {
+      setPersonalizationError((error as Error).message || "Could not save personalization settings.");
+    } finally {
+      setPersonalizationSaving(false);
+    }
+  }
+
+  function handleThemePresetSelect(presetId: string) {
+    if (!isValidThemePresetId(presetId)) return;
+    applyThemePreset(presetId, {
+      markLocalSaved: !isAuthenticated,
+      notice: isAuthenticated ? `${presetId} is previewing locally. Save to sync it to your account.` : `${presetId} was saved locally on this device.`,
+    });
+  }
+
+  function handleRevertThemePreset() {
+    if (!savedThemePresetId) return;
+    applyThemePreset(savedThemePresetId, { notice: `Reverted to saved preset ${savedThemePresetId}.` });
+  }
+
+  function handleDefaultThemeReset() {
+    themeApi.applyPersonalization(DEFAULT_UI_PERSONALIZATION);
+    setSelectedThemePresetId(null);
+    writeStoredThemePresetId(null);
+    setPersonalizationNotice("Reset to the app default theme settings. Choose a preset to save a named preset again.");
+  }
+
+  function handleRecommendationApply(recommendation: PersonalizationRecommendation) {
+    const presetId = resolveThemeRecommendationPresetId(recommendation);
+    if (!presetId) return;
+    if (presetId === selectedThemePresetId) {
+      setRecommendationNotice(`${presetId} is already selected.`);
+      return;
+    }
+    applyThemePreset(presetId, {
+      markLocalSaved: !isAuthenticated,
+      notice: isAuthenticated ? `${presetId} recommendation applied locally. Save to keep it on your account.` : `${presetId} recommendation saved locally.`,
+    });
+    setRecommendationNotice(`${presetId} is now selected.`);
+  }
+
+  function handleRecommendationDismiss(recommendationId: string) {
+    setDismissedRecommendationIds((current) => {
+      const next = new Set(current);
+      next.add(recommendationId);
+      return next;
+    });
+  }
 
   const loadPackLifecycle = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -595,8 +755,7 @@ export default function PersonalizationPage() {
         <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Personalization hub</p>
         <h1 className="display-styled text-3xl font-semibold tracking-tight sm:text-4xl">Personalization</h1>
         <p className="max-w-3xl text-sm text-[var(--muted)]">
-          This is your control center for identity, style, future rewards, and recommendation behavior.
-          Some blocks are live today and some are intentionally scaffolded for upcoming roadmap passes.
+          Customize your active theme preset, sync it to your account, and review recommendations grounded in your saved listening signals.
         </p>
       </header>
 
@@ -642,64 +801,121 @@ export default function PersonalizationPage() {
           </div>
         </Card>
 
-        <Card variant="settings" className="order-1 space-y-4 p-4 sm:p-5 lg:order-1 lg:col-span-2">
+        <Card variant="settings" className="order-1 space-y-5 p-4 sm:p-5 lg:order-1 lg:col-span-2">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Theme Studio Preview</p>
-              <h2 className="text-xl font-semibold">Look and feel direction</h2>
+              <p className="text-xs uppercase tracking-[0.12em] text-[var(--muted)]">Current style</p>
+              <h2 className="text-xl font-semibold">Theme presets</h2>
             </div>
             <Sparkles className="h-5 w-5 text-[var(--accent)]" />
           </div>
           <p className="text-sm text-[var(--muted)]">
-            Preview your active visual setup and jump into Theme Studio for real temporary preview sessions.
+            These cards are generated from the real Turrex preset registry. Selecting one applies it locally immediately; saving syncs it to your account when you are signed in.
           </p>
-          <div className="rounded-2xl border border-[var(--accent-border)] bg-[var(--accent-soft)] p-3.5 sm:p-4">
-            <p className="text-xs uppercase tracking-[0.1em] text-[var(--muted)]">Current style snapshot</p>
-            <div className="mt-2 flex flex-wrap gap-2 text-xs">
-              {[`Theme: ${theme}`, `Accent: ${accent}`, `Intensity: ${intensity}`, `Surface: ${surfaceStyle}`, `Density: ${density}`].map((chip) => (
-                <span key={chip} className="rounded-full border border-[var(--border)] bg-[var(--panel-surface)] px-2.5 py-1 break-words">{chip}</span>
-              ))}
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.1em] text-[var(--muted)]">Active theme</p>
+                <p className="mt-1 text-sm font-semibold">{selectedThemePreset?.name ?? "Custom local theme"}</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">{currentThemeSummary} · intensity {intensity} · density {density}</p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1">
+                  Source: {personalizationSource === "database" ? "Account" : "Local"}
+                </span>
+                {savedThemePreset ? (
+                  <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2.5 py-1">
+                    Saved: {savedThemePreset.name}
+                  </span>
+                ) : null}
+                {hasUnsavedThemePreset ? (
+                  <span className="rounded-full border border-[var(--status-warning)] bg-[rgba(var(--status-warning-rgb),0.14)] px-2.5 py-1">
+                    Unsaved
+                  </span>
+                ) : null}
+              </div>
             </div>
-            <div className="mt-4 grid min-h-[clamp(420px,70svh,760px)] auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-2 sm:min-h-[clamp(420px,64svh,700px)] xl:grid-cols-4 xl:min-h-[clamp(420px,74svh,760px)]">
-              {themeStudioSlots.map((slot) => {
-                const stateClassName = slot.state === "active"
-                  ? "border-[var(--accent-border)] bg-[var(--panel-surface)] shadow-[0_20px_45px_-30px_var(--accent)]"
-                  : slot.state === "available"
-                    ? "border-[var(--border)] bg-[var(--panel-surface)]"
-                    : slot.state === "bonus-locked"
-                      ? "border-[var(--border)] bg-[var(--surface-subtle)]/70"
-                      : "border-[var(--border)] bg-black/35";
+            {(personalizationNotice || personalizationError || personalizationLoading) ? (
+              <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3 text-xs">
+                {personalizationLoading ? <p className="text-[var(--muted)]">Loading saved personalization…</p> : null}
+                {personalizationNotice ? <p className="inline-flex items-center gap-2 text-[var(--muted)]"><CheckCircle className="h-3.5 w-3.5 text-[var(--status-success)]" />{personalizationNotice}</p> : null}
+                {personalizationError ? <p className="inline-flex items-center gap-2 text-[var(--status-danger)]"><AlertCircle className="h-3.5 w-3.5" />{personalizationError}</p> : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(10.75rem,12rem))] justify-center gap-3 sm:justify-start">
+            {THEME_PRESET_DEFINITIONS.map((preset) => (
+              <ThemePresetCard
+                key={preset.id}
+                preset={preset}
+                selected={selectedThemePresetId === preset.id}
+                saved={savedThemePresetId === preset.id}
+                disabled={personalizationSaving}
+                onSelect={handleThemePresetSelect}
+              />
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+            <Button variant="primary" size="sm" onClick={() => void handleSaveThemePreset()} disabled={personalizationSaving || !selectedThemePresetId || (isAuthenticated && !hasUnsavedThemePreset)}>
+              <span className="inline-flex items-center gap-2"><Save className="h-4 w-4" />{personalizationSaving ? "Saving…" : isAuthenticated ? "Save to account" : "Save locally"}</span>
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handleRevertThemePreset} disabled={!savedThemePresetId || !hasUnsavedThemePreset || personalizationSaving}>
+              <span className="inline-flex items-center gap-2"><RotateCcw className="h-4 w-4" />Revert saved</span>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleDefaultThemeReset} disabled={personalizationSaving}>
+              Reset local default
+            </Button>
+            <Link href="/theme-studio"><Button variant="ghost" size="sm"><span className="inline-flex items-center gap-2"><Sparkles className="h-4 w-4" />Open Theme Studio</span></Button></Link>
+          </div>
+
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs uppercase tracking-[0.1em] text-[var(--muted)]">Recommendations</p>
+                <h3 className="text-base font-semibold">Theme and preference suggestions</h3>
+              </div>
+              <Button variant="secondary" size="sm" onClick={() => void loadRecommendations()} disabled={recommendationsLoading}>
+                {recommendationsLoading ? "Refreshing…" : "Refresh"}
+              </Button>
+            </div>
+            {recommendationsError ? <p className="mt-3 text-xs text-[var(--status-danger)]">{recommendationsError}</p> : null}
+            {recommendationNotice ? <p className="mt-3 text-xs text-[var(--muted)]">{recommendationNotice}</p> : null}
+            {recommendationsLoading ? <p className="mt-3 text-sm text-[var(--muted)]">Loading recommendations…</p> : null}
+            {!recommendationsLoading && visibleRecommendations.length === 0 ? (
+              <p className="mt-3 text-sm text-[var(--muted)]">No recommendations are available right now.</p>
+            ) : null}
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {visibleRecommendations.map((recommendation) => {
+                const recommendedPresetId = resolveThemeRecommendationPresetId(recommendation);
+                const alreadySelected = Boolean(recommendedPresetId && recommendedPresetId === selectedThemePresetId);
                 return (
-                  <div key={slot.id} className={`flex min-h-[280px] flex-col rounded-xl border p-4 sm:min-h-[320px] xl:h-full ${stateClassName}`}>
-                    <div className="flex items-center justify-between gap-2 border-b border-[var(--border)]/70 pb-3">
-                      <p className="text-sm font-semibold">{slot.title}</p>
-                      {slot.state === "active" ? <span className="rounded-full border border-[var(--accent-border)] bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">Live</span> : null}
-                      {slot.state === "bonus-locked" ? <Sparkles className="h-4 w-4 text-[var(--muted)]" /> : null}
+                  <article key={recommendation.id} className="flex min-h-[13rem] flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{recommendation.title}</p>
+                        <p className="mt-1 text-xs capitalize text-[var(--muted)]">{recommendation.kind}</p>
+                      </div>
+                      {recommendation.confidence !== undefined ? (
+                        <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] text-[var(--muted)]">{Math.round(recommendation.confidence * 100)}%</span>
+                      ) : null}
                     </div>
-                    <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)]/70 px-2.5 py-1.5">
-                      <p className="text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">{slot.subtitle}</p>
+                    <p className="mt-3 flex-1 text-xs leading-5 text-[var(--muted)]">{recommendation.description}</p>
+                    {recommendation.reason ? <p className="mt-2 text-[11px] text-[var(--muted)]">{recommendation.reason}</p> : null}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {recommendedPresetId ? (
+                        <Button variant={alreadySelected ? "ghost" : "secondary"} size="sm" onClick={() => handleRecommendationApply(recommendation)} disabled={alreadySelected}>
+                          {alreadySelected ? "Selected" : recommendation.action?.label ?? "Apply"}
+                        </Button>
+                      ) : recommendation.action?.href ? (
+                        <Link href={recommendation.action.href}><Button variant="secondary" size="sm">{recommendation.action.label}</Button></Link>
+                      ) : null}
+                      <Button variant="ghost" size="sm" onClick={() => handleRecommendationDismiss(recommendation.id)}>Dismiss</Button>
                     </div>
-                    <div className="mt-3 flex flex-1 items-center rounded-lg border border-[var(--border)]/80 bg-[linear-gradient(160deg,var(--surface-subtle),transparent)] p-3.5">
-                      <p className="break-words text-xs leading-relaxed text-[var(--muted)]">{slot.details}</p>
-                    </div>
-                    <div className="mt-4 border-t border-[var(--border)]/70 pt-3">
-                      {slot.cta ? (
-                        <Link href={slot.cta.href}>
-                          <Button variant="ghost" size="sm">
-                            <span className="inline-flex items-center gap-1.5">{slot.cta.label}<ChevronRight className="h-3.5 w-3.5" /></span>
-                          </Button>
-                        </Link>
-                      ) : (
-                        <p className="text-[11px] text-[var(--muted)]">Slot status tracked in this preview panel.</p>
-                      )}
-                    </div>
-                  </div>
+                  </article>
                 );
               })}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Link href="/theme-studio"><Button variant="primary" size="sm"><span className="inline-flex items-center gap-2"><Sparkles className="h-4 w-4" />Open Theme Studio</span></Button></Link>
-              <Link href="/settings#appearance"><Button variant="secondary" size="sm"><span className="inline-flex items-center gap-2"><TrendingUp className="h-4 w-4" />Open current theme controls</span></Button></Link>
             </div>
           </div>
         </Card>
@@ -796,22 +1012,6 @@ export default function PersonalizationPage() {
                 </ul>
               </div>
             ) : null}
-          </div>
-          <div className="rounded-xl border border-dashed border-[var(--border)] p-3 text-xs text-[var(--muted)]">
-            This pass keeps the flow intentionally small: open and inspect the generated pack, save it as a playlist, or discard it from the current featured slot.
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {[
-              "Open pack reveal flow",
-              "Save pack to library",
-              "Discard and refresh slot",
-              "Preview top song moments",
-            ].map((step) => (
-              <div key={step} className="rounded-lg border border-[var(--border)] bg-[var(--panel-surface)] p-3">
-                <p className="text-sm font-medium">{step}</p>
-                <p className="text-xs text-[var(--muted)]">Roadmap boundary prepared</p>
-              </div>
-            ))}
           </div>
         </Card>
 

@@ -31,11 +31,11 @@ export type ThemeTemplate = {
 };
 
 export const THEME_TEMPLATES: ThemeTemplate[] = [
-  { id: "night-drive", name: "Night Drive", theme: "dark", accent: "violet", density: "compact", compatibility: "dark-only" },
-  { id: "ocean-pulse", name: "Ocean Pulse", theme: "dark", accent: "ocean", density: "comfortable", compatibility: "dark-only" },
-  { id: "sunset-glow", name: "Sunset Glow", theme: "light", accent: "sunset", density: "comfortable", compatibility: "light-only" },
-  { id: "forest-focus", name: "Forest Focus", theme: "dark", accent: "emerald", density: "compact", compatibility: "dark-only" },
-  { id: "neon-violet", name: "Neon Violet", theme: "dark", accent: "magenta", density: "compact", compatibility: "dark-only" },
+  { id: "night-drive", name: "Neon Circuit", theme: "dark", accent: "magenta", density: "compact", compatibility: "dark-only" },
+  { id: "ocean-pulse", name: "Cyber Grid", theme: "dark", accent: "ocean", density: "compact", compatibility: "dark-only" },
+  { id: "sunset-glow", name: "Urban Poster", theme: "light", accent: "sunset", density: "comfortable", compatibility: "light-only" },
+  { id: "forest-focus", name: "Organic Signal", theme: "light", accent: "emerald", density: "comfortable", compatibility: "light-only" },
+  { id: "neon-violet", name: "Arcade Pulse", theme: "dark", accent: "amber", density: "default", compatibility: "dark-only" },
 ] as const;
 
 export const THEME_TEMPLATE_BY_ID = new Map(THEME_TEMPLATES.map((template) => [template.id, template]));

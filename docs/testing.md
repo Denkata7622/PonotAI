@@ -14,11 +14,25 @@ Run all commands from the repository root.
 
 ## Test isolation
 
-Backend tests start the API with a temporary data directory created under the OS temp folder (`ponotai-tests-*`) and remove it after each test run.
+Full backend tests run against PostgreSQL. They require `TEST_DATABASE_URL` to point at a separate disposable test database.
 
-- Data store path is injected with `PONOTAI_DATA_DIR`.
-- No test writes to `backend/data/appdb.json` or developer real data.
+- `backend/scripts/run-tests.mjs` refuses to fall back to `DATABASE_URL`.
+- In `NODE_ENV=test`, the backend maps `TEST_DATABASE_URL` to Prisma's `DATABASE_URL`.
+- No test should point at production or shared staging data.
 - Tests use mock secrets (`JWT_SECRET=test-secret`) and test-only env defaults.
+
+Example `backend/.env.test`:
+
+```env
+NODE_ENV=test
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/ponotai_test?schema=public
+TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/ponotai_test?schema=public
+TEST_PERSISTENCE_MODE=postgres
+JWT_SECRET=test-secret
+AUTH_BYPASS_EMAIL_VERIFICATION=true
+```
+
+GitHub Actions starts a disposable Postgres service and uses the same URL shape with `localhost`.
 
 ## External service behavior in tests
 

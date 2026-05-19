@@ -29,7 +29,7 @@ const PROMPT_POOL: PromptItem[] = [
   { text: "Give me 10 songs for a productive study session", Icon: Mic2 },
   { text: "Suggest a lighter accent theme for daytime listening", Icon: Settings },
   { text: "Suggest a darker accent theme for night listening", Icon: Settings },
-  { text: "Recommend one of these presets: Clean Minimal, Neon Night, Ocean Studio, Sunset Warm, Forest Focus, Mono Pro", Icon: Settings },
+  { text: "Recommend one of these presets: Stock Clean, AI Minimal, Cyber Grid, Neon Circuit, Urban Poster, Organic Signal", Icon: Settings },
   { text: "Create a playlist from my top artists this month", Icon: Music },
   { text: "What changed in my taste compared to last week?", Icon: BarChart2 },
   { text: "Queue up energetic tracks for a 30-minute run", Icon: Zap },

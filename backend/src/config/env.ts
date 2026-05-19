@@ -39,13 +39,21 @@ export function isEmailVerificationBypassEnabled(): boolean {
 function loadEnvironmentFiles(): void {
   const backendRoot = path.resolve(__dirname, "..", "..");
   const projectRoot = path.resolve(backendRoot, "..");
+  const isTest = process.env.NODE_ENV === "test";
 
-  const candidateFiles = [
-    path.join(projectRoot, ".env.local"),
-    path.join(projectRoot, ".env"),
-    path.join(backendRoot, ".env.local"),
-    path.join(backendRoot, ".env"),
-  ];
+  const candidateFiles = isTest
+    ? [
+      path.join(projectRoot, ".env.test.local"),
+      path.join(projectRoot, ".env.test"),
+      path.join(backendRoot, ".env.test.local"),
+      path.join(backendRoot, ".env.test"),
+    ]
+    : [
+      path.join(projectRoot, ".env.local"),
+      path.join(projectRoot, ".env"),
+      path.join(backendRoot, ".env.local"),
+      path.join(backendRoot, ".env"),
+    ];
 
   for (const filePath of candidateFiles) {
     if (!fs.existsSync(filePath)) continue;
@@ -63,6 +71,13 @@ export function validateEnvironment(): void {
   loadEnvironmentFiles();
 
   const isProduction = process.env.NODE_ENV === "production";
+  const isTest = process.env.NODE_ENV === "test";
+  const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
+  if (isTest && testDatabaseUrl) {
+    process.env.DATABASE_URL = testDatabaseUrl;
+    process.env.PERSISTENCE_MODE = process.env.TEST_PERSISTENCE_MODE?.trim() || "postgres";
+  }
+
   const jwtSecret = process.env.JWT_SECRET?.trim();
   const configuredPersistenceMode = process.env.PERSISTENCE_MODE?.trim().toLowerCase();
   const persistenceMode = configuredPersistenceMode || "postgres";

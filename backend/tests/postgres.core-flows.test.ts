@@ -1,38 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execSync } from "node:child_process";
-import { PrismaClient } from "@prisma/client";
 import { startTestServer } from "./helpers/testHarness.ts";
+import { resetPostgresTestDatabase } from "./helpers/postgresTestDb.ts";
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL?.trim();
-
-async function resetDatabase(databaseUrl: string): Promise<void> {
-  execSync("npm run prisma:migrate:deploy", {
-    cwd: process.cwd(),
-    env: { ...process.env, DATABASE_URL: databaseUrl },
-    stdio: "pipe",
-  });
-
-  const prisma = new PrismaClient({ datasourceUrl: databaseUrl });
-  try {
-    await prisma.$transaction([
-      prisma.sharedPlaylist.deleteMany(),
-      prisma.sharedRecognition.deleteMany(),
-      prisma.sharedSong.deleteMany(),
-      prisma.playlistTrack.deleteMany(),
-      prisma.playlist.deleteMany(),
-      prisma.favorite.deleteMany(),
-      prisma.searchHistory.deleteMany(),
-      prisma.achievement.deleteMany(),
-      prisma.apiKey.deleteMany(),
-      prisma.trackTag.deleteMany(),
-      prisma.user.deleteMany(),
-      prisma.legacyHistoryEntry.deleteMany(),
-    ]);
-  } finally {
-    await prisma.$disconnect();
-  }
-}
 
 test("postgres core runtime flows are persisted end-to-end", { timeout: 120_000 }, async (t) => {
   if (!TEST_DATABASE_URL) {
@@ -42,7 +13,7 @@ test("postgres core runtime flows are persisted end-to-end", { timeout: 120_000 
 
   const previousDatabaseUrl = process.env.DATABASE_URL;
   process.env.DATABASE_URL = TEST_DATABASE_URL;
-  await resetDatabase(TEST_DATABASE_URL);
+  await resetPostgresTestDatabase(TEST_DATABASE_URL);
 
   const running = await startTestServer({ persistenceMode: "postgres" });
 
