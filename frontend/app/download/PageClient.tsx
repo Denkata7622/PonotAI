@@ -41,11 +41,11 @@ const LOW_CONFIDENCE = 0.75;
 
 export default function DownloadPageClient() {
   const { language } = useLanguage();
-  const apiBaseUrl = typeof window !== "undefined" ? getApiBaseUrl() : "";
   const [jobs, setJobs] = useState<BatchImageJob[]>([]);
   const [songs, setSongs] = useState<BatchSong[]>([]);
   const [activeCoverSongId, setActiveCoverSongId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
+  const [apiBaseUrl, setApiBaseUrl] = useState("");
   const [isJobsOpen, setIsJobsOpen] = useState(true);
   const [isFindingAllCovers, setIsFindingAllCovers] = useState(false);
   const [coverLoadingSongIds, setCoverLoadingSongIds] = useState<string[]>([]);
@@ -56,6 +56,14 @@ export default function DownloadPageClient() {
   useEffect(() => () => {
     for (const url of previewUrlsRef.current) URL.revokeObjectURL(url);
     previewUrlsRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    try {
+      setApiBaseUrl(getApiBaseUrl());
+    } catch {
+      setApiBaseUrl("");
+    }
   }, []);
 
   const summary = useMemo(() => {

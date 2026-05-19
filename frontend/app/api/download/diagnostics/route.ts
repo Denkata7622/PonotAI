@@ -7,75 +7,216 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function parseYtDlpBuildDate(version?: string): Date | null {
-  if (!version) return null;
-  const m = version.trim().match(/^(\d{4})\.(\d{2})\.(\d{2})/);
-  if (!m) return null;
-  const year = Number(m[1]);
-  const month = Number(m[2]);
-  const day = Number(m[3]);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
-  const d = new Date(Date.UTC(year, month - 1, day));
-  return Number.isNaN(d.getTime()) ? null : d;
+const DIAGNOSTIC_TIMEOUT_MS = 10000;
+const OUTPUT_LIMIT = 4096;
+const DEFAULT_TIMEOUT_MS = 180000;
+
+type Mode = "local" | "cloud" | "unknown";
+
+type ProbeResult = {
+  found: boolean;
+  version?: string;
+  errorCode?: string;
+  error?: string;
+};
+
+function capOutput(current: string, next: string): string {
+  return (current + next).slice(-OUTPUT_LIMIT);
 }
 
+function safeBinaryName(binary: string): string {
+  const parts = binary.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || binary || "unknown";
+}
 
-function run(bin: string, args: string[]): Promise<{ ok: boolean; out: string; code?: string }> {
+function redactBinaryPath(message: string | undefined, binary: string): string | undefined {
+  if (!message) return undefined;
+  return message.split(binary).join(safeBinaryName(binary));
+}
+
+function clampTimeout(value: string | undefined): number {
+  const n = Number(value || DEFAULT_TIMEOUT_MS);
+  return Math.min(600000, Math.max(30000, Number.isFinite(n) ? n : DEFAULT_TIMEOUT_MS));
+}
+
+function detectMode(): Mode {
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID) return "cloud";
+  if (process.env.NODE_ENV === "development") return "local";
+  return "unknown";
+}
+
+function parseYtDlpBuildDate(version?: string): Date | null {
+  if (!version) return null;
+  const match = version.trim().match(/^(\d{4})\.(\d{2})\.(\d{2})/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function looksOldYtDlp(version?: string): boolean {
+  const buildDate = parseYtDlpBuildDate(version);
+  if (!buildDate) return false;
+  const now = new Date();
+  const olderThan90Days = now.getTime() - buildDate.getTime() > 90 * 24 * 60 * 60 * 1000;
+  const olderThanCurrentYear = buildDate.getUTCFullYear() < now.getUTCFullYear();
+  return olderThan90Days || olderThanCurrentYear;
+}
+
+function firstLine(value?: string): string | undefined {
+  return value?.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+}
+
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function run(binary: string, args: string[]): Promise<ProbeResult> {
   return new Promise((resolve) => {
-    const child = spawn(bin, args, { shell: false });
-    let out = "";
     let settled = false;
-    const finish = (result: { ok: boolean; out: string; code?: string }) => {
+    let output = "";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const finish = (result: ProbeResult) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       resolve(result);
     };
-    const push = (chunk: Buffer) => { out = (out + chunk.toString("utf8")).slice(-4096); };
-    child.stdout.on("data", push);
-    child.stderr.on("data", push);
-    child.on("error", (e: NodeJS.ErrnoException) => finish({ ok: false, out: e.message, code: e.code }));
-    child.on("close", (c) => finish({ ok: c === 0, out, code: c ? String(c) : undefined }));
-    const timer = setTimeout(() => {
+
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(binary, args, { shell: false, stdio: ["ignore", "pipe", "pipe"] });
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      finish({ found: false, errorCode: err.code || "SPAWN_FAILED", error: redactBinaryPath(err.message, binary) });
+      return;
+    }
+
+    timer = setTimeout(() => {
       child.kill("SIGTERM");
-      finish({ ok: false, out: out || "diagnostic command timed out", code: "TIMEOUT" });
-    }, 10000);
+      finish({ found: false, errorCode: "TIMEOUT", error: redactBinaryPath(output || "diagnostic command timed out", binary) });
+    }, DIAGNOSTIC_TIMEOUT_MS);
+
+    const push = (chunk: Buffer) => {
+      output = capOutput(output, chunk.toString("utf8"));
+    };
+    child.stdout?.on("data", push);
+    child.stderr?.on("data", push);
+    child.on("error", (error: NodeJS.ErrnoException) => {
+      finish({ found: false, errorCode: error.code || "SPAWN_FAILED", error: redactBinaryPath(error.message, binary) });
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        finish({ found: true, version: output.trim() || "installed" });
+        return;
+      }
+      finish({ found: false, errorCode: code === null ? "CLOSED" : String(code), error: redactBinaryPath(output.trim() || `command exited with code ${code}`, binary) });
+    });
   });
+}
+
+async function checkWritableDir(dir: string, prefix: string): Promise<{ dir: string; writable: boolean; error?: string }> {
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    const probePath = path.join(dir, `.${prefix}-${Date.now()}`);
+    await fs.writeFile(probePath, "ok");
+    await fs.rm(probePath, { force: true });
+    return { dir, writable: true };
+  } catch (error) {
+    return { dir, writable: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function toolFixes(mode: Mode, downloader: ProbeResult, ffmpeg: ProbeResult, ffprobe: ProbeResult): string[] {
+  const fixes: string[] = [];
+  if (!downloader.found) {
+    fixes.push(mode === "cloud"
+      ? "On Railway frontend service, ensure Dockerfile is used and set YTDLP_PATH=/usr/local/bin/yt-dlp, or install yt-dlp in the runtime image."
+      : "Install yt-dlp locally or set YTDLP_PATH to the yt-dlp binary.");
+  }
+  if (!ffmpeg.found || !ffprobe.found) {
+    fixes.push(mode === "cloud"
+      ? "On Railway frontend service, ensure frontend/Dockerfile is used and set FFMPEG_LOCATION=/usr/bin."
+      : "Install ffmpeg/ffprobe locally or set FFMPEG_LOCATION to their directory.");
+  }
+  return unique(fixes);
 }
 
 export async function GET(req: Request): Promise<Response> {
   const url = new URL(req.url);
-  const mode = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID ? "cloud" : (process.env.NODE_ENV === "development" ? "local" : "unknown");
+  const mode = detectMode();
   const ytdlpPath = process.env.YTDLP_PATH || "yt-dlp";
-  const ffmpegBin = process.env.FFMPEG_LOCATION ? path.join(process.env.FFMPEG_LOCATION, "ffmpeg") : "ffmpeg";
-  const ffprobeBin = process.env.FFMPEG_LOCATION ? path.join(process.env.FFMPEG_LOCATION, "ffprobe") : "ffprobe";
-  const downloader = await run(ytdlpPath, ["--version"]);
-  const ffmpeg = await run(ffmpegBin, ["-version"]);
-  const ffprobe = await run(ffprobeBin, ["-version"]);
-  const warnings: string[] = []; const fixes: string[] = [];
-  if (mode !== "local") warnings.push("Cloud server detected. yt-dlp can be installed here, but YouTube may block datacenter IPs. For reliable YouTube fallback, run locally/private network.");
-  if (!downloader.ok) fixes.push("Install yt-dlp: macOS brew install yt-dlp; Windows winget install yt-dlp.yt-dlp; Linux python3 -m pip install -U yt-dlp.");
-  if (!ffmpeg.ok || !ffprobe.ok) fixes.push("Install ffmpeg/ffprobe: macOS brew install ffmpeg; Windows winget install Gyan.FFmpeg; Linux sudo apt install ffmpeg.");
+  const ffmpegBinary = process.env.FFMPEG_LOCATION ? path.join(process.env.FFMPEG_LOCATION, "ffmpeg") : "ffmpeg";
+  const ffprobeBinary = process.env.FFMPEG_LOCATION ? path.join(process.env.FFMPEG_LOCATION, "ffprobe") : "ffprobe";
 
-  const downloaderVersion = downloader.ok ? downloader.out.trim() : undefined;
-  const ytDlpDate = parseYtDlpBuildDate(downloaderVersion);
-  if (ytDlpDate) {
-    const now = new Date();
-    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
-    const ageMs = now.getTime() - ytDlpDate.getTime();
-    const olderThan90Days = ageMs > ninetyDaysMs;
-    const olderThanCurrentYear = ytDlpDate.getUTCFullYear() < now.getUTCFullYear();
-    if (olderThan90Days || olderThanCurrentYear) {
-      warnings.push("yt-dlp is installed but appears old. YouTube extraction may fail. Update yt-dlp.");
-    }
-  }
+  const [downloader, ffmpeg, ffprobe] = await Promise.all([
+    run(ytdlpPath, ["--version"]),
+    run(ffmpegBinary, ["-version"]),
+    run(ffprobeBinary, ["-version"]),
+  ]);
 
   const cacheDir = process.env.YTDLP_CACHE_DIR || path.join(tmpdir(), "ponotai-ytdlp-cache");
-  let cacheWritable = true; let cacheError = "";
-  try { await fs.mkdir(cacheDir, { recursive: true }); const p = path.join(cacheDir, `.w-${Date.now()}`); await fs.writeFile(p, "ok"); await fs.rm(p, { force: true }); } catch (e) { cacheWritable = false; cacheError = e instanceof Error ? e.message : String(e); }
-  let tempWritable = true; let tempError = "";
-  try { const d = await fs.mkdtemp(path.join(tmpdir(), "ponotai-diag-")); await fs.rm(d, { recursive: true, force: true }); } catch (e) { tempWritable = false; tempError = e instanceof Error ? e.message : String(e); }
+  const [cache, temp] = await Promise.all([
+    checkWritableDir(cacheDir, "ponotai-cache"),
+    checkWritableDir(tmpdir(), "ponotai-temp"),
+  ]);
 
-  if (url.searchParams.get("probe") === "youtube") warnings.push("Optional YouTube probe is not run by default to keep diagnostics local and safe.");
-  return NextResponse.json({ ok: downloader.ok && ffmpeg.ok && ffprobe.ok && cacheWritable && tempWritable, mode, platform: process.platform, nodeVersion: process.version, downloader: { binary: path.basename(ytdlpPath), found: downloader.ok, version: downloader.ok ? downloader.out.trim() : undefined, errorCode: downloader.ok ? undefined : downloader.code, error: downloader.ok ? undefined : downloader.out, fix: downloader.ok ? undefined : "Set YTDLP_PATH to the full binary path if needed." }, ffmpeg: { found: ffmpeg.ok, version: ffmpeg.ok ? ffmpeg.out.split("\n")[0] : undefined, errorCode: ffmpeg.ok ? undefined : ffmpeg.code, error: ffmpeg.ok ? undefined : ffmpeg.out, fix: ffmpeg.ok ? undefined : "Install ffmpeg and/or set FFMPEG_LOCATION." }, ffprobe: { found: ffprobe.ok, version: ffprobe.ok ? ffprobe.out.split("\n")[0] : undefined, errorCode: ffprobe.ok ? undefined : ffprobe.code, error: ffprobe.ok ? undefined : ffprobe.out, fix: ffprobe.ok ? undefined : "Install ffprobe and/or set FFMPEG_LOCATION." }, cache: { dir: cacheDir, writable: cacheWritable, error: cacheError || undefined }, temp: { dir: tmpdir(), writable: tempWritable, error: tempError || undefined }, config: { ytdlpPathConfigured: Boolean(process.env.YTDLP_PATH), ffmpegLocationConfigured: Boolean(process.env.FFMPEG_LOCATION), cookiesConfigured: Boolean(process.env.YTDLP_COOKIES), cacheDirConfigured: Boolean(process.env.YTDLP_CACHE_DIR), timeoutMs: Math.min(600000, Math.max(30000, Number(process.env.YTDLP_TIMEOUT_MS || 180000))) }, warnings, fixes });
+  const warnings: string[] = [];
+  if (mode === "cloud") {
+    warnings.push("Cloud server detected. yt-dlp can be installed here, but YouTube may block datacenter IPs. For reliable YouTube fallback, run locally/private network.");
+  }
+  if (downloader.found && looksOldYtDlp(downloader.version)) {
+    warnings.push("yt-dlp is installed but appears old. YouTube extraction may fail. Update yt-dlp.");
+  }
+  if (url.searchParams.get("probe") === "youtube") {
+    warnings.push("Optional YouTube probe is not run by default to keep diagnostics local and safe.");
+  }
+
+  const fixes = toolFixes(mode, downloader, ffmpeg, ffprobe);
+  if (!cache.writable) fixes.push("Set YTDLP_CACHE_DIR to a writable directory or disable cache with YTDLP_CACHE_DISABLED=true.");
+  if (!temp.writable) fixes.push("Set the runtime temporary directory to a writable location.");
+
+  return NextResponse.json({
+    ok: downloader.found && ffmpeg.found && ffprobe.found && cache.writable && temp.writable,
+    mode,
+    platform: process.platform,
+    nodeVersion: process.version,
+    downloader: {
+      binary: safeBinaryName(ytdlpPath),
+      found: downloader.found,
+      version: downloader.found ? downloader.version?.trim() : undefined,
+      errorCode: downloader.found ? undefined : downloader.errorCode,
+      error: downloader.found ? undefined : downloader.error,
+      fix: downloader.found ? undefined : fixes.find((fix) => fix.includes("yt-dlp")),
+    },
+    ffmpeg: {
+      found: ffmpeg.found,
+      version: ffmpeg.found ? firstLine(ffmpeg.version) : undefined,
+      errorCode: ffmpeg.found ? undefined : ffmpeg.errorCode,
+      error: ffmpeg.found ? undefined : ffmpeg.error,
+      fix: ffmpeg.found ? undefined : fixes.find((fix) => fix.includes("ffmpeg") || fix.includes("FFMPEG_LOCATION")),
+    },
+    ffprobe: {
+      found: ffprobe.found,
+      version: ffprobe.found ? firstLine(ffprobe.version) : undefined,
+      errorCode: ffprobe.found ? undefined : ffprobe.errorCode,
+      error: ffprobe.found ? undefined : ffprobe.error,
+      fix: ffprobe.found ? undefined : fixes.find((fix) => fix.includes("ffmpeg") || fix.includes("FFMPEG_LOCATION")),
+    },
+    cache,
+    temp,
+    config: {
+      ytdlpPathConfigured: Boolean(process.env.YTDLP_PATH),
+      ffmpegLocationConfigured: Boolean(process.env.FFMPEG_LOCATION),
+      cookiesConfigured: Boolean(process.env.YTDLP_COOKIES),
+      cacheDirConfigured: Boolean(process.env.YTDLP_CACHE_DIR),
+      timeoutMs: clampTimeout(process.env.YTDLP_TIMEOUT_MS),
+    },
+    warnings: unique(warnings),
+    fixes: unique(fixes),
+  });
 }

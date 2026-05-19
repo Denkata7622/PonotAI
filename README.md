@@ -118,27 +118,17 @@ npm run typecheck
 ## Лиценз
 MIT (`LICENSE`)
 
-## Local YouTube audio download (frontend API)
+## Local ZIP download/export (frontend API)
 
-For local/personal usage, the Next.js frontend exposes `POST /api/download` that shells out to your locally installed `yt-dlp` and `ffmpeg`/`ffprobe` to produce MP3 files server-side (Node runtime).
+For local/private/personal usage, the Next.js frontend exposes `POST /api/download`. It runs in the frontend service, shells out to `yt-dlp` plus `ffmpeg`/`ffprobe`, and returns an MP3 for ZIP export. Direct files, blobs, and direct audio URLs remain first-class and do not depend on YouTube.
 
-- Requires internet access and local CLI tools (`yt-dlp`, `ffmpeg`, `ffprobe`).
-- Railway/Railpack deployments should include `yt-dlp` and `ffmpeg` in the runtime image and set: `RAILPACK_DEPLOY_APT_PACKAGES=yt-dlp ffmpeg`, plus `YTDLP_PATH` / `FFMPEG_LOCATION` as needed.
-- Optional env vars: `YTDLP_PATH`, `YTDLP_COOKIES`, `FFMPEG_LOCATION`, `YTDLP_CACHE_DIR`, `YTDLP_CACHE_DISABLED`, `YTDLP_TIMEOUT_MS`, `NEXT_PUBLIC_YOUTUBE_BATCH_DELAY_MS`.
-- Cloud/datacenter IPs may still be blocked by YouTube.
-- Local/private machine execution is the most reliable YouTube fallback path.
-- The app does not bypass CAPTCHA/bot checks.
-- Blocked/failed YouTube items are written to `search-list.txt` and `failed-items.json` during ZIP export.
-
-## Local downloader reliability (yt-dlp + ffmpeg)
-
-Run locally for best results:
+Local tool install:
 
 - macOS: `brew install yt-dlp ffmpeg`
 - Windows: `winget install yt-dlp.yt-dlp` and `winget install Gyan.FFmpeg`
 - Linux: `sudo apt install ffmpeg` and `python3 -m pip install -U yt-dlp`
 
-Then:
+Local check:
 
 ```bash
 cd frontend
@@ -147,6 +137,39 @@ npm run doctor:download
 npm run dev
 ```
 
-Environment variables: `YTDLP_PATH`, `FFMPEG_LOCATION`, `YTDLP_COOKIES` (optional local user path), `YTDLP_CACHE_DIR`, `YTDLP_CACHE_DISABLED`, `YTDLP_TIMEOUT_MS`, `NEXT_PUBLIC_YOUTUBE_BATCH_DELAY_MS`.
+Frontend service env:
 
-Cloud hosts (including Railway) can install binaries but still be blocked by YouTube datacenter IP controls. The app now fails fast, classifies errors, and writes unresolved items into `search-list.txt`/`failed-items.json`.
+- `YTDLP_PATH=/usr/local/bin/yt-dlp` for the Dockerfile deployment
+- `FFMPEG_LOCATION=/usr/bin`
+
+Railway notes:
+
+- `/api/download` runs in the frontend Next.js service, not the backend service.
+- Put `YTDLP_PATH`, `FFMPEG_LOCATION`, and other downloader env vars on the frontend Railway service.
+- `frontend/Dockerfile` installs ffmpeg from apt and installs a current yt-dlp through a Python venv/pip at `/opt/yt-dlp`.
+- If Railway has an old `YTDLP_PATH=/usr/bin/yt-dlp`, remove it or change it to `YTDLP_PATH=/usr/local/bin/yt-dlp`.
+- Confirm the frontend service is actually using `frontend/Dockerfile`.
+
+Optional env vars:
+
+- `YTDLP_COOKIES` optional local path only. The app does not extract or scrape browser cookies.
+- `YTDLP_CACHE_DIR` custom cache directory.
+- `YTDLP_CACHE_DISABLED=true` disables the best-effort MP3 cache.
+- `YTDLP_TIMEOUT_MS` clamps between 30000 and 600000.
+- `NEXT_PUBLIC_YOUTUBE_BATCH_DELAY_MS` optional client batch delay, clamped from 0 to 120000.
+
+Troubleshooting:
+
+- Missing yt-dlp: install yt-dlp locally, or on Railway use the frontend Dockerfile and `YTDLP_PATH=/usr/local/bin/yt-dlp`.
+- Old yt-dlp: update yt-dlp. YouTube extraction often breaks on old versions.
+- Missing ffmpeg/ffprobe: install ffmpeg and set `FFMPEG_LOCATION=/usr/bin` in Docker/Railway.
+- Cloud YouTube block, 403, 429, CAPTCHA, or bot check: YouTube may be blocking the cloud/datacenter IP. Run locally/private network, try later, update yt-dlp, or provide direct audio files/URLs.
+- Timeout: retry, increase `YTDLP_TIMEOUT_MS`, update yt-dlp, or test the target directly with yt-dlp locally.
+- No results: check the title/artist or provide a valid YouTube video ID/URL.
+
+Limits:
+
+- Hosted cloud downloads can still be blocked by YouTube/datacenter IP controls.
+- The app does not bypass DRM, CAPTCHA, bot checks, paywalls, login-required videos, private videos, removed videos, age-restricted videos, or access controls.
+- Reliable fallback is a local/private machine with current yt-dlp and ffmpeg, or direct audio files/URLs.
+- Blocked, failed, or skipped ZIP items are written to `search-list.txt` and `failed-items.json`.
