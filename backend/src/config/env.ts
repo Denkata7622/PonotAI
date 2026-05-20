@@ -32,6 +32,13 @@ function parseBooleanEnv(value: string | undefined): boolean {
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }
 
+function splitCsv(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export function isEmailVerificationBypassEnabled(): boolean {
   return parseBooleanEnv(process.env.AUTH_BYPASS_EMAIL_VERIFICATION);
 }
@@ -72,15 +79,19 @@ export function validateEnvironment(): void {
 
   const isProduction = process.env.NODE_ENV === "production";
   const isTest = process.env.NODE_ENV === "test";
-  const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
-  if (isTest && testDatabaseUrl) {
-    process.env.DATABASE_URL = testDatabaseUrl;
-    process.env.PERSISTENCE_MODE = process.env.TEST_PERSISTENCE_MODE?.trim() || "postgres";
-  }
-
   const jwtSecret = process.env.JWT_SECRET?.trim();
   const configuredPersistenceMode = process.env.PERSISTENCE_MODE?.trim().toLowerCase();
-  const persistenceMode = configuredPersistenceMode || "postgres";
+  const configuredTestPersistenceMode = process.env.TEST_PERSISTENCE_MODE?.trim().toLowerCase();
+  const persistenceMode = configuredPersistenceMode || (isTest ? configuredTestPersistenceMode : undefined) || "postgres";
+  const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
+  if (isTest && persistenceMode === "postgres") {
+    if (!testDatabaseUrl) {
+      console.error("FATAL: TEST_DATABASE_URL is required for NODE_ENV=test with PostgreSQL persistence. Refusing to use DATABASE_URL.");
+      process.exit(1);
+    }
+    process.env.DATABASE_URL = testDatabaseUrl;
+    process.env.TEST_PERSISTENCE_MODE = "postgres";
+  }
   const databaseUrl = process.env.DATABASE_URL?.trim();
   const emailVerificationBypass = isEmailVerificationBypassEnabled();
 
@@ -99,9 +110,14 @@ export function validateEnvironment(): void {
     console.warn("WARN: Using default JWT_SECRET — do not use in production");
   }
 
-  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];
+  const allowedOrigins = [
+    ...splitCsv(process.env.ALLOWED_ORIGINS),
+    ...splitCsv(process.env.CORS_ORIGINS),
+    ...splitCsv(process.env.FRONTEND_URLS),
+    ...(process.env.FRONTEND_URL?.trim() ? [process.env.FRONTEND_URL.trim()] : []),
+  ].filter((origin) => origin !== "*");
   if (isProduction && allowedOrigins.length === 0) {
-    console.error("FATAL: ALLOWED_ORIGINS is required in production");
+    console.error("FATAL: an explicit frontend origin is required in production (ALLOWED_ORIGINS/CORS_ORIGINS/FRONTEND_URL/FRONTEND_URLS).");
     process.exit(1);
   }
 

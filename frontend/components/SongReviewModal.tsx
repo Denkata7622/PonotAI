@@ -8,7 +8,7 @@ import { t } from "../lib/translations";
 import { RotateCcw } from "../lucide-react";
 import { Button } from "../src/components/ui/Button";
 import { Input } from "../src/components/ui/Input";
-import { getApiBaseUrl } from "../lib/apiConfig";
+import { getApiConfigStatus, getApiSetupMessage } from "../lib/apiConfig";
 import { lookupCoverArtUrls } from "../features/recognition/coverArt";
 
 type CoverCandidate = { url: string; source?: string };
@@ -145,7 +145,9 @@ function CoverThumb({ url, alt }: { url: string; alt: string }) {
 }
 
 export default function SongReviewModal({ songs, onConfirm, onCancel }: SongReviewModalProps) {
-  const apiBaseUrl = getApiBaseUrl();
+  const apiConfig = useMemo(() => getApiConfigStatus(), []);
+  const apiBaseUrl = apiConfig.baseUrl;
+  const apiSetupMessage = apiConfig.message ?? getApiSetupMessage();
   const [editableSongs, setEditableSongs] = useState<EditableSong[]>(() =>
     songs.map((song, index) => {
       const { selectedCoverUrl, coverCandidates } = normalizeCandidates(song);
@@ -190,6 +192,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
   }
 
   async function searchCoverCandidatesForSong(song: EditableSong): Promise<string[]> {
+    if (!apiBaseUrl) throw new Error(apiSetupMessage);
     const title = song.editedSongName?.trim() || song.songName;
     const artist = song.editedArtist?.trim() || song.artist;
     const exclude = song.coverCandidates.map((item) => item.url);
@@ -215,6 +218,10 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
   }
 
   async function loadCoverOptions(reviewId: string, useExclude: boolean) {
+    if (!apiBaseUrl) {
+      setInlineMessage(apiSetupMessage);
+      return;
+    }
     const target = editableSongs.find((s) => s.reviewId === reviewId);
     if (!target) return;
     const title = target.editedSongName?.trim() || target.songName;
@@ -238,6 +245,10 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
   }
 
   async function findCoversForMissingSongs() {
+    if (!apiBaseUrl) {
+      setInlineMessage(apiSetupMessage);
+      return;
+    }
     const missing = editableSongs.filter((song) => missingCover(song));
     if (!missing.length) {
       setInlineMessage(BG_NO_MISSING);
@@ -338,8 +349,13 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
         <p className="mb-2 shrink-0 text-sm text-text-muted">
           {t("modal_selected_count", language, { selected: selectedCount, total: editableSongs.length })}
         </p>
+        {!apiBaseUrl ? (
+          <div className="mb-3 rounded-xl border border-amber-400/40 bg-amber-500/12 px-3 py-2 text-xs leading-5 text-amber-100">
+            {apiSetupMessage} Imported songs remain reviewable and local ZIP export is still available.
+          </div>
+        ) : null}
         <div className="mb-3 flex gap-2">
-          <Button variant="secondary" onClick={() => void findCoversForMissingSongs()} disabled={batchCoverLoading}>
+          <Button variant="secondary" onClick={() => void findCoversForMissingSongs()} disabled={batchCoverLoading || !apiBaseUrl}>
             Намери корици за липсващите
           </Button>
         </div>
@@ -425,7 +441,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
                   setActiveReviewId(song.reviewId);
                   void loadCoverOptions(song.reviewId, true);
                 }}
-                disabled={song.loadingCovers}
+                disabled={song.loadingCovers || !apiBaseUrl}
                 className="mt-2 inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs hover:bg-surface-raised disabled:opacity-60"
               >
                 <RotateCcw className={`h-3.5 w-3.5 ${song.loadingCovers ? "animate-spin" : ""}`} />

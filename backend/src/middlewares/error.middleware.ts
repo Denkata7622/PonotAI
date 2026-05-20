@@ -19,6 +19,15 @@ export function errorMiddleware(error: unknown, _req: Request, res: Response, _n
     return;
   }
 
+  const codedError = error && typeof error === "object" ? error as { code?: unknown; message?: unknown } : null;
+  if (typeof codedError?.code === "string") {
+    const candidate = (ErrorCatalog as Record<string, (typeof ErrorCatalog)[keyof typeof ErrorCatalog]>)[codedError.code];
+    if (candidate) {
+      sendError(res, candidate, typeof codedError.message === "string" ? { message: codedError.message } : undefined);
+      return;
+    }
+  }
+
 
   if (error instanceof multer.MulterError) {
     if (error.code === "LIMIT_FILE_SIZE") {
@@ -40,5 +49,6 @@ export function errorMiddleware(error: unknown, _req: Request, res: Response, _n
     return;
   }
 
+  console.error("[api-error]", error);
   sendError(res, ErrorCatalog.INTERNAL_ERROR, process.env.NODE_ENV === "production" ? undefined : { cause: (error as Error).message });
 }

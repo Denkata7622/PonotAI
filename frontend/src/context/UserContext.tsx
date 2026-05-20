@@ -9,7 +9,7 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import { apiFetch } from "../lib/apiFetch";
+import { apiFetch, getApiErrorMessage, readJsonSafely } from "../lib/apiFetch";
 import { toCanonicalSong, toSongKey } from "../../lib/songIdentity";
 import { t } from "../../lib/translations";
 import { isOnboardingPending, markOnboardingDone, markOnboardingPending, writeTasteProfile, type TasteProfile } from "../features/onboarding/tasteProfile";
@@ -337,8 +337,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       method: "POST",
       body: JSON.stringify({ username, email, password }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.code || data.error || "REGISTER_FAILED");
+    const data = await readJsonSafely(res);
+    if (!res.ok) throw new Error(getApiErrorMessage(data, "REGISTER_FAILED"));
 
     const payload = data as { token?: string; user?: User; requiresEmailVerification?: boolean };
     if (payload.token && payload.user) {
@@ -357,8 +357,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       method: "POST",
       body: JSON.stringify({ token }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.code || "EMAIL_VERIFICATION_FAILED");
+    const data = await readJsonSafely(res);
+    if (!res.ok) throw new Error(getApiErrorMessage(data, "EMAIL_VERIFICATION_FAILED"));
     await handleAuthSuccess(data as { token: string; user: User });
     markOnboardingPending();
     setOnboardingRequired(true);
@@ -370,8 +370,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email }),
     });
     if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.code || "EMAIL_RESEND_FAILED");
+      const data = await readJsonSafely(res);
+      throw new Error(getApiErrorMessage(data, "EMAIL_RESEND_FAILED"));
     }
   }
 
@@ -380,8 +380,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.code || data.error || "LOGIN_FAILED");
+    const data = await readJsonSafely(res);
+    if (!res.ok) throw new Error(getApiErrorMessage(data, "LOGIN_FAILED"));
     await handleAuthSuccess(data as { token: string; user: User });
     markOnboardingDone();
     setOnboardingRequired(false);
@@ -398,8 +398,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   async function updateProfile(fields: Partial<Pick<User, "username" | "email" | "bio" | "avatarBase64" | "recommendationDataSharingEnabled" | "recommendationMode" | "repeatedArtistTolerance" | "energyPreference">>) {
     const res = await apiFetch("/api/auth/me", { method: "PATCH", body: JSON.stringify(fields) });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.code || data.error || "UPDATE_FAILED");
+    const data = await readJsonSafely(res);
+    if (!res.ok) throw new Error(getApiErrorMessage(data, "UPDATE_FAILED"));
     setAuthState({ user: data as User });
   }
 
@@ -409,8 +409,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ currentPassword, newPassword }),
     });
     if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.code || data.error || "PASSWORD_CHANGE_FAILED");
+      const data = await readJsonSafely(res);
+      throw new Error(getApiErrorMessage(data, "PASSWORD_CHANGE_FAILED"));
     }
   }
 

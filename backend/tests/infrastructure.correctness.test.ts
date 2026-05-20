@@ -90,6 +90,24 @@ test("production CORS excludes localhost defaults unless explicitly configured",
   }
 });
 
+test("CORS diagnostics never allow wildcard origins with credentials", async () => {
+  const previous = process.env.ALLOWED_ORIGINS;
+
+  try {
+    process.env.ALLOWED_ORIGINS = "*,https://runtime-trackly.example";
+    const { getCorsDiagnostics } = await import("../src/config/cors.ts");
+    const diagnostics = getCorsDiagnostics();
+
+    assert.equal(diagnostics.credentials, true);
+    assert.equal(diagnostics.wildcardWithCredentials, false);
+    assert.ok(!diagnostics.allowedOrigins.includes("*"));
+    assert.ok(diagnostics.allowedOrigins.includes("https://runtime-trackly.example"));
+  } finally {
+    if (previous === undefined) delete process.env.ALLOWED_ORIGINS;
+    else process.env.ALLOWED_ORIGINS = previous;
+  }
+});
+
 test("development CORS allows localhost and loopback dev origins", async () => {
   const previousNodeEnv = process.env.NODE_ENV;
 
@@ -144,5 +162,27 @@ test("/api/health reports degraded status when postgres is unavailable", async (
     else process.env.DATABASE_URL = previousDatabaseUrl;
     if (previousMode === undefined) delete process.env.PERSISTENCE_MODE;
     else process.env.PERSISTENCE_MODE = previousMode;
+  }
+});
+
+test("/api/diagnostics reports safe runtime config without secrets", async () => {
+  const running = await startTestServer({ persistenceMode: "file-legacy" });
+  try {
+    const response = await fetch(`${running.baseUrl}/api/diagnostics`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as {
+      persistence: { mode: string; databaseConfigured: boolean };
+      cors: { credentials: boolean; allowedOrigins: string[] };
+      auth: { jwtSecretConfigured: boolean };
+      personalization: { routesRegistered: boolean; themePresetCount: number };
+    };
+    assert.equal(payload.persistence.mode, "file-legacy");
+    assert.equal(payload.cors.credentials, true);
+    assert.equal(payload.auth.jwtSecretConfigured, true);
+    assert.equal(payload.personalization.routesRegistered, true);
+    assert.ok(payload.personalization.themePresetCount > 0);
+    assert.doesNotMatch(JSON.stringify(payload), /test-secret|postgresql:\/\/|JWT_SECRET|DATABASE_URL/);
+  } finally {
+    await running.close();
   }
 });

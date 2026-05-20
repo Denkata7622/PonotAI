@@ -89,8 +89,11 @@ function normalizeRecommendation(value: unknown): PersonalizationRecommendation 
     return null;
   }
   if (!["theme", "layout", "content", "setting"].includes(candidate.kind)) return null;
+  const presetId = isValidThemePresetId(candidate.presetId) ? candidate.presetId : undefined;
+  if (candidate.kind === "theme" && !presetId) return null;
   const action = candidate.action && typeof candidate.action === "object" && typeof candidate.action.type === "string" && typeof candidate.action.label === "string"
     && (candidate.action.type === "open_settings" || candidate.action.type === "apply_theme_preset")
+    && (candidate.action.type !== "apply_theme_preset" || presetId)
     ? {
       type: candidate.action.type,
       label: candidate.action.label,
@@ -102,7 +105,7 @@ function normalizeRecommendation(value: unknown): PersonalizationRecommendation 
     kind: candidate.kind,
     title: candidate.title,
     description: candidate.description,
-    presetId: typeof candidate.presetId === "string" ? candidate.presetId : undefined,
+    presetId,
     reason: typeof candidate.reason === "string" ? candidate.reason : undefined,
     confidence: typeof candidate.confidence === "number" ? candidate.confidence : undefined,
     action,

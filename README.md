@@ -111,6 +111,45 @@ npm run typecheck
 
 ## PostgreSQL environment setup
 
+## Production configuration checklist
+
+### Frontend Railway service
+
+```env
+NEXT_PUBLIC_API_BASE_URL=https://<backend-public-domain>
+```
+
+- Set this on the frontend service, not the backend service.
+- It must point to the backend public domain, not the frontend domain.
+- `NEXT_PUBLIC_*` values are embedded into the Next.js build, so rebuild/redeploy the frontend after changing them.
+- If this value is missing outside localhost, the app now renders an actionable setup warning instead of crashing during React render.
+- `/api/download` is a frontend Next.js route. Put downloader variables on the frontend service:
+
+```env
+YTDLP_PATH=/usr/local/bin/yt-dlp
+FFMPEG_LOCATION=/usr/bin
+```
+
+### Backend Railway service
+
+```env
+NODE_ENV=production
+PERSISTENCE_MODE=postgres
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+JWT_SECRET=<strong-production-secret>
+ALLOWED_ORIGINS=https://<frontend-domain>
+CORS_ORIGINS=https://<frontend-domain>
+FRONTEND_URL=https://<frontend-domain>
+FRONTEND_URLS=https://<frontend-domain>
+AUTH_BYPASS_EMAIL_VERIFICATION=false
+```
+
+- `DATABASE_URL=${{Postgres.DATABASE_URL}}` is Railway interpolation syntax only. Local `.env` files must use a resolved `postgresql://...` URL.
+- Backend CORS origins must be explicit. Do not use wildcard origins with credentials.
+- Run `npm run prisma:migrate:deploy` for the backend database before or during backend deploy.
+- If `AUTH_BYPASS_EMAIL_VERIFICATION=false`, configure `MAILER_API_URL`, `MAILER_API_TOKEN`, and `MAILER_FROM`; otherwise new users cannot receive verification links.
+- Safe diagnostics are available at frontend `/api/runtime-diagnostics`, frontend `/api/client-errors`, backend `/api/health`, and backend `/api/diagnostics`. They do not expose database URLs, JWT secrets, API keys, cookies, or tokens.
+
 ### Railway production backend
 
 Set the backend Railway service variable to Railway's resolved Postgres reference:

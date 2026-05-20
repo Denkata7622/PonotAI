@@ -68,7 +68,21 @@ test("creative presets are registered", () => {
 
 test("theme preset registry has unique real IDs and names", () => {
   const ids = THEME_PRESET_DEFINITIONS.map((preset) => preset.id);
+  const names = THEME_PRESET_DEFINITIONS.map((preset) => preset.name);
   assert.equal(new Set(ids).size, ids.length);
+  assert.equal(ids.length, Object.keys(UI_PRESETS).length);
+  assert.deepEqual(names, [
+    "Stock Clean",
+    "AI Minimal",
+    "Cyber Grid",
+    "Neon Circuit",
+    "Urban Poster",
+    "Velvet Script",
+    "Steel Console",
+    "Arcade Pulse",
+    "Noir Gothic",
+    "Organic Signal",
+  ]);
   assert.deepEqual(BACKEND_THEME_PRESET_IDS, ids);
   for (const preset of THEME_PRESET_DEFINITIONS) {
     assert.equal(preset.id, preset.name);

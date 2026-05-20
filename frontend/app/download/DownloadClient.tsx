@@ -65,6 +65,16 @@ type ResultSummary = {
 
 const YOUTUBE_VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
 
+export class SongImportError extends Error {
+  code: "invalid-json" | "invalid-schema" | "empty-import";
+
+  constructor(message: string, code: SongImportError["code"]) {
+    super(message);
+    this.name = "SongImportError";
+    this.code = code;
+  }
+}
+
 function normalizeYoutubeVideoId(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
@@ -83,26 +93,43 @@ function getPlatformAudioCandidate(platformLinks: unknown): string | undefined {
   return undefined;
 }
 
-function parseImportedSongs(raw: unknown): SongMatch[] {
-  const root = Array.isArray(raw)
-    ? raw
-    : (raw && typeof raw === "object" && Array.isArray((raw as { songs?: unknown }).songs)
-      ? (raw as { songs: unknown[] }).songs
-      : []);
+function getImportedSongArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === "object") {
+    const record = raw as { songs?: unknown; data?: unknown };
+    if (Array.isArray(record.songs)) return record.songs;
+    if (record.data && typeof record.data === "object" && Array.isArray((record.data as { songs?: unknown }).songs)) {
+      return (record.data as { songs: unknown[] }).songs;
+    }
+  }
+  throw new SongImportError("Unsupported JSON shape. Upload an array of songs or an object with a songs array.", "invalid-schema");
+}
+
+export function parseImportedSongs(raw: unknown): SongMatch[] {
+  const root = getImportedSongArray(raw);
 
   const normalizedSongs: SongMatch[] = [];
+  const invalidItems: string[] = [];
   for (let index = 0; index < root.length; index += 1) {
     const entry = root[index];
     if (typeof entry === "string") {
-      normalizedSongs.push(toSongMatch(entry));
+      const query = entry.trim();
+      if (query) normalizedSongs.push(toSongMatch(query));
+      else invalidItems.push(`Item ${index + 1} is an empty string.`);
       continue;
     }
-    if (!entry || typeof entry !== "object") continue;
+    if (!entry || typeof entry !== "object") {
+      invalidItems.push(`Item ${index + 1} is not a song object.`);
+      continue;
+    }
     const item = entry as Record<string, unknown>;
     if (item.selected === false) continue;
 
     const songName = [item.songName, item.title, item.name, item.rawText].find((v) => typeof v === "string" && v.trim()) as string | undefined;
-    if (!songName) continue;
+    if (!songName) {
+      invalidItems.push(`Item ${index + 1} is missing songName/title/name.`);
+      continue;
+    }
 
     const candidates = Array.isArray(item.coverCandidates) ? item.coverCandidates : [];
     const firstCandidate = candidates.find((candidate) => {
@@ -147,6 +174,14 @@ function parseImportedSongs(raw: unknown): SongMatch[] {
       ...(typeof item.audioUrl === "string" ? { audioUrl: item.audioUrl } : {}),
       ...(typeof item.sourceUrl === "string" ? { sourceUrl: item.sourceUrl } : {}),
     } as SongMatch);
+  }
+  if (normalizedSongs.length === 0) {
+    throw new SongImportError(
+      invalidItems.length > 0
+        ? `No valid songs were found. ${invalidItems.slice(0, 3).join(" ")}`
+        : "No valid songs were found in this JSON file.",
+      "empty-import",
+    );
   }
   return normalizedSongs;
 }
@@ -279,19 +314,20 @@ export default function DownloadClient() {
     setResultItems([]);
     setResultSummary(null);
     try {
-      const songs = parseImportedSongs(JSON.parse(await file.text()) as unknown);
-      if (songs.length === 0) {
-        setState("error");
-        setErrorMessage("No valid songs were found in this JSON file.");
-        return;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await file.text()) as unknown;
+      } catch {
+        throw new SongImportError("Invalid JSON file. Upload a valid songs JSON export.", "invalid-json");
       }
+      const songs = parseImportedSongs(parsed);
       setImportedSongs(songs);
       setShowReviewModal(true);
       setState("idle");
       setExportSongs([]);
-    } catch {
+    } catch (error) {
       setState("error");
-      setErrorMessage("Invalid JSON file. Upload a valid songs JSON export.");
+      setErrorMessage(error instanceof SongImportError ? error.message : "Could not import this JSON file.");
     }
   }
 

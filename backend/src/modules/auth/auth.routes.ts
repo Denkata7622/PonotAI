@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import {
   createUser,
   deleteUserCascade,
@@ -25,6 +25,12 @@ const USER_ROLE = "user" as const;
 const RECOMMENDATION_MODES = new Set(["safe_familiar", "balanced", "mostly_discovery"] as const);
 const REPEATED_ARTIST_TOLERANCE = new Set(["lower", "normal", "higher"] as const);
 const ENERGY_PREFERENCES = new Set(["calmer", "mixed", "more_energetic"] as const);
+
+function asyncHandler(handler: (req: Request, res: Response, next: NextFunction) => Promise<void>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    void handler(req, res, next).catch(next);
+  };
+}
 
 function getAdminEmailSet(): Set<string> {
   const configured = [
@@ -88,7 +94,7 @@ export function toUserPayload(user: {
   };
 }
 
-authRouter.post("/register", authSensitiveRateLimit, async (req, res) => {
+authRouter.post("/register", authSensitiveRateLimit, asyncHandler(async (req, res) => {
   const { username, email, password } = req.body as {
     username?: string;
     email?: string;
@@ -132,9 +138,9 @@ authRouter.post("/register", authSensitiveRateLimit, async (req, res) => {
     token,
     user: toUserPayload(finalUser),
   });
-});
+}));
 
-authRouter.post("/login", authSensitiveRateLimit, async (req, res) => {
+authRouter.post("/login", authSensitiveRateLimit, asyncHandler(async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
   if (!email || !password) return void sendError(res, ErrorCatalog.INVALID_CREDENTIALS);
   const normalizedEmail = email.toLowerCase();
@@ -147,9 +153,9 @@ authRouter.post("/login", authSensitiveRateLimit, async (req, res) => {
   const finalUser = await ensureAdminRoleForConfiguredEmail(user, "login");
   const token = signAuthToken(finalUser.id, finalUser.role ?? USER_ROLE);
   res.status(200).json({ token, user: toUserPayload(finalUser) });
-});
+}));
 
-authRouter.post("/verify-email", authSensitiveRateLimit, async (req, res) => {
+authRouter.post("/verify-email", authSensitiveRateLimit, asyncHandler(async (req, res) => {
   const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
   if (!token || token.length < 20) {
     return void sendError(res, ErrorCatalog.INVALID_VERIFICATION_TOKEN);
@@ -162,20 +168,20 @@ authRouter.post("/verify-email", authSensitiveRateLimit, async (req, res) => {
   const finalUser = await ensureAdminRoleForConfiguredEmail(user, "auth_me");
   const authToken = signAuthToken(finalUser.id, finalUser.role ?? USER_ROLE);
   res.status(200).json({ token: authToken, user: toUserPayload(finalUser) });
-});
+}));
 
-authRouter.post("/resend-verification", authSensitiveRateLimit, async (req, res) => {
+authRouter.post("/resend-verification", authSensitiveRateLimit, asyncHandler(async (req, res) => {
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
   if (!email || !EMAIL_REGEX.test(email)) {
     return void sendError(res, ErrorCatalog.INVALID_EMAIL);
   }
   await resendVerificationByEmail(email);
   res.status(200).json({ ok: true });
-});
+}));
 
 authRouter.post("/logout", (_req, res) => res.status(200).json({ ok: true }));
 
-authRouter.get("/me", requireAuth, async (req, res) => {
+authRouter.get("/me", requireAuth, asyncHandler(async (req, res) => {
   const user = await findUserById(req.userId!);
   if (!user) {
     return void sendError(res, ErrorCatalog.UNAUTHORIZED);
@@ -184,9 +190,9 @@ authRouter.get("/me", requireAuth, async (req, res) => {
   const payload = toUserPayload(finalUser);
   const token = signAuthToken(finalUser.id, finalUser.role ?? USER_ROLE);
   res.status(200).json({ user: payload, token });
-});
+}));
 
-authRouter.patch("/me", requireAuth, async (req, res) => {
+authRouter.patch("/me", requireAuth, asyncHandler(async (req, res) => {
   const { username, email, bio, avatarBase64 } = req.body as {
     username?: string;
     email?: string;
@@ -244,9 +250,9 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     await issueEmailVerificationForUser(user);
   }
   res.status(200).json(toUserPayload(user));
-});
+}));
 
-authRouter.post("/change-password", requireAuth, async (req, res) => {
+authRouter.post("/change-password", requireAuth, asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
   if (!currentPassword || !newPassword || newPassword.length < 8) return void sendError(res, ErrorCatalog.INVALID_PASSWORD);
 
@@ -255,11 +261,11 @@ authRouter.post("/change-password", requireAuth, async (req, res) => {
 
   await updateUser(user.id, { passwordHash: hashPassword(newPassword) });
   res.status(200).json({ ok: true });
-});
+}));
 
-authRouter.delete("/me", requireAuth, async (req, res) => {
+authRouter.delete("/me", requireAuth, asyncHandler(async (req, res) => {
   await deleteUserCascade(req.userId!);
   res.status(200).json({ ok: true });
-});
+}));
 
 export default authRouter;

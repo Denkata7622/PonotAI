@@ -20,12 +20,13 @@ import adminRouter from "./modules/admin/admin.routes";
 import personalizationRouter from "./modules/personalization/personalization.routes";
 import { apiRateLimit, recognitionRateLimit } from "./middlewares/rateLimit.middleware";
 import { responseTimeMiddleware } from "./middlewares/responseTime.middleware";
-import { getCorsOptions } from "./config/cors";
+import { getCorsDiagnostics, getCorsOptions } from "./config/cors";
 import assistantRouter from "./routes/assistant";
 import coverArtRouter from "./routes/coverArt";
 import musicDownloadRouter from "./routes/musicDownload";
 import aiRouter from "./modules/ai/ai.routes";
 import { getPersistenceHealth, refreshPersistenceHealth } from "./db/persistence";
+import { THEME_PRESET_IDS } from "./modules/personalization/themePresetCatalog";
 
 const app = express();
 const YAML = require("js-yaml");
@@ -141,6 +142,45 @@ app.get("/api/health", async (_req: Request, res: Response) => {
       ...(persistence.lastError ? { error: persistence.lastError } : {}),
     },
     ai,
+  });
+});
+
+app.get("/api/diagnostics", async (_req: Request, res: Response) => {
+  await refreshPersistenceHealth();
+  const persistence = getPersistenceHealth();
+  const warnings: string[] = [];
+  if (persistence.mode === "postgres" && !process.env.DATABASE_URL?.trim()) {
+    warnings.push("DATABASE_URL is not configured for PostgreSQL persistence.");
+  }
+  if (!process.env.JWT_SECRET?.trim()) {
+    warnings.push("JWT_SECRET is not configured; development fallback is only allowed outside production.");
+  }
+  const cors = getCorsDiagnostics();
+  if (cors.allowedOriginCount === 0) {
+    warnings.push("No explicit CORS frontend origins are configured.");
+  }
+
+  res.json({
+    ok: persistence.connected && warnings.length === 0,
+    nodeEnv: process.env.NODE_ENV ?? "development",
+    persistence: {
+      mode: persistence.mode,
+      databaseConfigured: Boolean(process.env.DATABASE_URL?.trim()),
+      databaseReachable: persistence.connected,
+      status: persistence.connected ? "ready" : "error",
+      ...(persistence.lastError ? { error: persistence.lastError } : {}),
+    },
+    cors,
+    auth: {
+      jwtSecretConfigured: Boolean(process.env.JWT_SECRET?.trim()),
+      emailVerificationBypass: process.env.AUTH_BYPASS_EMAIL_VERIFICATION === "true",
+      mailerConfigured: Boolean(process.env.MAILER_API_URL?.trim() && process.env.MAILER_API_TOKEN?.trim()),
+    },
+    personalization: {
+      routesRegistered: true,
+      themePresetCount: THEME_PRESET_IDS.length,
+    },
+    warnings,
   });
 });
 

@@ -50,7 +50,7 @@ export async function startTestServer(options: StartTestServerOptions = {}): Pro
   process.env.PONOTAI_DATA_DIR = tempDataDir;
   process.env.PERSISTENCE_MODE = persistenceMode;
   if (options.allowUnavailablePostgresForHealthProbe) {
-    process.env.TEST_DATABASE_URL = " ";
+    process.env.TEST_DATABASE_URL = process.env.DATABASE_URL ?? "postgresql://127.0.0.1:1/trackly";
     process.env.TEST_PERSISTENCE_MODE = " ";
   }
   process.env.AUTH_BYPASS_EMAIL_VERIFICATION = process.env.AUTH_BYPASS_EMAIL_VERIFICATION || "true";

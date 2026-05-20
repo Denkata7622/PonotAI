@@ -6,7 +6,7 @@ import { lookupCoverArtUrls } from "@/features/recognition/coverArt";
 import { normalizeTrackKey } from "@/lib/songIdentity";
 import { useLanguage } from "@/lib/LanguageContext";
 import { t } from "@/lib/translations";
-import { getApiBaseUrl } from "@/lib/apiConfig";
+import { getApiConfigStatus } from "@/lib/apiConfig";
 import DownloadClient from "./DownloadClient";
 
 type BatchImageJob = {
@@ -59,10 +59,10 @@ export default function DownloadPageClient() {
   }, []);
 
   useEffect(() => {
-    try {
-      setApiBaseUrl(getApiBaseUrl());
-    } catch {
-      setApiBaseUrl("");
+    const status = getApiConfigStatus();
+    setApiBaseUrl(status.baseUrl ?? "");
+    if (!status.baseUrl && status.message) {
+      setNotice({ type: "error", message: `${status.message} Image recognition and automatic cover lookup need the backend API.` });
     }
   }, []);
 

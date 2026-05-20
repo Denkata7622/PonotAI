@@ -4,7 +4,17 @@ import { startTestServer } from "./helpers/testHarness.ts";
 
 const FRONTEND_ORIGIN = "https://trackly-production.up.railway.app";
 
+function withFrontendOrigin() {
+  const previous = process.env.ALLOWED_ORIGINS;
+  process.env.ALLOWED_ORIGINS = FRONTEND_ORIGIN;
+  return () => {
+    if (previous === undefined) delete process.env.ALLOWED_ORIGINS;
+    else process.env.ALLOWED_ORIGINS = previous;
+  };
+}
+
 test("CORS preflight returns allow-origin for /api/history", async () => {
+  const restore = withFrontendOrigin();
   const running = await startTestServer();
   try {
     const response = await fetch(`${running.baseUrl}/api/history?limit=18`, {
@@ -20,10 +30,12 @@ test("CORS preflight returns allow-origin for /api/history", async () => {
     assert.equal(response.headers.get("access-control-allow-origin"), FRONTEND_ORIGIN);
   } finally {
     await running.close();
+    restore();
   }
 });
 
 test("CORS preflight returns allow-origin for /api/recognition/image", async () => {
+  const restore = withFrontendOrigin();
   const running = await startTestServer();
   try {
     const response = await fetch(`${running.baseUrl}/api/recognition/image`, {
@@ -39,10 +51,12 @@ test("CORS preflight returns allow-origin for /api/recognition/image", async () 
     assert.equal(response.headers.get("access-control-allow-origin"), FRONTEND_ORIGIN);
   } finally {
     await running.close();
+    restore();
   }
 });
 
 test("CORS preflight allows assistant custom headers", async () => {
+  const restore = withFrontendOrigin();
   const running = await startTestServer();
   try {
     const response = await fetch(`${running.baseUrl}/api/assistant`, {
@@ -61,10 +75,12 @@ test("CORS preflight allows assistant custom headers", async () => {
     assert.match(allowHeaders.toLowerCase(), /x-trackly-preferences/);
   } finally {
     await running.close();
+    restore();
   }
 });
 
 test("CORS preflight allows x-api-key for developer API routes", async () => {
+  const restore = withFrontendOrigin();
   const running = await startTestServer();
   try {
     const response = await fetch(`${running.baseUrl}/api/developer/v1/recommendations`, {
@@ -82,5 +98,6 @@ test("CORS preflight allows x-api-key for developer API routes", async () => {
     assert.match(allowHeaders.toLowerCase(), /x-api-key/);
   } finally {
     await running.close();
+    restore();
   }
 });

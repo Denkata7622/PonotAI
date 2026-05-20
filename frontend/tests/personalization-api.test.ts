@@ -45,10 +45,9 @@ test("personalization API client normalizes recommendation preset IDs", async ()
   });
   try {
     const payload = await getPersonalizationRecommendations(null);
-    assert.equal(payload.recommendations.length, 3);
+    assert.equal(payload.recommendations.length, 2);
     assert.equal(resolveThemeRecommendationPresetId(payload.recommendations[0] as PersonalizationRecommendation), "Cyber Grid");
-    assert.equal(resolveThemeRecommendationPresetId(payload.recommendations[1] as PersonalizationRecommendation), null);
-    assert.equal(payload.recommendations[2]?.action, undefined);
+    assert.equal(payload.recommendations[1]?.action, undefined);
   } finally {
     globalThis.fetch = originalFetch;
   }

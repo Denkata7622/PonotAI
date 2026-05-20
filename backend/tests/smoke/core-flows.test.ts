@@ -162,6 +162,16 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
     assert.equal(reloginBody.user.energyPreference, "more_energetic");
     assert.equal(reloginBody.user.themePresetId, "Organic Signal");
 
+    const invalidLoginResponse = await fetch(`${running.baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: sharingUserEmail, password: "wrong-password" }),
+    });
+    assert.equal(invalidLoginResponse.status, 401);
+    const invalidLoginBody = (await invalidLoginResponse.json()) as { code: string; message: string };
+    assert.equal(invalidLoginBody.code, "INVALID_CREDENTIALS");
+    assert.match(invalidLoginBody.message, /Invalid email or password/);
+
     const reloadedPersonalizationResponse = await fetch(`${running.baseUrl}/api/personalization`, {
       headers: { authorization: `Bearer ${reloginBody.token}` },
     });
@@ -170,6 +180,20 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
       preferences: { themePresetId?: string | null };
     };
     assert.equal(reloadedPersonalization.preferences.themePresetId, "Organic Signal");
+
+    const recommendationsResponse = await fetch(`${running.baseUrl}/api/personalization/recommendations?currentThemePresetId=Organic%20Signal`, {
+      headers: { authorization: `Bearer ${reloginBody.token}` },
+    });
+    assert.equal(recommendationsResponse.status, 200);
+    const recommendationsBody = (await recommendationsResponse.json()) as {
+      recommendations: Array<{ kind: string; presetId?: string }>;
+    };
+    assert.ok(recommendationsBody.recommendations.length > 0);
+    for (const recommendation of recommendationsBody.recommendations) {
+      if (recommendation.kind === "theme") {
+        assert.ok(["Stock Clean", "AI Minimal", "Cyber Grid", "Neon Circuit", "Urban Poster", "Velvet Script", "Steel Console", "Arcade Pulse", "Noir Gothic", "Organic Signal"].includes(recommendation.presetId ?? ""));
+      }
+    }
 
     const assistantResponse = await fetch(`${running.baseUrl}/api/assistant`, {
       method: "POST",

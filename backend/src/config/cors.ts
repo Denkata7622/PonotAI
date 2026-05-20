@@ -7,9 +7,12 @@ function splitCsv(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function resolveAllowedOrigins(): string[] {
+function isWildcardOrigin(origin: string): boolean {
+  return origin === "*";
+}
+
+export function resolveAllowedOrigins(): string[] {
   const isProduction = process.env.NODE_ENV === "production";
-  const defaultOrigins = ["https://trackly-production.up.railway.app"];
   const devOrigins = [
     "http://localhost:3000",
     "http://localhost:3001",
@@ -23,7 +26,18 @@ function resolveAllowedOrigins(): string[] {
     ...splitCsv(process.env.FRONTEND_URLS),
   ];
 
-  return Array.from(new Set([...(isProduction ? defaultOrigins : [...defaultOrigins, ...devOrigins]), ...envOrigins]));
+  const configured = Array.from(new Set([...(isProduction ? [] : devOrigins), ...envOrigins]));
+  return configured.filter((origin) => !isWildcardOrigin(origin));
+}
+
+export function getCorsDiagnostics() {
+  const allowedOrigins = resolveAllowedOrigins();
+  return {
+    credentials: true,
+    allowedOrigins,
+    allowedOriginCount: allowedOrigins.length,
+    wildcardWithCredentials: false,
+  };
 }
 
 export function getCorsOptions(): CorsOptions {

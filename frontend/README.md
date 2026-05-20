@@ -7,14 +7,21 @@ npm run dev
 ```
 
 ### API connection
-The client calls the backend API directly via `getApiBaseUrl()`.
+The client calls the backend API through the centralized API config helpers.
+Render paths use safe status helpers; API/event paths use strict helpers.
 
 Set backend URL in `.env.local`:
 ```bash
 NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
 ```
 
-Set `NEXT_PUBLIC_API_BASE_URL` to point at the backend API.
+On Railway, set `NEXT_PUBLIC_API_BASE_URL=https://<backend-public-domain>` on the frontend service and redeploy the frontend. If it is missing outside localhost, backend-required actions show a setup warning instead of crashing React render.
+
+Safe runtime checks:
+- `GET /api/runtime-diagnostics`
+- `POST /api/client-errors`
+
+`/api/download` runs in this frontend service. Put `YTDLP_PATH` and `FFMPEG_LOCATION` on the frontend service, not the backend service.
 
 ### Feature structure
 - `features/recognition/api.ts` - API client for recognition.

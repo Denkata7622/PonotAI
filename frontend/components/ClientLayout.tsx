@@ -7,6 +7,7 @@ import { ThemeProvider } from "../lib/ThemeContext";
 import { ProfileProvider } from "../lib/ProfileContext";
 import { UserProvider } from "../src/context/UserContext";
 import AssistantFAB from "../src/components/AssistantFAB";
+import ClientErrorReporter from "../src/components/ClientErrorReporter";
 import { DualSidebarProvider } from "../src/components/sidebars/DualSidebarContext";
 import OnboardingGate from "../src/components/OnboardingGate";
 
@@ -17,6 +18,7 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
         <LanguageProvider>
           <ProfileProvider>
             <DualSidebarProvider>
+              <ClientErrorReporter />
               <OnboardingGate />
               <AppShell><div className="pageTransition">{children}</div></AppShell>
               <AssistantFAB />
