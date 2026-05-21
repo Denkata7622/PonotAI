@@ -88,7 +88,7 @@ test("direct mp3 URL fetches directly and does not use /api/download", async () 
   assert.equal(result.exportedCount, 1);
 });
 
-test("YouTube page URL is not browser-fetched and invalid youtubeVideoId falls back to query", async () => {
+test("YouTube page URL is not browser-fetched and invalid youtubeVideoId is not passed", async () => {
   let apiCalls = 0;
   const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -97,7 +97,8 @@ test("YouTube page URL is not browser-fetched and invalid youtubeVideoId falls b
       apiCalls += 1;
       const body = JSON.parse(String(init?.body)) as { youtubeId?: string; query?: string };
       assert.equal(body.youtubeId, undefined);
-      assert.equal(body.query, "Artist - Query Song");
+      assert.equal((body as { youtubeUrl?: string }).youtubeUrl, "https://www.youtube.com/watch?v=abc123xyz_1");
+      assert.equal(body.query, undefined);
       return audioResponse();
     }
     throw new Error(`unexpected fetch ${url}`);
@@ -115,6 +116,7 @@ test("YouTube page URL is not browser-fetched and invalid youtubeVideoId falls b
 
   assert.equal(apiCalls, 1);
   assert.equal(result.exportedCount, 1);
+  assert.equal(result.items[0]?.sourceAttempted, "youtube-url");
 });
 
 test("missing-binary opens YouTube circuit, skips remaining YouTube songs, and still exports later direct audio", async () => {
@@ -159,6 +161,7 @@ test("missing-binary opens YouTube circuit, skips remaining YouTube songs, and s
   const failedItems = JSON.parse(files.get(failedItemsPath) || "[]") as Array<{ code?: string; error?: string }>;
   assert.equal(failedItems.length, 2);
   assert.equal(failedItems[0]?.code, "missing-binary");
+  assert.equal((failedItems[1] as { youtubeCircuitOpen?: boolean })?.youtubeCircuitOpen, true);
 });
 
 for (const [code, status] of [["ffmpeg-missing", 500], ["youtube-blocked", 429], ["binary-permission", 500]] as const) {
@@ -184,3 +187,54 @@ for (const [code, status] of [["ffmpeg-missing", 500], ["youtube-blocked", 429],
     assert.equal(result.items[1]?.code, code);
   });
 }
+
+test("failed cover fetch does not fail export", async () => {
+  const fetcher = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "https://cdn.example.test/song.mp3") return audioResponse();
+    if (url === "https://cdn.example.test/cover.jpg") return new Response(null, { status: 404 });
+    throw new Error(`unexpected fetch ${url}`);
+  };
+
+  const result = await createLocalExportZip([
+    { id: "cover", title: "Cover Song", artist: "Artist", audioUrl: "https://cdn.example.test/song.mp3", coverUrl: "https://cdn.example.test/cover.jpg" },
+  ], undefined, { fetcher });
+
+  assert.equal(result.exportedCount, 1);
+  assert.equal(result.failedCount, 0);
+  assert.match(result.items[0]?.warnings?.join(" ") ?? "", /Cover could not be fetched/);
+});
+
+test("progress includes expected phases and done", async () => {
+  const phases: string[] = [];
+  const result = await createLocalExportZip([
+    { id: "direct", title: "Direct Song", artist: "Artist", audioUrl: "https://cdn.example.test/song.mp3" },
+  ], (progress) => {
+    phases.push(progress.phase);
+  }, {
+    fetcher: async () => audioResponse(),
+  });
+
+  assert.equal(result.exportedCount, 1);
+  assert.deepEqual(phases, ["preparing", "fetching-audio", "adding-files", "finalizing", "done"]);
+});
+
+test("default batch delay is zero for YouTube downloads", async () => {
+  let apiCalls = 0;
+  const started = Date.now();
+  await createLocalExportZip([
+    { id: "yt-1", title: "First", artist: "Artist" },
+    { id: "yt-2", title: "Second", artist: "Artist" },
+  ], undefined, {
+    fetcher: async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/download") {
+        apiCalls += 1;
+        return audioResponse();
+      }
+      throw new Error("unexpected fetch");
+    },
+  });
+
+  assert.equal(apiCalls, 2);
+  assert.ok(Date.now() - started < 1000);
+});

@@ -62,7 +62,7 @@ export default function DownloadPageClient() {
     const status = getApiConfigStatus();
     setApiBaseUrl(status.baseUrl ?? "");
     if (!status.baseUrl && status.message) {
-      setNotice({ type: "error", message: `${status.message} Image recognition and automatic cover lookup need the backend API.` });
+      setNotice({ type: "error", message: `${status.message} Image recognition and automatic cover lookup need the backend API, but Local ZIP Export remains available through the frontend service.` });
     }
   }, []);
 
@@ -298,7 +298,9 @@ export default function DownloadPageClient() {
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6">
-      <div className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      <DownloadClient />
+
+      <div className="mt-8 space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold">{t("download_batch_title", language)}</h1>
@@ -350,10 +352,6 @@ export default function DownloadPageClient() {
         />
         {jobs.length > 0 && songs.length === 0 && jobsCanCollapse ? <p className="text-sm text-[var(--muted)]">{t("download_empty_songs", language)}</p> : null}
       </div>
-
-      <section className="mt-6">
-        <DownloadClient />
-      </section>
 
       <StickyReviewBar
         language={language}

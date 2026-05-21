@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Music } from "../../lucide-react";
 import { useUser } from "../context/UserContext";
+import { getApiSetupMessage } from "../../lib/apiConfig";
 
 const USERNAME_REGEX = /^\w{3,30}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -11,7 +12,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function authErrorMessage(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message : "";
   if (message === "api-config-missing" || message.includes("Backend API URL is not configured")) {
-    return "Backend API URL is not configured. Set NEXT_PUBLIC_API_BASE_URL on the frontend service and redeploy.";
+    return getApiSetupMessage();
   }
   if (message && !/^[A-Z0-9_]+$/.test(message)) return message;
   return fallback;

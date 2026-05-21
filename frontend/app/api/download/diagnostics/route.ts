@@ -18,6 +18,7 @@ type ProbeResult = {
   version?: string;
   errorCode?: string;
   error?: string;
+  looksStale?: boolean;
 };
 
 function capOutput(current: string, next: string): string {
@@ -27,6 +28,20 @@ function capOutput(current: string, next: string): string {
 function safeBinaryName(binary: string): string {
   const parts = binary.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] || binary || "unknown";
+}
+
+function redactPathForClient(dir: string): string {
+  const normalized = dir.replace(/\\/g, "/");
+  const home = process.env.HOME || process.env.USERPROFILE;
+  if (home) {
+    const safeHome = home.replace(/\\/g, "/");
+    if (normalized.toLowerCase().startsWith(safeHome.toLowerCase())) {
+      return `~/${normalized.slice(safeHome.length).replace(/^\/+/, "")}`;
+    }
+  }
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length <= 2) return normalized;
+  return `.../${parts.slice(-2).join("/")}`;
 }
 
 function redactBinaryPath(message: string | undefined, binary: string): string | undefined {
@@ -125,9 +140,9 @@ async function checkWritableDir(dir: string, prefix: string): Promise<{ dir: str
     const probePath = path.join(dir, `.${prefix}-${Date.now()}`);
     await fs.writeFile(probePath, "ok");
     await fs.rm(probePath, { force: true });
-    return { dir, writable: true };
+    return { dir: redactPathForClient(dir), writable: true };
   } catch (error) {
-    return { dir, writable: false, error: error instanceof Error ? error.message : String(error) };
+    return { dir: redactPathForClient(dir), writable: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -136,12 +151,12 @@ function toolFixes(mode: Mode, downloader: ProbeResult, ffmpeg: ProbeResult, ffp
   if (!downloader.found) {
     fixes.push(mode === "cloud"
       ? "On Railway frontend service, ensure Dockerfile is used and set YTDLP_PATH=/usr/local/bin/yt-dlp, or install yt-dlp in the runtime image."
-      : "Install yt-dlp locally or set YTDLP_PATH to the yt-dlp binary.");
+      : "Install yt-dlp locally. Windows: winget install yt-dlp.yt-dlp. macOS: brew install yt-dlp. Linux: python3 -m pip install -U yt-dlp. Or set YTDLP_PATH to the binary.");
   }
   if (!ffmpeg.found || !ffprobe.found) {
     fixes.push(mode === "cloud"
       ? "On Railway frontend service, ensure frontend/Dockerfile is used and set FFMPEG_LOCATION=/usr/bin."
-      : "Install ffmpeg/ffprobe locally or set FFMPEG_LOCATION to their directory.");
+      : "Install ffmpeg/ffprobe locally. Windows: winget install Gyan.FFmpeg. macOS: brew install ffmpeg. Linux: sudo apt install ffmpeg. Or set FFMPEG_LOCATION to their directory.");
   }
   return unique(fixes);
 }
@@ -165,11 +180,13 @@ export async function GET(req: Request): Promise<Response> {
     checkWritableDir(tmpdir(), "ponotai-temp"),
   ]);
 
+  if (downloader.found) downloader.looksStale = looksOldYtDlp(downloader.version);
+
   const warnings: string[] = [];
   if (mode === "cloud") {
-    warnings.push("Cloud server detected. yt-dlp can be installed here, but YouTube may block datacenter IPs. For reliable YouTube fallback, run locally/private network.");
+    warnings.push("Cloud frontend service detected. yt-dlp can be installed here, but YouTube may block datacenter IPs. For reliable YouTube fallback, run locally/private network.");
   }
-  if (downloader.found && looksOldYtDlp(downloader.version)) {
+  if (downloader.looksStale) {
     warnings.push("yt-dlp is installed but appears old. YouTube extraction may fail. Update yt-dlp.");
   }
   if (url.searchParams.get("probe") === "youtube") {
@@ -185,10 +202,13 @@ export async function GET(req: Request): Promise<Response> {
     mode,
     platform: process.platform,
     nodeVersion: process.version,
+    runningInFrontendService: true,
+    serviceRole: "frontend-download-route",
     downloader: {
       binary: safeBinaryName(ytdlpPath),
       found: downloader.found,
       version: downloader.found ? downloader.version?.trim() : undefined,
+      looksStale: Boolean(downloader.looksStale),
       errorCode: downloader.found ? undefined : downloader.errorCode,
       error: downloader.found ? undefined : downloader.error,
       fix: downloader.found ? undefined : fixes.find((fix) => fix.includes("yt-dlp")),
@@ -210,11 +230,25 @@ export async function GET(req: Request): Promise<Response> {
     cache,
     temp,
     config: {
+      envFlagsPresent: {
+        YTDLP_PATH: Boolean(process.env.YTDLP_PATH),
+        FFMPEG_LOCATION: Boolean(process.env.FFMPEG_LOCATION),
+        YTDLP_COOKIES: Boolean(process.env.YTDLP_COOKIES),
+        YTDLP_CACHE_DIR: Boolean(process.env.YTDLP_CACHE_DIR),
+        YTDLP_CACHE_DISABLED: Boolean(process.env.YTDLP_CACHE_DISABLED),
+        YTDLP_TIMEOUT_MS: Boolean(process.env.YTDLP_TIMEOUT_MS),
+      },
       ytdlpPathConfigured: Boolean(process.env.YTDLP_PATH),
       ffmpegLocationConfigured: Boolean(process.env.FFMPEG_LOCATION),
       cookiesConfigured: Boolean(process.env.YTDLP_COOKIES),
       cacheDirConfigured: Boolean(process.env.YTDLP_CACHE_DIR),
+      cacheDisabled: process.env.YTDLP_CACHE_DISABLED === "true",
       timeoutMs: clampTimeout(process.env.YTDLP_TIMEOUT_MS),
+    },
+    frontendVsBackend: {
+      downloaderRouteRunsOn: "frontend service",
+      backendPythonPackagesMatter: false,
+      frontendDockerfileMatters: true,
     },
     warnings: unique(warnings),
     fixes: unique(fixes),

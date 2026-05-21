@@ -11,6 +11,12 @@ function isWildcardOrigin(origin: string): boolean {
   return origin === "*";
 }
 
+export const KNOWN_FRONTEND_ORIGINS = [
+  "https://ponotai-production.up.railway.app",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+] as const;
+
 export function resolveAllowedOrigins(): string[] {
   const isProduction = process.env.NODE_ENV === "production";
   const devOrigins = [
@@ -26,7 +32,8 @@ export function resolveAllowedOrigins(): string[] {
     ...splitCsv(process.env.FRONTEND_URLS),
   ];
 
-  const configured = Array.from(new Set([...(isProduction ? [] : devOrigins), ...envOrigins]));
+  const productionDefaults = isProduction ? [KNOWN_FRONTEND_ORIGINS[0]] : [];
+  const configured = Array.from(new Set([...productionDefaults, ...(isProduction ? [] : devOrigins), ...envOrigins]));
   return configured.filter((origin) => !isWildcardOrigin(origin));
 }
 

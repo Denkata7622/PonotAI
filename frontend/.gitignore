@@ -31,11 +31,25 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-.env*
-
+.env
+.env.*
+*.env.local
+!.env.example
+!.env.test.example
+!backend/.env.test.example
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Python local/vendor deps
+.python_packages/
+**/.python_packages/
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+pip-wheel-metadata/

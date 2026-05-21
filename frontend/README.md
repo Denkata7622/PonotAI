@@ -15,13 +15,25 @@ Set backend URL in `.env.local`:
 NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
 ```
 
-On Railway, set `NEXT_PUBLIC_API_BASE_URL=https://<backend-public-domain>` on the frontend service and redeploy the frontend. If it is missing outside localhost, backend-required actions show a setup warning instead of crashing React render.
+On Railway, set `NEXT_PUBLIC_API_BASE_URL=https://trackly-production-6ec0.up.railway.app` on the frontend service and rebuild/redeploy the frontend. `NEXT_PUBLIC_*` values are baked into the browser bundle at build time. Server routes may also read `TRACKLY_API_BASE_URL` at runtime, but client recognition, personalization, and recommendations need the public build variable.
+
+The backend API URL must include `https://`. Values like `trackly-production-6ec0.up.railway.app` are invalid and the UI reports that exact fix. If backend config is missing, backend-powered actions show a setup warning, while Local ZIP Export still allows attached files, direct audio URLs, and frontend `/api/download` YouTube fallback.
 
 Safe runtime checks:
 - `GET /api/runtime-diagnostics`
+- `GET /api/runtime-config`
 - `POST /api/client-errors`
 
 `/api/download` runs in this frontend service. Put `YTDLP_PATH` and `FFMPEG_LOCATION` on the frontend service, not the backend service.
+
+Downloader runtime notes:
+- Local Windows: `winget install yt-dlp.yt-dlp` and `winget install Gyan.FFmpeg`
+- Local macOS: `brew install yt-dlp ffmpeg`
+- Local Linux: `python3 -m pip install -U yt-dlp` and `sudo apt install ffmpeg`
+- Railway frontend Dockerfile: `YTDLP_PATH=/usr/local/bin/yt-dlp`, `FFMPEG_LOCATION=/usr/bin`
+- Backend Python packages do not change `/api/download`; the frontend Dockerfile/runtime does.
+- Cloud/datacenter IPs may still be blocked by YouTube even when yt-dlp works. Local/private network is the most reliable YouTube fallback.
+- If Turbopack crashes on Windows during local development, clear `.next` and retry. As a temporary local-only fallback use `next dev --webpack`; production builds still use `next build`.
 
 ### Feature structure
 - `features/recognition/api.ts` - API client for recognition.

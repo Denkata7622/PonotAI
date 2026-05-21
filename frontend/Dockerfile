@@ -38,11 +38,13 @@ ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV TRACKLY_API_BASE_URL=${TRACKLY_API_BASE_URL}
 ENV NEXT_PUBLIC_AUTH_BYPASS_EMAIL_VERIFICATION=${NEXT_PUBLIC_AUTH_BYPASS_EMAIL_VERIFICATION}
 
-# Safe debug: prints host only, not secrets.
-RUN node -e "const raw=process.env.NEXT_PUBLIC_API_BASE_URL||''; let host='MISSING'; try { host=new URL(raw).host } catch {}; console.log('BUILD NEXT_PUBLIC_API_BASE_URL host:', host); if(!raw) process.exit(1)"
+# Safe debug: prints host only, not secrets. Missing backend config must not
+# block the standalone frontend downloader, but the UI will show exact fixes.
+RUN node -e "const raw=process.env.NEXT_PUBLIC_API_BASE_URL||''; let host='MISSING'; try { host=new URL(raw).host } catch {}; console.log('BUILD NEXT_PUBLIC_API_BASE_URL host:', host)"
 
 RUN yt-dlp --version
 RUN ffmpeg -version
+RUN ffprobe -version
 RUN npm run build
 
 
@@ -72,7 +74,8 @@ RUN apt-get update \
 COPY --from=deps /opt/yt-dlp /opt/yt-dlp
 RUN ln -sf /opt/yt-dlp/bin/yt-dlp /usr/local/bin/yt-dlp \
   && yt-dlp --version \
-  && ffmpeg -version
+  && ffmpeg -version \
+  && ffprobe -version
 
 COPY --from=builder /app ./
 

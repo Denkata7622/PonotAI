@@ -13,6 +13,7 @@ export type LocalExportSong = {
   selectedCoverUrl?: string;
   albumArtUrl?: string;
   youtubeVideoId?: string;
+  youtubeUrl?: string;
   durationSec?: number;
   metadata?: Record<string, unknown>;
 };
@@ -29,6 +30,10 @@ export type LocalExportResultItem = {
   sourceUrl?: string;
   coverUrl?: string;
   youtubeVideoId?: string;
+  youtubeUrl?: string;
+  sourceAttempted?: "file" | "blob" | "direct-audio-url" | "youtube-id" | "youtube-url" | "youtube-query" | "none";
+  youtubeCircuitOpen?: boolean;
+  requestId?: string;
   error?: string;
   code?: string;
   fix?: string;
@@ -45,8 +50,9 @@ export type LocalExportResult = {
 };
 
 export type LocalExportProgress = {
-  phase: "preparing" | "fetching-audio" | "downloading-youtube" | "fetching-cover" | "adding-files" | "finalizing";
+  phase: "preparing" | "fetching-audio" | "downloading-youtube" | "fetching-cover" | "adding-files" | "finalizing" | "done";
   currentSong?: string;
+  currentSourceType?: LocalExportResultItem["sourceAttempted"];
   completed: number;
   total: number;
   failed: number;
@@ -61,11 +67,15 @@ export type LocalExportOptions = {
 export class YoutubeDownloadError extends Error {
   code?: string;
   fix?: string;
-  constructor(message: string, code?: string, fix?: string) {
+  globalFailure?: boolean;
+  requestId?: string;
+  constructor(message: string, code?: string, fix?: string, globalFailure?: boolean, requestId?: string) {
     super(message);
     this.name = "YoutubeDownloadError";
     this.code = code;
     this.fix = fix;
+    this.globalFailure = globalFailure;
+    this.requestId = requestId;
   }
 }
 
@@ -80,7 +90,7 @@ export function setLocalDownloadExporterFetchForTests(fetcher?: typeof fetch): v
   localExportFetch = fetcher ?? ((...args) => fetch(...args));
 }
 
-export async function downloadFromYouTube(idOrQuery: { youtubeId?: string; query?: string }, fetcher: typeof fetch = localExportFetch): Promise<Blob> {
+export async function downloadFromYouTube(idOrQuery: { youtubeId?: string; youtubeUrl?: string; query?: string }, fetcher: typeof fetch = localExportFetch): Promise<{ blob: Blob; requestId?: string }> {
   const response = await fetcher("/api/download", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -90,18 +100,22 @@ export async function downloadFromYouTube(idOrQuery: { youtubeId?: string; query
     let detail = "";
     let code: string | undefined;
     let fix: string | undefined;
+    let globalFailure: boolean | undefined;
+    let requestId: string | undefined = response.headers.get("X-PonotAI-Request-ID") ?? undefined;
     try {
-      const payload = await response.json() as { error?: string; detail?: string; code?: string; fix?: string };
+      const payload = await response.json() as { error?: string; detail?: string; code?: string; fix?: string; globalFailure?: boolean; requestId?: string };
       detail = payload.detail || payload.error || "";
       code = payload.code;
       fix = payload.fix;
+      globalFailure = payload.globalFailure;
+      requestId = payload.requestId || requestId;
     } catch {
       detail = await response.text();
     }
     const useful = (detail || fix || `HTTP ${response.status}`).replace(/\s+/g, " ").trim();
-    throw new YoutubeDownloadError(`YouTube download failed: ${useful.slice(0, 320)}`, code, fix);
+    throw new YoutubeDownloadError(`YouTube download failed: ${useful.slice(0, 320)}`, code, fix, globalFailure, requestId);
   }
-  return response.blob();
+  return { blob: await response.blob(), requestId: response.headers.get("X-PonotAI-Request-ID") ?? undefined };
 }
 
 const YOUTUBE_VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
@@ -229,6 +243,26 @@ function isUsableYoutubeVideoId(value?: string): value is string {
   return Boolean(value && YOUTUBE_VIDEO_ID_REGEX.test(value) && !value.startsWith("import-") && !value.startsWith("local-") && value !== "index-only" && !/^\d+$/.test(value));
 }
 
+function normalizeYoutubePageUrl(value?: string): string | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    const host = parsed.hostname.toLowerCase();
+    const isYoutube = host === "youtube.com" || host.endsWith(".youtube.com");
+    if (isYoutube && parsed.pathname === "/watch") {
+      const id = parsed.searchParams.get("v")?.trim() || "";
+      return isUsableYoutubeVideoId(id) ? `https://www.youtube.com/watch?v=${id}` : undefined;
+    }
+    if (host === "youtu.be") {
+      const id = parsed.pathname.split("/").filter(Boolean)[0] || "";
+      return isUsableYoutubeVideoId(id) ? `https://www.youtube.com/watch?v=${id}` : undefined;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 function messageForGlobalYoutubeFailure(code: string | undefined, youtubeBlockedMessage: string): string {
   if (code === "missing-binary") return "yt-dlp is missing on the server. On Railway set YTDLP_PATH=/usr/local/bin/yt-dlp and make sure the frontend Dockerfile is used, then redeploy.";
   if (code === "ffmpeg-missing") return "ffmpeg/ffprobe is missing on the server. On Railway make sure the frontend Dockerfile is used and FFMPEG_LOCATION=/usr/bin, then redeploy.";
@@ -293,10 +327,11 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   let youtubeCircuitFix: string | undefined;
   const fetcher = options?.fetcher ?? localExportFetch;
 
-  const reportProgress = (phase: LocalExportProgress["phase"], currentSong: string | undefined, completed: number) => {
+  const reportProgress = (phase: LocalExportProgress["phase"], currentSong: string | undefined, completed: number, currentSourceType?: LocalExportProgress["currentSourceType"]) => {
     onProgress?.({
       phase,
       currentSong,
+      currentSourceType,
       completed,
       total: songs.length,
       failed: failedCount + skippedCount,
@@ -312,7 +347,10 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
     const line = formatSongLine(song);
     const warnings: string[] = [];
     const coverUrl = song.selectedCoverUrl || song.coverUrl || song.albumArtUrl;
-    const sourceUrl = song.audioUrl || song.sourceUrl || song.source;
+    const sourceCandidates = [song.audioUrl, song.sourceUrl, song.source].filter((value): value is string => Boolean(value));
+    const sourceUrl = sourceCandidates[0];
+    const directAudioUrl = sourceCandidates.find((candidate) => isLikelyAudioUrl(candidate) && !isYouTubePageUrl(candidate));
+    const youtubeUrl = normalizeYoutubePageUrl(song.youtubeUrl) || sourceCandidates.map(normalizeYoutubePageUrl).find(Boolean);
 
     const item: LocalExportResultItem = {
       id: song.id,
@@ -321,6 +359,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
       originalTitle: song.originalTitle,
       originalArtist: song.originalArtist,
       youtubeVideoId: song.youtubeVideoId,
+      youtubeUrl,
       sourceUrl,
       coverUrl,
       status: "skipped",
@@ -328,49 +367,67 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
 
     let audioBlob: Blob | undefined;
     let audioExt = ".mp3";
+    let directAudioFailed = false;
 
     try {
       if (song.file instanceof File) {
+        item.sourceAttempted = "file";
         audioBlob = song.file;
         audioExt = guessExtensionFromContentType(song.file.type) || guessExtensionFromUrl(song.file.name) || ".mp3";
       } else if (song.blob instanceof Blob) {
+        item.sourceAttempted = "blob";
         audioBlob = song.blob;
         audioExt = guessExtensionFromContentType(song.blob.type) || ".mp3";
-      } else if (sourceUrl && isLikelyAudioUrl(sourceUrl) && !isYouTubePageUrl(sourceUrl)) {
-        reportProgress("fetching-audio", line, index);
-        const fetched = await fetchBlobWithTimeout(sourceUrl, 12000, fetcher);
-        const contentType = fetched.contentType.split(";")[0].trim().toLowerCase();
-        const validAudio = isAudioContentType(contentType) || isLikelyAudioUrl(sourceUrl);
-        if (validAudio) {
-          audioBlob = fetched.blob;
-          audioExt = guessExtensionFromContentType(contentType) || guessExtensionFromUrl(sourceUrl) || ".mp3";
-        } else {
-          item.status = "failed";
-          item.error = "Source URL did not provide a valid audio file.";
+      } else if (directAudioUrl) {
+        item.sourceAttempted = "direct-audio-url";
+        reportProgress("fetching-audio", line, index, "direct-audio-url");
+        try {
+          const fetched = await fetchBlobWithTimeout(directAudioUrl, 12000, fetcher);
+          const contentType = fetched.contentType.split(";")[0].trim().toLowerCase();
+          const validAudio = isAudioContentType(contentType) || isLikelyAudioUrl(directAudioUrl);
+          if (validAudio) {
+            audioBlob = fetched.blob;
+            audioExt = guessExtensionFromContentType(contentType) || guessExtensionFromUrl(directAudioUrl) || ".mp3";
+          } else {
+            directAudioFailed = true;
+            warnings.push("Direct audio URL did not return an audio content type. Trying YouTube fallback.");
+          }
+        } catch (error) {
+          directAudioFailed = true;
+          warnings.push(error instanceof Error ? error.message : "Direct audio URL failed. Trying YouTube fallback.");
         }
-      } else if (song.youtubeVideoId || line) {
+      }
+
+      if (!audioBlob && (song.youtubeVideoId || youtubeUrl || line)) {
         if (youtubeCircuitOpen) {
           item.status = "skipped";
           item.error ||= youtubeCircuitMessage;
           item.code = youtubeCircuitCode;
           item.fix = youtubeCircuitFix;
+          item.youtubeCircuitOpen = true;
         } else {
           if (youtubeSuccessCount > 0 && YOUTUBE_BATCH_DELAY_MS > 0) await delay(YOUTUBE_BATCH_DELAY_MS);
-          reportProgress("downloading-youtube", line, index);
           const youtubeId = isUsableYoutubeVideoId(song.youtubeVideoId) ? song.youtubeVideoId : undefined;
+          const sourceAttempted = youtubeId ? "youtube-id" : youtubeUrl ? "youtube-url" : "youtube-query";
+          item.sourceAttempted = sourceAttempted;
+          reportProgress("downloading-youtube", line, index, sourceAttempted);
           try {
-            const ytBlob = await downloadFromYouTube({
+            const downloaded = await downloadFromYouTube({
               youtubeId,
-              query: youtubeId ? undefined : line,
+              youtubeUrl: youtubeId ? undefined : youtubeUrl,
+              query: youtubeId || youtubeUrl ? undefined : line,
             }, fetcher);
             youtubeSuccessCount += 1;
-            audioBlob = ytBlob;
+            audioBlob = downloaded.blob;
+            item.requestId = downloaded.requestId;
             audioExt = ".mp3";
           } catch (error) {
             const message = error instanceof Error ? error.message : "YouTube download failed.";
             const code = error instanceof YoutubeDownloadError ? error.code : undefined;
             const fix = error instanceof YoutubeDownloadError ? error.fix : undefined;
-            if (isGlobalYoutubeFailure(code)) {
+            const requestId = error instanceof YoutubeDownloadError ? error.requestId : undefined;
+            if (requestId) item.requestId = requestId;
+            if (isGlobalYoutubeFailure(code) || (error instanceof YoutubeDownloadError && error.globalFailure)) {
               const globalMessage = messageForGlobalYoutubeFailure(code, youtubeBlockedMessage);
               youtubeCircuitOpen = true;
               youtubeCircuitMessage = globalMessage;
@@ -380,11 +437,16 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
               item.error ||= globalMessage;
               item.code = code;
               item.fix = fix;
+              item.youtubeCircuitOpen = true;
             } else {
               throw new YoutubeDownloadError(message, code, fix);
             }
           }
         }
+      }
+
+      if (!audioBlob && directAudioFailed && item.status !== "skipped") {
+        item.error ||= "Direct audio failed and no YouTube fallback succeeded.";
       }
     } catch (error) {
       item.status = "failed";
@@ -392,6 +454,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
       if (error instanceof YoutubeDownloadError) {
         item.code = error.code;
         item.fix = error.fix;
+        item.requestId = error.requestId;
       }
     }
 
@@ -402,20 +465,21 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
       exportedCount += 1;
       files.push({ path: `${root}/tracks/${trackName}`, blob: audioBlob });
       playlistLines.push(`#EXTINF:${song.durationSec ?? -1},${line}`);
-      playlistLines.push(`../tracks/${trackName}`);
+      playlistLines.push(`tracks/${trackName}`);
     } else if (item.status === "failed") {
       failedCount += 1;
       searchList.push(line);
     } else {
       item.status = "skipped";
       item.error ||= "No audio source available for local export.";
+      item.sourceAttempted ||= "none";
       skippedCount += 1;
       searchList.push(line);
     }
 
     if (!isPlaceholderCoverUrl(coverUrl)) {
       try {
-        reportProgress("fetching-cover", line, index);
+        reportProgress("fetching-cover", line, index, item.sourceAttempted);
         const fetched = await fetchBlobWithTimeout(coverUrl as string, 12000, fetcher);
         const contentType = fetched.contentType.split(";")[0].trim().toLowerCase();
         if (isImageContentType(contentType)) {
@@ -433,7 +497,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
 
     if (warnings.length > 0) item.warnings = warnings;
     items.push(item);
-    reportProgress("adding-files", line, index + 1);
+    reportProgress("adding-files", line, index + 1, item.sourceAttempted);
   }
 
   const metadataBase = `${root}/metadata`;
@@ -447,19 +511,23 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
     items,
   };
 
+  const unresolvedItems = items.filter((item) => item.status !== "exported");
+  const searchListText = Array.from(new Set(searchList)).join("\n");
+  const failedItemsJson = JSON.stringify(unresolvedItems, null, 2);
+  const playlistText = `${playlistLines.join("\n")}\n`;
+
   files.push({ path: `${metadataBase}/manifest.json`, blob: new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" }) });
-  if (searchList.length > 0) {
-    files.push({ path: `${metadataBase}/search-list.txt`, blob: new Blob([Array.from(new Set(searchList)).join("\n")], { type: "text/plain" }) });
-  }
-  if (items.some((item) => item.status !== "exported")) {
-    files.push({ path: `${metadataBase}/failed-items.json`, blob: new Blob([JSON.stringify(items.filter((item) => item.status !== "exported"), null, 2)], { type: "application/json" }) });
-  }
-  if (exportedCount > 0) {
-    files.push({ path: `${metadataBase}/playlist.m3u`, blob: new Blob([`${playlistLines.join("\n")}\n`], { type: "audio/x-mpegurl" }) });
-  }
+  files.push({ path: `${metadataBase}/search-list.txt`, blob: new Blob([searchListText], { type: "text/plain" }) });
+  files.push({ path: `${metadataBase}/failed-items.json`, blob: new Blob([failedItemsJson], { type: "application/json" }) });
+  files.push({ path: `${metadataBase}/playlist.m3u`, blob: new Blob([playlistText], { type: "audio/x-mpegurl" }) });
+  files.push({ path: `${root}/search-list.txt`, blob: new Blob([searchListText], { type: "text/plain" }) });
+  files.push({ path: `${root}/failed-items.json`, blob: new Blob([failedItemsJson], { type: "application/json" }) });
+  files.push({ path: `${root}/playlist.m3u`, blob: new Blob([playlistText], { type: "audio/x-mpegurl" }) });
 
   reportProgress("finalizing", undefined, songs.length);
-  return { ok: true, zipBlob: await makeZip(files), exportedCount, failedCount, skippedCount, items };
+  const zipBlob = await makeZip(files);
+  reportProgress("done", undefined, songs.length);
+  return { ok: true, zipBlob, exportedCount, failedCount, skippedCount, items };
 }
 
 export function saveBlobAsDownload(blob: Blob, filename: string): void {

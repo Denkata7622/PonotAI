@@ -23,3 +23,20 @@ npm-debug.log*
 *.env
 !backend/.env.example
 !backend/.env.test.example
+
+# Python local/vendor deps
+.python_packages/
+**/.python_packages/
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+pip-wheel-metadata/
+
+# Local downloader/cache artifacts
+ponotai-ytdlp-cache/
+*.mp3
+*.zip
+search-list.txt
+failed-items.json

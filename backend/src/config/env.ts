@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { KNOWN_FRONTEND_ORIGINS } from "./cors";
 
 function parseEnvFile(content: string): Record<string, string> {
   const parsed: Record<string, string> = {};
@@ -41,6 +42,11 @@ function splitCsv(value: string | undefined): string[] {
 
 export function isEmailVerificationBypassEnabled(): boolean {
   return parseBooleanEnv(process.env.AUTH_BYPASS_EMAIL_VERIFICATION);
+}
+
+export function isRailwayInterpolationSyntax(value: string | undefined): boolean {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.startsWith("${{") && trimmed.endsWith("}}");
 }
 
 function loadEnvironmentFiles(): void {
@@ -93,6 +99,10 @@ export function validateEnvironment(): void {
     process.env.TEST_PERSISTENCE_MODE = "postgres";
   }
   const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (!isProduction && isRailwayInterpolationSyntax(databaseUrl)) {
+    console.error("FATAL: DATABASE_URL contains Railway interpolation syntax. Use a real postgresql:// URL locally, or set TEST_DATABASE_URL for tests.");
+    process.exit(1);
+  }
   const emailVerificationBypass = isEmailVerificationBypassEnabled();
 
   process.env.AUTH_BYPASS_EMAIL_VERIFICATION = emailVerificationBypass ? "true" : "false";
@@ -111,6 +121,7 @@ export function validateEnvironment(): void {
   }
 
   const allowedOrigins = [
+    ...(isProduction ? [KNOWN_FRONTEND_ORIGINS[0]] : []),
     ...splitCsv(process.env.ALLOWED_ORIGINS),
     ...splitCsv(process.env.CORS_ORIGINS),
     ...splitCsv(process.env.FRONTEND_URLS),

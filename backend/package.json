@@ -17,8 +17,8 @@
     "prisma:migrate:deploy": "node node_modules/prisma/build/index.js migrate deploy --schema prisma/schema.prisma",
     "prebuild": "node node_modules/prisma/build/index.js generate --schema prisma/schema.prisma",
     "pretest": "node node_modules/prisma/build/index.js generate --schema prisma/schema.prisma",
-    "python:deps": "python3 -m pip install --upgrade pip && rm -rf .python_packages && python3 -m pip install --target .python_packages -r requirements.txt",
-    "python:deps:ensure": "test -d .python_packages/yt_dlp && PYTHONPATH=.python_packages python3 -m yt_dlp --version || npm run python:deps",
+    "python:deps": "node scripts/ensure-python-deps.mjs",
+    "python:deps:ensure": "node scripts/ensure-python-deps.mjs",
     "postinstall": "npm run python:deps:ensure",
     "prestart": "npm run python:deps:ensure"
   },

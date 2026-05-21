@@ -3,18 +3,22 @@ import assert from "node:assert/strict";
 import {
   ApiConfigError,
   buildApiUrl,
+  getServerApiConfigStatus,
   getApiConfigStatus,
   getOptionalApiBaseUrl,
+  normalizeApiBaseUrl,
   requireApiBaseUrl,
 } from "../lib/apiConfig";
 
-function restoreEnv(snapshot: { base?: string; alt?: string; node?: string }) {
+function restoreEnv(snapshot: { base?: string; alt?: string; server?: string; node?: string }) {
   if (snapshot.base === undefined) delete process.env.NEXT_PUBLIC_API_BASE_URL;
   else process.env.NEXT_PUBLIC_API_BASE_URL = snapshot.base;
   if (snapshot.alt === undefined) delete process.env.NEXT_PUBLIC_API_URL;
   else process.env.NEXT_PUBLIC_API_URL = snapshot.alt;
   if (snapshot.node === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = snapshot.node;
+  if (snapshot.server === undefined) delete process.env.TRACKLY_API_BASE_URL;
+  else process.env.TRACKLY_API_BASE_URL = snapshot.server;
 }
 
 test("safe API config status does not throw when production env is missing", () => {
@@ -111,4 +115,57 @@ test("api config strips credentials, query, and hash from public base URL", () =
   } finally {
     restoreEnv(snapshot);
   }
+});
+
+test("api config rejects missing protocol with exact fix shape", () => {
+  const snapshot = {
+    base: process.env.NEXT_PUBLIC_API_BASE_URL,
+    alt: process.env.NEXT_PUBLIC_API_URL,
+    node: process.env.NODE_ENV,
+  };
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.NEXT_PUBLIC_API_BASE_URL = "trackly-production-6ec0.up.railway.app";
+    delete process.env.NEXT_PUBLIC_API_URL;
+
+    const status = getApiConfigStatus();
+    assert.equal(status.configured, false);
+    assert.equal(status.code, "api-config-invalid");
+    assert.match(status.fix ?? "", /https:\/\/trackly-production-6ec0\.up\.railway\.app/);
+    assert.throws(() => requireApiBaseUrl(), (error: unknown) => {
+      assert.ok(error instanceof ApiConfigError);
+      assert.equal(error.code, "api-config-invalid");
+      return true;
+    });
+  } finally {
+    restoreEnv(snapshot);
+  }
+});
+
+test("server API config prefers TRACKLY_API_BASE_URL at runtime", () => {
+  const snapshot = {
+    base: process.env.NEXT_PUBLIC_API_BASE_URL,
+    alt: process.env.NEXT_PUBLIC_API_URL,
+    server: process.env.TRACKLY_API_BASE_URL,
+    node: process.env.NODE_ENV,
+  };
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.NEXT_PUBLIC_API_BASE_URL = "https://public.example.test";
+    process.env.TRACKLY_API_BASE_URL = "\"https://trackly-production-6ec0.up.railway.app/\"";
+
+    const status = getServerApiConfigStatus();
+    assert.equal(status.configured, true);
+    assert.equal(status.source, "TRACKLY_API_BASE_URL");
+    assert.equal(status.baseUrl, "https://trackly-production-6ec0.up.railway.app");
+    assert.equal(status.hostname, "trackly-production-6ec0.up.railway.app");
+  } finally {
+    restoreEnv(snapshot);
+  }
+});
+
+test("normalizeApiBaseUrl trims quotes, spaces, and trailing slash", () => {
+  const normalized = normalizeApiBaseUrl(" 'https://trackly-production-6ec0.up.railway.app/' ");
+  assert.equal(normalized.ok, true);
+  assert.equal(normalized.value, "https://trackly-production-6ec0.up.railway.app");
 });

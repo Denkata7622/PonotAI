@@ -1,0 +1,16 @@
+{
+  "songs": [
+    {
+      "songName": "Get Lucky",
+      "artist": "Daft Punk",
+      "youtubeVideoId": "5NV6Rdv1a3I"
+    },
+    {
+      "title": "Blinding Lights",
+      "artist": "The Weeknd",
+      "platformLinks": {
+        "youtube": "https://www.youtube.com/watch?v=4NRXx6U8ABQ"
+      }
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { POST, __clientErrorTestUtils } from "../app/api/client-errors/route";
+import { POST } from "../app/api/client-errors/route";
+import { sanitizeClientErrorValue } from "../lib/clientErrorSanitizer";
 import { reportClientError, shouldIgnoreClientError } from "../src/components/ClientErrorReporter";
 
 test("client error endpoint logs sanitized reports and redacts sensitive keys", async () => {
@@ -84,7 +85,7 @@ test("client error reporter posts browser errors to server endpoint", () => {
 });
 
 test("client error sanitizer redacts nested secrets", () => {
-  const sanitized = __clientErrorTestUtils.sanitize({
+  const sanitized = sanitizeClientErrorValue({
     token: "abc",
     stack: "token=abc Authorization: Bearer def",
     nested: { apiKey: "def", ok: true },
