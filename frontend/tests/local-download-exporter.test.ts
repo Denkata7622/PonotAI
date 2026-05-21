@@ -6,6 +6,14 @@ import {
 } from "../lib/localDownloadExporter";
 
 const audioBytes = new Uint8Array([0x49, 0x44, 0x33, 0x04]);
+const decoder = new TextDecoder();
+
+type ParsedZipEntry = {
+  name: string;
+  data: Uint8Array;
+  localHeaderOffset: number;
+  centralHeaderOffset: number;
+};
 
 function audioResponse(): Response {
   return new Response(new Blob([audioBytes], { type: "audio/mpeg" }), {
@@ -26,30 +34,105 @@ function jsonError(code: string, status: number): Response {
   });
 }
 
-async function listZipFiles(blob: Blob): Promise<Map<string, string>> {
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const decoder = new TextDecoder();
-  const files = new Map<string, string>();
-  let offset = 0;
-
-  while (offset + 30 <= bytes.length && view.getUint32(offset, true) === 0x04034b50) {
-    const compressedSize = view.getUint32(offset + 18, true);
-    const nameLength = view.getUint16(offset + 26, true);
-    const extraLength = view.getUint16(offset + 28, true);
-    const nameStart = offset + 30;
-    const dataStart = nameStart + nameLength + extraLength;
-    const dataEnd = dataStart + compressedSize;
-    const name = decoder.decode(bytes.slice(nameStart, nameStart + nameLength));
-    files.set(name, decoder.decode(bytes.slice(dataStart, dataEnd)));
-    offset = dataEnd;
+function crc32(bytes: Uint8Array): number {
+  let c = ~0;
+  for (let i = 0; i < bytes.length; i += 1) {
+    c ^= bytes[i];
+    for (let j = 0; j < 8; j += 1) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
   }
-
-  return files;
+  return (~c) >>> 0;
 }
 
-function fileEnding(files: Map<string, string>, ending: string): string | undefined {
+function findEndOfCentralDirectory(bytes: Uint8Array, view: DataView): number {
+  const minOffset = Math.max(0, bytes.length - 22 - 0xffff);
+  for (let offset = bytes.length - 22; offset >= minOffset; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) return offset;
+  }
+  throw new Error("EOCD not found");
+}
+
+async function parseZipEntries(blob: Blob): Promise<Map<string, ParsedZipEntry>> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const entries = new Map<string, ParsedZipEntry>();
+  const eocdOffset = findEndOfCentralDirectory(bytes, view);
+  const diskNumber = view.getUint16(eocdOffset + 4, true);
+  const centralDisk = view.getUint16(eocdOffset + 6, true);
+  const diskEntryCount = view.getUint16(eocdOffset + 8, true);
+  const totalEntryCount = view.getUint16(eocdOffset + 10, true);
+  const centralDirectorySize = view.getUint32(eocdOffset + 12, true);
+  const centralDirectoryOffset = view.getUint32(eocdOffset + 16, true);
+  const commentLength = view.getUint16(eocdOffset + 20, true);
+
+  assert.equal(diskNumber, 0);
+  assert.equal(centralDisk, 0);
+  assert.equal(diskEntryCount, totalEntryCount);
+  assert.equal(eocdOffset + 22 + commentLength, bytes.length);
+  assert.equal(centralDirectoryOffset + centralDirectorySize, eocdOffset);
+
+  let offset = centralDirectoryOffset;
+  for (let index = 0; index < totalEntryCount; index += 1) {
+    assert.equal(view.getUint32(offset, true), 0x02014b50, `bad central directory signature at ${offset}`);
+    const flags = view.getUint16(offset + 8, true);
+    const method = view.getUint16(offset + 10, true);
+    const expectedCrc = view.getUint32(offset + 16, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const uncompressedSize = view.getUint32(offset + 24, true);
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const fileCommentLength = view.getUint16(offset + 32, true);
+    const localHeaderOffset = view.getUint32(offset + 42, true);
+    const nameStart = offset + 46;
+    const name = decoder.decode(bytes.slice(nameStart, nameStart + nameLength));
+
+    assert.equal(flags & 0x0008, 0, `${name} must not use a data descriptor`);
+    assert.equal(flags & 0x0800, 0x0800, `${name} must declare UTF-8 file names`);
+    assert.equal(method, 0, `${name} must use ZIP store method`);
+    assert.equal(compressedSize, uncompressedSize, `${name} stored sizes must match`);
+    assert.doesNotMatch(name, /\\/);
+    assert.doesNotMatch(name, /(^|\/)\.\.(\/|$)/);
+    assert.doesNotMatch(name, /^[a-zA-Z]:/);
+    assert.doesNotMatch(name, /^\//);
+
+    assert.equal(view.getUint32(localHeaderOffset, true), 0x04034b50, `${name} local header offset must point to a local header`);
+    assert.equal(view.getUint16(localHeaderOffset + 6, true), flags);
+    assert.equal(view.getUint16(localHeaderOffset + 8, true), method);
+    assert.equal(view.getUint32(localHeaderOffset + 14, true), expectedCrc);
+    assert.equal(view.getUint32(localHeaderOffset + 18, true), compressedSize);
+    assert.equal(view.getUint32(localHeaderOffset + 22, true), uncompressedSize);
+    const localNameLength = view.getUint16(localHeaderOffset + 26, true);
+    const localExtraLength = view.getUint16(localHeaderOffset + 28, true);
+    const localNameStart = localHeaderOffset + 30;
+    const localName = decoder.decode(bytes.slice(localNameStart, localNameStart + localNameLength));
+    const dataStart = localNameStart + localNameLength + localExtraLength;
+    const dataEnd = dataStart + compressedSize;
+
+    assert.equal(localName, name);
+    assert.ok(dataEnd <= centralDirectoryOffset, `${name} data must end before central directory`);
+    const data = bytes.slice(dataStart, dataEnd);
+    assert.equal(crc32(data), expectedCrc, `${name} CRC must match file data`);
+
+    entries.set(name, { name, data, localHeaderOffset, centralHeaderOffset: offset });
+    offset = nameStart + nameLength + extraLength + fileCommentLength;
+  }
+
+  assert.equal(offset, centralDirectoryOffset + centralDirectorySize);
+  assert.equal(entries.size, totalEntryCount);
+  return entries;
+}
+
+async function listZipFiles(blob: Blob): Promise<Map<string, string>> {
+  const entries = await parseZipEntries(blob);
+  return new Map(Array.from(entries, ([name, entry]) => [name, decoder.decode(entry.data)]));
+}
+
+function fileEnding(files: ReadonlyMap<string, unknown>, ending: string): string | undefined {
   return Array.from(files.keys()).find((name) => name.endsWith(ending));
+}
+
+function entryEnding(files: ReadonlyMap<string, ParsedZipEntry>, ending: string): ParsedZipEntry | undefined {
+  const path = fileEnding(files, ending);
+  return path ? files.get(path) : undefined;
 }
 
 test("file and blob sources export without calling /api/download", async () => {
@@ -86,6 +169,142 @@ test("direct mp3 URL fetches directly and does not use /api/download", async () 
 
   assert.deepEqual(seen, ["https://cdn.example.test/song.mp3"]);
   assert.equal(result.exportedCount, 1);
+});
+
+test("generated ZIP opens through the central directory with one MP3 and metadata files", async () => {
+  const result = await createLocalExportZip([
+    { id: "one", title: "One", artist: "Artist", blob: new Blob([audioBytes], { type: "audio/mpeg" }) },
+  ], undefined, {
+    fetcher: async () => {
+      throw new Error("unexpected fetch");
+    },
+  });
+
+  const entries = await parseZipEntries(result.zipBlob);
+  const track = entryEnding(entries, "/tracks/Artist - One.mp3");
+  assert.ok(track);
+  assert.deepEqual(Array.from(track.data), Array.from(audioBytes));
+  assert.ok(fileEnding(entries, "/playlists/export.m3u"));
+  assert.ok(fileEnding(entries, "/search-list.txt"));
+  assert.ok(fileEnding(entries, "/failed-items.json"));
+  assert.ok(fileEnding(entries, "/manifest.json"));
+  assert.ok(fileEnding(entries, "/metadata/manifest.json"));
+});
+
+test("generated ZIP opens through the central directory with 15 MP3 files", async () => {
+  const songs: LocalExportSong[] = Array.from({ length: 15 }, (_, index) => ({
+    id: `song-${index + 1}`,
+    title: `Song ${index + 1}`,
+    artist: "Artist",
+    blob: new Blob([new Uint8Array([0x49, 0x44, 0x33, index + 1])], { type: "audio/mpeg" }),
+  }));
+
+  const result = await createLocalExportZip(songs, undefined, {
+    fetcher: async () => {
+      throw new Error("unexpected fetch");
+    },
+  });
+
+  const entries = await parseZipEntries(result.zipBlob);
+  const trackEntries = Array.from(entries.values()).filter((entry) => entry.name.includes("/tracks/"));
+  assert.equal(trackEntries.length, 15);
+
+  for (let index = 0; index < songs.length; index += 1) {
+    const track = entryEnding(entries, `/tracks/Artist - Song ${index + 1}.mp3`);
+    assert.ok(track, `missing track ${index + 1}`);
+    assert.deepEqual(Array.from(track.data), [0x49, 0x44, 0x33, index + 1]);
+  }
+
+  const playlistPath = fileEnding(entries, "/playlists/export.m3u");
+  const manifestPath = fileEnding(entries, "/metadata/manifest.json");
+  const failedItemsPath = fileEnding(entries, "/failed-items.json");
+  assert.ok(playlistPath);
+  assert.ok(manifestPath);
+  assert.ok(failedItemsPath);
+
+  const playlist = decoder.decode(entries.get(playlistPath)?.data);
+  assert.match(playlist, /tracks\/Artist - Song 1\.mp3/);
+  assert.match(playlist, /tracks\/Artist - Song 15\.mp3/);
+
+  const manifest = JSON.parse(decoder.decode(entries.get(manifestPath)?.data)) as { exportedCount?: number; items?: unknown[] };
+  const failedItems = JSON.parse(decoder.decode(entries.get(failedItemsPath)?.data)) as unknown[];
+  assert.equal(manifest.exportedCount, 15);
+  assert.equal(manifest.items?.length, 15);
+  assert.deepEqual(failedItems, []);
+});
+
+test("generated ZIP is valid with zero exported tracks", async () => {
+  let apiCalls = 0;
+  const result = await createLocalExportZip([
+    { id: "blocked-1", title: "Blocked One", artist: "Artist" },
+    { id: "blocked-2", title: "Blocked Two", artist: "Artist" },
+  ], undefined, {
+    fetcher: async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/download") {
+        apiCalls += 1;
+        return jsonError("youtube-blocked", 429);
+      }
+      throw new Error("unexpected fetch");
+    },
+  });
+
+  assert.equal(apiCalls, 1);
+  assert.equal(result.exportedCount, 0);
+  assert.equal(result.skippedCount, 2);
+
+  const entries = await parseZipEntries(result.zipBlob);
+  const trackEntries = Array.from(entries.keys()).filter((name) => name.includes("/tracks/"));
+  assert.equal(trackEntries.length, 0);
+  const failedItemsPath = fileEnding(entries, "/failed-items.json");
+  const searchListPath = fileEnding(entries, "/search-list.txt");
+  assert.ok(failedItemsPath);
+  assert.ok(searchListPath);
+  const failedItems = JSON.parse(decoder.decode(entries.get(failedItemsPath)?.data)) as Array<{ code?: string }>;
+  assert.equal(failedItems.length, 2);
+  assert.equal(failedItems[0]?.code, "youtube-blocked");
+  assert.match(decoder.decode(entries.get(searchListPath)?.data), /Artist - Blocked One/);
+  assert.match(decoder.decode(entries.get(searchListPath)?.data), /Artist - Blocked Two/);
+});
+
+test("generated ZIP sanitizes hostile and unicode track names", async () => {
+  const titles = [
+    "AC/DC",
+    "song:name",
+    "name with \"quotes\"",
+    "question?mark",
+    "pipe|char",
+    "star*",
+    "angle<brackets>",
+    "emoji title 😄",
+    "Българска песен",
+    "CON",
+  ];
+  const result = await createLocalExportZip(titles.map((title, index) => ({
+    id: `hostile-${index}`,
+    title,
+    artist: title === "CON" ? "" : "Artist",
+    blob: new Blob([audioBytes], { type: "audio/mpeg" }),
+  })), undefined, {
+    fetcher: async () => {
+      throw new Error("unexpected fetch");
+    },
+  });
+
+  const entries = await parseZipEntries(result.zipBlob);
+  const trackPaths = Array.from(entries.keys()).filter((name) => name.includes("/tracks/"));
+  assert.equal(trackPaths.length, titles.length);
+  assert.ok(trackPaths.some((name) => name.endsWith("/tracks/Artist - AC DC.mp3")));
+  assert.ok(trackPaths.some((name) => name.endsWith("/tracks/Artist - emoji title 😄.mp3")));
+  assert.ok(trackPaths.some((name) => name.endsWith("/tracks/Artist - Българска песен.mp3")));
+  assert.ok(trackPaths.some((name) => name.endsWith("/tracks/_CON.mp3")));
+
+  for (const path of trackPaths) {
+    const fileName = path.slice(path.lastIndexOf("/") + 1);
+    assert.equal(path.split("/").filter(Boolean).length, 3);
+    assert.doesNotMatch(fileName, /[<>:"/\\|?*\u0000-\u001f]/);
+    assert.doesNotMatch(fileName, /[. ]+\.mp3$/);
+    assert.doesNotMatch(fileName, /^(con|prn|aux|nul|com[1-9]|lpt[1-9])\.mp3$/i);
+  }
 });
 
 test("export manifest preserves imported metadata", async () => {

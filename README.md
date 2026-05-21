@@ -107,6 +107,7 @@ npm run dev
 - `npm run test` — тестове
 - `npm run check:backend` — backend type/test checks
 - `npm run doctor:download` — checks local yt-dlp, ffmpeg, ffprobe, temp, and cache access
+- `npm run doctor:local` — checks backend Python deps and frontend downloader tools
 
 
 ## Стабилно тестване (root)
@@ -267,10 +268,9 @@ Local tool install:
 Local check:
 
 ```bash
-cd frontend
-npm install
-npm run doctor:download
-npm run dev
+npm run doctor:python --prefix backend
+npm run doctor:download --prefix frontend
+npm run dev:download --prefix frontend
 ```
 
 Frontend service env:

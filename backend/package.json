@@ -19,6 +19,7 @@
     "pretest": "node node_modules/prisma/build/index.js generate --schema prisma/schema.prisma",
     "python:deps": "node scripts/ensure-python-deps.mjs",
     "python:deps:ensure": "node scripts/ensure-python-deps.mjs",
+    "doctor:python": "node scripts/ensure-python-deps.mjs",
     "postinstall": "npm run python:deps:ensure",
     "prestart": "npm run python:deps:ensure"
   },

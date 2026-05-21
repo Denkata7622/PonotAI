@@ -131,12 +131,16 @@ const AUDIO_CONTENT_TYPES = new Set(["audio/mpeg", "audio/mp3", "audio/mp4", "au
 const IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 export function sanitizeFileName(input: string): string {
-  return (input || "")
+  const cleaned = (input || "")
     .replace(/[<>:"/\\|?*\u0000-\u001F]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/[. ]+$/g, "")
     .slice(0, 120) || "untitled";
+  const extIndex = cleaned.lastIndexOf(".");
+  const base = extIndex > 0 ? cleaned.slice(0, extIndex) : cleaned;
+  const ext = extIndex > 0 ? cleaned.slice(extIndex) : "";
+  return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(base) ? `_${base}${ext}` : cleaned;
 }
 
 export function getUniqueFileName(fileName: string, used: Set<string>): string {
@@ -279,30 +283,131 @@ function messageForGlobalYoutubeFailure(code: string | undefined, youtubeBlocked
 }
 
 const encoder = new TextEncoder();
+const ZIP_UINT16_MAX = 0xffff;
+const ZIP_UINT32_MAX = 0xffffffff;
+const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
+const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
+const ZIP_EOCD_SIGNATURE = 0x06054b50;
+const ZIP_VERSION_NEEDED = 20;
+const ZIP_VERSION_MADE_BY = 20;
+const ZIP_UTF8_FLAG = 0x0800;
+const ZIP_STORE_METHOD = 0;
+
 function crc32(bytes: Uint8Array): number { let c = ~0; for (let i = 0; i < bytes.length; i += 1) { c ^= bytes[i]; for (let j = 0; j < 8; j += 1) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); } return (~c) >>> 0; }
-function u16(n: number): Uint8Array { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n, true); return b; }
-function u32(n: number): Uint8Array { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n, true); return b; }
+
+function normalizeZipPath(input: string): string {
+  if (/^[a-zA-Z]:/.test(input) || input.startsWith("/") || input.startsWith("\\")) {
+    throw new Error("ZIP entry path must be relative.");
+  }
+  const path = input.replace(/\\/g, "/").split("/").filter(Boolean).join("/");
+  if (!path || path.split("/").some((part) => part === "..") || path.includes("\u0000")) {
+    throw new Error("ZIP entry path contains an unsafe segment.");
+  }
+  return path;
+}
+
+function assertZip32Value(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 0 || value > ZIP_UINT32_MAX) {
+    throw new Error(`ZIP entry ${label} exceeds ZIP32 limits.`);
+  }
+}
+
+function assertZip16Value(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 0 || value > ZIP_UINT16_MAX) {
+    throw new Error(`ZIP entry ${label} exceeds ZIP16 limits.`);
+  }
+}
+
+function dosDateTime(date: Date): { date: number; time: number } {
+  const year = Math.max(1980, Math.min(2107, date.getFullYear()));
+  return {
+    date: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
+    time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
+  };
+}
+
+function createLocalFileHeader(nameLength: number, dataLength: number, crc: number, date: number, time: number): Uint8Array {
+  const header = new Uint8Array(30);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, ZIP_LOCAL_FILE_HEADER_SIGNATURE, true);
+  view.setUint16(4, ZIP_VERSION_NEEDED, true);
+  view.setUint16(6, ZIP_UTF8_FLAG, true);
+  view.setUint16(8, ZIP_STORE_METHOD, true);
+  view.setUint16(10, time, true);
+  view.setUint16(12, date, true);
+  view.setUint32(14, crc, true);
+  view.setUint32(18, dataLength, true);
+  view.setUint32(22, dataLength, true);
+  view.setUint16(26, nameLength, true);
+  view.setUint16(28, 0, true);
+  return header;
+}
+
+function createCentralDirectoryHeader(nameLength: number, dataLength: number, crc: number, localHeaderOffset: number, date: number, time: number): Uint8Array {
+  const header = new Uint8Array(46);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, ZIP_CENTRAL_DIRECTORY_SIGNATURE, true);
+  view.setUint16(4, ZIP_VERSION_MADE_BY, true);
+  view.setUint16(6, ZIP_VERSION_NEEDED, true);
+  view.setUint16(8, ZIP_UTF8_FLAG, true);
+  view.setUint16(10, ZIP_STORE_METHOD, true);
+  view.setUint16(12, time, true);
+  view.setUint16(14, date, true);
+  view.setUint32(16, crc, true);
+  view.setUint32(20, dataLength, true);
+  view.setUint32(24, dataLength, true);
+  view.setUint16(28, nameLength, true);
+  view.setUint16(30, 0, true);
+  view.setUint16(32, 0, true);
+  view.setUint16(34, 0, true);
+  view.setUint16(36, 0, true);
+  view.setUint32(38, 0, true);
+  view.setUint32(42, localHeaderOffset, true);
+  return header;
+}
+
+function createEndOfCentralDirectory(entryCount: number, centralDirectorySize: number, centralDirectoryOffset: number): Uint8Array {
+  const eocd = new Uint8Array(22);
+  const view = new DataView(eocd.buffer);
+  view.setUint32(0, ZIP_EOCD_SIGNATURE, true);
+  view.setUint16(4, 0, true);
+  view.setUint16(6, 0, true);
+  view.setUint16(8, entryCount, true);
+  view.setUint16(10, entryCount, true);
+  view.setUint32(12, centralDirectorySize, true);
+  view.setUint32(16, centralDirectoryOffset, true);
+  view.setUint16(20, 0, true);
+  return eocd;
+}
 
 async function makeZip(files: Array<{ path: string; blob: Blob }>): Promise<Blob> {
   const local: Uint8Array[] = [];
   const central: Uint8Array[] = [];
   let offset = 0;
+  const { date, time } = dosDateTime(new Date());
+
+  assertZip16Value(files.length, "count");
 
   for (const file of files) {
-    const name = encoder.encode(file.path);
+    const name = encoder.encode(normalizeZipPath(file.path));
     const data = new Uint8Array(await file.blob.arrayBuffer());
+    assertZip16Value(name.length, "name length");
+    assertZip32Value(data.length, "size");
+    assertZip32Value(offset, "offset");
     const crc = crc32(data);
 
-    const localHeader = new Uint8Array([80,75,3,4,20,0,0,0,0,0,0,0,0,0,...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),0,0]);
+    const localHeader = createLocalFileHeader(name.length, data.length, crc, date, time);
     local.push(localHeader, name, data);
 
-    const centralHeader = new Uint8Array([80,75,1,2,20,0,20,0,0,0,0,0,0,0,0,0,...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),0,0,0,0,0,0,0,0,0,0,...u32(offset)]);
+    const centralHeader = createCentralDirectoryHeader(name.length, data.length, crc, offset, date, time);
     central.push(centralHeader, name);
     offset += localHeader.length + name.length + data.length;
+    assertZip32Value(offset, "offset");
   }
 
   const centralSize = central.reduce((sum, chunk) => sum + chunk.length, 0);
-  const eocd = new Uint8Array([80,75,5,6,0,0,0,0,...u16(files.length),...u16(files.length),...u32(centralSize),...u32(offset),0,0]);
+  assertZip32Value(centralSize, "central directory size");
+  const eocd = createEndOfCentralDirectory(files.length, centralSize, offset);
   const parts = [...local, ...central, eocd].map((chunk) => chunk as unknown as BlobPart);
   return new Blob(parts, { type: "application/zip" });
 }
@@ -542,6 +647,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   files.push({ path: `${metadataBase}/search-list.txt`, blob: new Blob([searchListText], { type: "text/plain" }) });
   files.push({ path: `${metadataBase}/failed-items.json`, blob: new Blob([failedItemsJson], { type: "application/json" }) });
   files.push({ path: `${metadataBase}/playlist.m3u`, blob: new Blob([playlistText], { type: "audio/x-mpegurl" }) });
+  files.push({ path: `${root}/manifest.json`, blob: new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" }) });
   files.push({ path: `${root}/playlists/export.m3u`, blob: new Blob([playlistText], { type: "audio/x-mpegurl" }) });
   files.push({ path: `${root}/search-list.txt`, blob: new Blob([searchListText], { type: "text/plain" }) });
   files.push({ path: `${root}/failed-items.json`, blob: new Blob([failedItemsJson], { type: "application/json" }) });

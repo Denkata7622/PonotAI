@@ -6,6 +6,12 @@ npm run setup
 npm run dev
 ```
 
+### Local downloader
+```bash
+npm run doctor:download
+npm run dev:download
+```
+
 ### API connection
 The client calls the backend API through the centralized API config helpers.
 Render paths use safe status helpers; API/event paths use strict helpers.
