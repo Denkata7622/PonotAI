@@ -189,6 +189,68 @@ test("missing-binary opens YouTube circuit, skips remaining YouTube songs, and s
   assert.equal((failedItems[1] as { youtubeCircuitOpen?: boolean })?.youtubeCircuitOpen, true);
 });
 
+test("file and blob still export after a global YouTube missing-binary failure", async () => {
+  let apiCalls = 0;
+  const fetcher = async (input: RequestInfo | URL) => {
+    if (String(input) === "/api/download") {
+      apiCalls += 1;
+      return jsonError("missing-binary", 503);
+    }
+    throw new Error("unexpected fetch");
+  };
+
+  const result = await createLocalExportZip([
+    { id: "yt", title: "Needs YouTube", artist: "Artist" },
+    { id: "file", title: "Local File", artist: "Artist", file: new File([audioBytes], "local.mp3", { type: "audio/mpeg" }) },
+    { id: "blob", title: "Local Blob", artist: "Artist", blob: new Blob([audioBytes], { type: "audio/mpeg" }) },
+  ], undefined, { fetcher });
+
+  assert.equal(apiCalls, 1);
+  assert.equal(result.exportedCount, 2);
+  assert.equal(result.skippedCount, 1);
+  assert.equal(result.items[1]?.sourceAttempted, "file");
+  assert.equal(result.items[2]?.sourceAttempted, "blob");
+});
+
+test("failed-items includes code fix detail and search-list includes only unresolved tracks", async () => {
+  const result = await createLocalExportZip([
+    { id: "yt", title: "Blocked", artist: "Artist" },
+    { id: "direct", title: "Direct", artist: "Artist", audioUrl: "https://cdn.example.test/direct.mp3" },
+  ], undefined, {
+    fetcher: async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/download") return jsonError("youtube-blocked", 429);
+      if (url === "https://cdn.example.test/direct.mp3") return audioResponse();
+      throw new Error(`unexpected fetch ${url}`);
+    },
+    appVersion: "test-version",
+    diagnosticsSnapshot: { mode: "cloud", ok: false },
+  });
+
+  const files = await listZipFiles(result.zipBlob);
+  const failedItemsPath = fileEnding(files, "/metadata/failed-items.json");
+  const searchListPath = fileEnding(files, "/metadata/search-list.txt");
+  const manifestPath = fileEnding(files, "/metadata/manifest.json");
+  const playlistPath = fileEnding(files, "/playlists/export.m3u");
+  assert.ok(failedItemsPath);
+  assert.ok(searchListPath);
+  assert.ok(manifestPath);
+  assert.ok(playlistPath);
+
+  const failedItems = JSON.parse(files.get(failedItemsPath) || "[]") as Array<{ code?: string; fix?: string; detail?: string }>;
+  assert.equal(failedItems.length, 1);
+  assert.equal(failedItems[0]?.code, "youtube-blocked");
+  assert.equal(failedItems[0]?.fix, "youtube-blocked fix");
+  assert.equal(failedItems[0]?.detail, "youtube-blocked detail");
+  assert.equal(files.get(searchListPath)?.trim(), "Artist - Blocked");
+  assert.doesNotMatch(files.get(searchListPath) || "", /Direct/);
+
+  const manifest = JSON.parse(files.get(manifestPath) || "{}") as { appVersion?: string; diagnostics?: { mode?: string }; exportedCount?: number };
+  assert.equal(manifest.appVersion, "test-version");
+  assert.equal(manifest.diagnostics?.mode, "cloud");
+  assert.equal(manifest.exportedCount, 1);
+});
+
 for (const [code, status] of [["ffmpeg-missing", 500], ["youtube-blocked", 429], ["binary-permission", 500]] as const) {
   test(`${code} opens the YouTube circuit`, async () => {
     let apiCalls = 0;

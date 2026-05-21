@@ -84,10 +84,15 @@ function capOutput(current: string, next: string): string {
 
 function redactConfiguredPaths(message: string): string {
   let redacted = message;
-  for (const value of [process.env.YTDLP_COOKIES, process.env.YTDLP_PATH].filter((entry): entry is string => Boolean(entry))) {
+  for (const value of [process.env.YTDLP_COOKIES, process.env.YTDLP_PATH, process.env.HOME, process.env.USERPROFILE].filter((entry): entry is string => Boolean(entry))) {
     redacted = redacted.split(value).join("[redacted]");
+    redacted = redacted.split(value.replace(/\\/g, "/")).join("[redacted]");
   }
-  return redacted;
+  return redacted
+    .replace(/\bAuthorization\s*[:=]\s*Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Authorization: Bearer [redacted]")
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/\b(token|secret|password|cookie|session|api[-_]?key|jwt)\s*[:=]\s*[^&\s"'`<>),;]+/gi, "$1=[redacted]")
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "[redacted-jwt]");
 }
 
 function compactDetail(message: string | undefined): string {
@@ -447,10 +452,13 @@ function downloadHeaders(audioLength: number, filename: string, cache: "hit" | "
 }
 
 function logDownload(event: "download.request" | "download.success" | "download.failure", payload: Record<string, unknown>): void {
-  if (process.env.NODE_ENV === "production") return;
+  if (process.env.NODE_ENV === "production" && event !== "download.failure") return;
   const safePayload = { ...payload };
   delete safePayload.args;
-  console.info(JSON.stringify({ event, ...safePayload }));
+  if (typeof safePayload.detail === "string") safePayload.detail = compactDetail(safePayload.detail);
+  const line = JSON.stringify({ event, ...safePayload });
+  if (event === "download.failure") console.error(line);
+  else console.info(line);
 }
 
 export type YtdlpRunner = (
@@ -543,21 +551,21 @@ export async function handleDownloadPost(request: Request, runner: YtdlpRunner =
     if (result.code !== 0) {
       const fullDetail = `${result.stderr || ""}\n${result.stdout || ""}`.trim() || (result.code === 124 ? "yt-dlp timed out" : `yt-dlp exited with code ${result.code}`);
       const classified = classifyDownloadError(fullDetail);
-      logDownload("download.failure", { requestId: id, targetType: target.type, code: classified.code, status: classified.status });
+      logDownload("download.failure", { requestId: id, targetType: target.type, code: classified.code, status: classified.status, detail: classified.detail });
       return jsonError("YouTube download failed.", classified.code, classified.fix, classified.status, id, classified);
     }
 
     const mp3 = (await fs.readdir(tempDir)).find((entry) => entry.toLowerCase().endsWith(".mp3"));
     if (!mp3) {
       const classified = classifyDownloadError("yt-dlp completed without producing an mp3 file");
-      logDownload("download.failure", { requestId: id, targetType: target.type, code: classified.code, status: classified.status });
+      logDownload("download.failure", { requestId: id, targetType: target.type, code: classified.code, status: classified.status, detail: classified.detail });
       return jsonError("YouTube download failed.", classified.code, classified.fix, classified.status, id, classified);
     }
 
     const audio = await fs.readFile(path.join(tempDir, mp3));
     if (audio.byteLength <= 0) {
       const classified = classifyDownloadError("yt-dlp produced an empty output file");
-      logDownload("download.failure", { requestId: id, targetType: target.type, code: classified.code, status: classified.status });
+      logDownload("download.failure", { requestId: id, targetType: target.type, code: classified.code, status: classified.status, detail: classified.detail });
       return jsonError("YouTube download failed.", classified.code, classified.fix, classified.status, id, classified);
     }
 
@@ -570,9 +578,16 @@ export async function handleDownloadPost(request: Request, runner: YtdlpRunner =
   } catch (error) {
     const fullDetail = error instanceof Error ? error.message : String(error);
     const classified = classifyDownloadError(fullDetail, error);
-    logDownload("download.failure", { requestId: id, targetType: target.type, code: classified.code, status: classified.status });
+    logDownload("download.failure", { requestId: id, targetType: target.type, code: classified.code, status: classified.status, detail: classified.detail });
     return jsonError("YouTube download failed.", classified.code, classified.fix, classified.status, id, classified);
   } finally {
     if (tempDir) await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
+
+export const __downloadRouteTestUtils = {
+  buildYtdlpArgs,
+  classifyDownloadError,
+  compactDetail,
+  parseYoutubeUrl,
+};

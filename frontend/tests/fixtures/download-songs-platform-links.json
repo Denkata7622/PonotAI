@@ -1,0 +1,19 @@
+{
+  "matches": [
+    {
+      "songName": "Electric Feel",
+      "artist": "MGMT",
+      "platformLinks": {
+        "youtube": "https://www.youtube.com/watch?v=MmZexg8sxyk",
+        "spotify": "https://open.spotify.com/track/test"
+      }
+    },
+    {
+      "rawText": "Empire of the Sun - Walking on a Dream",
+      "audioUrl": "https://cdn.example.test/walking.mp3",
+      "platformLinks": {
+        "previewUrl": "https://cdn.example.test/walking-preview.mp3"
+      }
+    }
+  ]
+}

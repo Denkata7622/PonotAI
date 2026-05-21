@@ -38,6 +38,7 @@ export type LocalExportResultItem = {
   requestId?: string;
   error?: string;
   code?: string;
+  detail?: string;
   fix?: string;
   warnings?: string[];
 };
@@ -64,18 +65,22 @@ export type LocalExportProgress = {
 
 export type LocalExportOptions = {
   fetcher?: typeof fetch;
+  appVersion?: string;
+  diagnosticsSnapshot?: unknown;
 };
 
 export class YoutubeDownloadError extends Error {
   code?: string;
   fix?: string;
+  detail?: string;
   globalFailure?: boolean;
   requestId?: string;
-  constructor(message: string, code?: string, fix?: string, globalFailure?: boolean, requestId?: string) {
+  constructor(message: string, code?: string, fix?: string, globalFailure?: boolean, requestId?: string, detail?: string) {
     super(message);
     this.name = "YoutubeDownloadError";
     this.code = code;
     this.fix = fix;
+    this.detail = detail;
     this.globalFailure = globalFailure;
     this.requestId = requestId;
   }
@@ -115,7 +120,7 @@ export async function downloadFromYouTube(idOrQuery: { youtubeId?: string; youtu
       detail = await response.text();
     }
     const useful = (detail || fix || `HTTP ${response.status}`).replace(/\s+/g, " ").trim();
-    throw new YoutubeDownloadError(`YouTube download failed: ${useful.slice(0, 320)}`, code, fix, globalFailure, requestId);
+    throw new YoutubeDownloadError(`YouTube download failed: ${useful.slice(0, 320)}`, code, fix, globalFailure, requestId, detail);
   }
   return { blob: await response.blob(), requestId: response.headers.get("X-PonotAI-Request-ID") ?? undefined };
 }
@@ -327,6 +332,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   let youtubeCircuitMessage = youtubeBlockedMessage;
   let youtubeCircuitCode: string | undefined;
   let youtubeCircuitFix: string | undefined;
+  let youtubeCircuitDetail: string | undefined;
   const fetcher = options?.fetcher ?? localExportFetch;
 
   const reportProgress = (phase: LocalExportProgress["phase"], currentSong: string | undefined, completed: number, currentSourceType?: LocalExportProgress["currentSourceType"]) => {
@@ -412,6 +418,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
           item.error ||= youtubeCircuitMessage;
           item.code = youtubeCircuitCode;
           item.fix = youtubeCircuitFix;
+          item.detail = youtubeCircuitDetail;
           item.youtubeCircuitOpen = true;
         } else {
           if (youtubeSuccessCount > 0 && YOUTUBE_BATCH_DELAY_MS > 0) await delay(YOUTUBE_BATCH_DELAY_MS);
@@ -433,21 +440,25 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
             const message = error instanceof Error ? error.message : "YouTube download failed.";
             const code = error instanceof YoutubeDownloadError ? error.code : undefined;
             const fix = error instanceof YoutubeDownloadError ? error.fix : undefined;
+            const detail = error instanceof YoutubeDownloadError ? error.detail : undefined;
             const requestId = error instanceof YoutubeDownloadError ? error.requestId : undefined;
             if (requestId) item.requestId = requestId;
+            if (detail) item.detail = detail;
             if (isGlobalYoutubeFailure(code) || (error instanceof YoutubeDownloadError && error.globalFailure)) {
               const globalMessage = messageForGlobalYoutubeFailure(code, youtubeBlockedMessage);
               youtubeCircuitOpen = true;
               youtubeCircuitMessage = globalMessage;
               youtubeCircuitCode = code;
               youtubeCircuitFix = fix;
+              youtubeCircuitDetail = detail;
               item.status = "skipped";
               item.error ||= globalMessage;
               item.code = code;
               item.fix = fix;
+              item.detail = detail;
               item.youtubeCircuitOpen = true;
             } else {
-              throw new YoutubeDownloadError(message, code, fix);
+              throw new YoutubeDownloadError(message, code, fix, false, requestId, detail);
             }
           }
         }
@@ -462,6 +473,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
       if (error instanceof YoutubeDownloadError) {
         item.code = error.code;
         item.fix = error.fix;
+        item.detail = error.detail;
         item.requestId = error.requestId;
       }
     }
@@ -511,7 +523,9 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   const metadataBase = `${root}/metadata`;
   const manifest = {
     app: "Turrex",
+    appVersion: options?.appVersion ?? "unknown",
     exportDateIso: new Date().toISOString(),
+    diagnostics: options?.diagnosticsSnapshot ?? null,
     totalSelected: songs.length,
     exportedCount,
     failedCount,
@@ -528,6 +542,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   files.push({ path: `${metadataBase}/search-list.txt`, blob: new Blob([searchListText], { type: "text/plain" }) });
   files.push({ path: `${metadataBase}/failed-items.json`, blob: new Blob([failedItemsJson], { type: "application/json" }) });
   files.push({ path: `${metadataBase}/playlist.m3u`, blob: new Blob([playlistText], { type: "audio/x-mpegurl" }) });
+  files.push({ path: `${root}/playlists/export.m3u`, blob: new Blob([playlistText], { type: "audio/x-mpegurl" }) });
   files.push({ path: `${root}/search-list.txt`, blob: new Blob([searchListText], { type: "text/plain" }) });
   files.push({ path: `${root}/failed-items.json`, blob: new Blob([failedItemsJson], { type: "application/json" }) });
   files.push({ path: `${root}/playlist.m3u`, blob: new Blob([playlistText], { type: "audio/x-mpegurl" }) });

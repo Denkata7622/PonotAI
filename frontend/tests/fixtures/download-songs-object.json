@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "name": "Sweet Disposition",
+      "channel": "The Temper Trap",
+      "url": "https://youtu.be/vN7HQrgakZU?si=test"
+    },
+    {
+      "title": "Safe and Sound",
+      "artists": [
+        { "name": "Capital Cities" }
+      ],
+      "sourceUrl": "https://cdn.example.test/safe-and-sound.mp3"
+    }
+  ]
+}

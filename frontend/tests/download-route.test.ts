@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { handleDownloadPost, type YtdlpRunner } from "../lib/downloadRouteHandler";
+import { __downloadRouteTestUtils, handleDownloadPost, type YtdlpRunner } from "../lib/downloadRouteHandler";
 
 const fakeMp3 = Buffer.from([0x49, 0x44, 0x33, 0x04]);
 const validId = "abc123xyz_1";
@@ -126,6 +126,20 @@ test("youtubeUrl rejects lookalike domains", async () => {
   const body = await res.json() as { code: string };
   assert.equal(res.status, 400);
   assert.equal(body.code, "invalid-youtube-url");
+});
+
+test("youtubeUrl rejects non-YouTube URLs", async () => {
+  const res = await handleDownloadPost(request({ youtubeUrl: "https://example.com/watch?v=abc123xyz_1" }));
+  const body = await res.json() as { code: string };
+  assert.equal(res.status, 400);
+  assert.equal(body.code, "invalid-youtube-url");
+});
+
+test("placeholder numeric youtubeId returns invalid-youtube-id", async () => {
+  const res = await handleDownloadPost(request({ youtubeId: "12345678901" }));
+  const body = await res.json() as { code: string };
+  assert.equal(res.status, 400);
+  assert.equal(body.code, "invalid-youtube-id");
 });
 
 test("successful fake runner returns mp3 bytes and cache headers", async () => {
@@ -288,4 +302,45 @@ test("classification uses full stderr, not only first line", async () => {
   const body = await res.json() as { code: string };
   assert.equal(res.status, 429);
   assert.equal(body.code, "youtube-blocked");
+});
+
+test("download errors redact configured paths, home paths, and secrets", async () => {
+  const previousHome = process.env.USERPROFILE;
+  const previousCookies = process.env.YTDLP_COOKIES;
+  const previousPath = process.env.YTDLP_PATH;
+  try {
+    process.env.USERPROFILE = "C:\\Users\\denis";
+    process.env.YTDLP_COOKIES = "C:\\Users\\denis\\secrets\\cookies.txt";
+    process.env.YTDLP_PATH = "C:\\Users\\denis\\tools\\yt-dlp.exe";
+    const classified = __downloadRouteTestUtils.classifyDownloadError("failed C:\\Users\\denis\\secrets\\cookies.txt token=abc123 Authorization: Bearer abc.def.ghi");
+
+    assert.doesNotMatch(classified.detail, /denis|cookies\.txt|abc123|abc\.def\.ghi/i);
+    assert.match(classified.detail, /\[redacted\]/);
+  } finally {
+    if (previousHome === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousHome;
+    if (previousCookies === undefined) delete process.env.YTDLP_COOKIES;
+    else process.env.YTDLP_COOKIES = previousCookies;
+    if (previousPath === undefined) delete process.env.YTDLP_PATH;
+    else process.env.YTDLP_PATH = previousPath;
+  }
+});
+
+test("download failures log redacted detail to server console", async () => {
+  const previous = console.error;
+  const logs: string[] = [];
+  console.error = (line?: unknown) => {
+    logs.push(String(line));
+  };
+  try {
+    const runner: YtdlpRunner = async () => ({ code: 1, stdout: "", stderr: "ffmpeg not found token=secret-value" });
+    const res = await handleDownloadPost(request({ query: "x" }), runner);
+    assert.equal(res.status, 503);
+    assert.equal(logs.length, 1);
+    assert.match(logs[0] ?? "", /download\.failure/);
+    assert.match(logs[0] ?? "", /ffmpeg-missing/);
+    assert.doesNotMatch(logs[0] ?? "", /secret-value/);
+  } finally {
+    console.error = previous;
+  }
 });

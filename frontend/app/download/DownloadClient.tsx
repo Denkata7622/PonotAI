@@ -89,6 +89,7 @@ type ExportSong = SongMatch & {
   sourceUrl?: string;
   youtubeUrl?: string;
   coverCandidates?: unknown;
+  metadata?: Record<string, unknown>;
 };
 
 type ImportReport = {
@@ -96,6 +97,7 @@ type ImportReport = {
   invalidCount: number;
   skippedCount: number;
   firstInvalidReason?: string;
+  invalidItems?: string[];
   filename?: string;
 };
 
@@ -126,6 +128,48 @@ function normalizeYoutubeVideoId(value: unknown): string | undefined {
     : undefined;
 }
 
+function stringFromUnknown(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function firstString(item: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = stringFromUnknown(item[key]);
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function normalizeArtists(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => {
+        if (typeof entry === "string") return entry.trim();
+        if (entry && typeof entry === "object") {
+          const record = entry as Record<string, unknown>;
+          return stringFromUnknown(record.name) || stringFromUnknown(record.artist) || "";
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join(", ");
+  }
+  return stringFromUnknown(value) || "";
+}
+
+function isYoutubeUrlCandidate(value?: string): boolean {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    const host = parsed.hostname.toLowerCase();
+    return host === "youtu.be" || host === "youtube.com" || host.endsWith(".youtube.com");
+  } catch {
+    return /(^|[/:.])youtube\.com\/watch|(^|[/:.])youtu\.be\//i.test(value);
+  }
+}
+
 function getPlatformAudioCandidate(platformLinks: unknown): string | undefined {
   if (!platformLinks || typeof platformLinks !== "object") return undefined;
   const record = platformLinks as Record<string, unknown>;
@@ -149,13 +193,18 @@ function getPlatformYoutubeCandidate(platformLinks: unknown): string | undefined
 function getImportedSongArray(raw: unknown): unknown[] {
   if (Array.isArray(raw)) return raw;
   if (raw && typeof raw === "object") {
-    const record = raw as { songs?: unknown; data?: unknown };
-    if (Array.isArray(record.songs)) return record.songs;
-    if (record.data && typeof record.data === "object" && Array.isArray((record.data as { songs?: unknown }).songs)) {
-      return (record.data as { songs: unknown[] }).songs;
+    const record = raw as Record<string, unknown>;
+    for (const key of ["songs", "results", "matches"]) {
+      if (Array.isArray(record[key])) return record[key] as unknown[];
+    }
+    if (record.data && typeof record.data === "object") {
+      const data = record.data as Record<string, unknown>;
+      for (const key of ["songs", "results", "matches"]) {
+        if (Array.isArray(data[key])) return data[key] as unknown[];
+      }
     }
   }
-  throw new SongImportError("Unsupported JSON shape. Upload an array of songs or an object with a songs array.", "invalid-schema");
+  throw new SongImportError("Unsupported JSON shape. Upload an array of songs or an object with a songs, results, or matches array.", "invalid-schema");
 }
 
 export function parseImportedSongsDetailed(raw: unknown): { songs: SongMatch[]; invalidItems: string[]; skippedCount: number } {
@@ -182,11 +231,20 @@ export function parseImportedSongsDetailed(raw: unknown): { songs: SongMatch[]; 
       continue;
     }
 
-    const songName = [item.songName, item.title, item.name, item.rawText].find((v) => typeof v === "string" && v.trim()) as string | undefined;
-    if (!songName) {
-      invalidItems.push(`Item ${index + 1} is missing songName/title/name.`);
+    const titleCandidate = firstString(item, ["songName", "title", "name", "track", "query", "rawText"]);
+    const artist = normalizeArtists(item.artist) || normalizeArtists(item.artists) || stringFromUnknown(item.channel) || "";
+    const explicitYoutubeId = normalizeYoutubeVideoId(item.youtubeVideoId) || normalizeYoutubeVideoId(item.youtubeId);
+    const platformYoutube = getPlatformYoutubeCandidate(item.platformLinks);
+    const platformAudio = getPlatformAudioCandidate(item.platformLinks);
+    const youtubeUrl = firstString({ youtubeUrl: item.youtubeUrl, url: isYoutubeUrlCandidate(stringFromUnknown(item.url)) ? item.url : undefined, sourceUrl: isYoutubeUrlCandidate(stringFromUnknown(item.sourceUrl)) ? item.sourceUrl : undefined, platformYoutube }, ["youtubeUrl", "url", "sourceUrl", "platformYoutube"]);
+    const audioUrl = firstString({ audioUrl: item.audioUrl, sourceUrl: !isYoutubeUrlCandidate(stringFromUnknown(item.sourceUrl)) ? item.sourceUrl : undefined, url: !isYoutubeUrlCandidate(stringFromUnknown(item.url)) ? item.url : undefined, platformAudio }, ["audioUrl", "sourceUrl", "url", "platformAudio"]);
+    const songName = titleCandidate || (explicitYoutubeId || youtubeUrl || audioUrl ? `Imported song ${index + 1}` : undefined);
+    const query = titleCandidate || (artist && songName ? `${artist} - ${songName}` : songName);
+    if (!query) {
+      invalidItems.push(`Item ${index + 1} is missing a usable title, query, YouTube URL/ID, or direct audio URL.`);
       continue;
     }
+    const normalizedSongName = songName || query;
 
     const candidates = Array.isArray(item.coverCandidates) ? item.coverCandidates : [];
     const firstCandidate = candidates.find((candidate) => {
@@ -211,8 +269,8 @@ export function parseImportedSongsDetailed(raw: unknown): { songs: SongMatch[]; 
       || "").trim();
 
     normalizedSongs.push({
-      songName: songName.trim(),
-      artist: typeof item.artist === "string" ? item.artist.trim() : "",
+      songName: normalizedSongName.trim(),
+      artist,
       album: typeof item.album === "string" ? item.album.trim() : "Unknown Album",
       genre: typeof item.genre === "string" ? item.genre : "",
       releaseYear: typeof item.releaseYear === "number" ? item.releaseYear : null,
@@ -220,9 +278,8 @@ export function parseImportedSongsDetailed(raw: unknown): { songs: SongMatch[]; 
       albumArtUrl,
       confidence: typeof item.confidence === "number" ? item.confidence : 1,
       durationSec: typeof item.durationSec === "number" ? item.durationSec : 0,
-      ...(normalizeYoutubeVideoId(item.youtubeVideoId) ? { youtubeVideoId: normalizeYoutubeVideoId(item.youtubeVideoId) } : {}),
-      ...(typeof item.youtubeUrl === "string" ? { youtubeUrl: item.youtubeUrl.trim() } : {}),
-      ...(getPlatformYoutubeCandidate(item.platformLinks) ? { youtubeUrl: getPlatformYoutubeCandidate(item.platformLinks) } : {}),
+      ...(explicitYoutubeId ? { youtubeVideoId: explicitYoutubeId } : {}),
+      ...(youtubeUrl ? { youtubeUrl } : {}),
       ...(typeof item.coverUrl === "string" ? { coverUrl: item.coverUrl } : {}),
       ...(typeof item.selectedCoverUrl === "string" ? { selectedCoverUrl: item.selectedCoverUrl } : {}),
       ...(Array.isArray(item.coverCandidates) ? { coverCandidates: item.coverCandidates } : {}),
@@ -230,8 +287,9 @@ export function parseImportedSongsDetailed(raw: unknown): { songs: SongMatch[]; 
       ...(typeof item.source === "string" ? { source: item.source } : {}),
       ...(Array.isArray(item.sourceImageIds) ? { sourceImageIds: item.sourceImageIds } : {}),
       ...(typeof item.selected === "boolean" ? { selected: item.selected } : {}),
-      ...(typeof item.audioUrl === "string" ? { audioUrl: item.audioUrl } : {}),
-      ...(typeof item.sourceUrl === "string" ? { sourceUrl: item.sourceUrl } : {}),
+      ...(audioUrl ? { audioUrl } : {}),
+      ...(typeof item.sourceUrl === "string" ? { sourceUrl: item.sourceUrl.trim() } : {}),
+      metadata: { originalImport: item },
     } as SongMatch);
   }
   if (normalizedSongs.length === 0) {
@@ -247,6 +305,17 @@ export function parseImportedSongsDetailed(raw: unknown): { songs: SongMatch[]; 
 
 export function parseImportedSongs(raw: unknown): SongMatch[] {
   return parseImportedSongsDetailed(raw).songs;
+}
+
+export function parseImportedSongsText(text: string): { songs: SongMatch[]; invalidItems: string[]; skippedCount: number } {
+  try {
+    return parseImportedSongsDetailed(JSON.parse(text) as unknown);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new SongImportError("Invalid JSON file. Upload a valid songs JSON export.", "invalid-json");
+    }
+    throw error;
+  }
 }
 
 function toSongMatch(query: string): SongMatch {
@@ -286,6 +355,7 @@ function toLocalExportSong(song: ExportSong, idx: number): LocalExportSong {
       rawText: song.rawText ?? null,
       sourceImageIds: song.sourceImageIds ?? [],
       selectedCoverUrl: song.selectedCoverUrl ?? null,
+      originalImport: (song as { metadata?: Record<string, unknown> }).metadata?.originalImport ?? null,
     },
   };
 }
@@ -361,6 +431,7 @@ export default function DownloadClient() {
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [showAllFailures, setShowAllFailures] = useState(false);
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
+  const [showSkippedImportRows, setShowSkippedImportRows] = useState(false);
   const [clientErrors, setClientErrors] = useState<ReturnType<typeof getStoredClientErrors>>([]);
 
   async function loadDiagnostics() {
@@ -385,7 +456,7 @@ export default function DownloadClient() {
 
   useEffect(() => {
     setMounted(true);
-      const query = new URLSearchParams(window.location.search).get("query")?.trim() ?? "";
+    const query = new URLSearchParams(window.location.search).get("query")?.trim() ?? "";
     setSongName(query);
     setClientErrors(getStoredClientErrors());
     void loadDiagnostics();
@@ -397,13 +468,7 @@ export default function DownloadClient() {
     setResultItems([]);
     setResultSummary(null);
     try {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(await file.text()) as unknown;
-      } catch {
-        throw new SongImportError("Invalid JSON file. Upload a valid songs JSON export.", "invalid-json");
-      }
-      const detailed = parseImportedSongsDetailed(parsed);
+      const detailed = parseImportedSongsText(await file.text());
       const songs = detailed.songs;
       setImportedSongs(songs);
       setImportReport({
@@ -411,8 +476,10 @@ export default function DownloadClient() {
         invalidCount: detailed.invalidItems.length,
         skippedCount: detailed.skippedCount,
         firstInvalidReason: detailed.invalidItems[0],
+        invalidItems: detailed.invalidItems,
         filename: file.name,
       });
+      setShowSkippedImportRows(false);
       setShowReviewModal(true);
       setState("idle");
       setExportSongs([]);
@@ -423,7 +490,8 @@ export default function DownloadClient() {
         parsedCount: 0,
         invalidCount: 1,
         skippedCount: 0,
-        firstInvalidReason: `${message} Expected an array of strings/song objects or { "songs": [...] }.`,
+        firstInvalidReason: `${message} Expected an array of strings/song objects or { "songs": [...] }, { "results": [...] }, or { "matches": [...] }.`,
+        invalidItems: [`${message} Expected an array of strings/song objects or { "songs": [...] }, { "results": [...] }, or { "matches": [...] }.`],
         filename: file.name,
       });
       setErrorMessage(message);
@@ -443,6 +511,7 @@ export default function DownloadClient() {
     setResultSummary(null);
     setResultItems([]);
     setImportReport(null);
+    setShowSkippedImportRows(false);
   }
 
   function clearExportList() {
@@ -476,7 +545,27 @@ export default function DownloadClient() {
     setShowAllFailures(false);
 
     try {
-      const result = await createLocalExportZip(selectedSongs.map(toLocalExportSong), setProgress);
+      const result = await createLocalExportZip(selectedSongs.map(toLocalExportSong), setProgress, {
+        diagnosticsSnapshot: diagnostics ? {
+          ok: diagnostics.ok,
+          mode: diagnostics.mode,
+          platform: diagnostics.platform,
+          nodeVersion: diagnostics.nodeVersion,
+          downloader: {
+            found: diagnostics.downloader.found,
+            binary: diagnostics.downloader.binary,
+            version: compactVersion(diagnostics.downloader.version),
+            looksStale: diagnostics.downloader.looksStale,
+            errorCode: diagnostics.downloader.errorCode,
+          },
+          ffmpeg: { found: diagnostics.ffmpeg.found, version: compactVersion(diagnostics.ffmpeg.version), errorCode: diagnostics.ffmpeg.errorCode },
+          ffprobe: { found: diagnostics.ffprobe.found, version: compactVersion(diagnostics.ffprobe.version), errorCode: diagnostics.ffprobe.errorCode },
+          cache: diagnostics.cache,
+          temp: diagnostics.temp,
+          config: diagnostics.config,
+          warnings: diagnostics.warnings,
+        } : null,
+      });
       setResultItems(result.items);
       setResultSummary({
         total: selectedSongs.length,
@@ -511,6 +600,34 @@ export default function DownloadClient() {
       : diagnostics?.mode === "cloud"
         ? "Cloud"
         : "Unknown";
+
+  function retryFailedItems() {
+    if (state === "exporting" || unresolvedItems.length === 0) return;
+    setExportSongs(unresolvedItems.map((item, index) => ({
+      ...toSongMatch(item.artist ? `${item.artist} - ${item.title}` : item.title),
+      songName: item.title,
+      artist: item.artist,
+      youtubeVideoId: item.youtubeVideoId,
+      youtubeUrl: item.youtubeUrl,
+      sourceUrl: item.sourceUrl,
+      selected: true,
+      metadata: item.metadata ?? {},
+      id: `${item.id}-retry-${index}`,
+    } as ExportSong)));
+    setResultItems([]);
+    setResultSummary(null);
+    setErrorMessage("");
+    setState("ready");
+  }
+
+  function copySearchList() {
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    const text = unresolvedItems
+      .map((item) => (item.artist ? `${item.artist} - ${item.title}` : item.title).trim())
+      .filter(Boolean)
+      .join("\n");
+    if (text) void navigator.clipboard.writeText(text);
+  }
 
   return (
     <section className="mx-auto w-full max-w-7xl px-0 py-2 sm:px-2">
@@ -594,15 +711,27 @@ export default function DownloadClient() {
                 </div>
                 {importReport ? (
                   <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-                    <Metric label="Parsed" value={String(importReport.parsedCount)} />
-                    <Metric label="Invalid" value={String(importReport.invalidCount)} />
-                    <Metric label="Skipped" value={String(importReport.skippedCount)} />
+                    <Metric label="Imported" value={String(importReport.parsedCount)} />
+                    <Metric label="Selected" value={String(selectedCount)} />
+                    <Metric label="Skipped rows" value={String(importReport.invalidCount + importReport.skippedCount)} />
                   </div>
                 ) : null}
                 {importReport?.firstInvalidReason ? (
-                  <p className="mt-3 break-words rounded-[var(--radius-sm)] border border-[color:rgba(var(--status-warning-rgb),0.45)] bg-[color:rgba(var(--status-warning-rgb),0.12)] p-3 text-sm leading-6 text-[var(--text)]">
-                    {importReport.firstInvalidReason}
-                  </p>
+                  <div className="mt-3 rounded-[var(--radius-sm)] border border-[color:rgba(var(--status-warning-rgb),0.45)] bg-[color:rgba(var(--status-warning-rgb),0.12)] p-3 text-sm leading-6 text-[var(--text)]">
+                    <p className="break-words">{importReport.firstInvalidReason}</p>
+                    {importReport.invalidItems && importReport.invalidItems.length > 1 ? (
+                      <button type="button" className="mt-2 text-sm font-medium text-[var(--accent)] hover:underline" onClick={() => setShowSkippedImportRows((value) => !value)}>
+                        {showSkippedImportRows ? "Hide skipped rows" : `Show ${importReport.invalidItems.length} skipped rows`}
+                      </button>
+                    ) : null}
+                    {showSkippedImportRows && importReport.invalidItems?.length ? (
+                      <ul className="mt-2 max-h-44 space-y-1 overflow-y-auto pr-1">
+                        {importReport.invalidItems.map((item, index) => (
+                          <li key={`${item}-${index}`} className="break-words text-xs text-[var(--muted)]">{item}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
                 ) : null}
                 {selectedPreview.length > 0 ? (
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -637,6 +766,8 @@ export default function DownloadClient() {
               setupIssue={setupIssue}
               showAllFailures={showAllFailures}
               onToggleFailures={() => setShowAllFailures((value) => !value)}
+              onCopySearchList={copySearchList}
+              onRetryFailed={retryFailedItems}
             />
             <DebugDetailsCard
               runtimeConfig={runtimeConfig}
@@ -854,7 +985,7 @@ function ProgressCard({ state, progress, progressPct }: { state: DownloadState; 
   );
 }
 
-function ResultCard({ state, errorMessage, summary, unresolvedItems, visibleFailures, setupIssue, showAllFailures, onToggleFailures }: {
+function ResultCard({ state, errorMessage, summary, unresolvedItems, visibleFailures, setupIssue, showAllFailures, onToggleFailures, onCopySearchList, onRetryFailed }: {
   state: DownloadState;
   errorMessage: string;
   summary: ResultSummary | null;
@@ -863,6 +994,8 @@ function ResultCard({ state, errorMessage, summary, unresolvedItems, visibleFail
   setupIssue: { code?: string; message: string } | null;
   showAllFailures: boolean;
   onToggleFailures: () => void;
+  onCopySearchList: () => void;
+  onRetryFailed: () => void;
 }) {
   if (state === "error") {
     return (
@@ -917,11 +1050,15 @@ function ResultCard({ state, errorMessage, summary, unresolvedItems, visibleFail
           ) : null}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-sm font-semibold text-[var(--text)]">Unresolved items</h3>
-            {unresolvedItems.length > 8 ? (
-              <button type="button" className="text-sm text-[var(--accent)] hover:underline" onClick={onToggleFailures}>
-                {showAllFailures ? "Show fewer" : `Show all ${unresolvedItems.length}`}
-              </button>
-            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="ghost" onClick={onCopySearchList}>Copy search list</Button>
+              <Button size="sm" variant="ghost" onClick={onRetryFailed}>Retry failed</Button>
+              {unresolvedItems.length > 8 ? (
+                <button type="button" className="text-sm text-[var(--accent)] hover:underline" onClick={onToggleFailures}>
+                  {showAllFailures ? "Show fewer" : `Show all ${unresolvedItems.length}`}
+                </button>
+              ) : null}
+            </div>
           </div>
           <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
             {visibleFailures.map((item, index) => (

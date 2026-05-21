@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
+import { binaryFromLocation, clampTimeout, looksOldYtDlp, redactPathForClient, safeBinaryName } from "@/lib/downloadDiagnostics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DIAGNOSTIC_TIMEOUT_MS = 10000;
 const OUTPUT_LIMIT = 4096;
-const DEFAULT_TIMEOUT_MS = 180000;
 
 type Mode = "local" | "cloud" | "unknown";
 
@@ -25,60 +25,15 @@ function capOutput(current: string, next: string): string {
   return (current + next).slice(-OUTPUT_LIMIT);
 }
 
-function safeBinaryName(binary: string): string {
-  const parts = binary.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] || binary || "unknown";
-}
-
-function redactPathForClient(dir: string): string {
-  const normalized = dir.replace(/\\/g, "/");
-  const home = process.env.HOME || process.env.USERPROFILE;
-  if (home) {
-    const safeHome = home.replace(/\\/g, "/");
-    if (normalized.toLowerCase().startsWith(safeHome.toLowerCase())) {
-      return `~/${normalized.slice(safeHome.length).replace(/^\/+/, "")}`;
-    }
-  }
-  const parts = normalized.split("/").filter(Boolean);
-  if (parts.length <= 2) return normalized;
-  return `.../${parts.slice(-2).join("/")}`;
-}
-
 function redactBinaryPath(message: string | undefined, binary: string): string | undefined {
   if (!message) return undefined;
   return message.split(binary).join(safeBinaryName(binary));
-}
-
-function clampTimeout(value: string | undefined): number {
-  const n = Number(value || DEFAULT_TIMEOUT_MS);
-  return Math.min(600000, Math.max(30000, Number.isFinite(n) ? n : DEFAULT_TIMEOUT_MS));
 }
 
 function detectMode(): Mode {
   if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID) return "cloud";
   if (process.env.NODE_ENV === "development") return "local";
   return "unknown";
-}
-
-function parseYtDlpBuildDate(version?: string): Date | null {
-  if (!version) return null;
-  const match = version.trim().match(/^(\d{4})\.(\d{2})\.(\d{2})/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function looksOldYtDlp(version?: string): boolean {
-  const buildDate = parseYtDlpBuildDate(version);
-  if (!buildDate) return false;
-  const now = new Date();
-  const olderThan90Days = now.getTime() - buildDate.getTime() > 90 * 24 * 60 * 60 * 1000;
-  const olderThanCurrentYear = buildDate.getUTCFullYear() < now.getUTCFullYear();
-  return olderThan90Days || olderThanCurrentYear;
 }
 
 function firstLine(value?: string): string | undefined {
@@ -165,8 +120,8 @@ export async function GET(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const mode = detectMode();
   const ytdlpPath = process.env.YTDLP_PATH || "yt-dlp";
-  const ffmpegBinary = process.env.FFMPEG_LOCATION ? path.join(process.env.FFMPEG_LOCATION, "ffmpeg") : "ffmpeg";
-  const ffprobeBinary = process.env.FFMPEG_LOCATION ? path.join(process.env.FFMPEG_LOCATION, "ffprobe") : "ffprobe";
+  const ffmpegBinary = binaryFromLocation(process.env.FFMPEG_LOCATION, "ffmpeg");
+  const ffprobeBinary = binaryFromLocation(process.env.FFMPEG_LOCATION, "ffprobe");
 
   const [downloader, ffmpeg, ffprobe] = await Promise.all([
     run(ytdlpPath, ["--version"]),

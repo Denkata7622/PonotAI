@@ -1,0 +1,18 @@
+{
+  "songs": [
+    {
+      "artist": "No Title"
+    },
+    {
+      "songName": "Valid Partial",
+      "platformLinks": {
+        "youtubeMusic": "https://music.youtube.com/watch?v=abc123xyz_1"
+      }
+    },
+    "",
+    {
+      "selected": false,
+      "songName": "Skipped By User"
+    }
+  ]
+}

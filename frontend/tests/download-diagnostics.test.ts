@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { binaryFromLocation, clampTimeout, looksOldYtDlp, safeBinaryName } from "../lib/downloadDiagnostics";
 import { GET } from "../app/api/download/diagnostics/route";
 
 test("download diagnostics returns frontend runtime shape without secrets", async () => {
@@ -29,4 +30,16 @@ test("download diagnostics returns frontend runtime shape without secrets", asyn
   assert.ok(Object.prototype.hasOwnProperty.call(body.config.envFlagsPresent, "YTDLP_PATH"));
   assert.ok(Object.prototype.hasOwnProperty.call(body.config.envFlagsPresent, "FFMPEG_LOCATION"));
   assert.doesNotMatch(JSON.stringify(body), /token|secret|password|cookie=/i);
+});
+
+test("download diagnostics helpers keep Windows paths client-safe", () => {
+  const binary = "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe";
+  assert.equal(safeBinaryName(binary), "ffmpeg.exe");
+  assert.match(binaryFromLocation("C:\\Program Files\\ffmpeg\\bin", "ffprobe", "win32"), /ffprobe\.exe$/);
+});
+
+test("download diagnostics detects stale yt-dlp and clamps timeout", () => {
+  assert.equal(looksOldYtDlp("2020.01.01"), true);
+  assert.equal(clampTimeout("1"), 30000);
+  assert.equal(clampTimeout("9999999"), 600000);
 });

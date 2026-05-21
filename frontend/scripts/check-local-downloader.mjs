@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 function commandPath(binary) {
-  return process.env.FFMPEG_LOCATION ? path.join(process.env.FFMPEG_LOCATION, binary) : binary;
+  const binaryName = process.platform === "win32" && !binary.endsWith(".exe") ? `${binary}.exe` : binary;
+  return process.env.FFMPEG_LOCATION ? path.join(process.env.FFMPEG_LOCATION, binaryName) : binaryName;
 }
 
 function check(bin, args) {
