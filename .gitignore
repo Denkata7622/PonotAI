@@ -23,16 +23,22 @@ npm-debug.log*
 *.env
 !backend/.env.example
 !backend/.env.test.example
+!frontend/.env.local.example
 
 # Python local/vendor deps
 .python_packages/
 **/.python_packages/
 .venv/
+.venv/**
+**/.venv/
+**/.venv/**
 venv/
 env/
 __pycache__/
+**/__pycache__/
 *.py[cod]
 pip-wheel-metadata/
+dist/
 
 # Local downloader/cache artifacts
 ponotai-ytdlp-cache/

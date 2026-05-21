@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Moon, RotateCcw, Search, Sun } from "../../../lucide-react";
-import { DEFAULT_UI_PERSONALIZATION, UI_PRESETS, resolveTheme, type AccentIntensity, type BodyFont, type CardEmphasis, type ChartStyle, type DensityMode, type DisplayFont, type DisplayTextStyle, type GlowLevel, type PanelTint, type RadiusMode, type SidebarStyle, type SurfaceStyle, type TextScale, type UiPersonalization } from "../../../lib/ThemeContext";
+import { DEFAULT_UI_PERSONALIZATION, THEME_PRESET_DEFINITIONS, UI_PRESETS, resolveTheme, type AccentIntensity, type BodyFont, type CardEmphasis, type ChartStyle, type DensityMode, type DisplayFont, type DisplayTextStyle, type GlowLevel, type PanelTint, type RadiusMode, type SidebarStyle, type SurfaceStyle, type TextScale, type UiPersonalization } from "../../../lib/ThemeContext";
 import { ACCENT_TOKENS, SUPPORTED_ACCENTS } from "../../../lib/themePresets";
 import { BODY_FONT_OPTIONS, DISPLAY_FONT_OPTIONS, DISPLAY_TEXT_STYLE_OPTIONS, TEXT_SCALE_OPTIONS } from "../../../lib/typographyConfig";
 import { Button } from "../ui/Button";
@@ -244,14 +244,17 @@ export default function ThemeStudioControls({ ui, onUpdate, onApplyPreset, onApp
         <div className="themed-surface-subtle settings-card p-4 space-y-3">
           <p className="text-sm font-medium">Classic defaults</p>
           <div className="grid grid-cols-2 gap-2">
-            {(["Stock Clean", "AI Minimal"] as const).map((name) => {
-              const preset = UI_PRESETS[name];
-              return <button key={name} type="button" className="selectable-card rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition" onClick={() => onApplyPreset(name)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{preset.bodyFont} · {preset.displayFont}</p></button>;
+            {THEME_PRESET_DEFINITIONS.filter((preset) => preset.id === "stock-clean" || preset.id === "ai-minimal").map((definition) => {
+              const preset = UI_PRESETS[definition.id];
+              return <button key={definition.id} type="button" className="selectable-card rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition" onClick={() => onApplyPreset(definition.id)}><p className="font-semibold">{definition.name}</p><p className="text-[var(--muted)]">{preset.bodyFont} - {preset.displayFont}</p></button>;
             })}
           </div>
           <p className="text-sm font-medium">Curated presets</p>
           <div className="grid grid-cols-2 gap-2">
-            {Object.entries(UI_PRESETS).filter(([name]) => name !== "Stock Clean" && name !== "AI Minimal").map(([name, preset]) => <button key={name} type="button" className="selectable-card rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition" onClick={() => onApplyPreset(name)}><p className="font-semibold">{name}</p><p className="text-[var(--muted)]">{preset.accent} · {preset.surfaceStyle}</p></button>)}
+            {THEME_PRESET_DEFINITIONS.filter((preset) => preset.id !== "stock-clean" && preset.id !== "ai-minimal").map((definition) => {
+              const preset = UI_PRESETS[definition.id];
+              return <button key={definition.id} type="button" className="selectable-card rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-2 text-left text-xs transition" onClick={() => onApplyPreset(definition.id)}><p className="font-semibold">{definition.name}</p><p className="text-[var(--muted)]">{preset.accent} - {preset.surfaceStyle}</p></button>;
+            })}
           </div>
         </div>
       </div>

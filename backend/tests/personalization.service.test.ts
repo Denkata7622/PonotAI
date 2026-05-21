@@ -43,7 +43,7 @@ test("personalization patch accepts every real preset ID and rejects invalid inp
   assert.equal(invalid.ok, false);
   assert.equal(invalid.ok ? "" : invalid.code, "INVALID_THEME_PRESET_ID");
 
-  const unknownField = normalizePersonalizationPatch({ themePresetId: "Cyber Grid", displayName: "drift" }, current);
+  const unknownField = normalizePersonalizationPatch({ themePresetId: "cyber-grid", displayName: "drift" }, current);
   assert.equal(unknownField.ok, false);
   assert.equal(unknownField.ok ? "" : unknownField.code, "INVALID_PERSONALIZATION_PATCH");
 
@@ -55,19 +55,19 @@ test("personalization patch accepts every real preset ID and rejects invalid inp
 test("personalization recommendations use only registered preset IDs", () => {
   const recommendations = buildPersonalizationRecommendations({
     user: { ...baseUser, recommendationMode: "mostly_discovery", energyPreference: "more_energetic" },
-    currentThemePresetId: "AI Minimal",
+    currentThemePresetId: "ai-minimal",
   });
   assert.ok(recommendations.length >= 3);
   for (const recommendation of recommendations) {
     if (recommendation.kind === "theme") {
       assert.ok(isValidThemePresetId(recommendation.presetId), `${recommendation.presetId} should be valid`);
-      assert.notEqual(recommendation.presetId, "AI Minimal");
+      assert.notEqual(recommendation.presetId, "ai-minimal");
     }
   }
 });
 
 test("theme preset catalog has unique stable IDs", () => {
   assert.equal(new Set(THEME_PRESET_IDS).size, THEME_PRESET_IDS.length);
-  assert.ok(THEME_PRESET_IDS.includes("Stock Clean"));
-  assert.ok(THEME_PRESET_IDS.includes("Organic Signal"));
+  assert.ok(THEME_PRESET_IDS.includes("stock-clean"));
+  assert.ok(THEME_PRESET_IDS.includes("organic-signal"));
 });

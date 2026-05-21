@@ -53,7 +53,6 @@ export async function GET(): Promise<Response> {
       message: publicStatus.message,
       env: {
         NEXT_PUBLIC_API_BASE_URL: envPresence("NEXT_PUBLIC_API_BASE_URL"),
-        NEXT_PUBLIC_API_URL: envPresence("NEXT_PUBLIC_API_URL"),
       },
     },
     serverRuntime: {

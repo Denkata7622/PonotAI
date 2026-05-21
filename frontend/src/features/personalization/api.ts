@@ -1,5 +1,5 @@
 import { apiFetch } from "../../lib/apiFetch";
-import { isValidThemePresetId, type ThemePresetId } from "../../../lib/ThemeContext";
+import { normalizeThemePresetId, type ThemePresetId } from "../../../lib/ThemeContext";
 
 export type PersonalizationPreferences = {
   themePresetId: ThemePresetId | null;
@@ -77,7 +77,7 @@ function normalizePreferences(value: unknown): PersonalizationPreferences {
   }
   const candidate = value as { themePresetId?: unknown; updatedAt?: unknown };
   return {
-    themePresetId: isValidThemePresetId(candidate.themePresetId) ? candidate.themePresetId : null,
+    themePresetId: normalizeThemePresetId(candidate.themePresetId),
     updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : undefined,
   };
 }
@@ -89,7 +89,7 @@ function normalizeRecommendation(value: unknown): PersonalizationRecommendation 
     return null;
   }
   if (!["theme", "layout", "content", "setting"].includes(candidate.kind)) return null;
-  const presetId = isValidThemePresetId(candidate.presetId) ? candidate.presetId : undefined;
+  const presetId = normalizeThemePresetId(candidate.presetId) ?? undefined;
   if (candidate.kind === "theme" && !presetId) return null;
   const action = candidate.action && typeof candidate.action === "object" && typeof candidate.action.type === "string" && typeof candidate.action.label === "string"
     && (candidate.action.type === "open_settings" || candidate.action.type === "apply_theme_preset")
@@ -113,9 +113,7 @@ function normalizeRecommendation(value: unknown): PersonalizationRecommendation 
 }
 
 export function resolveThemeRecommendationPresetId(recommendation: PersonalizationRecommendation): ThemePresetId | null {
-  return recommendation.kind === "theme" && isValidThemePresetId(recommendation.presetId)
-    ? recommendation.presetId
-    : null;
+  return recommendation.kind === "theme" ? normalizeThemePresetId(recommendation.presetId) : null;
 }
 
 export async function getPersonalizationPreferences(): Promise<PersonalizationResponse> {
@@ -128,7 +126,7 @@ export async function getPersonalizationPreferences(): Promise<PersonalizationRe
   const data = payload as { preferences?: unknown; source?: unknown };
   return {
     ok: true,
-    preferences: normalizePreferences(data.preferences),
+    preferences: normalizePreferences(data.preferences ?? { themePresetId: (data as { themePresetId?: unknown }).themePresetId }),
     source: data.source === "database" || data.source === "memory" || data.source === "local-default" ? data.source : "local-default",
   };
 }
@@ -146,7 +144,7 @@ export async function savePersonalizationPreferences(preferences: Personalizatio
   const data = payload as { preferences?: unknown; source?: unknown };
   return {
     ok: true,
-    preferences: normalizePreferences(data.preferences),
+    preferences: normalizePreferences(data.preferences ?? { themePresetId: (data as { themePresetId?: unknown }).themePresetId }),
     source: data.source === "database" || data.source === "memory" || data.source === "local-default" ? data.source : "database",
   };
 }

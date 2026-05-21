@@ -12,7 +12,7 @@ const SETUP_MESSAGE = `Backend API URL is not configured for backend-powered fea
 const INVALID_PROTOCOL_MESSAGE = `Backend API URL must include http:// or https://. Expected shape: ${EXPECTED_BACKEND_URL_EXAMPLE}`;
 
 export type ApiConfigErrorCode = "api-config-missing" | "api-config-invalid";
-export type ApiConfigSource = "NEXT_PUBLIC_API_BASE_URL" | "NEXT_PUBLIC_API_URL" | "TRACKLY_API_BASE_URL" | "localhost-default" | "missing";
+export type ApiConfigSource = "NEXT_PUBLIC_API_BASE_URL" | "TRACKLY_API_BASE_URL" | "localhost-default" | "missing";
 
 export class ApiConfigError extends Error {
   code: ApiConfigErrorCode;
@@ -129,8 +129,16 @@ function currentHostIsLocalhost(): boolean {
 function configuredPublicEnvBaseUrl(): { value: string; source: ApiConfigSource } | null {
   const primary = stripWrappingQuotes(process.env.NEXT_PUBLIC_API_BASE_URL);
   if (primary) return { value: primary, source: "NEXT_PUBLIC_API_BASE_URL" };
-  const legacy = stripWrappingQuotes(process.env.NEXT_PUBLIC_API_URL);
-  if (legacy) return { value: legacy, source: "NEXT_PUBLIC_API_URL" };
+  return null;
+}
+
+function configuredCurrentRuntimeEnvBaseUrl(): { value: string; source: ApiConfigSource } | null {
+  const publicValue = configuredPublicEnvBaseUrl();
+  if (publicValue) return publicValue;
+  if (typeof window === "undefined") {
+    const runtime = stripWrappingQuotes(process.env.TRACKLY_API_BASE_URL);
+    if (runtime) return { value: runtime, source: "TRACKLY_API_BASE_URL" };
+  }
   return null;
 }
 
@@ -195,7 +203,7 @@ export function getApiSetupMessage(): string {
 }
 
 export function getApiConfigStatus(): ApiConfigStatus {
-  const envBaseUrl = configuredPublicEnvBaseUrl();
+  const envBaseUrl = configuredCurrentRuntimeEnvBaseUrl();
   const isProduction = process.env.NODE_ENV === "production";
   const isLocalhost = currentHostIsLocalhost();
   return statusFromEnv(envBaseUrl, {

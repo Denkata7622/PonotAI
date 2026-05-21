@@ -17,7 +17,7 @@ test("personalization routes support guest defaults and recommendations without 
     assert.equal(preferences.source, "local-default");
     assert.equal(preferences.preferences.themePresetId, null);
 
-    const recommendationsResponse = await fetch(`${running.baseUrl}/api/personalization/recommendations?currentThemePresetId=AI%20Minimal`);
+    const recommendationsResponse = await fetch(`${running.baseUrl}/api/personalization/recommendations?currentThemePresetId=ai-minimal`);
     assert.equal(recommendationsResponse.status, 200);
     const recommendationsBody = (await recommendationsResponse.json()) as {
       ok: boolean;
@@ -29,12 +29,12 @@ test("personalization routes support guest defaults and recommendations without 
       assert.equal(typeof recommendation.id, "string");
       if (recommendation.kind === "theme") {
         assert.ok(isValidThemePresetId(recommendation.presetId));
-        assert.notEqual(recommendation.presetId, "AI Minimal");
+        assert.notEqual(recommendation.presetId, "ai-minimal");
       }
     }
 
     const invalidResponse = await fetch(`${running.baseUrl}/api/personalization/recommendations?currentThemePresetId=Made%20Up%20Preset`);
-    assert.equal(invalidResponse.status, 400);
+    assert.equal(invalidResponse.status, 422);
 
     const malformedPatch = await fetch(`${running.baseUrl}/api/personalization`, {
       method: "PATCH",
@@ -49,7 +49,7 @@ test("personalization routes support guest defaults and recommendations without 
     const unauthenticatedPatch = await fetch(`${running.baseUrl}/api/personalization`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ themePresetId: "Cyber Grid" }),
+      body: JSON.stringify({ themePresetId: "cyber-grid" }),
     });
     assert.equal(unauthenticatedPatch.status, 401);
   } finally {

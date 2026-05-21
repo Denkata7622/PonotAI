@@ -1,5 +1,16 @@
 # Turrex
 
+## Current Setup Quick Reference
+
+- Use Node.js 22 and npm 10+ for both services.
+- Backend env belongs in `backend/.env`: `DATABASE_URL`, `TEST_DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGINS`, and provider keys.
+- Frontend env belongs in `frontend/.env.local` or the frontend Railway service: `NEXT_PUBLIC_API_BASE_URL` for browser calls, optional `TRACKLY_API_BASE_URL` for server-side fallback, and downloader vars such as `YTDLP_PATH`, `FFMPEG_LOCATION`, `YTDLP_CACHE_DIR`, `YTDLP_CACHE_DISABLED`, `YTDLP_TIMEOUT_MS`, `YTDLP_SLEEP_INTERVAL`, and `YTDLP_MAX_SLEEP_INTERVAL`.
+- Do not use legacy `NEXT_PUBLIC_API_URL` or `TRACKLY_API_URL`; they are intentionally unsupported.
+- Run `npm run doctor:download` from the repo root to check local `yt-dlp`, `ffmpeg`, `ffprobe`, temp, and cache access.
+- Backend tests require a disposable Postgres database through `TEST_DATABASE_URL`; the harness refuses to use production `DATABASE_URL` during `NODE_ENV=test`.
+- Theme personalization uses 10 canonical preset IDs: `stock-clean`, `ai-minimal`, `cyber-grid`, `neon-circuit`, `urban-poster`, `velvet-script`, `steel-console`, `arcade-pulse`, `noir-gothic`, and `organic-signal`.
+- Public cloud YouTube downloads may fail with datacenter IP blocks even when tools are installed. For reliable exports, run locally/private network or provide direct audio files/URLs.
+
 Turrex е уеб приложение за разпознаване на музика от **аудио** или **изображение**, което показва легални линкове за слушане и възпроизвежда YouTube съдържание чрез **видим embedded IFrame player**.
 
 ## Какво прави проектът
@@ -72,7 +83,7 @@ Frontend queue -> resolve videoId -> YouTube IFrame API -> visible embed player
 ## Локално пускане
 
 ### Изисквания
-- Node.js 20+
+- Node.js 22
 - npm 10+
 
 ### Инсталация (root)
@@ -95,6 +106,7 @@ npm run dev
 - `npm run lint` — frontend lint
 - `npm run test` — тестове
 - `npm run check:backend` — backend type/test checks
+- `npm run doctor:download` — checks local yt-dlp, ffmpeg, ffprobe, temp, and cache access
 
 
 ## Стабилно тестване (root)
@@ -204,6 +216,13 @@ TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/ponotai_test?sch
 TEST_PERSISTENCE_MODE=postgres
 JWT_SECRET=test-secret
 AUTH_BYPASS_EMAIL_VERIFICATION=true
+```
+
+Create the local database with Docker Compose or psql:
+
+```bash
+docker compose -f docker-compose.test.yml up -d
+psql -U postgres -f scripts/create-test-db.sql
 ```
 
 Then run:

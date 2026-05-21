@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle, Download, Info, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
 import { Card } from "@/src/components/ui/Card";
 import { Input } from "@/src/components/ui/Input";
@@ -276,9 +276,17 @@ function toLocalExportSong(song: ExportSong, idx: number): LocalExportSong {
     selectedCoverUrl: song.selectedCoverUrl,
     coverUrl: song.coverUrl,
     albumArtUrl: song.albumArtUrl,
+    platformLinks: song.platformLinks as Record<string, unknown> | undefined,
     youtubeVideoId,
     youtubeUrl: song.youtubeUrl || getPlatformYoutubeCandidate(song.platformLinks),
     durationSec: song.durationSec,
+    metadata: {
+      platformLinks: song.platformLinks ?? {},
+      coverCandidates: song.coverCandidates ?? null,
+      rawText: song.rawText ?? null,
+      sourceImageIds: song.sourceImageIds ?? [],
+      selectedCoverUrl: song.selectedCoverUrl ?? null,
+    },
   };
 }
 

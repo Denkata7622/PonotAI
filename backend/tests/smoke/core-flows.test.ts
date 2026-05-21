@@ -109,19 +109,19 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
       headers: { "content-type": "application/json", authorization: `Bearer ${sharingToken}` },
       body: JSON.stringify({ themePresetId: "Made Up Preset" }),
     });
-    assert.equal(invalidPersonalizationResponse.status, 400);
+    assert.equal(invalidPersonalizationResponse.status, 422);
 
     const savePersonalizationResponse = await fetch(`${running.baseUrl}/api/personalization`, {
       method: "PATCH",
       headers: { "content-type": "application/json", authorization: `Bearer ${sharingToken}` },
-      body: JSON.stringify({ themePresetId: "Organic Signal" }),
+      body: JSON.stringify({ themePresetId: "organic-signal" }),
     });
     assert.equal(savePersonalizationResponse.status, 200);
     const savedPersonalization = (await savePersonalizationResponse.json()) as {
       preferences: { themePresetId?: string | null };
       source: string;
     };
-    assert.equal(savedPersonalization.preferences.themePresetId, "Organic Signal");
+    assert.equal(savedPersonalization.preferences.themePresetId, "organic-signal");
     assert.equal(savedPersonalization.source, "database");
 
     const invalidPersonalizationAfterSaveResponse = await fetch(`${running.baseUrl}/api/personalization`, {
@@ -129,7 +129,7 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
       headers: { "content-type": "application/json", authorization: `Bearer ${sharingToken}` },
       body: JSON.stringify({ themePresetId: "Made Up Preset" }),
     });
-    assert.equal(invalidPersonalizationAfterSaveResponse.status, 400);
+    assert.equal(invalidPersonalizationAfterSaveResponse.status, 422);
 
     const loadPersonalizationResponse = await fetch(`${running.baseUrl}/api/personalization`, {
       headers: { authorization: `Bearer ${sharingToken}` },
@@ -138,7 +138,7 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
     const loadedPersonalization = (await loadPersonalizationResponse.json()) as {
       preferences: { themePresetId?: string | null };
     };
-    assert.equal(loadedPersonalization.preferences.themePresetId, "Organic Signal");
+    assert.equal(loadedPersonalization.preferences.themePresetId, "organic-signal");
 
     const reloginResponse = await fetch(`${running.baseUrl}/api/auth/login`, {
       method: "POST",
@@ -160,7 +160,7 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
     assert.equal(reloginBody.user.recommendationMode, "mostly_discovery");
     assert.equal(reloginBody.user.repeatedArtistTolerance, "higher");
     assert.equal(reloginBody.user.energyPreference, "more_energetic");
-    assert.equal(reloginBody.user.themePresetId, "Organic Signal");
+    assert.equal(reloginBody.user.themePresetId, "organic-signal");
 
     const invalidLoginResponse = await fetch(`${running.baseUrl}/api/auth/login`, {
       method: "POST",
@@ -179,9 +179,9 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
     const reloadedPersonalization = (await reloadedPersonalizationResponse.json()) as {
       preferences: { themePresetId?: string | null };
     };
-    assert.equal(reloadedPersonalization.preferences.themePresetId, "Organic Signal");
+    assert.equal(reloadedPersonalization.preferences.themePresetId, "organic-signal");
 
-    const recommendationsResponse = await fetch(`${running.baseUrl}/api/personalization/recommendations?currentThemePresetId=Organic%20Signal`, {
+    const recommendationsResponse = await fetch(`${running.baseUrl}/api/personalization/recommendations?currentThemePresetId=organic-signal`, {
       headers: { authorization: `Bearer ${reloginBody.token}` },
     });
     assert.equal(recommendationsResponse.status, 200);
@@ -191,7 +191,7 @@ test("backend smoke: startup and core flows by persistence mode", async () => {
     assert.ok(recommendationsBody.recommendations.length > 0);
     for (const recommendation of recommendationsBody.recommendations) {
       if (recommendation.kind === "theme") {
-        assert.ok(["Stock Clean", "AI Minimal", "Cyber Grid", "Neon Circuit", "Urban Poster", "Velvet Script", "Steel Console", "Arcade Pulse", "Noir Gothic", "Organic Signal"].includes(recommendation.presetId ?? ""));
+        assert.ok(["stock-clean", "ai-minimal", "cyber-grid", "neon-circuit", "urban-poster", "velvet-script", "steel-console", "arcade-pulse", "noir-gothic", "organic-signal"].includes(recommendation.presetId ?? ""));
       }
     }
 

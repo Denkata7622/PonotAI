@@ -61,9 +61,9 @@ test("ui presets define expressive typography for all templates", () => {
 });
 
 test("creative presets are registered", () => {
-  assert.equal(UI_PRESETS["Stock Clean"]?.theme, "light");
-  assert.equal(UI_PRESETS["Cyber Grid"]?.displayFont, "orbitron");
-  assert.equal(UI_PRESETS["Noir Gothic"]?.displayFont, "pirata-one");
+  assert.equal(UI_PRESETS["stock-clean"]?.theme, "light");
+  assert.equal(UI_PRESETS["cyber-grid"]?.displayFont, "orbitron");
+  assert.equal(UI_PRESETS["noir-gothic"]?.displayFont, "pirata-one");
 });
 
 test("theme preset registry has unique real IDs and names", () => {
@@ -85,7 +85,7 @@ test("theme preset registry has unique real IDs and names", () => {
   ]);
   assert.deepEqual(BACKEND_THEME_PRESET_IDS, ids);
   for (const preset of THEME_PRESET_DEFINITIONS) {
-    assert.equal(preset.id, preset.name);
+    assert.match(preset.id, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
     assert.ok(isValidThemePresetId(preset.id));
     assert.deepEqual(UI_PRESETS[preset.id], preset.personalization);
     assert.equal(findMatchingThemePresetId(preset.personalization), preset.id);
@@ -124,7 +124,7 @@ test("theme preset cards render directly from registry metadata", () => {
       };
     };
     const tokens = getThemePreviewTokens(preset);
-    assert.equal(element.props.id, `theme-preset-${preset.id.replace(/\s+/g, "-").toLowerCase()}`);
+    assert.equal(element.props.id, `theme-preset-${preset.id}`);
     assert.equal(element.props["aria-label"], `Preview ${preset.name} theme preset`);
     assert.ok(element.props.style.background.includes(tokens.background));
     assert.equal(element.props.style.color, tokens.text);

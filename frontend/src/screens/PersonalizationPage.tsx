@@ -12,8 +12,10 @@ import {
   DEFAULT_UI_PERSONALIZATION,
   THEME_PRESET_DEFINITIONS,
   findMatchingThemePresetId,
+  getThemeDisplayName,
   getThemePresetById,
   isValidThemePresetId,
+  normalizeThemePresetId,
   themeStorageKeys,
   useTheme,
   type ThemePresetId,
@@ -48,7 +50,11 @@ function getTopCounts(values: string[], limit = 3): string[] {
 function readStoredThemePresetId(): ThemePresetId | null {
   if (typeof window === "undefined") return null;
   const stored = window.localStorage.getItem(themeStorageKeys.presetId);
-  return isValidThemePresetId(stored) ? stored : null;
+  const normalized = normalizeThemePresetId(stored);
+  if (stored && normalized && stored !== normalized) {
+    window.localStorage.setItem(themeStorageKeys.presetId, normalized);
+  }
+  return normalized;
 }
 
 function writeStoredThemePresetId(presetId: ThemePresetId | null) {
@@ -240,9 +246,7 @@ export default function PersonalizationPage() {
   const currentThemeSummary = `${theme} · ${accent} · ${surfaceStyle}`;
   const selectedThemePreset = selectedThemePresetId ? getThemePresetById(selectedThemePresetId) : null;
   const savedThemePreset = savedThemePresetId ? getThemePresetById(savedThemePresetId) : null;
-  const hasUnsavedThemePreset = isAuthenticated
-    ? selectedThemePresetId !== savedThemePresetId
-    : false;
+  const hasUnsavedThemePreset = selectedThemePresetId !== savedThemePresetId;
   const visibleRecommendations = recommendations.filter((item) => !dismissedRecommendationIds.has(item.id));
 
   const musicPackCards = useMemo<MusicPackCard[]>(() => {
@@ -336,11 +340,11 @@ export default function PersonalizationPage() {
     }
   }, [profile.id]);
 
-  const applyThemePreset = useCallback((presetId: ThemePresetId, options: { markLocalSaved?: boolean; notice?: string } = {}) => {
+  const activateThemePreset = useCallback((presetId: ThemePresetId, options: { markLocalSaved?: boolean; notice?: string } = {}) => {
     const preset = getThemePresetById(presetId);
     if (!preset) return;
     const resolvedPresetId = preset.id as ThemePresetId;
-    themeApi.applyPersonalization(preset.personalization);
+    themeApi.applyActivePersonalization(preset.personalization);
     setSelectedThemePresetId(resolvedPresetId);
     writeStoredThemePresetId(resolvedPresetId);
     setPersonalizationError(null);
@@ -349,6 +353,19 @@ export default function PersonalizationPage() {
       setSavedThemePresetId(resolvedPresetId);
       setPersonalizationSource("local-default");
     }
+  }, [themeApi]);
+
+  const previewThemePreset = useCallback((presetId: ThemePresetId, notice?: string) => {
+    const preset = getThemePresetById(presetId);
+    if (!preset) return;
+    if (!themeApi.isPreviewSessionActive) {
+      themeApi.startPreviewSession("personalization", preset.personalization);
+    } else {
+      themeApi.applyPersonalization(preset.personalization);
+    }
+    setSelectedThemePresetId(preset.id as ThemePresetId);
+    setPersonalizationError(null);
+    setPersonalizationNotice(notice ?? null);
   }, [themeApi]);
 
   const syncLocalThemePresetSelection = useCallback(() => {
@@ -370,7 +387,7 @@ export default function PersonalizationPage() {
       const payload = await getPersonalizationPreferences();
       setPersonalizationSource(payload.source);
       if (payload.preferences.themePresetId) {
-        applyThemePreset(payload.preferences.themePresetId, {
+        activateThemePreset(payload.preferences.themePresetId, {
           notice: "Loaded your saved account theme.",
         });
         setSavedThemePresetId(payload.preferences.themePresetId);
@@ -385,7 +402,7 @@ export default function PersonalizationPage() {
     } finally {
       setPersonalizationLoading(false);
     }
-  }, [applyThemePreset, isAuthenticated, isUiHydrated, syncLocalThemePresetSelection]);
+  }, [activateThemePreset, isAuthenticated, isUiHydrated, syncLocalThemePresetSelection]);
 
   const loadRecommendations = useCallback(async () => {
     setRecommendationsLoading(true);
@@ -434,17 +451,21 @@ export default function PersonalizationPage() {
     setPersonalizationError(null);
     setPersonalizationNotice(null);
     try {
+      const selectedDisplayName = getThemeDisplayName(selectedThemePresetId);
       if (!isAuthenticated) {
+        if (themeApi.isPreviewSessionActive) themeApi.applyPreviewSession();
         writeStoredThemePresetId(selectedThemePresetId);
         setSavedThemePresetId(selectedThemePresetId);
         setPersonalizationSource("local-default");
-        setPersonalizationNotice("Saved locally on this device. Sign in to sync this preset.");
+        setPersonalizationNotice(`Saved ${selectedDisplayName} locally on this device. Sign in to sync this preset.`);
         return;
       }
       const saved = await savePersonalizationPreferences({ themePresetId: selectedThemePresetId });
+      if (themeApi.isPreviewSessionActive) themeApi.applyPreviewSession();
+      writeStoredThemePresetId(saved.preferences.themePresetId);
       setSavedThemePresetId(saved.preferences.themePresetId);
       setPersonalizationSource(saved.source);
-      setPersonalizationNotice(`Saved ${selectedThemePresetId} to your account.`);
+      setPersonalizationNotice(`Saved ${selectedDisplayName} to your account.`);
     } catch (error) {
       setPersonalizationError((error as Error).message || "Could not save personalization settings.");
     } finally {
@@ -454,36 +475,43 @@ export default function PersonalizationPage() {
 
   function handleThemePresetSelect(presetId: string) {
     if (!isValidThemePresetId(presetId)) return;
-    applyThemePreset(presetId, {
-      markLocalSaved: !isAuthenticated,
-      notice: isAuthenticated ? `${presetId} is previewing locally. Save to sync it to your account.` : `${presetId} was saved locally on this device.`,
-    });
+    const displayName = getThemeDisplayName(presetId);
+    previewThemePreset(
+      presetId,
+      isAuthenticated
+        ? `${displayName} is previewing. Save as active theme to sync it to your account.`
+        : `${displayName} is previewing. Save as active theme to keep it on this device.`,
+    );
   }
 
   function handleRevertThemePreset() {
     if (!savedThemePresetId) return;
-    applyThemePreset(savedThemePresetId, { notice: `Reverted to saved preset ${savedThemePresetId}.` });
+    activateThemePreset(savedThemePresetId, { notice: `Reverted to saved preset ${getThemeDisplayName(savedThemePresetId)}.` });
   }
 
   function handleDefaultThemeReset() {
-    themeApi.applyPersonalization(DEFAULT_UI_PERSONALIZATION);
+    themeApi.applyActivePersonalization(DEFAULT_UI_PERSONALIZATION);
     setSelectedThemePresetId(null);
     writeStoredThemePresetId(null);
+    setSavedThemePresetId(null);
     setPersonalizationNotice("Reset to the app default theme settings. Choose a preset to save a named preset again.");
   }
 
   function handleRecommendationApply(recommendation: PersonalizationRecommendation) {
     const presetId = resolveThemeRecommendationPresetId(recommendation);
     if (!presetId) return;
+    const displayName = getThemeDisplayName(presetId);
     if (presetId === selectedThemePresetId) {
-      setRecommendationNotice(`${presetId} is already selected.`);
+      setRecommendationNotice(`${displayName} is already selected.`);
       return;
     }
-    applyThemePreset(presetId, {
-      markLocalSaved: !isAuthenticated,
-      notice: isAuthenticated ? `${presetId} recommendation applied locally. Save to keep it on your account.` : `${presetId} recommendation saved locally.`,
-    });
-    setRecommendationNotice(`${presetId} is now selected.`);
+    previewThemePreset(
+      presetId,
+      isAuthenticated
+        ? `${displayName} recommendation is previewing. Save as active theme to keep it on your account.`
+        : `${displayName} recommendation is previewing. Save as active theme to keep it locally.`,
+    );
+    setRecommendationNotice(`${displayName} is now previewing.`);
   }
 
   function handleRecommendationDismiss(recommendationId: string) {
@@ -810,7 +838,7 @@ export default function PersonalizationPage() {
             <Sparkles className="h-5 w-5 text-[var(--accent)]" />
           </div>
           <p className="text-sm text-[var(--muted)]">
-            These cards are generated from the real Turrex preset registry. Selecting one applies it locally immediately; saving syncs it to your account when you are signed in.
+            These cards are generated from the real Turrex preset registry. Selecting one opens a preview; saving makes it the active theme.
           </p>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-surface)] p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -858,11 +886,11 @@ export default function PersonalizationPage() {
           </div>
 
           <div className="flex flex-wrap gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
-            <Button variant="primary" size="sm" onClick={() => void handleSaveThemePreset()} disabled={personalizationSaving || !selectedThemePresetId || (isAuthenticated && !hasUnsavedThemePreset)}>
-              <span className="inline-flex items-center gap-2"><Save className="h-4 w-4" />{personalizationSaving ? "Saving…" : isAuthenticated ? "Save to account" : "Save locally"}</span>
+            <Button variant="primary" size="sm" onClick={() => void handleSaveThemePreset()} disabled={personalizationSaving || !selectedThemePresetId || !hasUnsavedThemePreset}>
+              <span className="inline-flex items-center gap-2"><Save className="h-4 w-4" />{personalizationSaving ? "Saving..." : "Save as active theme"}</span>
             </Button>
             <Button variant="secondary" size="sm" onClick={handleRevertThemePreset} disabled={!savedThemePresetId || !hasUnsavedThemePreset || personalizationSaving}>
-              <span className="inline-flex items-center gap-2"><RotateCcw className="h-4 w-4" />Revert saved</span>
+              <span className="inline-flex items-center gap-2"><RotateCcw className="h-4 w-4" />Undo unsaved changes</span>
             </Button>
             <Button variant="ghost" size="sm" onClick={handleDefaultThemeReset} disabled={personalizationSaving}>
               Reset local default

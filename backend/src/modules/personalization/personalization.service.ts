@@ -1,5 +1,11 @@
 import type { UserRecord } from "../../db/authStore";
-import { isValidThemePresetId, THEME_PRESET_IDS, type ThemePresetId } from "./themePresetCatalog";
+import {
+  getThemePresetDisplayName,
+  isValidThemePresetId,
+  normalizeThemePresetId,
+  THEME_PRESET_IDS,
+  type ThemePresetId,
+} from "./themePresetCatalog";
 
 export type PersonalizationPreferences = {
   themePresetId: ThemePresetId | null;
@@ -27,11 +33,11 @@ export type PersonalizationPatchResult =
 
 const allowedPatchKeys = new Set(["themePresetId"]);
 
-const energeticPresetOrder: ThemePresetId[] = ["Arcade Pulse", "Neon Circuit", "Cyber Grid"];
-const calmerPresetOrder: ThemePresetId[] = ["Stock Clean", "Organic Signal", "AI Minimal"];
-const discoveryPresetOrder: ThemePresetId[] = ["Neon Circuit", "Urban Poster", "Cyber Grid"];
-const familiarPresetOrder: ThemePresetId[] = ["AI Minimal", "Stock Clean", "Organic Signal"];
-const balancedPresetOrder: ThemePresetId[] = ["Organic Signal", "Cyber Grid", "Urban Poster"];
+const energeticPresetOrder: ThemePresetId[] = ["arcade-pulse", "neon-circuit", "cyber-grid"];
+const calmerPresetOrder: ThemePresetId[] = ["stock-clean", "organic-signal", "ai-minimal"];
+const discoveryPresetOrder: ThemePresetId[] = ["neon-circuit", "urban-poster", "cyber-grid"];
+const familiarPresetOrder: ThemePresetId[] = ["ai-minimal", "stock-clean", "organic-signal"];
+const balancedPresetOrder: ThemePresetId[] = ["organic-signal", "cyber-grid", "urban-poster"];
 
 function recommendationIdForPreset(presetId: ThemePresetId): string {
   return `theme:${presetId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`;
@@ -55,12 +61,12 @@ function describeThemeReason(presetId: ThemePresetId, user: UserRecord | null): 
   if (user.energyPreference === "calmer") return "Matches your calmer recommendation preference.";
   if (user.recommendationMode === "mostly_discovery") return "Discovery-forward visual direction for your recommendation mode.";
   if (user.recommendationMode === "safe_familiar") return "Stable, familiar visual direction for your recommendation mode.";
-  return `Balanced recommendation using your current settings and the ${presetId} preset.`;
+  return `Balanced recommendation using your current settings and the ${getThemePresetDisplayName(presetId)} preset.`;
 }
 
 export function toPersonalizationPreferences(user: Pick<UserRecord, "themePresetId" | "updatedAt" | "createdAt"> | null): PersonalizationPreferences {
   return {
-    themePresetId: isValidThemePresetId(user?.themePresetId) ? user.themePresetId : null,
+    themePresetId: normalizeThemePresetId(user?.themePresetId),
     updatedAt: user?.updatedAt ?? user?.createdAt,
   };
 }
@@ -88,26 +94,23 @@ export function normalizePersonalizationPatch(input: unknown, current: Personali
   if (body.themePresetId === null) {
     return { ok: true, preferences: { ...current, themePresetId: null } };
   }
-  if (!isValidThemePresetId(body.themePresetId)) {
+  const normalizedThemePresetId = normalizeThemePresetId(body.themePresetId);
+  if (!normalizedThemePresetId) {
     return {
       ok: false,
       code: "INVALID_THEME_PRESET_ID",
       message: "themePresetId must be one of the registered Turrex theme presets.",
     };
   }
-  return { ok: true, preferences: { ...current, themePresetId: body.themePresetId } };
+  return { ok: true, preferences: { ...current, themePresetId: normalizedThemePresetId } };
 }
 
 export function buildPersonalizationRecommendations(input: {
   user: UserRecord | null;
   currentThemePresetId?: unknown;
 }): PersonalizationRecommendation[] {
-  const currentThemePresetId = isValidThemePresetId(input.currentThemePresetId)
-    ? input.currentThemePresetId
-    : null;
-  const savedThemePresetId = isValidThemePresetId(input.user?.themePresetId)
-    ? input.user.themePresetId
-    : null;
+  const currentThemePresetId = normalizeThemePresetId(input.currentThemePresetId);
+  const savedThemePresetId = normalizeThemePresetId(input.user?.themePresetId);
   const excluded = new Set<ThemePresetId>([currentThemePresetId, savedThemePresetId].filter(Boolean) as ThemePresetId[]);
 
   const ordered = dedupePresetIds([...getPresetOrderForUser(input.user), ...THEME_PRESET_IDS]);
@@ -117,12 +120,12 @@ export function buildPersonalizationRecommendations(input: {
     .map((presetId, index): PersonalizationRecommendation => ({
       id: recommendationIdForPreset(presetId),
       kind: "theme",
-      title: `Try ${presetId}`,
-      description: `${presetId} is a real theme preset already available in Turrex.`,
+      title: `Try ${getThemePresetDisplayName(presetId)}`,
+      description: `${getThemePresetDisplayName(presetId)} is a real theme preset already available in Turrex.`,
       presetId,
       reason: describeThemeReason(presetId, input.user),
       confidence: Number((0.86 - index * 0.08).toFixed(2)),
-      action: { type: "apply_theme_preset", label: `Apply ${presetId}` },
+      action: { type: "apply_theme_preset", label: `Apply ${getThemePresetDisplayName(presetId)}` },
     }));
 
   const settingRecommendations: PersonalizationRecommendation[] = input.user && !input.user.recommendationDataSharingEnabled

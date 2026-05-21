@@ -12,6 +12,7 @@ export type LocalExportSong = {
   coverUrl?: string;
   selectedCoverUrl?: string;
   albumArtUrl?: string;
+  platformLinks?: Record<string, unknown>;
   youtubeVideoId?: string;
   youtubeUrl?: string;
   durationSec?: number;
@@ -29,6 +30,7 @@ export type LocalExportResultItem = {
   coverPath?: string;
   sourceUrl?: string;
   coverUrl?: string;
+  metadata?: Record<string, unknown>;
   youtubeVideoId?: string;
   youtubeUrl?: string;
   sourceAttempted?: "file" | "blob" | "direct-audio-url" | "youtube-id" | "youtube-url" | "youtube-query" | "none";
@@ -352,6 +354,11 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
     const directAudioUrl = sourceCandidates.find((candidate) => isLikelyAudioUrl(candidate) && !isYouTubePageUrl(candidate));
     const youtubeUrl = normalizeYoutubePageUrl(song.youtubeUrl) || sourceCandidates.map(normalizeYoutubePageUrl).find(Boolean);
 
+    const metadata = {
+      ...(song.metadata ?? {}),
+      ...(song.platformLinks ? { platformLinks: song.platformLinks } : {}),
+    };
+
     const item: LocalExportResultItem = {
       id: song.id,
       title: song.title,
@@ -362,6 +369,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
       youtubeUrl,
       sourceUrl,
       coverUrl,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       status: "skipped",
     };
 

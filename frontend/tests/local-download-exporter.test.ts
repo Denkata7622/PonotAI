@@ -88,6 +88,31 @@ test("direct mp3 URL fetches directly and does not use /api/download", async () 
   assert.equal(result.exportedCount, 1);
 });
 
+test("export manifest preserves imported metadata", async () => {
+  const result = await createLocalExportZip([
+    {
+      id: "meta",
+      title: "Meta Song",
+      artist: "Artist",
+      audioUrl: "https://cdn.example.test/song.mp3",
+      platformLinks: { youtube: "https://www.youtube.com/watch?v=abc123xyz_1", spotify: "https://open.spotify.com/track/test" },
+      metadata: { rawText: "Artist - Meta Song", selectedCoverUrl: "https://img.example.test/cover.jpg" },
+    },
+  ], undefined, {
+    fetcher: async () => audioResponse(),
+  });
+
+  const files = await listZipFiles(result.zipBlob);
+  const manifestPath = fileEnding(files, "/metadata/manifest.json");
+  assert.ok(manifestPath);
+  const manifest = JSON.parse(files.get(manifestPath) || "{}") as { items: Array<{ metadata?: Record<string, unknown> }> };
+  assert.equal((manifest.items[0]?.metadata as { rawText?: string } | undefined)?.rawText, "Artist - Meta Song");
+  assert.deepEqual((manifest.items[0]?.metadata as { platformLinks?: unknown } | undefined)?.platformLinks, {
+    youtube: "https://www.youtube.com/watch?v=abc123xyz_1",
+    spotify: "https://open.spotify.com/track/test",
+  });
+});
+
 test("YouTube page URL is not browser-fetched and invalid youtubeVideoId is not passed", async () => {
   let apiCalls = 0;
   const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {

@@ -6,7 +6,7 @@ import {
   normalizePersonalizationPatch,
   toPersonalizationPreferences,
 } from "./personalization.service";
-import { isValidThemePresetId } from "./themePresetCatalog";
+import { normalizeThemePresetId } from "./themePresetCatalog";
 
 const personalizationRouter = Router();
 
@@ -20,7 +20,7 @@ function validationResponse(
   res: Response,
   validation: { code: "INVALID_PERSONALIZATION_PATCH" | "INVALID_THEME_PRESET_ID"; message: string },
 ) {
-  res.status(400).json({
+  res.status(validation.code === "INVALID_THEME_PRESET_ID" ? 422 : 400).json({
     ok: false,
     code: validation.code,
     message: validation.message,
@@ -32,6 +32,7 @@ personalizationRouter.get("/", attachUserIfPresent, asyncHandler(async (req, res
     res.status(200).json({
       ok: true,
       preferences: toPersonalizationPreferences(null),
+      themePresetId: null,
       source: "local-default",
     });
     return;
@@ -47,6 +48,7 @@ personalizationRouter.get("/", attachUserIfPresent, asyncHandler(async (req, res
   res.status(200).json({
     ok: true,
     preferences,
+    themePresetId: preferences.themePresetId,
     source: preferences.themePresetId ? "database" : "local-default",
   });
 }));
@@ -72,9 +74,11 @@ personalizationRouter.patch("/", requireAuth, asyncHandler(async (req, res) => {
     return;
   }
 
+  const preferences = toPersonalizationPreferences(updated);
   res.status(200).json({
     ok: true,
-    preferences: toPersonalizationPreferences(updated),
+    preferences,
+    themePresetId: preferences.themePresetId,
     source: "database",
   });
 }));
@@ -83,8 +87,9 @@ personalizationRouter.get("/recommendations", attachUserIfPresent, asyncHandler(
   const currentThemePresetId = typeof req.query.currentThemePresetId === "string"
     ? req.query.currentThemePresetId
     : undefined;
+  const normalizedCurrentThemePresetId = normalizeThemePresetId(currentThemePresetId);
 
-  if (currentThemePresetId !== undefined && !isValidThemePresetId(currentThemePresetId)) {
+  if (currentThemePresetId !== undefined && !normalizedCurrentThemePresetId) {
     validationResponse(res, {
       code: "INVALID_THEME_PRESET_ID",
       message: "themePresetId must be one of the registered Turrex theme presets.",
@@ -93,7 +98,7 @@ personalizationRouter.get("/recommendations", attachUserIfPresent, asyncHandler(
   }
 
   const user = req.userId ? await findUserById(req.userId) : null;
-  const recommendations = buildPersonalizationRecommendations({ user, currentThemePresetId });
+  const recommendations = buildPersonalizationRecommendations({ user, currentThemePresetId: normalizedCurrentThemePresetId });
 
   res.status(200).json({
     ok: true,

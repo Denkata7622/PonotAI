@@ -10,11 +10,9 @@ import {
   requireApiBaseUrl,
 } from "../lib/apiConfig";
 
-function restoreEnv(snapshot: { base?: string; alt?: string; server?: string; node?: string }) {
+function restoreEnv(snapshot: { base?: string; server?: string; node?: string }) {
   if (snapshot.base === undefined) delete process.env.NEXT_PUBLIC_API_BASE_URL;
   else process.env.NEXT_PUBLIC_API_BASE_URL = snapshot.base;
-  if (snapshot.alt === undefined) delete process.env.NEXT_PUBLIC_API_URL;
-  else process.env.NEXT_PUBLIC_API_URL = snapshot.alt;
   if (snapshot.node === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = snapshot.node;
   if (snapshot.server === undefined) delete process.env.TRACKLY_API_BASE_URL;
@@ -24,12 +22,10 @@ function restoreEnv(snapshot: { base?: string; alt?: string; server?: string; no
 test("safe API config status does not throw when production env is missing", () => {
   const snapshot = {
     base: process.env.NEXT_PUBLIC_API_BASE_URL,
-    alt: process.env.NEXT_PUBLIC_API_URL,
     node: process.env.NODE_ENV,
   };
   try {
     delete process.env.NEXT_PUBLIC_API_BASE_URL;
-    delete process.env.NEXT_PUBLIC_API_URL;
     process.env.NODE_ENV = "production";
 
     const status = getApiConfigStatus();
@@ -45,12 +41,10 @@ test("safe API config status does not throw when production env is missing", () 
 test("strict API config helper throws a typed setup error", () => {
   const snapshot = {
     base: process.env.NEXT_PUBLIC_API_BASE_URL,
-    alt: process.env.NEXT_PUBLIC_API_URL,
     node: process.env.NODE_ENV,
   };
   try {
     delete process.env.NEXT_PUBLIC_API_BASE_URL;
-    delete process.env.NEXT_PUBLIC_API_URL;
     process.env.NODE_ENV = "production";
 
     assert.throws(() => requireApiBaseUrl(), (error: unknown) => {
@@ -66,12 +60,10 @@ test("strict API config helper throws a typed setup error", () => {
 test("api config keeps localhost fallback in development server runtime", () => {
   const snapshot = {
     base: process.env.NEXT_PUBLIC_API_BASE_URL,
-    alt: process.env.NEXT_PUBLIC_API_URL,
     node: process.env.NODE_ENV,
   };
   try {
     delete process.env.NEXT_PUBLIC_API_BASE_URL;
-    delete process.env.NEXT_PUBLIC_API_URL;
     process.env.NODE_ENV = "development";
 
     assert.equal(requireApiBaseUrl(), "http://localhost:4000");
@@ -83,13 +75,11 @@ test("api config keeps localhost fallback in development server runtime", () => 
 test("buildApiUrl handles leading and trailing slashes", () => {
   const snapshot = {
     base: process.env.NEXT_PUBLIC_API_BASE_URL,
-    alt: process.env.NEXT_PUBLIC_API_URL,
     node: process.env.NODE_ENV,
   };
   try {
     process.env.NODE_ENV = "production";
     process.env.NEXT_PUBLIC_API_BASE_URL = "https://api.example.test/";
-    delete process.env.NEXT_PUBLIC_API_URL;
 
     assert.equal(buildApiUrl("/api/auth/me"), "https://api.example.test/api/auth/me");
     assert.equal(buildApiUrl("api/auth/me"), "https://api.example.test/api/auth/me");
@@ -101,13 +91,11 @@ test("buildApiUrl handles leading and trailing slashes", () => {
 test("api config strips credentials, query, and hash from public base URL", () => {
   const snapshot = {
     base: process.env.NEXT_PUBLIC_API_BASE_URL,
-    alt: process.env.NEXT_PUBLIC_API_URL,
     node: process.env.NODE_ENV,
   };
   try {
     process.env.NODE_ENV = "production";
     process.env.NEXT_PUBLIC_API_BASE_URL = "https://user:secret@api.example.test/base?token=secret#frag";
-    delete process.env.NEXT_PUBLIC_API_URL;
 
     const status = getApiConfigStatus();
     assert.equal(status.baseUrl, "https://api.example.test/base");
@@ -120,13 +108,11 @@ test("api config strips credentials, query, and hash from public base URL", () =
 test("api config rejects missing protocol with exact fix shape", () => {
   const snapshot = {
     base: process.env.NEXT_PUBLIC_API_BASE_URL,
-    alt: process.env.NEXT_PUBLIC_API_URL,
     node: process.env.NODE_ENV,
   };
   try {
     process.env.NODE_ENV = "production";
     process.env.NEXT_PUBLIC_API_BASE_URL = "trackly-production-6ec0.up.railway.app";
-    delete process.env.NEXT_PUBLIC_API_URL;
 
     const status = getApiConfigStatus();
     assert.equal(status.configured, false);
@@ -145,7 +131,6 @@ test("api config rejects missing protocol with exact fix shape", () => {
 test("server API config prefers TRACKLY_API_BASE_URL at runtime", () => {
   const snapshot = {
     base: process.env.NEXT_PUBLIC_API_BASE_URL,
-    alt: process.env.NEXT_PUBLIC_API_URL,
     server: process.env.TRACKLY_API_BASE_URL,
     node: process.env.NODE_ENV,
   };
@@ -159,6 +144,26 @@ test("server API config prefers TRACKLY_API_BASE_URL at runtime", () => {
     assert.equal(status.source, "TRACKLY_API_BASE_URL");
     assert.equal(status.baseUrl, "https://trackly-production-6ec0.up.railway.app");
     assert.equal(status.hostname, "trackly-production-6ec0.up.railway.app");
+  } finally {
+    restoreEnv(snapshot);
+  }
+});
+
+test("getApiConfigStatus can use TRACKLY_API_BASE_URL in server runtime", () => {
+  const snapshot = {
+    base: process.env.NEXT_PUBLIC_API_BASE_URL,
+    server: process.env.TRACKLY_API_BASE_URL,
+    node: process.env.NODE_ENV,
+  };
+  try {
+    process.env.NODE_ENV = "production";
+    delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    process.env.TRACKLY_API_BASE_URL = "https://runtime.example.test";
+
+    const status = getApiConfigStatus();
+    assert.equal(status.configured, true);
+    assert.equal(status.source, "TRACKLY_API_BASE_URL");
+    assert.equal(status.baseUrl, "https://runtime.example.test");
   } finally {
     restoreEnv(snapshot);
   }

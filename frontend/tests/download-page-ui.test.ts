@@ -11,12 +11,12 @@ test("download client server render does not touch browser-only APIs", () => {
 test("download client renders downloader controls without backend API config", () => {
   const snapshot = {
     base: process.env.NEXT_PUBLIC_API_BASE_URL,
-    alt: process.env.NEXT_PUBLIC_API_URL,
+    server: process.env.TRACKLY_API_BASE_URL,
     node: process.env.NODE_ENV,
   };
   try {
     delete process.env.NEXT_PUBLIC_API_BASE_URL;
-    delete process.env.NEXT_PUBLIC_API_URL;
+    delete process.env.TRACKLY_API_BASE_URL;
     process.env.NODE_ENV = "production";
 
     const html = renderToString(React.createElement(DownloadClient));
@@ -27,8 +27,8 @@ test("download client renders downloader controls without backend API config", (
   } finally {
     if (snapshot.base === undefined) delete process.env.NEXT_PUBLIC_API_BASE_URL;
     else process.env.NEXT_PUBLIC_API_BASE_URL = snapshot.base;
-    if (snapshot.alt === undefined) delete process.env.NEXT_PUBLIC_API_URL;
-    else process.env.NEXT_PUBLIC_API_URL = snapshot.alt;
+    if (snapshot.server === undefined) delete process.env.TRACKLY_API_BASE_URL;
+    else process.env.TRACKLY_API_BASE_URL = snapshot.server;
     if (snapshot.node === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = snapshot.node;
   }

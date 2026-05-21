@@ -14,7 +14,7 @@ import { ErrorCatalog, sendError } from "../../errors/errorCatalog";
 import { hashPassword, verifyPassword } from "./password";
 import { issueEmailVerificationForUser, resendVerificationByEmail, verifyEmailToken } from "../../services/emailVerification";
 import { isEmailVerificationBypassEnabled } from "../../config/env";
-import { isValidThemePresetId } from "../personalization/themePresetCatalog";
+import { normalizeThemePresetId } from "../personalization/themePresetCatalog";
 
 const authRouter = Router();
 
@@ -84,7 +84,7 @@ export function toUserPayload(user: {
     recommendationMode: user.recommendationMode ?? "balanced",
     repeatedArtistTolerance: user.repeatedArtistTolerance ?? "normal",
     energyPreference: user.energyPreference ?? "mixed",
-    themePresetId: isValidThemePresetId(user.themePresetId) ? user.themePresetId : null,
+    themePresetId: normalizeThemePresetId(user.themePresetId),
     avatarBase64: user.avatarBase64 ?? null,
     bio: user.bio ?? null,
     createdAt: user.createdAt,
