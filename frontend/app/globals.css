@@ -190,6 +190,11 @@ html {
   font-size: calc(16px * var(--text-scale));
 }
 
+html[data-compact="true"] main {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+
 
 
 :root[data-radius="compact"] { --radius-sm: 8px; --radius-md: 11px; --radius-lg: 14px; }

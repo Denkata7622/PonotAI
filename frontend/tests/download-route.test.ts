@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { __downloadRouteTestUtils, handleDownloadPost, type YtdlpRunner } from "../lib/downloadRouteHandler";
+import { resolvePostProcessingOptions } from "../lib/audioPostProcessor";
 
 const fakeMp3 = Buffer.from([0x49, 0x44, 0x33, 0x04]);
 const validId = "abc123xyz_1";
@@ -24,6 +25,11 @@ function emptyRequest(): Request {
   });
 }
 
+function decodeHeader(value: string | null): Record<string, any> {
+  assert.ok(value);
+  return JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Record<string, any>;
+}
+
 const okRunner: YtdlpRunner = async (args) => {
   const outputTemplate = args[args.indexOf("-o") + 1];
   const outPath = outputTemplate.replace("%(title).200B", "Test Song").replace("%(ext)s", "mp3");
@@ -31,6 +37,27 @@ const okRunner: YtdlpRunner = async (args) => {
   await fs.writeFile(outPath, fakeMp3);
   return { code: 0, stdout: "", stderr: "" };
 };
+
+test("yt-dlp args only force mp3 extraction for compatibility profile", () => {
+  const compatibility = __downloadRouteTestUtils.buildYtdlpArgs("https://example.invalid/video", "out.%(ext)s", resolvePostProcessingOptions({}));
+  assert.ok(compatibility.includes("--audio-format"));
+  assert.ok(compatibility.includes("mp3"));
+
+  const phonePreserve = __downloadRouteTestUtils.buildYtdlpArgs(
+    "https://example.invalid/video",
+    "out.%(ext)s",
+    resolvePostProcessingOptions({ audioPolish: { profile: "phone-aac-preserve" } }),
+  );
+  assert.equal(phonePreserve.includes("--audio-format"), false);
+  assert.equal(phonePreserve.includes("-x"), false);
+
+  const normalizedAac = __downloadRouteTestUtils.buildYtdlpArgs(
+    "https://example.invalid/video",
+    "out.%(ext)s",
+    resolvePostProcessingOptions({ audioPolish: { profile: "phone-aac-normalized" } }),
+  );
+  assert.equal(normalizedAac.includes("--audio-format"), false);
+});
 
 test("invalid JSON returns invalid-json", async () => {
   const res = await handleDownloadPost(request("{"));
@@ -151,7 +178,44 @@ test("successful fake runner returns mp3 bytes and cache headers", async () => {
   assert.equal(res.headers.get("Cache-Control"), "no-store");
   assert.equal(res.headers.get("X-PonotAI-Download-Cache"), "miss");
   assert.equal(res.headers.get("X-PonotAI-Download-Target-Type"), "id");
+  assert.ok(res.headers.get("X-PonotAI-Postprocessing"));
   assert.deepEqual(body, fakeMp3);
+});
+
+test("download route accepts safe post-processing options and returns sanitized metadata header", async () => {
+  const res = await handleDownloadPost(request({
+    title: "Lose Yourself",
+    artist: "Eminem",
+    query: "Eminem - Lose Yourself (Official Video)",
+    postProcessing: {
+      cleanMetadata: true,
+      embedCover: true,
+      normalizeLoudness: true,
+      loudnessTarget: { integrated: -12, truePeak: -1, lra: 10 },
+    },
+  }), okRunner);
+  assert.equal(res.status, 200);
+  const header = decodeHeader(res.headers.get("X-PonotAI-Postprocessing"));
+  assert.equal(header.metadata.title, "Lose Yourself");
+  assert.equal(header.metadata.artist, "Eminem");
+  assert.match(String(header.status), /failed-fallback-original|normalized|metadata-only/);
+  assert.doesNotMatch(JSON.stringify(header), /token|secret|password|cookie|C:\\Users/i);
+});
+
+test("download route rejects unsafe audio polish options", async () => {
+  const res = await handleDownloadPost(request({
+    query: "Artist - Title",
+    postProcessing: {
+      audioPolish: {
+        mode: "normalize-loudness",
+        filter: "bass=g=6",
+      },
+    },
+  }), okRunner);
+  const body = await res.json() as { code: string; fix: string };
+  assert.equal(res.status, 400);
+  assert.equal(body.code, "invalid-audio-polish-options");
+  assert.match(body.fix, /supported audio polish modes|Remove/);
 });
 
 test("missing binary simulation returns missing-binary", async () => {

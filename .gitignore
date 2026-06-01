@@ -43,6 +43,21 @@ dist/
 # Local downloader/cache artifacts
 ponotai-ytdlp-cache/
 *.mp3
+*.m4a
+*.wav
+*.flac
+*.ogg
+*.opus
+*.aac
+*.webm
 *.zip
+*.jpg
+*.jpeg
+*.png
+*.webp
+cover-*.*
+thumbnail-*.*
+postprocessed-*.*
 search-list.txt
 failed-items.json
+audio-comparison.json

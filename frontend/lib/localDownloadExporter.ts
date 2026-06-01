@@ -1,3 +1,6 @@
+import { createSafeTrackFileName, formatTrackFileBase, getUniqueFileName as getUniqueSafeFileName, resolveTrackMetadata, sanitizeFileName as sanitizeSafeFileName, type ResolvedTrackMetadata } from "./trackMetadata";
+import { normalizeAudioPolishOptions, type AudioPolishMode, type DownloadPostProcessingOptions, type ExportAudioProfile } from "./audioPolishTypes";
+
 export type LocalExportSong = {
   id: string;
   title: string;
@@ -17,6 +20,135 @@ export type LocalExportSong = {
   youtubeUrl?: string;
   durationSec?: number;
   metadata?: Record<string, unknown>;
+};
+
+export type LocalExportPostProcessingOptions = DownloadPostProcessingOptions;
+
+export type LocalAudioAnalysis = {
+  durationSec?: number;
+  formatName?: string;
+  codecName?: string;
+  bitRate?: number;
+  sampleRate?: number;
+  channels?: number;
+  fileSizeBytes?: number;
+  hasAudio?: boolean;
+  loudness?: {
+    integratedLufs?: number;
+    truePeakDb?: number;
+    loudnessRangeLra?: number;
+    thresholdDb?: number;
+  };
+  peaks?: {
+    maxVolumeDb?: number;
+    meanVolumeDb?: number;
+  };
+  silence?: {
+    leadingSilenceSec?: number;
+    trailingSilenceSec?: number;
+    detected?: boolean;
+  };
+  warnings?: string[];
+};
+
+export type LocalAudioComparison = {
+  verdict?: "improved" | "neutral" | "worse" | "unknown";
+  score?: {
+    overall?: number;
+    volumeConsistency?: number;
+    clippingSafety?: number;
+    preservation?: number;
+  };
+  reasons?: string[];
+  warnings?: string[];
+};
+
+export type LocalQualityPreservation = {
+  profile?: ExportAudioProfile;
+  sourceCodec?: string;
+  sourceContainer?: string;
+  outputCodec?: string;
+  outputContainer?: string;
+  outputExtension?: ".mp3" | ".m4a" | ".audio";
+  audioStreamCopied?: boolean;
+  reencoded?: boolean;
+  transcodeReason?: string;
+  transcodeCount?: number;
+  lossyToLossyTranscode?: boolean;
+  generationLossRisk?: "none" | "low" | "medium" | "high";
+  codecCompatibility?: "excellent" | "good" | "warning" | "unknown";
+  samsungMusicFriendly?: boolean;
+  bluetoothFriendly?: boolean;
+  phoneProfileScore?: number;
+  verdict?: "preserved-best" | "improved-volume-consistency" | "compatible-transcode" | "neutral" | "worse" | "unknown";
+  warnings?: string[];
+};
+
+export type LocalExportPostProcessingSummary = {
+  status?: "skipped" | "metadata-only" | "normalized" | "failed-fallback-original";
+  filename?: string;
+  contentType?: "audio/mpeg" | "audio/mp4" | "application/octet-stream";
+  metadata?: {
+    title?: string;
+    artist?: string;
+    album?: string;
+    albumArtist?: string;
+    date?: string;
+    year?: string;
+    genre?: string;
+    source?: string;
+    confidence?: "high" | "medium" | "low";
+    cleanupApplied?: string[];
+    warnings?: string[];
+  };
+  cover?: {
+    attempted?: boolean;
+    embedded?: boolean;
+    source?: string;
+    mimeType?: string;
+    warningCount?: number;
+    warnings?: string[];
+  };
+  audio?: {
+    mode?: "copy" | "normalized" | "processed" | "unknown";
+    reencoded?: boolean;
+    loudness?: {
+      integrated?: number;
+      truePeak?: number;
+      lra?: number;
+      measuredI?: number;
+      measuredTP?: number;
+      measuredLRA?: number;
+      measuredThresh?: number;
+      offset?: number;
+      passMode?: "single" | "two-pass";
+    };
+    probe?: {
+      duration?: number;
+      formatName?: string;
+      codecName?: string;
+      bitRate?: number;
+      sampleRate?: number;
+      channels?: number;
+      hasAudio?: boolean;
+      hasCover?: boolean;
+      tags?: Record<string, string>;
+    };
+    warnings?: string[];
+  };
+  audioPolish?: {
+    profile?: ExportAudioProfile;
+    mode?: AudioPolishMode;
+    reencoded?: boolean;
+    qualityPreservation?: LocalQualityPreservation;
+    analysis?: {
+      before?: LocalAudioAnalysis;
+      after?: LocalAudioAnalysis;
+      comparison?: LocalAudioComparison;
+    };
+    warnings?: string[];
+  };
+  warnings?: string[];
 };
 
 export type LocalExportResultItem = {
@@ -41,6 +173,13 @@ export type LocalExportResultItem = {
   detail?: string;
   fix?: string;
   warnings?: string[];
+  cleanedTitle?: string;
+  cleanedArtist?: string;
+  metadataConfidence?: "high" | "medium" | "low";
+  cleanupApplied?: string[];
+  postProcessing?: LocalExportPostProcessingSummary;
+  audioPolish?: LocalExportPostProcessingSummary["audioPolish"];
+  qualityPreservation?: LocalQualityPreservation;
 };
 
 export type LocalExportResult = {
@@ -49,11 +188,26 @@ export type LocalExportResult = {
   exportedCount: number;
   failedCount: number;
   skippedCount: number;
+  taggedCount: number;
+  coversEmbeddedCount: number;
+  normalizedCount: number;
+  audioImprovedCount: number;
+  audioNeutralCount: number;
+  audioWorseCount: number;
+  audioPolishWarningCount: number;
+  preservedWithoutReencodeCount: number;
+  compatibilityReencodedCount: number;
+  normalizationReencodedCount: number;
+  m4aCount: number;
+  mp3Count: number;
+  phoneProfileWarningCount: number;
+  metadataWarningCount: number;
+  postProcessingFailedCount: number;
   items: LocalExportResultItem[];
 };
 
 export type LocalExportProgress = {
-  phase: "preparing" | "fetching-audio" | "downloading-youtube" | "fetching-cover" | "adding-files" | "finalizing" | "done";
+  phase: "preparing" | "fetching-audio" | "downloading-youtube" | "cleaning-metadata" | "fetching-cover" | "embedding-cover" | "analyzing-audio" | "normalizing-volume" | "verifying-file" | "comparing-audio" | "adding-files" | "finalizing" | "done";
   currentSong?: string;
   currentSourceType?: LocalExportResultItem["sourceAttempted"];
   completed: number;
@@ -67,6 +221,7 @@ export type LocalExportOptions = {
   fetcher?: typeof fetch;
   appVersion?: string;
   diagnosticsSnapshot?: unknown;
+  postProcessing?: Partial<LocalExportPostProcessingOptions>;
 };
 
 export class YoutubeDownloadError extends Error {
@@ -97,7 +252,44 @@ export function setLocalDownloadExporterFetchForTests(fetcher?: typeof fetch): v
   localExportFetch = fetcher ?? ((...args) => fetch(...args));
 }
 
-export async function downloadFromYouTube(idOrQuery: { youtubeId?: string; youtubeUrl?: string; query?: string }, fetcher: typeof fetch = localExportFetch): Promise<{ blob: Blob; requestId?: string }> {
+function defaultPostProcessingOptions(input?: Partial<LocalExportPostProcessingOptions>): LocalExportPostProcessingOptions {
+  return normalizeAudioPolishOptions(input);
+}
+
+function decodePostProcessingHeader(value: string | null): LocalExportPostProcessingSummary | undefined {
+  if (!value) return undefined;
+  try {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const json = typeof Buffer !== "undefined"
+      ? Buffer.from(padded, "base64").toString("utf8")
+      : decodeURIComponent(Array.prototype.map.call(atob(padded), (char: string) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`).join(""));
+    const parsed = JSON.parse(json) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as LocalExportPostProcessingSummary : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolvedFromSummary(summary: LocalExportPostProcessingSummary | undefined, fallback: ResolvedTrackMetadata): ResolvedTrackMetadata {
+  if (!summary?.metadata) return fallback;
+  return {
+    ...fallback,
+    title: summary.metadata.title || fallback.title,
+    artist: summary.metadata.artist || fallback.artist,
+    album: summary.metadata.album || fallback.album,
+    albumArtist: summary.metadata.albumArtist || fallback.albumArtist,
+    date: summary.metadata.date || fallback.date,
+    year: summary.metadata.year || fallback.year,
+    genre: summary.metadata.genre || fallback.genre,
+    source: (summary.metadata.source as ResolvedTrackMetadata["source"]) || fallback.source,
+    confidence: summary.metadata.confidence || fallback.confidence,
+    cleanupApplied: summary.metadata.cleanupApplied || fallback.cleanupApplied,
+    warnings: summary.metadata.warnings || fallback.warnings,
+  };
+}
+
+export async function downloadFromYouTube(idOrQuery: { youtubeId?: string; youtubeUrl?: string; query?: string; title?: string; artist?: string; platformLinks?: Record<string, unknown>; metadata?: Record<string, unknown>; postProcessing?: LocalExportPostProcessingOptions }, fetcher: typeof fetch = localExportFetch): Promise<{ blob: Blob; requestId?: string; filename?: string; postProcessing?: LocalExportPostProcessingSummary }> {
   const response = await fetcher("/api/download", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -122,53 +314,33 @@ export async function downloadFromYouTube(idOrQuery: { youtubeId?: string; youtu
     const useful = (detail || fix || `HTTP ${response.status}`).replace(/\s+/g, " ").trim();
     throw new YoutubeDownloadError(`YouTube download failed: ${useful.slice(0, 320)}`, code, fix, globalFailure, requestId, detail);
   }
-  return { blob: await response.blob(), requestId: response.headers.get("X-PonotAI-Request-ID") ?? undefined };
+  const postProcessing = decodePostProcessingHeader(response.headers.get("X-PonotAI-Postprocessing"));
+  const filenameHeader = response.headers.get("X-PonotAI-Filename");
+  return {
+    blob: await response.blob(),
+    requestId: response.headers.get("X-PonotAI-Request-ID") ?? undefined,
+    filename: filenameHeader ? decodeURIComponent(filenameHeader) : postProcessing?.filename,
+    postProcessing,
+  };
 }
 
 const YOUTUBE_VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
 
-const AUDIO_CONTENT_TYPES = new Set(["audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/webm", "audio/wav", "audio/wave", "audio/x-wav", "audio/vnd.wave", "audio/ogg", "audio/flac", "audio/x-flac"]);
+const AUDIO_CONTENT_TYPES = new Set(["audio/mpeg", "audio/mp3", "audio/aac", "audio/mp4", "audio/x-m4a", "audio/webm", "audio/wav", "audio/wave", "audio/x-wav", "audio/vnd.wave", "audio/ogg", "audio/opus", "audio/flac", "audio/x-flac"]);
 const IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 export function sanitizeFileName(input: string): string {
-  const cleaned = (input || "")
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/[. ]+$/g, "")
-    .slice(0, 120) || "untitled";
-  const extIndex = cleaned.lastIndexOf(".");
-  const base = extIndex > 0 ? cleaned.slice(0, extIndex) : cleaned;
-  const ext = extIndex > 0 ? cleaned.slice(extIndex) : "";
-  return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(base) ? `_${base}${ext}` : cleaned;
+  return sanitizeSafeFileName(input);
 }
 
 export function getUniqueFileName(fileName: string, used: Set<string>): string {
-  const key = fileName.toLowerCase();
-  if (!used.has(key)) {
-    used.add(key);
-    return fileName;
-  }
-
-  const extIndex = fileName.lastIndexOf(".");
-  const base = extIndex > 0 ? fileName.slice(0, extIndex) : fileName;
-  const ext = extIndex > 0 ? fileName.slice(extIndex) : "";
-  let counter = 2;
-
-  while (true) {
-    const candidate = `${base} (${counter})${ext}`;
-    const candidateKey = candidate.toLowerCase();
-    if (!used.has(candidateKey)) {
-      used.add(candidateKey);
-      return candidate;
-    }
-    counter += 1;
-  }
+  return getUniqueSafeFileName(fileName, used);
 }
 
 export function guessExtensionFromContentType(contentType?: string | null): string | undefined {
   const normalized = (contentType || "").split(";")[0].trim().toLowerCase();
   if (normalized === "audio/mpeg" || normalized === "audio/mp3") return ".mp3";
+  if (normalized === "audio/aac") return ".aac";
   if (normalized === "audio/mp4" || normalized === "audio/x-m4a") return ".m4a";
   if (normalized === "audio/webm") return ".webm";
   if (normalized === "audio/wav") return ".wav";
@@ -184,7 +356,7 @@ export function guessExtensionFromContentType(contentType?: string | null): stri
 export function guessExtensionFromUrl(url?: string): string | undefined {
   if (!url) return undefined;
   const clean = url.split("?")[0].toLowerCase();
-  const match = clean.match(/\.(mp3|m4a|webm|wav|ogg|flac|jpg|jpeg|png|webp|gif)$/);
+  const match = clean.match(/\.(mp3|m4a|aac|webm|opus|wav|ogg|flac|jpg|jpeg|png|webp|gif)$/);
   if (!match) return undefined;
   return match[1] === "jpeg" ? ".jpg" : `.${match[1]}`;
 }
@@ -231,7 +403,7 @@ export function isYouTubePageUrl(url?: string): boolean {
 export function isLikelyAudioUrl(url?: string): boolean {
   if (!url) return false;
   const value = url.toLowerCase().split("?")[0];
-  return [".mp3", ".m4a", ".webm", ".wav", ".ogg", ".flac"].some((ext) => value.endsWith(ext));
+  return [".mp3", ".m4a", ".aac", ".webm", ".opus", ".wav", ".ogg", ".flac"].some((ext) => value.endsWith(ext));
 }
 
 export function isAudioContentType(contentType: string): boolean {
@@ -418,6 +590,108 @@ function formatSongLine(song: LocalExportSong): string {
   return artist ? `${artist} - ${title}` : title;
 }
 
+function metadataInputForSong(song: LocalExportSong): Record<string, unknown> {
+  return {
+    title: song.title,
+    artist: song.artist,
+    album: song.metadata?.album,
+    albumArtist: song.metadata?.albumArtist,
+    date: song.metadata?.date,
+    year: song.metadata?.year,
+    releaseYear: song.metadata?.releaseYear,
+    genre: song.metadata?.genre,
+    query: formatSongLine(song),
+    platformLinks: song.platformLinks,
+    metadata: song.metadata,
+    raw: {
+      ...song,
+      file: undefined,
+      blob: undefined,
+    },
+  };
+}
+
+async function processDirectAudioBlob(input: {
+  blob: Blob;
+  fileName: string;
+  song: LocalExportSong;
+  postProcessing: LocalExportPostProcessingOptions;
+  fetcher: typeof fetch;
+}): Promise<{ blob: Blob; filename?: string; postProcessing?: LocalExportPostProcessingSummary; warning?: string }> {
+  try {
+    const form = new FormData();
+    const file = input.blob instanceof File
+      ? input.blob
+      : new File([input.blob], input.fileName, { type: input.blob.type || "audio/mpeg" });
+    form.set("audio", file);
+    form.set("metadata", JSON.stringify(metadataInputForSong(input.song)));
+    form.set("postProcessing", JSON.stringify(input.postProcessing));
+    const response = await input.fetcher("/api/download/process", { method: "POST", body: form });
+    if (!response.ok) {
+      return { blob: input.blob, warning: "Audio post-processing failed; exported original audio." };
+    }
+    const postProcessing = decodePostProcessingHeader(response.headers.get("X-PonotAI-Postprocessing"));
+    const filenameHeader = response.headers.get("X-PonotAI-Filename");
+    return {
+      blob: await response.blob(),
+      filename: filenameHeader ? decodeURIComponent(filenameHeader) : postProcessing?.filename,
+      postProcessing,
+    };
+  } catch {
+    return { blob: input.blob, warning: "Audio post-processing failed; exported original audio." };
+  }
+}
+
+function postProcessingWarnings(summary?: LocalExportPostProcessingSummary): string[] {
+  return [
+    ...(summary?.warnings ?? []),
+    ...(summary?.metadata?.warnings ?? []),
+    ...(summary?.cover?.warnings ?? []),
+    ...(summary?.audio?.warnings ?? []),
+    ...(summary?.audioPolish?.warnings ?? []),
+    ...(summary?.audioPolish?.qualityPreservation?.warnings ?? []),
+    ...(summary?.audioPolish?.analysis?.comparison?.warnings ?? []),
+  ].filter(Boolean);
+}
+
+function sanitizeManifestValue(value: unknown, depth = 0): unknown {
+  if (depth > 6) return "[omitted]";
+  if (Array.isArray(value)) return value.map((entry) => sanitizeManifestValue(entry, depth + 1));
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (/token|secret|password|cookie|session|api[-_]?key|jwt/i.test(key)) {
+        result[key] = "[redacted]";
+      } else if (/cover|artwork|thumbnail|image/i.test(key) && typeof nested === "string" && /^https?:\/\//i.test(nested)) {
+        result[key] = "[omitted]";
+      } else {
+        result[key] = sanitizeManifestValue(nested, depth + 1);
+      }
+    }
+    return result;
+  }
+  if (typeof value === "string") {
+    return value
+      .replace(/\b(token|secret|password|cookie|session|api[-_]?key|jwt)\s*[:=]\s*[^&\s"'`<>),;]+/gi, "$1=[redacted]")
+      .replace(/(^|[\s"'`(])([A-Za-z]:[\\/][^\s"'`<>]+)/g, "$1[path]");
+  }
+  return value;
+}
+
+function safeManifestUrl(value?: string): string | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    parsed.username = "";
+    parsed.password = "";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export async function createLocalExportZip(songs: LocalExportSong[], onProgress?: (progress: LocalExportProgress) => void, options?: LocalExportOptions): Promise<LocalExportResult> {
   const now = new Date();
   const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}`;
@@ -431,6 +705,21 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   let exportedCount = 0;
   let failedCount = 0;
   let skippedCount = 0;
+  let taggedCount = 0;
+  let coversEmbeddedCount = 0;
+  let normalizedCount = 0;
+  let audioImprovedCount = 0;
+  let audioNeutralCount = 0;
+  let audioWorseCount = 0;
+  let audioPolishWarningCount = 0;
+  let preservedWithoutReencodeCount = 0;
+  let compatibilityReencodedCount = 0;
+  let normalizationReencodedCount = 0;
+  let m4aCount = 0;
+  let mp3Count = 0;
+  let phoneProfileWarningCount = 0;
+  let metadataWarningCount = 0;
+  let postProcessingFailedCount = 0;
   let youtubeSuccessCount = 0;
   let youtubeCircuitOpen = false;
   const youtubeBlockedMessage = "YouTube downloads are currently blocked by the server environment. Try local mode, lower the batch size, provide direct audio files, or configure a private server.";
@@ -439,6 +728,8 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   let youtubeCircuitFix: string | undefined;
   let youtubeCircuitDetail: string | undefined;
   const fetcher = options?.fetcher ?? localExportFetch;
+  const postProcessingOptions = defaultPostProcessingOptions(options?.postProcessing);
+  const audioComparisonReport: Array<Record<string, unknown>> = [];
 
   const reportProgress = (phase: LocalExportProgress["phase"], currentSong: string | undefined, completed: number, currentSourceType?: LocalExportProgress["currentSourceType"]) => {
     onProgress?.({
@@ -459,6 +750,7 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
     const song = songs[index];
     const line = formatSongLine(song);
     const warnings: string[] = [];
+    const localMetadata = resolveTrackMetadata(metadataInputForSong(song));
     const coverUrl = song.selectedCoverUrl || song.coverUrl || song.albumArtUrl;
     const sourceCandidates = [song.audioUrl, song.sourceUrl, song.source].filter((value): value is string => Boolean(value));
     const sourceUrl = sourceCandidates[0];
@@ -476,16 +768,22 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
       artist: song.artist,
       originalTitle: song.originalTitle,
       originalArtist: song.originalArtist,
+      cleanedTitle: localMetadata.title,
+      cleanedArtist: localMetadata.artist,
+      metadataConfidence: localMetadata.confidence,
+      cleanupApplied: localMetadata.cleanupApplied,
       youtubeVideoId: song.youtubeVideoId,
       youtubeUrl,
-      sourceUrl,
-      coverUrl,
-      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+      sourceUrl: safeManifestUrl(sourceUrl),
+      coverUrl: coverUrl && !isPlaceholderCoverUrl(coverUrl) ? "[available]" : undefined,
+      metadata: Object.keys(metadata).length > 0 ? sanitizeManifestValue(metadata) as Record<string, unknown> : undefined,
       status: "skipped",
     };
 
     let audioBlob: Blob | undefined;
     let audioExt = ".mp3";
+    let postProcessingSummary: LocalExportPostProcessingSummary | undefined;
+    let resolvedMetadata = localMetadata;
     let directAudioFailed = false;
 
     try {
@@ -536,11 +834,18 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
               youtubeId,
               youtubeUrl: youtubeId ? undefined : youtubeUrl,
               query: youtubeId || youtubeUrl ? undefined : line,
+              title: song.title,
+              artist: song.artist,
+              platformLinks: song.platformLinks,
+              metadata,
+              postProcessing: postProcessingOptions,
             }, fetcher);
             youtubeSuccessCount += 1;
             audioBlob = downloaded.blob;
             item.requestId = downloaded.requestId;
-            audioExt = ".mp3";
+            postProcessingSummary = downloaded.postProcessing;
+            resolvedMetadata = resolvedFromSummary(postProcessingSummary, localMetadata);
+            if (downloaded.filename) audioExt = guessExtensionFromUrl(downloaded.filename) || audioExt;
           } catch (error) {
             const message = error instanceof Error ? error.message : "YouTube download failed.";
             const code = error instanceof YoutubeDownloadError ? error.code : undefined;
@@ -583,13 +888,108 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
       }
     }
 
+    if (audioBlob && (item.sourceAttempted === "file" || item.sourceAttempted === "blob" || item.sourceAttempted === "direct-audio-url")) {
+      if (postProcessingOptions.audioPolish.analyzeBeforeAfter) reportProgress("analyzing-audio", line, index, item.sourceAttempted);
+      const polishPhase = postProcessingOptions.normalizeLoudness
+        ? "normalizing-volume"
+        : postProcessingOptions.embedCover
+          ? "embedding-cover"
+          : "cleaning-metadata";
+      reportProgress(polishPhase, line, index, item.sourceAttempted);
+      const processed = await processDirectAudioBlob({
+        blob: audioBlob,
+        fileName: createSafeTrackFileName(localMetadata, audioExt),
+        song,
+        postProcessing: postProcessingOptions,
+        fetcher,
+      });
+      audioBlob = processed.blob;
+      postProcessingSummary = processed.postProcessing;
+      resolvedMetadata = resolvedFromSummary(postProcessingSummary, localMetadata);
+      if (processed.filename) audioExt = guessExtensionFromUrl(processed.filename) || audioExt;
+      if (processed.warning) warnings.push(processed.warning);
+      reportProgress("verifying-file", line, index, item.sourceAttempted);
+      if (postProcessingOptions.audioPolish.analyzeBeforeAfter) reportProgress("comparing-audio", line, index, item.sourceAttempted);
+    } else if (audioBlob && item.sourceAttempted?.startsWith("youtube")) {
+      if (postProcessingOptions.audioPolish.analyzeBeforeAfter) reportProgress("analyzing-audio", line, index, item.sourceAttempted);
+      reportProgress(postProcessingOptions.normalizeLoudness ? "normalizing-volume" : "cleaning-metadata", line, index, item.sourceAttempted);
+      reportProgress("verifying-file", line, index, item.sourceAttempted);
+      if (postProcessingOptions.audioPolish.analyzeBeforeAfter) reportProgress("comparing-audio", line, index, item.sourceAttempted);
+    }
+
     if (audioBlob) {
-      const trackName = getUniqueFileName(`${sanitizeFileName(line)}${audioExt}`, usedTrackNames);
+      const summaryFileName = postProcessingSummary?.filename;
+      const trackName = getUniqueFileName(summaryFileName || createSafeTrackFileName(resolvedMetadata, audioExt), usedTrackNames);
       item.audioPath = `tracks/${trackName}`;
       item.status = "exported";
+      item.title = resolvedMetadata.title;
+      item.artist = resolvedMetadata.artist;
+      item.cleanedTitle = resolvedMetadata.title;
+      item.cleanedArtist = resolvedMetadata.artist;
+      item.metadataConfidence = resolvedMetadata.confidence;
+      item.cleanupApplied = resolvedMetadata.cleanupApplied;
+      item.postProcessing = postProcessingSummary ?? {
+        status: "skipped",
+        filename: trackName,
+        metadata: {
+          title: resolvedMetadata.title,
+          artist: resolvedMetadata.artist,
+          album: resolvedMetadata.album,
+          albumArtist: resolvedMetadata.albumArtist,
+          date: resolvedMetadata.date,
+          year: resolvedMetadata.year,
+          genre: resolvedMetadata.genre,
+          source: resolvedMetadata.source,
+          confidence: resolvedMetadata.confidence,
+          cleanupApplied: resolvedMetadata.cleanupApplied,
+          warnings: resolvedMetadata.warnings,
+        },
+        cover: { attempted: false, embedded: false },
+        audio: { mode: "unknown", reencoded: false },
+        audioPolish: {
+          profile: postProcessingOptions.audioPolish.profile,
+          mode: postProcessingOptions.audioPolish.mode,
+          reencoded: false,
+          warnings: resolvedMetadata.warnings,
+        },
+        warnings: resolvedMetadata.warnings,
+      };
+      item.audioPolish = item.postProcessing.audioPolish;
+      item.qualityPreservation = item.postProcessing.audioPolish?.qualityPreservation;
+      const allPostWarnings = postProcessingWarnings(item.postProcessing);
+      if (allPostWarnings.length > 0) warnings.push(...allPostWarnings);
+      if (item.postProcessing.status === "metadata-only" || item.postProcessing.status === "normalized") taggedCount += 1;
+      if (item.postProcessing.cover?.embedded) coversEmbeddedCount += 1;
+      if (item.postProcessing.status === "normalized" || item.postProcessing.audio?.mode === "normalized") normalizedCount += 1;
+      if (item.postProcessing.status === "failed-fallback-original") postProcessingFailedCount += 1;
+      const comparison = item.postProcessing.audioPolish?.analysis?.comparison;
+      if (comparison?.verdict === "improved") audioImprovedCount += 1;
+      else if (comparison?.verdict === "neutral") audioNeutralCount += 1;
+      else if (comparison?.verdict === "worse") audioWorseCount += 1;
+      const quality = item.postProcessing.audioPolish?.qualityPreservation;
+      if (quality?.audioStreamCopied && !quality.reencoded) preservedWithoutReencodeCount += 1;
+      if (quality?.reencoded && quality.transcodeReason?.toLowerCase().includes("compatibility")) compatibilityReencodedCount += 1;
+      if (quality?.reencoded && quality.transcodeReason?.toLowerCase().includes("loudness")) normalizationReencodedCount += 1;
+      const outputExt = (quality?.outputExtension || guessExtensionFromUrl(trackName) || audioExt).toLowerCase();
+      if (outputExt === ".m4a") m4aCount += 1;
+      else if (outputExt === ".mp3") mp3Count += 1;
+      phoneProfileWarningCount += quality?.warnings?.length ?? 0;
+      audioPolishWarningCount += (item.postProcessing.audioPolish?.warnings?.length ?? 0) + (comparison?.warnings?.length ?? 0);
+      metadataWarningCount += allPostWarnings.length;
       exportedCount += 1;
       files.push({ path: `${root}/tracks/${trackName}`, blob: audioBlob });
-      playlistLines.push(`#EXTINF:${song.durationSec ?? -1},${line}`);
+      if (postProcessingOptions.audioPolish.exportComparisonReport && item.postProcessing.audioPolish?.analysis) {
+        audioComparisonReport.push(sanitizeManifestValue({
+          id: item.id,
+          title: resolvedMetadata.title,
+          artist: resolvedMetadata.artist,
+          zipPath: item.audioPath,
+          audioPolish: item.postProcessing.audioPolish,
+          qualityPreservation: item.qualityPreservation,
+        }) as Record<string, unknown>);
+      }
+      const duration = item.postProcessing.audio?.probe?.duration ?? song.durationSec ?? -1;
+      playlistLines.push(`#EXTINF:${Math.round(duration)},${formatTrackFileBase(resolvedMetadata)}`);
       playlistLines.push(`tracks/${trackName}`);
     } else if (item.status === "failed") {
       failedCount += 1;
@@ -635,6 +1035,43 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
     exportedCount,
     failedCount,
     skippedCount,
+    taggedCount,
+    coversEmbeddedCount,
+    normalizedCount,
+    audioImprovedCount,
+    audioNeutralCount,
+    audioWorseCount,
+    audioPolishWarningCount,
+    preservedWithoutReencodeCount,
+    compatibilityReencodedCount,
+    normalizationReencodedCount,
+    m4aCount,
+    mp3Count,
+    phoneProfileWarningCount,
+    metadataWarningCount,
+    postProcessingFailedCount,
+    audioPolish: {
+      profile: postProcessingOptions.audioPolish.profile,
+      mode: postProcessingOptions.audioPolish.mode,
+      normalizeLoudness: postProcessingOptions.audioPolish.normalizeLoudness,
+      truePeakLimit: postProcessingOptions.audioPolish.truePeakLimit,
+      trimSilence: postProcessingOptions.audioPolish.trimSilence,
+      analyzeBeforeAfter: postProcessingOptions.audioPolish.analyzeBeforeAfter,
+      exportComparisonReport: postProcessingOptions.audioPolish.exportComparisonReport,
+      loudnessTarget: postProcessingOptions.audioPolish.loudnessTarget,
+      counts: {
+        improved: audioImprovedCount,
+        neutral: audioNeutralCount,
+        worse: audioWorseCount,
+        warnings: audioPolishWarningCount,
+        preservedWithoutReencode: preservedWithoutReencodeCount,
+        compatibilityReencoded: compatibilityReencodedCount,
+        normalizationReencoded: normalizationReencodedCount,
+        m4a: m4aCount,
+        mp3: mp3Count,
+        phoneProfileWarnings: phoneProfileWarningCount,
+      },
+    },
     items,
   };
 
@@ -647,6 +1084,29 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   files.push({ path: `${metadataBase}/search-list.txt`, blob: new Blob([searchListText], { type: "text/plain" }) });
   files.push({ path: `${metadataBase}/failed-items.json`, blob: new Blob([failedItemsJson], { type: "application/json" }) });
   files.push({ path: `${metadataBase}/playlist.m3u`, blob: new Blob([playlistText], { type: "audio/x-mpegurl" }) });
+  if (postProcessingOptions.audioPolish.exportComparisonReport) {
+    const reportJson = JSON.stringify({
+      generatedAtIso: new Date().toISOString(),
+      profile: postProcessingOptions.audioPolish.profile,
+      mode: postProcessingOptions.audioPolish.mode,
+      loudnessTarget: postProcessingOptions.audioPolish.loudnessTarget,
+      counts: {
+        improved: audioImprovedCount,
+        neutral: audioNeutralCount,
+        worse: audioWorseCount,
+        warnings: audioPolishWarningCount,
+        preservedWithoutReencode: preservedWithoutReencodeCount,
+        compatibilityReencoded: compatibilityReencodedCount,
+        normalizationReencoded: normalizationReencodedCount,
+        m4a: m4aCount,
+        mp3: mp3Count,
+        phoneProfileWarnings: phoneProfileWarningCount,
+      },
+      items: audioComparisonReport,
+    }, null, 2);
+    files.push({ path: `${metadataBase}/audio-comparison.json`, blob: new Blob([reportJson], { type: "application/json" }) });
+    files.push({ path: `${root}/analysis/audio-comparison.json`, blob: new Blob([reportJson], { type: "application/json" }) });
+  }
   files.push({ path: `${root}/manifest.json`, blob: new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" }) });
   files.push({ path: `${root}/playlists/export.m3u`, blob: new Blob([playlistText], { type: "audio/x-mpegurl" }) });
   files.push({ path: `${root}/search-list.txt`, blob: new Blob([searchListText], { type: "text/plain" }) });
@@ -656,7 +1116,29 @@ export async function createLocalExportZip(songs: LocalExportSong[], onProgress?
   reportProgress("finalizing", undefined, songs.length);
   const zipBlob = await makeZip(files);
   reportProgress("done", undefined, songs.length);
-  return { ok: true, zipBlob, exportedCount, failedCount, skippedCount, items };
+  return {
+    ok: true,
+    zipBlob,
+    exportedCount,
+    failedCount,
+    skippedCount,
+    taggedCount,
+    coversEmbeddedCount,
+    normalizedCount,
+    audioImprovedCount,
+    audioNeutralCount,
+    audioWorseCount,
+    audioPolishWarningCount,
+    preservedWithoutReencodeCount,
+    compatibilityReencodedCount,
+    normalizationReencodedCount,
+    m4aCount,
+    mp3Count,
+    phoneProfileWarningCount,
+    metadataWarningCount,
+    postProcessingFailedCount,
+    items,
+  };
 }
 
 export function saveBlobAsDownload(blob: Blob, filename: string): void {

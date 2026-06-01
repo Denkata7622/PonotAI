@@ -257,7 +257,7 @@ MIT (`LICENSE`)
 
 ## Local ZIP download/export (frontend API)
 
-For local/private/personal usage, the Next.js frontend exposes `POST /api/download`. It runs in the frontend service, shells out to `yt-dlp` plus `ffmpeg`/`ffprobe`, and returns an MP3 for ZIP export. Direct files, blobs, and direct audio URLs remain first-class and do not depend on YouTube.
+For local/private/personal usage, the Next.js frontend exposes `POST /api/download`. It runs in the frontend service, shells out to `yt-dlp` plus `ffmpeg`/`ffprobe`, and returns phone-friendly MP3 or M4A audio for ZIP export. Direct files, blobs, and direct audio URLs remain first-class and do not depend on YouTube.
 
 Local tool install:
 
@@ -270,8 +270,32 @@ Local check:
 ```bash
 npm run doctor:python --prefix backend
 npm run doctor:download --prefix frontend
+npm run test:audio-polish --prefix frontend
+npm run test:phone-profile --prefix frontend
 npm run dev:download --prefix frontend
 ```
+
+Local downloader metadata and audio polish:
+
+- The download/export flow cleans title and artist tags, writes MP3 ID3 or M4A metadata, embeds imported artwork or YouTube thumbnails when available, and verifies processed files with ffprobe before adding them to the ZIP.
+- Default profile is **MP3 compatibility**. It preserves source MP3 audio where possible and only updates metadata/cover art.
+- **Phone optimized AAC/M4A** is recommended for Samsung Music and Bluetooth earbuds. It preserves AAC sources as M4A without re-encoding, keeps MP3 sources as MP3 to avoid lossy MP3-to-AAC generation loss, and converts Opus/WebM sources to AAC/M4A for phone compatibility.
+- **Phone optimized AAC/M4A + normalized volume** outputs AAC/M4A and re-encodes because loudness filtering is required.
+- **MP3 + normalized volume** keeps MP3 compatibility while applying the same loudness normalization.
+- Optional **Normalize volume** uses EBU-style loudness normalization for playlist consistency. It re-encodes audio and records the target, re-encode status, and before/after metrics in `manifest.json`.
+- Optional **Normalize + safety limiter** adds a conservative peak limiter after loudness normalization to reduce clipping risk. It still does not use EQ.
+- ZIP manifests record cleaned metadata, cover embedding status, source/output codec, copied-vs-reencoded status, generation-loss risk, phone profile score, audio-polish comparison verdicts, warnings, and post-processing fallbacks without temp paths, cookies, secret keys, or cover URLs.
+- If enabled, `analysis/audio-comparison.json` is added to the ZIP with compact technical metrics: re-encoding avoided, codec compatibility, loudness target closeness, peak/clipping risk, duration preservation, codec/readability, and a narrow verdict such as preserved-best or improved volume consistency.
+- If cover art cannot be fetched or converted, the track still exports with metadata tags and a warning.
+- No EQ, bass boost, treble boost, vocal clarity filters, fake remastering, or YouTube access bypasses are implemented.
+
+Audio polish metrics are technical checks, not a promise that the song is subjectively better. "Improved" means the processed file moved closer to the configured loudness target without obvious clipping or preservation problems. Bad source audio cannot be magically restored.
+
+Phone optimized exports:
+
+- Razer Hammerhead TWS uses SBC/AAC Bluetooth codecs, and Samsung Music supports common local formats such as MP3, AAC/M4A, and FLAC depending on device.
+- The phone profile may produce a mixed ZIP with `.m4a` and `.mp3` tracks. That is intentional: AAC is preserved as M4A, while MP3 remains MP3 to avoid an unnecessary lossy transcode.
+- Normalization improves playlist volume consistency and can reduce clipping risk, but it is not mastering or source-quality restoration.
 
 Frontend service env:
 
@@ -298,10 +322,13 @@ Troubleshooting:
 
 - Missing yt-dlp: install yt-dlp locally, or on Railway use the frontend Dockerfile and `YTDLP_PATH=/usr/local/bin/yt-dlp`.
 - Old yt-dlp: update yt-dlp. YouTube extraction often breaks on old versions.
-- Missing ffmpeg/ffprobe: install ffmpeg and set `FFMPEG_LOCATION=/usr/bin` in Docker/Railway.
+- Missing ffmpeg/ffprobe: install ffmpeg and set `FFMPEG_LOCATION=/usr/bin` in Docker/Railway. On local Windows, set `$env:FFMPEG_LOCATION = "C:\tools\ffmpeg\bin"` if ffmpeg is installed there.
 - Cloud YouTube block, 403, 429, CAPTCHA, or bot check: YouTube may be blocking the cloud/datacenter IP. Run locally/private network, try later, update yt-dlp, or provide direct audio files/URLs.
 - Timeout: retry, increase `YTDLP_TIMEOUT_MS`, update yt-dlp, or test the target directly with yt-dlp locally.
 - No results: check the title/artist or provide a valid YouTube video ID/URL.
+- Tags missing: open `/api/download/diagnostics` and confirm ffmpeg and ffprobe are available; the manifest will include post-processing warnings without exposing local paths.
+- Cover art missing: verify the imported artwork/thumbnail exists and is not blocked; cover fetch failures do not fail the track.
+- Normalization slow: leave Normalize volume off. Metadata-only mode avoids re-encoding whenever possible.
 
 Limits:
 
@@ -309,3 +336,4 @@ Limits:
 - The app does not bypass DRM, CAPTCHA, bot checks, paywalls, login-required videos, private videos, removed videos, age-restricted videos, or access controls.
 - Reliable fallback is a local/private machine with current yt-dlp and ffmpeg, or direct audio files/URLs.
 - Blocked, failed, or skipped ZIP items are written to `search-list.txt` and `failed-items.json`.
+- Metadata matching is best-effort, cover art may be unavailable, loudness normalization is not audio restoration, and no EQ is applied.

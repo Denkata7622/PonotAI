@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Moon, RotateCcw, Search, Sun } from "../../../lucide-react";
 import { DEFAULT_UI_PERSONALIZATION, THEME_PRESET_DEFINITIONS, UI_PRESETS, resolveTheme, type AccentIntensity, type BodyFont, type CardEmphasis, type ChartStyle, type DensityMode, type DisplayFont, type DisplayTextStyle, type GlowLevel, type PanelTint, type RadiusMode, type SidebarStyle, type SurfaceStyle, type TextScale, type UiPersonalization } from "../../../lib/ThemeContext";
 import { ACCENT_TOKENS, SUPPORTED_ACCENTS } from "../../../lib/themePresets";
@@ -101,6 +101,14 @@ const PREVIEW_SURFACES: Array<{ key: PreviewSurface; label: string }> = [
   { key: "profile", label: "Profile header" },
 ];
 
+const COMPACT_SPACING_STORAGE_KEY = "turrex-compact-spacing";
+
+function applyCompactSpacingPreference(enabled: boolean) {
+  if (typeof document === "undefined") return;
+  if (enabled) document.documentElement.setAttribute("data-compact", "true");
+  else document.documentElement.removeAttribute("data-compact");
+}
+
 type Props = {
   ui: UiPersonalization;
   onUpdate: <K extends keyof UiPersonalization>(key: K, value: UiPersonalization[K]) => void;
@@ -115,9 +123,23 @@ export default function ThemeStudioControls({ ui, onUpdate, onApplyPreset, onApp
   const [fontCategory, setFontCategory] = useState<FontCategory>("all");
   const [recentFonts, setRecentFonts] = useState<Array<BodyFont | DisplayFont>>([]);
   const [recentAccents, setRecentAccents] = useState<Array<UiPersonalization["accent"]>>([]);
+  const [compactSpacing, setCompactSpacing] = useState(false);
   const baseControlKeys = (Object.keys(CONTROL_GROUPS) as Array<keyof typeof CONTROL_GROUPS>).filter((key) => key !== "bodyFont" && key !== "displayFont");
 
   const summaryLine = `${ui.theme === "system" ? `${resolveTheme(ui.theme)} (system)` : ui.theme}, ${ui.accent}, ${ui.intensity}, ${ui.surfaceStyle}, ${ui.density}, ${FONT_LABELS[ui.displayFont]} display`;
+
+  useEffect(() => {
+    const enabled = window.localStorage.getItem(COMPACT_SPACING_STORAGE_KEY) === "true";
+    setCompactSpacing(enabled);
+    applyCompactSpacingPreference(enabled);
+  }, []);
+
+  function updateCompactSpacing(enabled: boolean) {
+    setCompactSpacing(enabled);
+    if (enabled) window.localStorage.setItem(COMPACT_SPACING_STORAGE_KEY, "true");
+    else window.localStorage.removeItem(COMPACT_SPACING_STORAGE_KEY);
+    applyCompactSpacingPreference(enabled);
+  }
 
   function rememberFont(font: BodyFont | DisplayFont) {
     setRecentFonts((prev) => [font, ...prev.filter((entry) => entry !== font)].slice(0, 6));
@@ -271,6 +293,28 @@ export default function ThemeStudioControls({ ui, onUpdate, onApplyPreset, onApp
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="themed-surface-subtle settings-card p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-[var(--text)]">Compact spacing (reduce container padding)</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Reduce main-content vertical padding across Turrex on this device.</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={compactSpacing}
+            aria-label="Compact spacing (reduce container padding)"
+            className={`relative h-6 w-11 shrink-0 rounded-full border transition ${compactSpacing ? "border-[var(--accent-border)] bg-[var(--accent)]" : "border-[var(--border)] bg-[var(--surface)]"}`}
+            onClick={() => updateCompactSpacing(!compactSpacing)}
+          >
+            <span
+              aria-hidden="true"
+              className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full transition-transform ${compactSpacing ? "translate-x-5 bg-[var(--accent-foreground)]" : "translate-x-1 bg-[var(--muted)]"}`}
+            />
+          </button>
+        </div>
       </div>
 
       <div className="themed-panel-surface-subtle settings-card p-4 space-y-3">

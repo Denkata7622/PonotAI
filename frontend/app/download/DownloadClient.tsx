@@ -7,7 +7,8 @@ import { Input } from "@/src/components/ui/Input";
 import { Button } from "@/src/components/ui/Button";
 import SongReviewModal from "@/components/SongReviewModal";
 import type { SongMatch } from "@/features/recognition/api";
-import { createLocalExportZip, saveBlobAsDownload, type LocalExportProgress, type LocalExportResultItem, type LocalExportSong } from "@/lib/localDownloadExporter";
+import { createLocalExportZip, saveBlobAsDownload, type LocalExportPostProcessingOptions, type LocalExportProgress, type LocalExportResultItem, type LocalExportSong } from "@/lib/localDownloadExporter";
+import type { AudioPolishMode, ExportAudioProfile } from "@/lib/audioPolishTypes";
 import { clearStoredClientErrors, getStoredClientErrors } from "@/src/components/ClientErrorReporter";
 
 type DownloadState = "idle" | "ready" | "exporting" | "done" | "error";
@@ -47,6 +48,13 @@ type Diagnostics = {
     backendPythonPackagesMatter: boolean;
     frontendDockerfileMatters: boolean;
   };
+  metadataPostProcessing?: { available: boolean; requires: string[] };
+  loudnessNormalization?: { available: boolean; defaultEnabled: boolean; usesEq: boolean };
+  audioAnalysisAvailable?: boolean;
+  loudnessNormalizationAvailable?: boolean;
+  supportedAudioPolishModes?: AudioPolishMode[];
+  supportedAudioProfiles?: ExportAudioProfile[];
+  ffmpegEncoders?: { checked: boolean; aac: boolean; libmp3lame: boolean; errorCode?: string };
   warnings: string[];
   fixes: string[];
 };
@@ -106,6 +114,21 @@ type ResultSummary = {
   exported: number;
   failed: number;
   skipped: number;
+  tagged: number;
+  coversEmbedded: number;
+  normalized: number;
+  audioImproved: number;
+  audioNeutral: number;
+  audioWorse: number;
+  audioPolishWarnings: number;
+  preservedWithoutReencode: number;
+  compatibilityReencoded: number;
+  normalizationReencoded: number;
+  m4a: number;
+  mp3: number;
+  phoneProfileWarnings: number;
+  metadataWarnings: number;
+  postProcessingFailed: number;
 };
 
 const YOUTUBE_VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
@@ -365,7 +388,13 @@ function phaseLabel(phase?: LocalExportProgress["phase"]): string {
     case "preparing": return "Preparing export";
     case "fetching-audio": return "Fetching direct audio";
     case "downloading-youtube": return "Running YouTube fallback";
+    case "cleaning-metadata": return "Cleaning metadata";
     case "fetching-cover": return "Fetching cover art";
+    case "embedding-cover": return "Embedding cover art";
+    case "analyzing-audio": return "Analyzing original audio";
+    case "normalizing-volume": return "Normalizing volume";
+    case "verifying-file": return "Verifying file";
+    case "comparing-audio": return "Comparing before and after";
     case "adding-files": return "Adding files to ZIP";
     case "finalizing": return "Finalizing ZIP";
     case "done": return "Done";
@@ -433,6 +462,22 @@ export default function DownloadClient() {
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [showSkippedImportRows, setShowSkippedImportRows] = useState(false);
   const [clientErrors, setClientErrors] = useState<ReturnType<typeof getStoredClientErrors>>([]);
+  const [postProcessingOptions, setPostProcessingOptions] = useState<LocalExportPostProcessingOptions>({
+    cleanMetadata: true,
+    embedCover: true,
+    normalizeLoudness: false,
+    loudnessTarget: { integrated: -14, truePeak: -1.5, lra: 11 },
+    audioPolish: {
+      profile: "compatibility-mp3",
+      mode: "metadata-only",
+      normalizeLoudness: false,
+      truePeakLimit: false,
+      trimSilence: false,
+      analyzeBeforeAfter: true,
+      exportComparisonReport: true,
+      loudnessTarget: { integratedLufs: -14, truePeakDb: -1.5, loudnessRangeLra: 11 },
+    },
+  });
 
   async function loadDiagnostics() {
     try {
@@ -461,6 +506,44 @@ export default function DownloadClient() {
     setClientErrors(getStoredClientErrors());
     void loadDiagnostics();
   }, []);
+
+  function setExportAudioProfile(profile: ExportAudioProfile) {
+    const mode: AudioPolishMode = profile === "phone-aac-normalized" || profile === "mp3-normalized"
+      ? "normalize-loudness"
+      : profile === "analysis-only"
+        ? "analyze-only"
+        : "metadata-only";
+    const normalizeLoudness = profile === "phone-aac-normalized" || profile === "mp3-normalized";
+    setPostProcessingOptions((current) => ({
+      ...current,
+      normalizeLoudness,
+      audioPolish: {
+        ...current.audioPolish,
+        profile,
+        mode,
+        normalizeLoudness,
+        truePeakLimit: false,
+        trimSilence: normalizeLoudness ? current.audioPolish.trimSilence : false,
+      },
+    }));
+  }
+
+  function setLoudnessPreset(integratedLufs: number) {
+    const truePeakDb = integratedLufs === -12 ? -1 : -1.5;
+    const loudnessRangeLra = integratedLufs === -16 ? 12 : 11;
+    setPostProcessingOptions((current) => ({
+      ...current,
+      loudnessTarget: {
+        integrated: integratedLufs,
+        truePeak: truePeakDb,
+        lra: loudnessRangeLra,
+      },
+      audioPolish: {
+        ...current.audioPolish,
+        loudnessTarget: { integratedLufs, truePeakDb, loudnessRangeLra },
+      },
+    }));
+  }
 
   async function handleJsonImport(file: File | null) {
     if (!file) return;
@@ -546,6 +629,7 @@ export default function DownloadClient() {
 
     try {
       const result = await createLocalExportZip(selectedSongs.map(toLocalExportSong), setProgress, {
+        postProcessing: postProcessingOptions,
         diagnosticsSnapshot: diagnostics ? {
           ok: diagnostics.ok,
           mode: diagnostics.mode,
@@ -560,6 +644,8 @@ export default function DownloadClient() {
           },
           ffmpeg: { found: diagnostics.ffmpeg.found, version: compactVersion(diagnostics.ffmpeg.version), errorCode: diagnostics.ffmpeg.errorCode },
           ffprobe: { found: diagnostics.ffprobe.found, version: compactVersion(diagnostics.ffprobe.version), errorCode: diagnostics.ffprobe.errorCode },
+          supportedAudioProfiles: diagnostics.supportedAudioProfiles,
+          ffmpegEncoders: diagnostics.ffmpegEncoders,
           cache: diagnostics.cache,
           temp: diagnostics.temp,
           config: diagnostics.config,
@@ -572,6 +658,21 @@ export default function DownloadClient() {
         exported: result.exportedCount,
         failed: result.failedCount,
         skipped: result.skippedCount,
+        tagged: result.taggedCount,
+        coversEmbedded: result.coversEmbeddedCount,
+        normalized: result.normalizedCount,
+        audioImproved: result.audioImprovedCount,
+        audioNeutral: result.audioNeutralCount,
+        audioWorse: result.audioWorseCount,
+        audioPolishWarnings: result.audioPolishWarningCount,
+        preservedWithoutReencode: result.preservedWithoutReencodeCount,
+        compatibilityReencoded: result.compatibilityReencodedCount,
+        normalizationReencoded: result.normalizationReencodedCount,
+        m4a: result.m4aCount,
+        mp3: result.mp3Count,
+        phoneProfileWarnings: result.phoneProfileWarningCount,
+        metadataWarnings: result.metadataWarningCount,
+        postProcessingFailed: result.postProcessingFailedCount,
       });
       const now = new Date();
       const filename = `Turrex Export ${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}.zip`;
@@ -687,6 +788,163 @@ export default function DownloadClient() {
                 </div>
               </div>
 
+              <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Info className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
+                      <p className="text-sm font-medium text-[var(--text)]">Audio polish</p>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Tags and covers are written before ZIP export. Optional loudness polish includes before/after metrics and never applies EQ.</p>
+                  </div>
+                  <span className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--muted)]">
+                    {postProcessingOptions.normalizeLoudness
+                      ? "Normalize + re-encode"
+                      : postProcessingOptions.audioPolish.profile === "phone-aac-preserve"
+                        ? "Preserve codec"
+                        : "Copy where possible"}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid gap-3">
+                  <label className="flex items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                    <input
+                      type="checkbox"
+                      checked={postProcessingOptions.cleanMetadata}
+                      onChange={(event) => setPostProcessingOptions((current) => ({ ...current, cleanMetadata: event.target.checked }))}
+                      disabled={state === "exporting"}
+                      className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-[var(--text)]">Clean title/artist metadata</span>
+                      <span className="block text-xs leading-5 text-[var(--muted)]">Removes YouTube labels while preserving live, remaster, remix, acoustic, and featured-artist details.</span>
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                    <input
+                      type="checkbox"
+                      checked={postProcessingOptions.embedCover}
+                      onChange={(event) => setPostProcessingOptions((current) => ({ ...current, embedCover: event.target.checked }))}
+                      disabled={state === "exporting"}
+                      className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-[var(--text)]">Embed cover art when available</span>
+                      <span className="block text-xs leading-5 text-[var(--muted)]">Uses imported artwork or downloader thumbnails and keeps exporting when art is unavailable.</span>
+                    </span>
+                  </label>
+
+                  <div className="grid gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                    <p className="text-sm font-medium text-[var(--text)]">Export profile</p>
+                    <p className="text-xs leading-5 text-[var(--muted)]">
+                      Phone optimized AAC/M4A can avoid unnecessary MP3 conversion when the source is already AAC. No EQ or bass boost is applied.
+                    </p>
+                    <div className="grid gap-2">
+                      {([
+                        ["compatibility-mp3", "MP3 compatibility", "Default. Outputs MP3 and copies source MP3 audio when possible."],
+                        ["phone-aac-preserve", "Phone optimized AAC/M4A", "Recommended for Samsung Music + Bluetooth earbuds. Preserves AAC as M4A and keeps MP3 as MP3 to avoid lossy AAC conversion."],
+                        ["phone-aac-normalized", "Phone optimized AAC/M4A + normalized volume", "Outputs AAC/M4A with playlist loudness normalization. Re-encodes audio and uses no EQ."],
+                        ["mp3-normalized", "MP3 + normalized volume", "Keeps MP3 compatibility while normalizing loudness. Re-encodes audio and uses no EQ."],
+                      ] as Array<[ExportAudioProfile, string, string]>).map(([profile, label, description]) => (
+                        <label key={profile} className="flex items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+                          <input
+                            type="radio"
+                            name="export-audio-profile"
+                            checked={postProcessingOptions.audioPolish.profile === profile}
+                            onChange={() => setExportAudioProfile(profile)}
+                            disabled={state === "exporting"}
+                            className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-[var(--text)]">{label}</span>
+                            <span className="block text-xs leading-5 text-[var(--muted)]">{description}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {postProcessingOptions.normalizeLoudness ? (
+                    <div className="grid gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                      <label className="grid gap-2 text-sm text-[var(--text)] sm:grid-cols-[minmax(0,1fr)_220px] sm:items-center">
+                        <span className="min-w-0">
+                          <span className="block font-medium">Loudness target</span>
+                          <span className="block text-xs leading-5 text-[var(--muted)]">Balanced streaming is the default for mixed playlists.</span>
+                        </span>
+                        <select
+                          value={postProcessingOptions.audioPolish.loudnessTarget.integratedLufs}
+                          onChange={(event) => setLoudnessPreset(Number(event.target.value))}
+                          disabled={state === "exporting"}
+                          className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm text-[var(--text)]"
+                        >
+                          <option value={-14}>Balanced streaming (-14 LUFS)</option>
+                          <option value={-16}>Quieter safe (-16 LUFS)</option>
+                          <option value={-12}>Louder (-12 LUFS)</option>
+                        </select>
+                      </label>
+                      <label className="flex items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+                        <input
+                          type="checkbox"
+                          checked={postProcessingOptions.audioPolish.mode === "normalize-loudness-safe" || postProcessingOptions.audioPolish.truePeakLimit}
+                          onChange={(event) => setPostProcessingOptions((current) => ({
+                            ...current,
+                            audioPolish: {
+                              ...current.audioPolish,
+                              mode: event.target.checked ? "normalize-loudness-safe" : "normalize-loudness",
+                              truePeakLimit: event.target.checked,
+                            },
+                          }))}
+                          disabled={state === "exporting"}
+                          className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-[var(--text)]">Add safety limiter</span>
+                          <span className="block text-xs leading-5 text-[var(--muted)]">Conservative peak protection after loudness normalization. It does not change tonal balance.</span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+                        <input
+                          type="checkbox"
+                          checked={postProcessingOptions.audioPolish.trimSilence}
+                          onChange={(event) => setPostProcessingOptions((current) => ({
+                            ...current,
+                            audioPolish: { ...current.audioPolish, trimSilence: event.target.checked },
+                          }))}
+                          disabled={state === "exporting"}
+                          className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-[var(--text)]">Trim leading/trailing silence</span>
+                          <span className="block text-xs leading-5 text-[var(--muted)]">Conservative and off by default. Very quiet intros or outros may need this left off.</span>
+                        </span>
+                      </label>
+                    </div>
+                  ) : null}
+
+                  <label className="flex items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                    <input
+                      type="checkbox"
+                      checked={postProcessingOptions.audioPolish.exportComparisonReport}
+                      onChange={(event) => setPostProcessingOptions((current) => ({
+                        ...current,
+                        audioPolish: {
+                          ...current.audioPolish,
+                          analyzeBeforeAfter: event.target.checked,
+                          exportComparisonReport: event.target.checked,
+                        },
+                      }))}
+                      disabled={state === "exporting"}
+                      className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-[var(--text)]">Include before/after audio analysis</span>
+                      <span className="block text-xs leading-5 text-[var(--muted)]">Adds technical loudness, peak, and preservation metrics to manifest.json and analysis/audio-comparison.json.</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <Button onClick={addSingleSongToExport} disabled={state === "exporting"} className="inline-flex items-center gap-2">
                   <Plus className="h-4 w-4" aria-hidden="true" />
@@ -761,6 +1019,7 @@ export default function DownloadClient() {
               state={state}
               errorMessage={errorMessage}
               summary={resultSummary}
+              exportedItems={resultItems.filter((item) => item.status === "exported")}
               unresolvedItems={unresolvedItems}
               visibleFailures={visibleFailures}
               setupIssue={setupIssue}
@@ -819,6 +1078,11 @@ function DiagnosticsCard({ mounted, diagnostics, runtimeConfig, diagnosticsError
         <ToolRow label="yt-dlp" ok={Boolean(diagnostics?.downloader.found)} detail={compactVersion(diagnostics?.downloader.version) || (diagnostics?.downloader.errorCode ? `Error ${diagnostics.downloader.errorCode}` : "Waiting")} />
         <ToolRow label="ffmpeg" ok={Boolean(diagnostics?.ffmpeg.found)} detail={compactVersion(diagnostics?.ffmpeg.version) || (diagnostics?.ffmpeg.errorCode ? `Error ${diagnostics.ffmpeg.errorCode}` : "Waiting")} />
         <ToolRow label="ffprobe" ok={Boolean(diagnostics?.ffprobe.found)} detail={compactVersion(diagnostics?.ffprobe.version) || (diagnostics?.ffprobe.errorCode ? `Error ${diagnostics.ffprobe.errorCode}` : "Waiting")} />
+        <ToolRow label="ID3 polish" ok={Boolean(diagnostics?.metadataPostProcessing?.available)} detail={diagnostics ? (diagnostics.metadataPostProcessing?.available ? "Available" : "Needs ffmpeg and ffprobe") : "Waiting"} />
+        <ToolRow label="Normalize" ok={Boolean(diagnostics?.loudnessNormalization?.available)} detail={diagnostics ? (diagnostics.loudnessNormalization?.available ? "Available, off by default, no EQ" : "Needs ffmpeg") : "Waiting"} />
+        <ToolRow label="Analysis" ok={Boolean(diagnostics?.audioAnalysisAvailable)} detail={diagnostics ? (diagnostics.audioAnalysisAvailable ? `Available: ${(diagnostics.supportedAudioPolishModes ?? []).join(", ")}` : "Needs ffmpeg and ffprobe") : "Waiting"} />
+        <ToolRow label="Profiles" ok={Boolean(diagnostics?.supportedAudioProfiles?.length)} detail={diagnostics ? (diagnostics.supportedAudioProfiles ?? []).join(", ") : "Waiting"} />
+        <ToolRow label="Encoders" ok={Boolean(diagnostics?.ffmpegEncoders?.checked)} detail={diagnostics?.ffmpegEncoders?.checked ? `aac ${diagnostics.ffmpegEncoders.aac ? "yes" : "no"}, libmp3lame ${diagnostics.ffmpegEncoders.libmp3lame ? "yes" : "no"}` : (diagnostics?.ffmpegEncoders?.errorCode || "Waiting")} />
         <ToolRow label="cache" ok={Boolean(diagnostics?.cache.writable)} detail={diagnostics ? `${diagnostics.cache.writable ? "Writable" : diagnostics.cache.error || "Not writable"} (${diagnostics.cache.dir})` : "Waiting"} />
         <ToolRow label="temp" ok={Boolean(diagnostics?.temp.writable)} detail={diagnostics ? `${diagnostics.temp.writable ? "Writable" : diagnostics.temp.error || "Not writable"} (${diagnostics.temp.dir})` : "Waiting"} />
       </div>
@@ -906,6 +1170,12 @@ function DebugDetailsCard({ runtimeConfig, diagnostics, clientErrors, onClearCli
       ytdlp: { found: diagnostics.downloader.found, version: compactVersion(diagnostics.downloader.version), stale: diagnostics.downloader.looksStale },
       ffmpeg: { found: diagnostics.ffmpeg.found, version: compactVersion(diagnostics.ffmpeg.version) },
       ffprobe: { found: diagnostics.ffprobe.found, version: compactVersion(diagnostics.ffprobe.version) },
+      metadataPostProcessing: diagnostics.metadataPostProcessing,
+      loudnessNormalization: diagnostics.loudnessNormalization,
+      audioAnalysisAvailable: diagnostics.audioAnalysisAvailable,
+      supportedAudioProfiles: diagnostics.supportedAudioProfiles,
+      supportedAudioPolishModes: diagnostics.supportedAudioPolishModes,
+      ffmpegEncoders: diagnostics.ffmpegEncoders,
       cache: { writable: diagnostics.cache.writable, dir: diagnostics.cache.dir },
       temp: { writable: diagnostics.temp.writable, dir: diagnostics.temp.dir },
       envFlagsPresent: diagnostics.config.envFlagsPresent,
@@ -985,10 +1255,11 @@ function ProgressCard({ state, progress, progressPct }: { state: DownloadState; 
   );
 }
 
-function ResultCard({ state, errorMessage, summary, unresolvedItems, visibleFailures, setupIssue, showAllFailures, onToggleFailures, onCopySearchList, onRetryFailed }: {
+function ResultCard({ state, errorMessage, summary, exportedItems, unresolvedItems, visibleFailures, setupIssue, showAllFailures, onToggleFailures, onCopySearchList, onRetryFailed }: {
   state: DownloadState;
   errorMessage: string;
   summary: ResultSummary | null;
+  exportedItems: LocalExportResultItem[];
   unresolvedItems: LocalExportResultItem[];
   visibleFailures: LocalExportResultItem[];
   setupIssue: { code?: string; message: string } | null;
@@ -1029,7 +1300,64 @@ function ResultCard({ state, errorMessage, summary, unresolvedItems, visibleFail
         <Metric label="Exported" value={String(summary.exported)} />
         <Metric label="Failed" value={String(summary.failed)} />
         <Metric label="Skipped" value={String(summary.skipped)} />
+        <Metric label="Tagged" value={String(summary.tagged)} />
+        <Metric label="Covers" value={String(summary.coversEmbedded)} />
+        <Metric label="Normalized" value={String(summary.normalized)} />
+        <Metric label="Preserved" value={String(summary.preservedWithoutReencode)} />
+        <Metric label="M4A" value={String(summary.m4a)} />
+        <Metric label="MP3" value={String(summary.mp3)} />
+        <Metric label="Improved" value={String(summary.audioImproved)} />
+        <Metric label="Neutral" value={String(summary.audioNeutral)} />
+        <Metric label="Audio warnings" value={String(summary.audioPolishWarnings)} />
       </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <Metric label="Compatibility re-encoded" value={String(summary.compatibilityReencoded)} />
+        <Metric label="Normalization re-encoded" value={String(summary.normalizationReencoded)} />
+        <Metric label="Phone warnings" value={String(summary.phoneProfileWarnings)} />
+      </div>
+
+      {(summary.metadataWarnings > 0 || summary.postProcessingFailed > 0 || summary.audioWorse > 0 || summary.phoneProfileWarnings > 0) ? (
+        <div className="mt-4 rounded-[var(--radius-md)] border border-[color:rgba(var(--status-warning-rgb),0.45)] bg-[color:rgba(var(--status-warning-rgb),0.12)] p-3 text-sm leading-6 text-[var(--text)]">
+          Metadata warnings: {summary.metadataWarnings}. Audio warnings: {summary.audioPolishWarnings}. Phone profile warnings: {summary.phoneProfileWarnings}. Worse comparison verdicts: {summary.audioWorse}. Post-processing fallback exports: {summary.postProcessingFailed}.
+        </div>
+      ) : null}
+
+      {exportedItems.some((item) => item.audioPolish?.analysis?.comparison) ? (
+        <div className="mt-5">
+          <h3 className="text-sm font-semibold text-[var(--text)]">Audio polish results</h3>
+          <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+            {exportedItems
+              .filter((item) => item.audioPolish?.analysis?.comparison)
+              .slice(0, 8)
+              .map((item) => {
+                const comparison = item.audioPolish?.analysis?.comparison;
+                const before = item.audioPolish?.analysis?.before?.loudness?.integratedLufs;
+                const after = item.audioPolish?.analysis?.after?.loudness?.integratedLufs;
+                const quality = item.audioPolish?.qualityPreservation;
+                return (
+                  <div key={`${item.id}-${item.audioPath || item.title}`} className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="break-words text-sm font-medium text-[var(--text)]">{item.artist ? `${item.artist} - ${item.title}` : item.title}</p>
+                        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                          Profile: {quality?.profile || item.audioPolish?.profile || "compatibility-mp3"}{quality?.outputExtension ? ` | ${quality.outputExtension.toUpperCase().replace(".", "")}` : ""}
+                          {quality ? ` | ${quality.reencoded ? "re-encoded" : "copied"}` : ""}
+                          {comparison?.score?.overall !== undefined ? ` | Score ${comparison.score.overall}` : ""}
+                          {before !== undefined || after !== undefined ? ` | LUFS ${before ?? "?"} -> ${after ?? "?"}` : ""}
+                        </p>
+                        {quality?.transcodeReason ? (
+                          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{quality.transcodeReason}</p>
+                        ) : null}
+                      </div>
+                      <span className="rounded-full border border-[var(--border)] px-2 py-0.5 text-xs text-[var(--muted)]">{quality?.verdict || comparison?.verdict || "unknown"}</span>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      ) : null}
 
       {setupIssue ? (
         <div className="mt-4 rounded-[var(--radius-md)] border border-[color:rgba(var(--status-warning-rgb),0.45)] bg-[color:rgba(var(--status-warning-rgb),0.12)] p-3 text-sm leading-6 text-[var(--text)]">

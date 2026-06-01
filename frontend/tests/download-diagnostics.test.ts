@@ -17,6 +17,10 @@ test("download diagnostics returns frontend runtime shape without secrets", asyn
     temp: { dir: string; writable: boolean };
     config: { envFlagsPresent: Record<string, boolean> };
     frontendVsBackend: { backendPythonPackagesMatter: boolean; frontendDockerfileMatters: boolean };
+    audioAnalysisAvailable: boolean;
+    supportedAudioPolishModes: string[];
+    supportedAudioProfiles: string[];
+    ffmpegEncoders?: { checked: boolean; aac: boolean; libmp3lame: boolean };
     fixes: string[];
   };
 
@@ -27,6 +31,12 @@ test("download diagnostics returns frontend runtime shape without secrets", asyn
   assert.equal(body.runningInFrontendService, true);
   assert.equal(body.frontendVsBackend.backendPythonPackagesMatter, false);
   assert.equal(body.frontendVsBackend.frontendDockerfileMatters, true);
+  assert.equal(typeof body.audioAnalysisAvailable, "boolean");
+  assert.ok(body.supportedAudioPolishModes.includes("metadata-only"));
+  assert.ok(body.supportedAudioPolishModes.includes("normalize-loudness-safe"));
+  assert.ok(body.supportedAudioProfiles.includes("compatibility-mp3"));
+  assert.ok(body.supportedAudioProfiles.includes("phone-aac-preserve"));
+  assert.equal(typeof body.ffmpegEncoders?.checked, "boolean");
   assert.ok(Object.prototype.hasOwnProperty.call(body.config.envFlagsPresent, "YTDLP_PATH"));
   assert.ok(Object.prototype.hasOwnProperty.call(body.config.envFlagsPresent, "FFMPEG_LOCATION"));
   assert.doesNotMatch(JSON.stringify(body), /token|secret|password|cookie=/i);

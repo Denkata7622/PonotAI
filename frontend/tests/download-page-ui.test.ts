@@ -22,6 +22,9 @@ test("download client renders downloader controls without backend API config", (
     const html = renderToString(React.createElement(DownloadClient));
     assert.match(html, /Local ZIP Export/);
     assert.match(html, /Export ZIP/);
+    assert.match(html, /Audio polish/);
+    assert.match(html, /MP3 compatibility/);
+    assert.match(html, /Phone optimized AAC\/M4A/);
     assert.match(html, /Downloader diagnostics/);
     assert.doesNotMatch(html, /Backend API URL is not configured.*blocks/);
   } finally {

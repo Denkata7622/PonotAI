@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Modal from "../src/components/ui/Modal";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { SongMatch } from "../features/recognition/api";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
@@ -118,6 +118,7 @@ type SongReviewModalProps = {
   songs: SongMatch[];
   onConfirm: (selectedSongs: SongMatch[]) => void | Promise<void>;
   onCancel: () => void;
+  submittingMessage?: string;
 };
 
 function missingCover(song: EditableSong): boolean {
@@ -144,7 +145,7 @@ function CoverThumb({ url, alt }: { url: string; alt: string }) {
     );
 }
 
-export default function SongReviewModal({ songs, onConfirm, onCancel }: SongReviewModalProps) {
+export default function SongReviewModal({ songs, onConfirm, onCancel, submittingMessage }: SongReviewModalProps) {
   const apiConfig = useMemo(() => getApiConfigStatus(), []);
   const apiBaseUrl = apiConfig.baseUrl;
   const apiSetupMessage = apiConfig.message ?? getApiSetupMessage();
@@ -168,6 +169,9 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
   const [inlineMessage, setInlineMessage] = useState("");
   const [batchCoverLoading, setBatchCoverLoading] = useState(false);
   const [activeReviewId, setActiveReviewId] = useState<string | null>(null);
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : document.body,
+  );
 
   const selectedCount = editableSongs.filter((s) => s.selected).length;
   const currentSongFromActive = activeReviewId
@@ -180,6 +184,19 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
     || editableSongs[0];
 
   const currentSongHasCover = Boolean(currentSong && isRealCoverUrl(getSongCover(currentSong)));
+
+  useEffect(() => {
+    setPortalRoot(document.body);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "";
+    };
+  }, [onCancel]);
 
   function updateSong(reviewId: string, updater: (song: EditableSong) => EditableSong) {
     setEditableSongs((prev) => prev.map((song) => (song.reviewId === reviewId ? updater(song) : song)));
@@ -196,7 +213,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
     const title = song.editedSongName?.trim() || song.songName;
     const artist = song.editedArtist?.trim() || song.artist;
     const exclude = song.coverCandidates.map((item) => item.url);
-    const urls = await lookupCoverArtUrls(apiBaseUrl, title, artist, { exclude, limit: 8 });
+    const urls = await lookupCoverArtUrls(apiBaseUrl, title, artist, { exclude, limit: 4 });
     return dedupeCoverCandidates(urls.map((url) => ({ url }))).map((item) => item.url);
   }
 
@@ -231,7 +248,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
     try {
       const coverUrls = await lookupCoverArtUrls(apiBaseUrl, title, artist, {
         exclude: useExclude ? target.coverCandidates.map((item) => item.url) : [],
-        limit: 8,
+        limit: 4,
       });
       if (!coverUrls.length) return;
       updateSong(reviewId, (song) => {
@@ -336,16 +353,22 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
 
   const chosenSongSummary = useMemo(() => (currentSong ? `${currentSong.songName} — ${currentSong.artist}` : ""), [currentSong]);
 
-  return (
-    <Modal
-      isOpen
-      onClose={onCancel}
-      title={t("modal_review_title", language)}
-      maxWidth="1024px"
-      centerOnMobile
-      panelClassName="overflow-hidden p-4 sm:p-6"
-    >
-      <div className="flex h-full max-h-[min(78dvh,760px)] w-full max-w-5xl flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 sm:p-5">
+  const modal = (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onCancel}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="song-review-title"
+        className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 sm:px-6">
+          <h2 id="song-review-title" className="text-lg font-semibold text-[var(--text)]">{t("modal_review_title", language)}</h2>
+          <button type="button" onClick={onCancel} disabled={isSubmitting} className="rounded-lg border border-border px-3 py-1 text-sm hover:bg-surface-raised disabled:opacity-60">
+            {t("modal_close", language)}
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-col p-3 sm:p-5">
         <p className="mb-2 shrink-0 text-sm text-text-muted">
           {t("modal_selected_count", language, { selected: selectedCount, total: editableSongs.length })}
         </p>
@@ -451,7 +474,8 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
           ))}
         </div>
 
-        <div className="mt-4 flex shrink-0 items-center justify-end gap-3 border-t border-[var(--border)] pt-4">
+        <div className="mt-4 flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-[var(--border)] pt-4">
+          {isSubmitting && submittingMessage ? <p className="mr-auto text-sm text-text-muted">{submittingMessage}</p> : null}
           <button onClick={onCancel} disabled={isSubmitting} className="rounded-lg border border-border px-5 py-2 hover:bg-surface-raised">
             {t("modal_cancel", language)}
           </button>
@@ -460,10 +484,13 @@ export default function SongReviewModal({ songs, onConfirm, onCancel }: SongRevi
             disabled={selectedCount === 0 || isSubmitting}
             className="rounded-lg bg-[var(--accent)] px-5 py-2 font-medium hover:bg-[var(--accent-2)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {selectedCount > 0 ? t("modal_confirm_count", language, { count: selectedCount }) : t("modal_confirm", language)}
+            {isSubmitting && submittingMessage ? submittingMessage : selectedCount > 0 ? t("modal_confirm_count", language, { count: selectedCount }) : t("modal_confirm", language)}
           </button>
         </div>
       </div>
-    </Modal>
+      </div>
+    </div>
   );
+
+  return portalRoot ? createPortal(modal, portalRoot) : modal;
 }

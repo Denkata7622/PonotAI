@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { binaryFromLocation } from "./downloadDiagnostics";
+import { encodePostProcessingHeader, postProcessAudio, resolvePostProcessingOptions, validatePostProcessingOptions, type DownloadPostProcessingOptions, type TrackPostProcessingResult } from "./audioPostProcessor";
+import { resolveTrackMetadata, type TrackMetadataInput } from "./trackMetadata";
 
 const YOUTUBE_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
 const MIN_TIMEOUT_MS = 30000;
@@ -19,6 +22,8 @@ type DownloadBody = {
   title?: string;
   artist?: string;
   platformLinks?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  postProcessing?: unknown;
 };
 
 type DownloadConfig = {
@@ -55,6 +60,8 @@ type DownloadErrorPayload = {
   requestId: string;
 };
 
+type YtdlpInfo = Record<string, unknown>;
+
 function clampNumber(value: number, min: number, max: number, fallback: number): number {
   return Math.min(max, Math.max(min, Number.isFinite(value) ? value : fallback));
 }
@@ -78,8 +85,25 @@ function contentDisposition(filename: string): string {
   return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(safe)}`;
 }
 
+const AUDIO_OUTPUT_EXTENSIONS = new Set([
+  ".mp3",
+  ".m4a",
+  ".mp4",
+  ".aac",
+  ".webm",
+  ".opus",
+  ".ogg",
+  ".oga",
+  ".wav",
+  ".flac",
+]);
+
 function capOutput(current: string, next: string): string {
   return (current + next).slice(-CAPTURE_LIMIT);
+}
+
+function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 function redactConfiguredPaths(message: string): string {
@@ -208,7 +232,7 @@ function classifyDownloadError(fullDetail: string, error?: unknown): ClassifiedD
     };
   }
 
-  if (raw.includes("without producing an mp3") || raw.includes("empty output") || raw.includes("no mp3 produced")) {
+  if (raw.includes("without producing an mp3") || raw.includes("without producing an audio") || raw.includes("empty output") || raw.includes("no mp3 produced")) {
     return {
       code: "empty-output",
       status: 502,
@@ -245,18 +269,21 @@ function positiveEnvNumber(name: string): string | undefined {
   return Number.isFinite(value) && value > 0 ? String(value) : undefined;
 }
 
-function buildYtdlpArgs(target: string, outputTemplate: string): string[] {
+function shouldDownloadOriginalAudio(options: DownloadPostProcessingOptions): boolean {
+  return options.audioPolish.profile === "phone-aac-preserve"
+    || options.audioPolish.profile === "phone-aac-normalized"
+    || options.audioPolish.profile === "mp3-normalized"
+    || options.audioPolish.profile === "analysis-only";
+}
+
+function buildYtdlpArgs(target: string, outputTemplate: string, options?: DownloadPostProcessingOptions): string[] {
   const cfg = resolveDownloaderConfig();
   const args = [
     "--no-playlist",
     "--no-progress",
     "-f",
     "bestaudio/best",
-    "-x",
-    "--audio-format",
-    "mp3",
-    "--audio-quality",
-    "0",
+    "--write-info-json",
     "-o",
     outputTemplate,
     "--retries",
@@ -279,6 +306,9 @@ function buildYtdlpArgs(target: string, outputTemplate: string): string[] {
   else if (process.env.YTDLP_CACHE_DIR) args.push("--cache-dir", cfg.cacheDir);
   if (cfg.cookiesConfigured) args.push("--cookies", process.env.YTDLP_COOKIES as string);
   if (cfg.ffmpegLocation) args.push("--ffmpeg-location", cfg.ffmpegLocation);
+  if (!shouldDownloadOriginalAudio(options ?? resolvePostProcessingOptions(undefined))) {
+    args.push("-x", "--audio-format", "mp3", "--audio-quality", "0");
+  }
   args.push(target);
   return args;
 }
@@ -324,6 +354,90 @@ async function writeCachedMp3(target: string, audio: Buffer, filename: string, t
   } catch {
     // Cache is best effort only.
   }
+}
+
+async function readYtdlpInfo(tempDir: string): Promise<YtdlpInfo | undefined> {
+  try {
+    const infoFile = (await fs.readdir(tempDir)).find((entry) => entry.toLowerCase().endsWith(".info.json"));
+    if (!infoFile) return undefined;
+    const parsed = JSON.parse(await fs.readFile(path.join(tempDir, infoFile), "utf8")) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as YtdlpInfo : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function findDownloadedAudioFile(tempDir: string): Promise<string | undefined> {
+  const entries = await fs.readdir(tempDir);
+  const candidates: Array<{ entry: string; size: number; mtimeMs: number }> = [];
+  for (const entry of entries) {
+    const ext = path.extname(entry).toLowerCase();
+    if (!AUDIO_OUTPUT_EXTENSIONS.has(ext)) continue;
+    const fullPath = path.join(tempDir, entry);
+    try {
+      const stat = await fs.stat(fullPath);
+      if (stat.isFile() && stat.size > 0) candidates.push({ entry, size: stat.size, mtimeMs: stat.mtimeMs });
+    } catch {
+      // Ignore races in temp output discovery.
+    }
+  }
+  candidates.sort((a, b) => b.size - a.size || b.mtimeMs - a.mtimeMs);
+  return candidates[0]?.entry;
+}
+
+function safeAudioExtension(filename: string, fallback = ".mp3"): string {
+  const ext = path.extname(filename).toLowerCase();
+  return AUDIO_OUTPUT_EXTENSIONS.has(ext) ? ext : fallback;
+}
+
+function metadataInputFromDownload(body: DownloadBody, target: DownloadTarget, filename?: string, youtubeInfo?: YtdlpInfo): TrackMetadataInput {
+  const filenameTitle = filename ? filename.replace(/\.[^.\\/]+$/, "") : undefined;
+  return {
+    title: body.title,
+    artist: body.artist,
+    query: body.query,
+    filename,
+    sourceTitle: filenameTitle,
+    youtubeTitle: youtubeInfo?.title,
+    youtubeUploader: youtubeInfo?.uploader,
+    youtubeChannel: youtubeInfo?.channel,
+    platformLinks: body.platformLinks,
+    metadata: body.metadata,
+    youtubeInfo,
+    raw: {
+      ...(body.metadata ?? {}),
+      platformLinks: body.platformLinks,
+      youtubeId: body.youtubeId,
+      youtubeUrl: body.youtubeUrl,
+      targetType: target.type,
+    },
+  };
+}
+
+async function processDownloadedAudio(input: {
+  audio: Buffer;
+  filename: string;
+  tempDir: string;
+  body: DownloadBody;
+  target: DownloadTarget;
+  youtubeInfo?: YtdlpInfo;
+  options: DownloadPostProcessingOptions;
+}): Promise<TrackPostProcessingResult> {
+  const inputExt = safeAudioExtension(input.filename, ".audio");
+  const inputPath = path.join(input.tempDir, `download-original${inputExt}`);
+  await fs.writeFile(inputPath, input.audio);
+  const metadata = resolveTrackMetadata(metadataInputFromDownload(input.body, input.target, input.filename, input.youtubeInfo));
+  return postProcessAudio({
+    inputPath,
+    tempDir: input.tempDir,
+    metadata,
+    options: input.options,
+    originalBytes: input.audio,
+    ffmpegPath: binaryFromLocation(process.env.FFMPEG_LOCATION, "ffmpeg"),
+    ffprobePath: binaryFromLocation(process.env.FFMPEG_LOCATION, "ffprobe"),
+    assumeMp3Input: inputExt === ".mp3",
+    sourceFileName: input.filename,
+  });
 }
 
 function isFakeYoutubeId(id: string): boolean {
@@ -439,15 +553,24 @@ function resolveDownloadTarget(body: DownloadBody, id: string): { target?: Downl
   };
 }
 
-function downloadHeaders(audioLength: number, filename: string, cache: "hit" | "miss", targetType: DownloadTarget["type"], id: string): HeadersInit {
+function downloadHeaders(audioLength: number, filename: string, cache: "hit" | "miss", targetType: DownloadTarget["type"], id: string, postProcessing?: TrackPostProcessingResult): HeadersInit {
+  const contentType = postProcessing?.contentType === "audio/mp4"
+    ? "audio/mp4"
+    : postProcessing?.contentType === "application/octet-stream"
+      ? "application/octet-stream"
+      : "audio/mpeg";
   return {
-    "Content-Type": "audio/mpeg",
+    "Content-Type": contentType,
     "Content-Length": String(audioLength),
     "Content-Disposition": contentDisposition(filename),
     "Cache-Control": "no-store",
     "X-PonotAI-Download-Cache": cache,
     "X-PonotAI-Download-Target-Type": targetType,
     "X-PonotAI-Request-ID": id,
+    ...(postProcessing ? {
+      "X-PonotAI-Filename": encodeURIComponent(postProcessing.filename),
+      "X-PonotAI-Postprocessing": encodePostProcessingHeader(postProcessing),
+    } : {}),
   };
 }
 
@@ -523,26 +646,42 @@ export async function handleDownloadPost(request: Request, runner: YtdlpRunner =
     return jsonError("Invalid JSON body", "invalid-json", "Send valid JSON with youtubeId, youtubeUrl, query, or title/artist.", 400, id);
   }
 
+  const validatedOptions = validatePostProcessingOptions(body.postProcessing);
+  if (!validatedOptions.ok) {
+    return jsonError(validatedOptions.message, validatedOptions.code, validatedOptions.fix, 400, id);
+  }
+
   const resolved = resolveDownloadTarget(body || {}, id);
   if (resolved.response) return resolved.response;
   const target = resolved.target as DownloadTarget;
-  logDownload("download.request", { requestId: id, targetType: target.type, cacheDisabled: resolveDownloaderConfig().cacheDisabled });
+  const postProcessingOptions = validatedOptions.options;
+  const preserveSourceDownload = shouldDownloadOriginalAudio(postProcessingOptions);
+  logDownload("download.request", { requestId: id, targetType: target.type, cacheDisabled: resolveDownloaderConfig().cacheDisabled, exportProfile: postProcessingOptions.audioPolish.profile });
 
   let tempDir = "";
   try {
-    const cached = await readCachedMp3(target.target);
+    const cached = preserveSourceDownload ? undefined : await readCachedMp3(target.target);
     if (cached) {
-      logDownload("download.success", { requestId: id, targetType: target.type, cache: "hit", bytes: cached.audio.byteLength });
-      return new Response(new Uint8Array(cached.audio), {
+      tempDir = await fs.mkdtemp(path.join(tmpdir(), "ponotai-postprocess-"));
+      const processed = await processDownloadedAudio({
+        audio: cached.audio,
+        filename: cached.filename,
+        tempDir,
+        body,
+        target,
+        options: postProcessingOptions,
+      });
+      logDownload("download.success", { requestId: id, targetType: target.type, cache: "hit", bytes: processed.outputBytes.byteLength, postProcessing: processed.status });
+      return new Response(bytesToArrayBuffer(processed.outputBytes), {
         status: 200,
-        headers: downloadHeaders(cached.audio.byteLength, cached.filename, "hit", target.type, id),
+        headers: downloadHeaders(processed.outputBytes.byteLength, processed.filename, "hit", target.type, id, processed),
       });
     }
 
     tempDir = await fs.mkdtemp(path.join(tmpdir(), "ponotai-ytdlp-"));
     const cfg = resolveDownloaderConfig();
     const outputTemplate = path.join(tempDir, "%(title).200B.%(ext)s");
-    const result = await runner(buildYtdlpArgs(target.target, outputTemplate), {
+    const result = await runner(buildYtdlpArgs(target.target, outputTemplate, postProcessingOptions), {
       cwd: tempDir,
       timeoutMs: cfg.timeoutMs,
       bin: cfg.ytdlpPath,
@@ -555,25 +694,35 @@ export async function handleDownloadPost(request: Request, runner: YtdlpRunner =
       return jsonError("YouTube download failed.", classified.code, classified.fix, classified.status, id, classified);
     }
 
-    const mp3 = (await fs.readdir(tempDir)).find((entry) => entry.toLowerCase().endsWith(".mp3"));
-    if (!mp3) {
-      const classified = classifyDownloadError("yt-dlp completed without producing an mp3 file");
+    const audioFile = await findDownloadedAudioFile(tempDir);
+    if (!audioFile) {
+      const classified = classifyDownloadError("yt-dlp completed without producing an audio file");
       logDownload("download.failure", { requestId: id, targetType: target.type, code: classified.code, status: classified.status, detail: classified.detail });
       return jsonError("YouTube download failed.", classified.code, classified.fix, classified.status, id, classified);
     }
 
-    const audio = await fs.readFile(path.join(tempDir, mp3));
+    const audio = await fs.readFile(path.join(tempDir, audioFile));
+    const youtubeInfo = await readYtdlpInfo(tempDir);
     if (audio.byteLength <= 0) {
       const classified = classifyDownloadError("yt-dlp produced an empty output file");
       logDownload("download.failure", { requestId: id, targetType: target.type, code: classified.code, status: classified.status, detail: classified.detail });
       return jsonError("YouTube download failed.", classified.code, classified.fix, classified.status, id, classified);
     }
 
-    await writeCachedMp3(target.target, audio, mp3, target.type);
-    logDownload("download.success", { requestId: id, targetType: target.type, cache: "miss", bytes: audio.byteLength });
-    return new Response(new Uint8Array(audio), {
+    if (!preserveSourceDownload) await writeCachedMp3(target.target, audio, audioFile, target.type);
+    const processed = await processDownloadedAudio({
+      audio,
+      filename: audioFile,
+      tempDir,
+      body,
+      target,
+      youtubeInfo,
+      options: postProcessingOptions,
+    });
+    logDownload("download.success", { requestId: id, targetType: target.type, cache: "miss", bytes: processed.outputBytes.byteLength, postProcessing: processed.status });
+    return new Response(bytesToArrayBuffer(processed.outputBytes), {
       status: 200,
-      headers: downloadHeaders(audio.byteLength, mp3, "miss", target.type, id),
+      headers: downloadHeaders(processed.outputBytes.byteLength, processed.filename, "miss", target.type, id, processed),
     });
   } catch (error) {
     const fullDetail = error instanceof Error ? error.message : String(error);

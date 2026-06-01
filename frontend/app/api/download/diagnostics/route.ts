@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DIAGNOSTIC_TIMEOUT_MS = 10000;
-const OUTPUT_LIMIT = 4096;
+const OUTPUT_LIMIT = 65536;
 
 type Mode = "local" | "cloud" | "unknown";
 
@@ -19,6 +19,13 @@ type ProbeResult = {
   errorCode?: string;
   error?: string;
   looksStale?: boolean;
+};
+
+type EncoderSupport = {
+  checked: boolean;
+  aac: boolean;
+  libmp3lame: boolean;
+  errorCode?: string;
 };
 
 function capOutput(current: string, next: string): string {
@@ -89,6 +96,18 @@ function run(binary: string, args: string[]): Promise<ProbeResult> {
   });
 }
 
+async function detectFfmpegEncoders(ffmpegBinary: string, ffmpeg: ProbeResult): Promise<EncoderSupport> {
+  if (!ffmpeg.found) return { checked: false, aac: false, libmp3lame: false, errorCode: "FFMPEG_UNAVAILABLE" };
+  const encoders = await run(ffmpegBinary, ["-hide_banner", "-encoders"]);
+  if (!encoders.found) return { checked: false, aac: false, libmp3lame: false, errorCode: encoders.errorCode };
+  const output = (encoders.version || "").toLowerCase();
+  return {
+    checked: true,
+    aac: /\baac\b/.test(output),
+    libmp3lame: output.includes("libmp3lame"),
+  };
+}
+
 async function checkWritableDir(dir: string, prefix: string): Promise<{ dir: string; writable: boolean; error?: string }> {
   try {
     await fs.mkdir(dir, { recursive: true });
@@ -134,6 +153,7 @@ export async function GET(req: Request): Promise<Response> {
     checkWritableDir(cacheDir, "ponotai-cache"),
     checkWritableDir(tmpdir(), "ponotai-temp"),
   ]);
+  const ffmpegEncoders = await detectFfmpegEncoders(ffmpegBinary, ffmpeg);
 
   if (downloader.found) downloader.looksStale = looksOldYtDlp(downloader.version);
 
@@ -205,6 +225,30 @@ export async function GET(req: Request): Promise<Response> {
       backendPythonPackagesMatter: false,
       frontendDockerfileMatters: true,
     },
+    metadataPostProcessing: {
+      available: ffmpeg.found && ffprobe.found,
+      requires: ["ffmpeg", "ffprobe"],
+    },
+    loudnessNormalization: {
+      available: ffmpeg.found,
+      defaultEnabled: false,
+      usesEq: false,
+    },
+    audioAnalysisAvailable: ffmpeg.found && ffprobe.found,
+    loudnessNormalizationAvailable: ffmpeg.found,
+    supportedAudioProfiles: [
+      "compatibility-mp3",
+      "phone-aac-preserve",
+      "phone-aac-normalized",
+      "mp3-normalized",
+      "analysis-only",
+    ],
+    supportedAudioPolishModes: [
+      "metadata-only",
+      "normalize-loudness",
+      "normalize-loudness-safe",
+    ],
+    ffmpegEncoders,
     warnings: unique(warnings),
     fixes: unique(fixes),
   });

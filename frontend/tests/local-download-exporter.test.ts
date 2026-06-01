@@ -15,10 +15,22 @@ type ParsedZipEntry = {
   centralHeaderOffset: number;
 };
 
-function audioResponse(): Response {
-  return new Response(new Blob([audioBytes], { type: "audio/mpeg" }), {
+function audioResponse(contentType = "audio/mpeg"): Response {
+  return new Response(new Blob([audioBytes], { type: contentType }), {
     status: 200,
-    headers: { "content-type": "audio/mpeg" },
+    headers: { "content-type": contentType },
+  });
+}
+
+function postProcessedAudioResponse(summary: Record<string, unknown>, bytes: Uint8Array = audioBytes): Response {
+  const contentType = typeof summary.contentType === "string" ? summary.contentType : "audio/mpeg";
+  return new Response(new Blob([bytes], { type: contentType }), {
+    status: 200,
+    headers: {
+      "content-type": contentType,
+      "X-PonotAI-Filename": encodeURIComponent(String(summary.filename || "Artist - Song.mp3")),
+      "X-PonotAI-Postprocessing": Buffer.from(JSON.stringify(summary), "utf8").toString("base64url"),
+    },
   });
 }
 
@@ -167,7 +179,7 @@ test("direct mp3 URL fetches directly and does not use /api/download", async () 
     { id: "direct", title: "Direct Song", artist: "Artist", audioUrl: "https://cdn.example.test/song.mp3" },
   ], undefined, { fetcher });
 
-  assert.deepEqual(seen, ["https://cdn.example.test/song.mp3"]);
+  assert.deepEqual(seen, ["https://cdn.example.test/song.mp3", "/api/download/process"]);
   assert.equal(result.exportedCount, 1);
 });
 
@@ -330,6 +342,190 @@ test("export manifest preserves imported metadata", async () => {
     youtube: "https://www.youtube.com/watch?v=abc123xyz_1",
     spotify: "https://open.spotify.com/track/test",
   });
+});
+
+test("export manifest records metadata polish without local paths or secrets", async () => {
+  const result = await createLocalExportZip([
+    {
+      id: "polish",
+      title: "Lose Yourself (Official Music Video) [HD]",
+      artist: "Eminem",
+      blob: new Blob([audioBytes], { type: "audio/mpeg" }),
+      metadata: { rawText: "Eminem - Lose Yourself (Official Music Video) [HD]", token: "secret-value" },
+    },
+  ], undefined, {
+    fetcher: async () => {
+      throw new Error("postprocess route unavailable in unit test");
+    },
+  });
+
+  const files = await listZipFiles(result.zipBlob);
+  const manifestPath = fileEnding(files, "/metadata/manifest.json");
+  assert.ok(manifestPath);
+  const manifestText = files.get(manifestPath) || "";
+  const manifest = JSON.parse(manifestText) as {
+    exportedCount?: number;
+    taggedCount?: number;
+    postProcessingFailedCount?: number;
+    items?: Array<{ cleanedTitle?: string; cleanedArtist?: string; audioPath?: string; postProcessing?: { metadata?: { cleanupApplied?: string[] } } }>;
+  };
+  assert.equal(manifest.exportedCount, 1);
+  assert.equal(manifest.postProcessingFailedCount, 0);
+  assert.equal(manifest.items?.[0]?.cleanedArtist, "Eminem");
+  assert.equal(manifest.items?.[0]?.audioPath, "tracks/Eminem - Lose Yourself.mp3");
+  assert.doesNotMatch(manifestText, /C:\\Users|ponotai-ytdlp-cache|cookies\.txt/i);
+  assert.doesNotMatch(manifestText, /secret-value/);
+});
+
+test("export manifest and ZIP include audio polish comparison report", async () => {
+  const summary = {
+    status: "normalized",
+    filename: "Artist - Polished.mp3",
+    metadata: { title: "Polished", artist: "Artist", confidence: "high", cleanupApplied: [] },
+    cover: { attempted: true, embedded: true, source: "youtube", warningCount: 0, warnings: [] },
+    audio: { mode: "normalized", reencoded: true, probe: { duration: 10, codecName: "mp3", bitRate: 192000, sampleRate: 44100, channels: 2, hasAudio: true, hasCover: true }, warnings: ["Normalized loudness; audio was re-encoded."] },
+    audioPolish: {
+      mode: "normalize-loudness-safe",
+      reencoded: true,
+      analysis: {
+        before: { durationSec: 10, codecName: "mp3", bitRate: 192000, sampleRate: 44100, channels: 2, hasAudio: true, loudness: { integratedLufs: -8, truePeakDb: -0.2, loudnessRangeLra: 5 }, warnings: [] },
+        after: { durationSec: 10, codecName: "mp3", bitRate: 245000, sampleRate: 44100, channels: 2, hasAudio: true, loudness: { integratedLufs: -14.1, truePeakDb: -1.6, loudnessRangeLra: 6 }, warnings: [] },
+        comparison: {
+          verdict: "improved",
+          score: { overall: 92, volumeConsistency: 96, clippingSafety: 94, preservation: 86 },
+          reasons: ["Integrated loudness moved closer to -14 LUFS."],
+          warnings: [],
+        },
+      },
+      warnings: [],
+    },
+    warnings: [],
+  };
+  const result = await createLocalExportZip([
+    { id: "polished", title: "Polished", artist: "Artist", audioUrl: "https://cdn.example.test/song.mp3" },
+  ], undefined, {
+    postProcessing: {
+      cleanMetadata: true,
+      embedCover: true,
+      normalizeLoudness: true,
+      loudnessTarget: { integrated: -14, truePeak: -1.5, lra: 11 },
+      audioPolish: {
+        mode: "normalize-loudness-safe",
+        normalizeLoudness: true,
+        truePeakLimit: true,
+        trimSilence: false,
+        analyzeBeforeAfter: true,
+        exportComparisonReport: true,
+        loudnessTarget: { integratedLufs: -14, truePeakDb: -1.5, loudnessRangeLra: 11 },
+      },
+    },
+    fetcher: async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "https://cdn.example.test/song.mp3") return audioResponse();
+      if (url === "/api/download/process") return postProcessedAudioResponse(summary);
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  });
+
+  assert.equal(result.normalizedCount, 1);
+  assert.equal(result.audioImprovedCount, 1);
+  const files = await listZipFiles(result.zipBlob);
+  const manifestPath = fileEnding(files, "/metadata/manifest.json");
+  const reportPath = fileEnding(files, "/analysis/audio-comparison.json");
+  assert.ok(manifestPath);
+  assert.ok(reportPath);
+  const manifestText = files.get(manifestPath) || "";
+  const manifest = JSON.parse(manifestText) as { audioPolish?: { counts?: { improved?: number } }; items?: Array<{ audioPolish?: { analysis?: { comparison?: { verdict?: string } } } }> };
+  assert.equal(manifest.audioPolish?.counts?.improved, 1);
+  assert.equal(manifest.items?.[0]?.audioPolish?.analysis?.comparison?.verdict, "improved");
+  const report = JSON.parse(files.get(reportPath) || "{}") as { items?: Array<{ audioPolish?: { mode?: string } }> };
+  assert.equal(report.items?.[0]?.audioPolish?.mode, "normalize-loudness-safe");
+  assert.doesNotMatch(manifestText, /C:\\Users|token|secret|password|cookie/i);
+});
+
+test("phone profile ZIP can contain M4A output and quality preservation decisions", async () => {
+  const summary = {
+    status: "metadata-only",
+    filename: "Artist - Phone Song.m4a",
+    contentType: "audio/mp4",
+    metadata: { title: "Phone Song", artist: "Artist", confidence: "high", cleanupApplied: [] },
+    cover: { attempted: true, embedded: true, source: "youtube", warningCount: 0, warnings: [] },
+    audio: { mode: "copy", reencoded: false, probe: { duration: 10, formatName: "mov,mp4,m4a,3gp,3g2,mj2", codecName: "aac", bitRate: 192000, sampleRate: 44100, channels: 2, hasAudio: true, hasCover: true }, warnings: ["source AAC preserved for phone AAC profile"] },
+    audioPolish: {
+      profile: "phone-aac-preserve",
+      mode: "metadata-only",
+      reencoded: false,
+      qualityPreservation: {
+        profile: "phone-aac-preserve",
+        sourceCodec: "aac",
+        sourceContainer: "m4a",
+        outputCodec: "aac",
+        outputContainer: "m4a",
+        outputExtension: ".m4a",
+        audioStreamCopied: true,
+        reencoded: false,
+        transcodeReason: "source AAC preserved for phone AAC profile",
+        transcodeCount: 0,
+        lossyToLossyTranscode: false,
+        generationLossRisk: "none",
+        codecCompatibility: "excellent",
+        samsungMusicFriendly: true,
+        bluetoothFriendly: true,
+        phoneProfileScore: 100,
+        verdict: "preserved-best",
+        warnings: [],
+      },
+      analysis: {
+        before: { durationSec: 10, formatName: "mov,mp4,m4a,3gp,3g2,mj2", codecName: "aac", bitRate: 192000, sampleRate: 44100, channels: 2, hasAudio: true, warnings: [] },
+        after: { durationSec: 10, formatName: "mov,mp4,m4a,3gp,3g2,mj2", codecName: "aac", bitRate: 192000, sampleRate: 44100, channels: 2, hasAudio: true, warnings: [] },
+        comparison: { verdict: "neutral", score: { overall: 96, volumeConsistency: 80, clippingSafety: 90, preservation: 100 }, reasons: ["Audio stream was preserved without loudness processing."], warnings: [] },
+      },
+      warnings: [],
+    },
+    warnings: [],
+  };
+  const result = await createLocalExportZip([
+    { id: "phone", title: "Phone Song", artist: "Artist", audioUrl: "https://cdn.example.test/song.m4a" },
+  ], undefined, {
+    postProcessing: {
+      audioPolish: {
+        profile: "phone-aac-preserve",
+        mode: "metadata-only",
+        normalizeLoudness: false,
+        truePeakLimit: false,
+        trimSilence: false,
+        analyzeBeforeAfter: true,
+        exportComparisonReport: true,
+        loudnessTarget: { integratedLufs: -14, truePeakDb: -1.5, loudnessRangeLra: 11 },
+      },
+    },
+    fetcher: async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "https://cdn.example.test/song.m4a") return audioResponse("audio/mp4");
+      if (url === "/api/download/process") return postProcessedAudioResponse(summary);
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  });
+
+  assert.equal(result.preservedWithoutReencodeCount, 1);
+  assert.equal(result.m4aCount, 1);
+  const files = await listZipFiles(result.zipBlob);
+  assert.ok(fileEnding(files, "/tracks/Artist - Phone Song.m4a"));
+  const manifestPath = fileEnding(files, "/metadata/manifest.json");
+  assert.ok(manifestPath);
+  const manifestText = files.get(manifestPath) || "";
+  const manifest = JSON.parse(manifestText) as {
+    audioPolish?: { profile?: string; counts?: { preservedWithoutReencode?: number; m4a?: number } };
+    items?: Array<{ qualityPreservation?: { verdict?: string; audioStreamCopied?: boolean; reencoded?: boolean; transcodeReason?: string } }>;
+  };
+  assert.equal(manifest.audioPolish?.profile, "phone-aac-preserve");
+  assert.equal(manifest.audioPolish?.counts?.preservedWithoutReencode, 1);
+  assert.equal(manifest.audioPolish?.counts?.m4a, 1);
+  assert.equal(manifest.items?.[0]?.qualityPreservation?.verdict, "preserved-best");
+  assert.equal(manifest.items?.[0]?.qualityPreservation?.audioStreamCopied, true);
+  assert.equal(manifest.items?.[0]?.qualityPreservation?.reencoded, false);
+  assert.match(manifest.items?.[0]?.qualityPreservation?.transcodeReason || "", /AAC preserved/);
+  assert.doesNotMatch(manifestText, /C:\\Users|token|secret|password|cookie/i);
 });
 
 test("YouTube page URL is not browser-fetched and invalid youtubeVideoId is not passed", async () => {
@@ -522,7 +718,7 @@ test("progress includes expected phases and done", async () => {
   });
 
   assert.equal(result.exportedCount, 1);
-  assert.deepEqual(phases, ["preparing", "fetching-audio", "adding-files", "finalizing", "done"]);
+  assert.deepEqual(phases, ["preparing", "fetching-audio", "analyzing-audio", "embedding-cover", "verifying-file", "comparing-audio", "adding-files", "finalizing", "done"]);
 });
 
 test("default batch delay is zero for YouTube downloads", async () => {
