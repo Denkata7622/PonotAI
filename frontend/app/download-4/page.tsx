@@ -13,7 +13,7 @@
  *   treated like ordinary item failures, allowing later items to continue and
  *   risking duplicate work after a resume.
  */
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle, ChevronDown, Download, Info, Pause, Play, Plus, RotateCcw, SkipForward, Trash2, Upload } from "lucide-react";
 import SongReviewModal from "@/components/SongReviewModal";
 import { recognizeFromImage, type SongMatch, type SongRecognitionResult } from "@/features/recognition/api";
@@ -30,6 +30,7 @@ type QueueStatus = "pending" | "searching" | "processing" | "done" | "error" | "
 type DownloadState = "idle" | "processing" | "done" | "error";
 type ExportProfile = "audiophile-flac" | "hifi-mp3" | "phone-aac-plus" | "normalized-mp3" | "analysis-only";
 type QueuePriority = "high" | "medium" | "low";
+type QueueFailureKind = "auth" | "rate-limit" | "network" | "no-audio" | "not-found" | "cli" | "validation" | "other";
 type PostQueueAction = "none" | "openFolder" | "notify";
 
 type AlbumTrackEntry = {
@@ -260,7 +261,13 @@ class TidalClientError extends Error {
 const LOW_CONFIDENCE = 0.75;
 const TIDAL_ENDPOINT = "/api/download/tidal";
 const TIDAL_STORAGE_KEY = "turrex-tidal-state";
+const TIDAL_STORAGE_TEMP_KEY = `${TIDAL_STORAGE_KEY}:tmp`;
+const TIDAL_STORAGE_BACKUP_KEY = `${TIDAL_STORAGE_KEY}:backup`;
 const AUTO_ASSIGN_SEARCH_DELAY_MS = 1000;
+const MIN_SCHEDULER_DELAY_SECONDS = 10;
+const DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3;
+const MAX_TRANSIENT_DOWNLOAD_RETRIES = 2;
+const MAX_RATE_LIMIT_RETRIES = 3;
 const DEFAULT_COVER_PLACEHOLDER = "/album-placeholder.svg";
 const encoder = new TextEncoder();
 const ZIP_UINT16_MAX = 0xffff;
@@ -419,6 +426,8 @@ function TidalDownloadClient() {
   const persistTimerRef = useRef<number | null>(null);
   const lastPersistedAtRef = useRef(0);
   const latestPersistSnapshotRef = useRef<TidalPersistSnapshot | null>(null);
+  const isProcessingRef = useRef(false);
+  const zipExportInFlightRef = useRef(false);
   const pauseRequestedRef = useRef(false);
   const skipRequestedRef = useRef(false);
   const autoAssignInFlightRef = useRef(false);
@@ -556,10 +565,12 @@ function TidalDownloadClient() {
     setMounted(true);
     restoreTidalState();
     void loadTidalDiagnostics();
-    const handleBeforeUnload = () => {
-      autoAssignAbortRef.current?.abort();
-      abortRef.current?.abort();
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       flushPersistedState();
+      if (autoAssignInFlightRef.current || isProcessingRef.current || zipExportInFlightRef.current) {
+        event.preventDefault();
+        event.returnValue = "A TIDAL queue or ZIP export is still running.";
+      }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
@@ -658,7 +669,7 @@ function TidalDownloadClient() {
     if (restoredRef.current || typeof window === "undefined") return;
     restoredRef.current = true;
     try {
-      const stored = window.localStorage.getItem(TIDAL_STORAGE_KEY);
+      const stored = readPersistedTidalState();
       if (!stored) return;
       const parsed = JSON.parse(stored) as {
         queue?: unknown;
@@ -706,6 +717,7 @@ function TidalDownloadClient() {
       }
     } catch {
       window.localStorage.removeItem(TIDAL_STORAGE_KEY);
+      window.localStorage.removeItem(TIDAL_STORAGE_TEMP_KEY);
     }
   }
 
@@ -994,11 +1006,12 @@ function TidalDownloadClient() {
   }
 
   async function processQueue(autoExport: boolean) {
-    if (queue.length === 0 || state === "processing") return;
+    if (queue.length === 0 || state === "processing" || isProcessingRef.current) return;
     if (autoAssignInFlightRef.current) {
       setAutoAssignMessage("TIDAL URL assignment is still running. Queue processing will be available when it finishes.");
       return;
     }
+    isProcessingRef.current = true;
     const controller = new AbortController();
     abortRef.current = controller;
     setState("processing");
@@ -1010,7 +1023,7 @@ function TidalDownloadClient() {
     const runnableTotal = queue.filter((item) => item.url && !(item.status === "done" && item.zipBlob) && (item.status !== "skipped" || item.forceDownload)).length;
     setSessionStats({ startedAt: Date.now(), completed: 0, total: runnableTotal, durations: [] });
 
-    const coverArt = polishOptions.embedAudioCover && coverImage ? await fileToDataUrl(coverImage) : undefined;
+    let coverArt: string | undefined;
     const processed: QueueItem[] = [];
     const processedById = new Map<string, QueueItem>();
     const orderedQueue = queue
@@ -1022,7 +1035,23 @@ function TidalDownloadClient() {
     let adaptiveSongsRemaining = adaptiveCooldown.songsRemaining;
     let stoppedForFatal = false;
     let fatalQueueMessage = "";
+    let consecutiveFailureKind: QueueFailureKind | null = null;
+    let consecutiveFailureCount = 0;
+    const hasMoreWorkAfter = (currentIndex: number) => orderedQueue.slice(currentIndex + 1).some((next) => (
+      Boolean(next.url) && !(next.status === "done" && next.zipBlob) && (next.status !== "skipped" || next.forceDownload)
+    ));
+    const waitAfterQueueItem = async (currentIndex: number, options?: { errorPenalty?: boolean; longPause?: boolean }) => {
+      if (!hasMoreWorkAfter(currentIndex)) return;
+      if (options?.longPause && successfulSinceLongPause > 0 && successfulSinceLongPause % rateLimit.songsBeforeLongPause === 0) {
+        await waitWithCountdown(rateLimit.longPauseMinutes * 60, controller.signal, "Long batch pause");
+        return;
+      }
+      const baseDelay = Math.max(MIN_SCHEDULER_DELAY_SECONDS, Math.round(rateLimit.delaySeconds * delayMultiplier));
+      const delaySeconds = options?.errorPenalty ? baseDelay * 2 : baseDelay;
+      await waitWithCountdown(delaySeconds, controller.signal, options?.errorPenalty ? "Error penalty delay" : delayMultiplier > 1 ? "Adaptive cooldown delay" : "Delay between songs");
+    };
     try {
+      coverArt = polishOptions.embedAudioCover && coverImage ? await fileToDataUrl(coverImage) : undefined;
       for (let index = 0; index < orderedQueue.length; index += 1) {
         const item = orderedQueue[index]!;
         if (controller.signal.aborted) throw new DOMException("Export cancelled.", "AbortError");
@@ -1055,7 +1084,8 @@ function TidalDownloadClient() {
         controller.signal.addEventListener("abort", abortItem, { once: true });
         updateQueueItem(item.id, { status: "processing", errorMsg: undefined, progress: 5, progressMessage: "Starting TIDAL..." });
         try {
-          let attempt = 0;
+          let rateLimitRetries = 0;
+          let transientRetries = 0;
           let result: DownloadWithProgressResult | null = null;
           while (!result) {
             try {
@@ -1088,19 +1118,33 @@ function TidalDownloadClient() {
               if (skipRequestedRef.current && error instanceof DOMException && error.name === "AbortError") throw error;
               if (controller.signal.aborted) throw error;
               const retryAfter = retryAfterFromUnknown(error);
-              if (!retryAfter || attempt >= 3) throw error;
-              attempt += 1;
-              if (rateLimit.adaptiveCooldown) {
-                delayMultiplier = Math.min(8, Math.max(2, delayMultiplier * 2));
-                adaptiveSongsRemaining = 5;
-                setAdaptiveCooldown({ multiplier: delayMultiplier, songsRemaining: adaptiveSongsRemaining });
+              if (retryAfter && rateLimitRetries < MAX_RATE_LIMIT_RETRIES) {
+                rateLimitRetries += 1;
+                if (rateLimit.adaptiveCooldown) {
+                  delayMultiplier = Math.min(8, Math.max(2, delayMultiplier * 2));
+                  adaptiveSongsRemaining = 5;
+                  setAdaptiveCooldown({ multiplier: delayMultiplier, songsRemaining: adaptiveSongsRemaining });
+                }
+                updateQueueItem(item.id, {
+                  progress: 100,
+                  progressMessage: `Rate limited. Retrying after ${formatDurationSeconds(retryAfter)}...`,
+                });
+                await waitWithCountdown(retryAfter, controller.signal, `429 cooldown retry ${rateLimitRetries}`);
+                updateQueueItem(item.id, { progress: 5, progressMessage: `Retrying TIDAL (${rateLimitRetries + 1}/${MAX_RATE_LIMIT_RETRIES + 1})...` });
+                continue;
               }
-              updateQueueItem(item.id, {
-                progress: 100,
-                progressMessage: `Rate limited. Retrying after ${formatDurationSeconds(retryAfter)}...`,
-              });
-              await waitWithCountdown(retryAfter, controller.signal, `429 cooldown retry ${attempt}`);
-              updateQueueItem(item.id, { progress: 5, progressMessage: `Retrying TIDAL (${attempt + 1}/4)...` });
+              if (isTransientDownloadError(error) && transientRetries < MAX_TRANSIENT_DOWNLOAD_RETRIES) {
+                transientRetries += 1;
+                const backoffSeconds = Math.max(MIN_SCHEDULER_DELAY_SECONDS, 10 * (2 ** (transientRetries - 1)));
+                updateQueueItem(item.id, {
+                  progress: 100,
+                  progressMessage: `Transient failure. Retrying after ${formatDurationSeconds(backoffSeconds)}...`,
+                });
+                await waitWithCountdown(backoffSeconds, controller.signal, `Transient retry ${transientRetries}`);
+                updateQueueItem(item.id, { progress: 5, progressMessage: `Retrying TIDAL (${transientRetries + 1}/${MAX_TRANSIENT_DOWNLOAD_RETRIES + 1})...` });
+                continue;
+              }
+              throw error;
             }
           }
           if (result.skipped) {
@@ -1117,6 +1161,9 @@ function TidalDownloadClient() {
             updateQueueItem(item.id, skippedItem);
             setLastProcessedItemId(item.id);
             setSessionStats((current) => ({ ...current, completed: Math.min(current.total, current.completed + 1) }));
+            consecutiveFailureKind = null;
+            consecutiveFailureCount = 0;
+            await waitAfterQueueItem(index);
             continue;
           }
           const zipStats = await statsFromZipBlob(result.blob);
@@ -1145,17 +1192,14 @@ function TidalDownloadClient() {
             durations: [...current.durations.slice(-49), Math.max(1, Math.round((Date.now() - itemStartedAt) / 1000))],
           }));
           successfulSinceLongPause += 1;
-          const hasMoreWork = orderedQueue.slice(index + 1).some((next) => next.url && !(next.status === "done" && next.zipBlob));
+          consecutiveFailureKind = null;
+          consecutiveFailureCount = 0;
           if (adaptiveSongsRemaining > 0) {
             adaptiveSongsRemaining -= 1;
             if (adaptiveSongsRemaining === 0) delayMultiplier = Math.max(1, delayMultiplier / 2);
             setAdaptiveCooldown({ multiplier: delayMultiplier, songsRemaining: adaptiveSongsRemaining });
           }
-          if (hasMoreWork && successfulSinceLongPause > 0 && successfulSinceLongPause % rateLimit.songsBeforeLongPause === 0) {
-            await waitWithCountdown(rateLimit.longPauseMinutes * 60, controller.signal, "Long batch pause");
-          } else if (hasMoreWork) {
-            await waitWithCountdown(Math.round(rateLimit.delaySeconds * delayMultiplier), controller.signal, delayMultiplier > 1 ? "Adaptive cooldown delay" : "Delay between songs");
-          }
+          await waitAfterQueueItem(index, { longPause: true });
         } catch (error) {
           if (skipRequestedRef.current && error instanceof DOMException && error.name === "AbortError") {
             skipRequestedRef.current = false;
@@ -1165,6 +1209,7 @@ function TidalDownloadClient() {
             updateQueueItem(item.id, skipped);
             setLastProcessedItemId(item.id);
             setSessionStats((current) => ({ ...current, completed: Math.min(current.total, current.completed + 1) }));
+            await waitAfterQueueItem(index);
             continue;
           }
           if (error instanceof DOMException && error.name === "AbortError") throw error;
@@ -1187,6 +1232,19 @@ function TidalDownloadClient() {
             fatalQueueMessage = fatal.message;
             break;
           }
+          const failureKind = queueFailureKindFromUnknown(error, details.message);
+          if (failureKind === consecutiveFailureKind) {
+            consecutiveFailureCount += 1;
+          } else {
+            consecutiveFailureKind = failureKind;
+            consecutiveFailureCount = 1;
+          }
+          if (consecutiveFailureCount >= DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
+            stoppedForFatal = true;
+            fatalQueueMessage = `Queue stopped after ${consecutiveFailureCount} consecutive ${queueFailureKindLabel(failureKind)} failures. Last error: ${itemErrorMessage}`;
+            break;
+          }
+          await waitAfterQueueItem(index, { errorPenalty: true });
         } finally {
           controller.signal.removeEventListener("abort", abortItem);
           currentItemAbortRef.current = null;
@@ -1212,6 +1270,7 @@ function TidalDownloadClient() {
       setState(cancelled ? "idle" : "error");
       setErrorMessage(cancelled ? "TIDAL export cancelled." : error instanceof Error ? error.message : "TIDAL export failed.");
     } finally {
+      isProcessingRef.current = false;
       abortRef.current = null;
       currentItemAbortRef.current = null;
       setCurrentProcessingId(null);
@@ -1277,81 +1336,87 @@ function TidalDownloadClient() {
       return;
     }
 
-    const files: Array<{ path: string; blob: Blob }> = [];
-    const used = new Set<string>();
-    for (const item of doneItems) {
-      const zipBlob = item.zipBlob;
-      if (!zipBlob) continue;
-      const folder = sanitizeFileName(formatQueueItemLine(item) || item.id);
-      try {
-        const entries = await readStoredZipEntries(zipBlob);
-        for (const entry of entries) {
-          if (entry.directory) continue;
-          const fileName = getUniqueFileName(pathName(entry.name), used);
-          files.push({ path: `Turrex TIDAL Export/tracks/${folder}/${fileName}`, blob: entry.blob });
+    zipExportInFlightRef.current = true;
+    setCompletionNotice("Building final ZIP. Keep this page open until the browser download starts.");
+    try {
+      const files: Array<{ path: string; blob: Blob }> = [];
+      const used = new Set<string>();
+      for (const item of doneItems) {
+        const zipBlob = item.zipBlob;
+        if (!zipBlob) continue;
+        const folder = sanitizeFileName(formatQueueItemLine(item) || item.id);
+        try {
+          const entries = await readStoredZipEntries(zipBlob);
+          for (const entry of entries) {
+            if (entry.directory) continue;
+            const fileName = getUniqueFileName(pathName(entry.name), used);
+            files.push({ path: `Turrex TIDAL Export/tracks/${folder}/${fileName}`, blob: entry.blob });
+          }
+        } catch {
+          const fallbackName = getUniqueFileName(item.zipFileName || `${folder}.zip`, used);
+          files.push({ path: `Turrex TIDAL Export/source-zips/${fallbackName}`, blob: zipBlob });
         }
-      } catch {
-        const fallbackName = getUniqueFileName(item.zipFileName || `${folder}.zip`, used);
-        files.push({ path: `Turrex TIDAL Export/source-zips/${fallbackName}`, blob: zipBlob });
       }
+
+      if (coverImage && polishOptions.embedCover) {
+        files.push({ path: `Turrex TIDAL Export/artwork/cover${guessImageExtension(coverImage.type, coverImage.name)}`, blob: coverImage });
+      }
+
+      const manifest = {
+        app: "Turrex",
+        exporter: "download-4 TIDAL Hi-Res",
+        endpoint: TIDAL_ENDPOINT,
+        exportDateIso: new Date().toISOString(),
+        profile: exportProfile,
+        polishOptions,
+        useSoulseekFallback,
+        libraryPath,
+        filenameTemplate,
+        postQueueAction,
+        rateLimit,
+        adaptiveCooldown,
+        coverImageName: coverImage?.name || coverImageName || null,
+        diagnostics: diagnostics ? {
+          route: diagnostics.route,
+          tidal: diagnostics.tidal,
+          soulseek: diagnostics.soulseek,
+          ffmpeg: diagnostics.ffmpeg,
+          ffprobe: diagnostics.ffprobe,
+          temp: diagnostics.temp,
+        } : null,
+        queue: items.map((item) => ({
+          id: item.id,
+          url: item.url ?? null,
+          title: item.title ?? null,
+          artist: item.artist ?? null,
+          album: item.album ?? null,
+          genre: item.genre ?? null,
+          year: item.year ?? null,
+          hasItemCover: Boolean(item.coverArt),
+          priority: item.priority,
+          status: item.status,
+          duplicateExistingFile: item.duplicateExistingFile ?? null,
+          zipByteLength: item.zipByteLength ?? item.zipBlob?.size ?? null,
+          durationSec: item.durationSec ?? null,
+          serverZipPath: item.serverZipPath ?? null,
+          albumTracks: item.albumTracks ?? [],
+          error: item.errorMsg ?? null,
+          zipFileName: item.zipFileName ?? null,
+          source: item.source,
+        })),
+      };
+      files.push({ path: "Turrex TIDAL Export/manifest.json", blob: new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" }) });
+      files.push({ path: "Turrex TIDAL Export/failed-items.json", blob: new Blob([JSON.stringify(items.filter((item) => item.status === "error"), null, 2)], { type: "application/json" }) });
+
+      const zip = await makeZip(files);
+      const filename = `Turrex TIDAL Export ${dateStamp(new Date())}.zip`;
+      saveBlobAsDownload(zip, filename);
+      setLastExportName(filename);
+      setState("done");
+      handlePostQueueCompletion(items, filename);
+    } finally {
+      zipExportInFlightRef.current = false;
     }
-
-    if (coverImage && polishOptions.embedCover) {
-      files.push({ path: `Turrex TIDAL Export/artwork/cover${guessImageExtension(coverImage.type, coverImage.name)}`, blob: coverImage });
-    }
-
-    const manifest = {
-      app: "Turrex",
-      exporter: "download-4 TIDAL Hi-Res",
-      endpoint: TIDAL_ENDPOINT,
-      exportDateIso: new Date().toISOString(),
-      profile: exportProfile,
-      polishOptions,
-      useSoulseekFallback,
-      libraryPath,
-      filenameTemplate,
-      postQueueAction,
-      rateLimit,
-      adaptiveCooldown,
-      coverImageName: coverImage?.name || coverImageName || null,
-      diagnostics: diagnostics ? {
-        route: diagnostics.route,
-        tidal: diagnostics.tidal,
-        soulseek: diagnostics.soulseek,
-        ffmpeg: diagnostics.ffmpeg,
-        ffprobe: diagnostics.ffprobe,
-        temp: diagnostics.temp,
-      } : null,
-      queue: items.map((item) => ({
-        id: item.id,
-        url: item.url ?? null,
-        title: item.title ?? null,
-        artist: item.artist ?? null,
-        album: item.album ?? null,
-        genre: item.genre ?? null,
-        year: item.year ?? null,
-        hasItemCover: Boolean(item.coverArt),
-        priority: item.priority,
-        status: item.status,
-        duplicateExistingFile: item.duplicateExistingFile ?? null,
-        zipByteLength: item.zipByteLength ?? item.zipBlob?.size ?? null,
-        durationSec: item.durationSec ?? null,
-        serverZipPath: item.serverZipPath ?? null,
-        albumTracks: item.albumTracks ?? [],
-        error: item.errorMsg ?? null,
-        zipFileName: item.zipFileName ?? null,
-        source: item.source,
-      })),
-    };
-    files.push({ path: "Turrex TIDAL Export/manifest.json", blob: new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" }) });
-    files.push({ path: "Turrex TIDAL Export/failed-items.json", blob: new Blob([JSON.stringify(items.filter((item) => item.status === "error"), null, 2)], { type: "application/json" }) });
-
-    const zip = await makeZip(files);
-    const filename = `Turrex TIDAL Export ${dateStamp(new Date())}.zip`;
-    saveBlobAsDownload(zip, filename);
-    setLastExportName(filename);
-    setState("done");
-    handlePostQueueCompletion(items, filename);
   }
 
   function handlePostQueueCompletion(items: QueueItem[], filename?: string) {
@@ -1944,7 +2009,7 @@ function SchedulerPanel({ disabled, state, settings, adaptiveCooldown, cooldownL
             </select>
           </label>
           <div className="grid gap-2 sm:grid-cols-3">
-            <NumberSetting label="Delay (seconds)" min={30} max={180} step={5} value={settings.delaySeconds} disabled={disabled} onChange={(value) => onChange({ delaySeconds: value })} />
+            <NumberSetting label="Delay (seconds)" min={MIN_SCHEDULER_DELAY_SECONDS} max={180} step={5} value={settings.delaySeconds} disabled={disabled} onChange={(value) => onChange({ delaySeconds: value })} />
             <NumberSetting label="Songs before pause" min={3} max={20} step={1} value={settings.songsBeforeLongPause} disabled={disabled} onChange={(value) => onChange({ songsBeforeLongPause: value })} />
             <NumberSetting label="Pause (minutes)" min={1} max={15} step={1} value={settings.longPauseMinutes} disabled={disabled} onChange={(value) => onChange({ longPauseMinutes: value })} />
           </div>
@@ -2485,7 +2550,7 @@ function QueuePanel({ queue, queueStats, importReport, showSkippedImportRows, di
   );
 }
 
-function QueueItemCard({ item, index, total, disabled, coverPreviewUrl, previewing, selected, dragging, onSelect, onDragStart, onDragEnd, onDrop, onPreview, onRemove, onRetry, onRetryDuplicate, onToggleTracks, onMove, onEdit }: {
+const QueueItemCard = memo(function QueueItemCard({ item, index, total, disabled, coverPreviewUrl, previewing, selected, dragging, onSelect, onDragStart, onDragEnd, onDrop, onPreview, onRemove, onRetry, onRetryDuplicate, onToggleTracks, onMove, onEdit }: {
   item: QueueItem;
   index: number;
   total: number;
@@ -2666,7 +2731,7 @@ function QueueItemCard({ item, index, total, disabled, coverPreviewUrl, previewi
       ) : null}
     </div>
   );
-}
+});
 
 function SessionProgressCard({ progress, state, cooldownLabel, cooldownRemaining, isPaused }: {
   progress: SessionProgress;
@@ -3481,12 +3546,12 @@ async function downloadWithProgress(options: {
     let detail = "";
     let responseBody: unknown;
     try {
-      const payload = await response.json() as { error?: unknown; detail?: unknown; message?: unknown };
-      responseBody = payload;
+      const payload = await response.json() as { error?: unknown; detail?: unknown; message?: unknown; code?: unknown; retryAfter?: unknown };
+      responseBody = { ...payload, status: response.status };
       detail = stringifyErrorPayload(payload.detail) || stringifyErrorPayload(payload.error) || stringifyErrorPayload(payload.message) || "";
     } catch {
       detail = await response.text().catch(() => "");
-      responseBody = detail;
+      responseBody = { status: response.status, body: detail };
     }
     throw new TidalClientError((detail || `TIDAL returned ${response.status}.`).slice(0, 1800), responseBody);
   }
@@ -3927,6 +3992,54 @@ function fatalQueueErrorFromUnknown(error: unknown): { kind: "token" | "rate-lim
   return null;
 }
 
+function statusFromTidalClientError(error: unknown): number | undefined {
+  if (!(error instanceof TidalClientError) || !error.body || typeof error.body !== "object") return undefined;
+  const body = error.body as { status?: unknown };
+  return typeof body.status === "number" ? body.status : undefined;
+}
+
+function queueFailureKindFromUnknown(error: unknown, message: string): QueueFailureKind {
+  const status = statusFromTidalClientError(error);
+  const text = message.toLowerCase();
+  if (status === 401 || text.includes("token") || text.includes("authorization") || text.includes("unauthorized") || text.includes("login")) return "auth";
+  if (status === 429 || text.includes("rate limit") || text.includes("too many requests")) return "rate-limit";
+  if (status === 404 || text.includes("not found") || text.includes("no tidal result")) return "not-found";
+  if (text.includes("did not produce any audio") || text.includes("did not create flac") || text.includes("no usable audio")) return "no-audio";
+  if (text.includes("tidekeeper") || text.includes("not recognized") || text.includes("no such option") || text.includes("incompatible")) return "cli";
+  if (text.includes("invalid tidal") || text.includes("missing")) return "validation";
+  if (status === 502 || status === 503 || status === 504 || text.includes("network") || text.includes("timeout") || text.includes("timed out") || text.includes("fetch failed") || text.includes("econnreset")) return "network";
+  return "other";
+}
+
+function queueFailureKindLabel(kind: QueueFailureKind): string {
+  if (kind === "auth") return "authorization";
+  if (kind === "rate-limit") return "rate-limit";
+  if (kind === "no-audio") return "no-audio";
+  if (kind === "not-found") return "not-found";
+  if (kind === "cli") return "CLI";
+  if (kind === "validation") return "validation";
+  if (kind === "network") return "network";
+  return "download";
+}
+
+function isTransientDownloadError(error: unknown): boolean {
+  const details = errorDetailsFromUnknown(error, "");
+  const status = statusFromTidalClientError(error);
+  const text = details.message.toLowerCase();
+  if (status === 401 || status === 400 || status === 404 || status === 429) return false;
+  if (status === 500 && (text.includes("not recognized") || text.includes("no such option") || text.includes("not installed") || text.includes("invalid tidal"))) return false;
+  return status === 502
+    || status === 503
+    || status === 504
+    || text.includes("network")
+    || text.includes("timeout")
+    || text.includes("timed out")
+    || text.includes("fetch failed")
+    || text.includes("econnreset")
+    || text.includes("temporary failure")
+    || text.includes("tidal api error");
+}
+
 function retryAfterFromUnknown(error: unknown): number | undefined {
   if (!(error instanceof TidalClientError) || !error.body || typeof error.body !== "object") return undefined;
   const body = error.body as { status?: unknown; retryAfter?: unknown };
@@ -3973,6 +4086,24 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+function readPersistedTidalState(): string | null {
+  const primary = window.localStorage.getItem(TIDAL_STORAGE_KEY);
+  const temp = window.localStorage.getItem(TIDAL_STORAGE_TEMP_KEY);
+  const backup = window.localStorage.getItem(TIDAL_STORAGE_BACKUP_KEY);
+  for (const candidate of [primary, temp, backup]) {
+    if (!candidate) continue;
+    try {
+      JSON.parse(candidate);
+      if (candidate !== primary) window.localStorage.setItem(TIDAL_STORAGE_KEY, candidate);
+      window.localStorage.removeItem(TIDAL_STORAGE_TEMP_KEY);
+      return candidate;
+    } catch {
+      // Try the next persisted copy.
+    }
+  }
+  return null;
+}
+
 function persistTidalState(queue: QueueItem[], profile: ExportProfile, polishOptions: PolishOptions, options: TidalPersistOptions) {
   try {
     const serializableQueue = queue.map(({ previewBlob: _previewBlob, previewUrl: _previewUrl, zipBlob: _zipBlob, ...item }) => ({
@@ -3987,14 +4118,19 @@ function persistTidalState(queue: QueueItem[], profile: ExportProfile, polishOpt
       progressMessage: undefined,
       zipFileName: undefined,
     }));
-    window.localStorage.setItem(TIDAL_STORAGE_KEY, JSON.stringify({
+    const payload = JSON.stringify({
       queue: serializableQueue,
       profile,
       polishOptions,
       ...options,
       rateLimit: clampRateLimitSettings(options.rateLimit),
       errorLog: options.errorLog.slice(0, 100),
-    }));
+    });
+    const previous = window.localStorage.getItem(TIDAL_STORAGE_KEY);
+    if (previous) window.localStorage.setItem(TIDAL_STORAGE_BACKUP_KEY, previous);
+    window.localStorage.setItem(TIDAL_STORAGE_TEMP_KEY, payload);
+    window.localStorage.setItem(TIDAL_STORAGE_KEY, window.localStorage.getItem(TIDAL_STORAGE_TEMP_KEY) ?? payload);
+    window.localStorage.removeItem(TIDAL_STORAGE_TEMP_KEY);
   } catch {
     // Local persistence is a convenience; exports continue if storage is unavailable.
   }
@@ -4007,7 +4143,7 @@ function clampNumber(value: number, min: number, max: number): number {
 
 function clampRateLimitSettings(settings: RateLimitSettings): RateLimitSettings {
   return {
-    delaySeconds: clampNumber(settings.delaySeconds, 30, 180),
+    delaySeconds: clampNumber(settings.delaySeconds, MIN_SCHEDULER_DELAY_SECONDS, 180),
     songsBeforeLongPause: clampNumber(settings.songsBeforeLongPause, 3, 20),
     longPauseMinutes: clampNumber(settings.longPauseMinutes, 1, 15),
     adaptiveCooldown: settings.adaptiveCooldown,

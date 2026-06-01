@@ -241,13 +241,15 @@ class DownloaderError extends Error {
   status: number;
   retryAfter?: number;
   detail?: string;
+  code?: string;
 
-  constructor(message: string, status = 500, options?: { retryAfter?: number; detail?: string }) {
+  constructor(message: string, status = 500, options?: { retryAfter?: number; detail?: string; code?: string }) {
     super(message);
     this.name = "DownloaderError";
     this.status = status;
     this.retryAfter = options?.retryAfter;
     this.detail = options?.detail;
+    this.code = options?.code;
   }
 }
 
@@ -263,10 +265,12 @@ const UPDATE_CACHE_MS = 30 * 60 * 1000;
 const OUTPUT_LIMIT = 128000;
 const TOKEN_TTL_MS = 15 * 60 * 1000;
 const TIDAL_TOKEN_CACHE_MS = 60 * 60 * 1000;
+const TIDAL_TOKEN_MIN_TTL_MS = 5 * 60 * 1000;
 const TIDAL_SEARCH_WINDOW_MS = 30 * 1000;
 const TIDAL_SEARCH_MAX_REQUESTS = 10;
 const TIDAL_SEARCH_MIN_INTERVAL_MS = 1000;
 const TIDAL_DOWNLOAD_QUALITIES = ["Max", "Lossless", "High"] as const;
+const SAFE_FILENAME_MAX_LENGTH = 200;
 const ZIP_UINT16_MAX = 0xffff;
 const ZIP_UINT32_MAX = 0xffffffff;
 const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
@@ -627,6 +631,62 @@ async function runTidekeeperStatus(): Promise<TidalToolDiagnostic> {
     updateAvailable: updateStatus.updateAvailable,
     latestVersion: updateStatus.latestVersion,
   };
+}
+
+/**
+ * Verifies that tidekeeper can run with a usable TIDAL session before a download
+ * request starts doing network-heavy work.
+ */
+async function ensureTidekeeperReadyForDownload(): Promise<void> {
+  const configPath = tidalConfigPath();
+  const [doctorResult, configExists] = await Promise.all([
+    runCommand(tidalBinary(), ["--doctor"], STATUS_TIMEOUT_MS, undefined, {
+      env: commandEnv(),
+    }),
+    fileExists(configPath),
+  ]);
+  const doctor = `${doctorResult.stdout}\n${doctorResult.stderr}`.trim();
+  const doctorUnsupported = looksLikeCliUsage(doctor) && !doctorResult.ok;
+
+  if (doctorResult.errorCode === "ENOENT") {
+    throw new DownloaderError("tidekeeper is not installed or TIDAL_DL_NG_PATH is not configured.", 500, {
+      code: "tidal-cli-missing",
+      detail: doctor,
+    });
+  }
+  if (looksLikeTiddlCli(doctor)) {
+    throw new DownloaderError("TIDAL_DL_NG_PATH points to the incompatible tiddl CLI. Set it to tidekeeper.exe and restart the dev server.", 500, {
+      code: "incompatible-tiddl",
+      detail: doctor.slice(0, 2200),
+    });
+  }
+
+  const loggedIn = doctorLoggedIn(doctor, doctorResult.ok) || (doctorUnsupported && configExists);
+  if (!loggedIn) {
+    clearCachedTidalToken();
+    throw new DownloaderError("TIDAL token is not valid. Run `tidekeeper login` locally, then retry.", 401, {
+      code: "tidal-auth-invalid",
+      detail: doctor.slice(0, 2200),
+    });
+  }
+
+  const expiryIso = parseTokenExpiry(doctor) ?? cachedToken?.tokenExpiry;
+  const expiryMs = expiryIso ? Date.parse(expiryIso) : Number.NaN;
+  if (!Number.isNaN(expiryMs)) {
+    const remainingMs = expiryMs - Date.now();
+    if (remainingMs <= 0) {
+      clearCachedTidalToken();
+      throw new DownloaderError("TIDAL token has expired. Run `tidekeeper login` locally, then retry.", 401, {
+        code: "tidal-auth-expired",
+      });
+    }
+    if (remainingMs < TIDAL_TOKEN_MIN_TTL_MS) {
+      throw new DownloaderError("TIDAL token is about to expire. Refresh login before starting this queue.", 401, {
+        code: "tidal-auth-expiring",
+        retryAfter: Math.max(1, Math.ceil(remainingMs / 1000)),
+      });
+    }
+  }
 }
 
 function parseVersionNumber(value: string | undefined): string | undefined {
@@ -1056,19 +1116,21 @@ async function searchTidalTrackUrl(query: string): Promise<string | undefined> {
 
 async function handleSearch(query: string | null): Promise<Response> {
   const q = query ? decodeSearchQuery(query) : "";
-  if (!q) return NextResponse.json({ success: false, error: "Missing search query." }, { status: 400 });
+  if (!q) return errorResponse("Missing search query.", 400, { code: "missing-search-query" });
   try {
     const result = await performTidalSearch(q);
     if (result.success) return NextResponse.json({ success: true, url: result.url });
     const headers = new Headers();
     if (result.retryAfter) headers.set("Retry-After", String(result.retryAfter));
-    return NextResponse.json(
-      { success: false, error: result.error, retryAfter: result.retryAfter },
-      { status: result.status, headers },
-    );
+    const response = errorResponse(result.error, result.status, {
+      retryAfter: result.retryAfter,
+      code: result.status === 401 ? "tidal-auth-invalid" : result.status === 429 ? "tidal-rate-limited" : "tidal-search-failed",
+    });
+    for (const [name, value] of headers) response.headers.set(name, value);
+    return response;
   } catch (error) {
     console.error("[tidal-search] Search failed unexpectedly.", error);
-    return NextResponse.json({ success: false, error: "Search failed unexpectedly." }, { status: 500 });
+    return errorResponse("Search failed unexpectedly.", 500, { code: "tidal-search-failed" });
   }
 }
 
@@ -1093,6 +1155,18 @@ function sanitizeFileName(input: string): string {
   return cleaned || "Turrex TIDAL Track";
 }
 
+/** Truncates a generated audio filename while keeping the requested extension intact. */
+function truncateFileNamePreservingExtension(fileName: string, extension: AudioFormat, maxLength = SAFE_FILENAME_MAX_LENGTH): string {
+  const requiredExt = `.${extension}`;
+  const actualExt = path.extname(fileName);
+  const ext = actualExt.toLowerCase() === requiredExt ? actualExt : requiredExt;
+  const rawStem = actualExt ? path.basename(fileName, actualExt) : fileName;
+  const stem = sanitizeFileName(rawStem);
+  const stemLimit = Math.max(1, maxLength - ext.length);
+  const truncatedStem = stem.slice(0, stemLimit).replace(/[ .]+$/g, "") || "Turrex TIDAL Track";
+  return `${truncatedStem}${ext}`;
+}
+
 function safeTemplateValue(value: string | undefined, fallback = ""): string {
   return (value || fallback).replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -1110,7 +1184,7 @@ function fileNameFromTemplate(template: string, metadata: AudioMetadata, profile
     ext: profile.extension,
   };
   const rendered = normalizedTemplate.replace(/\{(artist|title|album|year|quality|profile|tracknumber|ext)\}/gi, (_match, key: string) => replacements[key.toLowerCase()] ?? "");
-  let safe = rendered.replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+  let safe = rendered.replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim();
   if (!safe || safe === "." || safe.endsWith(".")) {
     safe = `${replacements.artist} - ${replacements.title}.${profile.extension}`;
   }
@@ -1118,7 +1192,7 @@ function fileNameFromTemplate(template: string, metadata: AudioMetadata, profile
     safe = `${safe.replace(/\.[^.]+$/, "")}.${profile.extension}`;
   }
   if (preview && !safe.toLowerCase().startsWith("preview_")) safe = `preview_${safe}`;
-  return safe.slice(0, 200);
+  return truncateFileNamePreservingExtension(safe, profile.extension);
 }
 
 function postActionFromUnknown(value: unknown): "openFolder" | "notify" | "moveToLibrary" | undefined {
@@ -1163,11 +1237,17 @@ function safeZipPath(input: string): string {
 
 function getUniqueFileName(fileName: string, used: Set<string>): string {
   const ext = path.extname(fileName);
-  const stem = sanitizeFileName(path.basename(fileName, ext));
-  let candidate = `${stem}${ext}`;
+  const extension = ext.replace(/^\./, "") as AudioFormat;
+  const safeExtension = extension === "flac" || extension === "mp3" || extension === "m4a" ? extension : "mp3";
+  const safeName = truncateFileNamePreservingExtension(fileName, safeExtension);
+  const safeExt = path.extname(safeName);
+  const stem = sanitizeFileName(path.basename(safeName, safeExt));
+  let candidate = safeName;
   let index = 2;
   while (used.has(candidate.toLowerCase())) {
-    candidate = `${stem} (${index})${ext}`;
+    const suffix = ` (${index})`;
+    const stemLimit = Math.max(1, SAFE_FILENAME_MAX_LENGTH - safeExt.length - suffix.length);
+    candidate = `${stem.slice(0, stemLimit).replace(/[ .]+$/g, "") || "Turrex TIDAL Track"}${suffix}${safeExt}`;
     index += 1;
   }
   used.add(candidate.toLowerCase());
@@ -1378,10 +1458,7 @@ async function handleLogin(): Promise<Response> {
       message: "Browser opened. Complete login and the token will be refreshed.",
     });
   } catch (error) {
-    return NextResponse.json({
-      success: false,
-      error: messageFromUnknown(error) || "Could not start tidekeeper login.",
-    }, { status: 500 });
+    return errorResponse(messageFromUnknown(error) || "Could not start tidekeeper login.", 500, { code: "tidal-login-failed" });
   }
 }
 
@@ -1390,13 +1467,14 @@ function classifyDownloaderFailure(output: string, fallbackMessage: string): Dow
   if (lower.includes("429") || lower.includes("rate limit") || lower.includes("too many requests")) {
     return new DownloaderError("TIDAL rate limited this request. Turrex will retry after the cooldown.", 429, {
       retryAfter: parseRetryAfter(output) ?? 30 * 60,
+      code: "tidal-rate-limited",
       detail: output.slice(0, 1800),
     });
   }
   if (lower.includes("401") || lower.includes("unauthorized") || lower.includes("not logged in") || lower.includes("token expired") || lower.includes("expired token") || lower.includes("login") || lower.includes("session") || lower.includes("auth")) {
-    return new DownloaderError("TIDAL authorization failed. Run `tidekeeper login` locally, then retry.", 401, { detail: output.slice(0, 1800) });
+    return new DownloaderError("TIDAL authorization failed. Run `tidekeeper login` locally, then retry.", 401, { code: "tidal-auth-invalid", detail: output.slice(0, 1800) });
   }
-  return new DownloaderError(`${fallbackMessage}: ${(output || "No error output.").slice(0, 1800)}`, 500, { detail: output.slice(0, 1800) });
+  return new DownloaderError(`${fallbackMessage}: ${(output || "No error output.").slice(0, 1800)}`, 500, { code: "tidal-download-failed", detail: output.slice(0, 1800) });
 }
 
 async function runTidalInfo(url: string): Promise<{ metadata?: Partial<AudioMetadata>; output: string; ok: boolean }> {
@@ -2012,8 +2090,26 @@ function responseHeaders(result: ProcessResult, bufferLength?: number): Headers 
   return headers;
 }
 
-function errorResponse(message: string, status = 500, extra?: Record<string, unknown>): NextResponse {
-  return NextResponse.json({ error: message, detail: message, ...extra }, { status });
+function errorCodeFromStatus(status: number, message: string): string {
+  if (status === 400) return "bad-request";
+  if (status === 401) return "tidal-auth-invalid";
+  if (status === 404) return "not-found";
+  if (status === 429) return "tidal-rate-limited";
+  if (/tidekeeper/i.test(message)) return "tidal-cli-error";
+  return "tidal-download-failed";
+}
+
+function errorResponse(message: string, status = 500, extra?: { code?: unknown; retryAfter?: unknown }): NextResponse {
+  const code = typeof extra?.code === "string" ? extra.code : errorCodeFromStatus(status, message);
+  const retryAfter = typeof extra?.retryAfter === "number" && Number.isFinite(extra.retryAfter)
+    ? Math.max(1, Math.round(extra.retryAfter))
+    : undefined;
+  return NextResponse.json({
+    success: false,
+    error: message,
+    code,
+    ...(retryAfter ? { retryAfter } : {}),
+  }, { status });
 }
 
 function statusFromError(error: unknown): number {
@@ -2073,6 +2169,8 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
     const sourceUrl = hasTrackBatch ? `track-batch:${requestedTracks.length}` : url;
     const firstTrack = requestedTracks[0];
 
+    await emit?.({ step: "validating", progress: 4, message: "Checking TIDAL token status...", source: "tidal" });
+    await ensureTidekeeperReadyForDownload();
     await emit?.({ step: "validating", progress: 6, message: hasTrackBatch ? `Preparing ${requestedTracks.length} imported track${requestedTracks.length === 1 ? "" : "s"}...` : `Checking TIDAL ${tidalKind} metadata...`, source: "tidal" });
     const info = hasTrackBatch
       ? { metadata: firstTrack ? { artist: firstTrack.artist, title: firstTrack.title, album: firstTrack.album, year: firstTrack.year, genre: firstTrack.genre } : undefined, output: "", ok: true }
@@ -2378,7 +2476,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const action = request.nextUrl.searchParams.get("action");
   if (action === "retrieve") return handleRetrieve(request.nextUrl.searchParams.get("token"));
   if (action === "search") return handleSearch(request.nextUrl.searchParams.get("q"));
-  if (action !== "status") return errorResponse("Unsupported TIDAL GET action.", 400);
+  if (action !== "status") return errorResponse("Unsupported TIDAL GET action.", 400, { code: "unsupported-action" });
 
   const [tidal, soulseek, ffmpeg, ffprobe, lyrics, musicbrainz, writable, searchToken] = await Promise.allSettled([
     runTidekeeperStatus(),
@@ -2440,14 +2538,14 @@ export async function GET(request: NextRequest): Promise<Response> {
 export async function POST(request: NextRequest): Promise<Response> {
   const action = request.nextUrl.searchParams.get("action");
   if (action === "login") return handleLogin();
-  if (action && action !== "download") return errorResponse("Unsupported TIDAL POST action.", 400);
+  if (action && action !== "download") return errorResponse("Unsupported TIDAL POST action.", 400, { code: "unsupported-action" });
 
   const wantsSse = request.headers.get("accept")?.toLowerCase().includes("text/event-stream") ?? false;
   let body: TidalRequestBody;
   try {
     body = await request.json() as TidalRequestBody;
   } catch {
-    return errorResponse("Invalid JSON body.", 400);
+    return errorResponse("Invalid JSON body.", 400, { code: "invalid-json" });
   }
 
   if (wantsSse) {
@@ -2535,7 +2633,7 @@ export async function POST(request: NextRequest): Promise<Response> {
     return new Response(buffer, { status: 200, headers: responseHeaders(result, buffer.byteLength) });
   } catch (error) {
     return errorResponse(messageFromUnknown(error) || "TIDAL download failed.", statusFromError(error), {
-      requestId: result?.requestId,
+      code: error instanceof DownloaderError ? error.code : undefined,
       retryAfter: error instanceof DownloaderError ? error.retryAfter : undefined,
     });
   } finally {
