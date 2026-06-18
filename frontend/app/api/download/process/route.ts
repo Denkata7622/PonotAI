@@ -40,8 +40,14 @@ export async function POST(request: Request): Promise<Response> {
 
     const metadataJson = String(form.get("metadata") || "{}");
     const optionsJson = String(form.get("postProcessing") || "{}");
-    const metadataInput = JSON.parse(metadataJson) as unknown;
-    const optionsInput = JSON.parse(optionsJson) as unknown;
+    let metadataInput: unknown;
+    let optionsInput: unknown;
+    try {
+      metadataInput = JSON.parse(metadataJson) as unknown;
+      optionsInput = JSON.parse(optionsJson) as unknown;
+    } catch {
+      return jsonError("Metadata and post-processing options must be valid JSON.", "invalid-json", 400, "Retry with valid metadata and post-processing JSON form fields.");
+    }
     const metadata = resolveTrackMetadata(metadataInput && typeof metadataInput === "object" && !Array.isArray(metadataInput) ? metadataInput : {});
     const validatedOptions = validatePostProcessingOptions(optionsInput);
     if (!validatedOptions.ok) return jsonError(validatedOptions.message, validatedOptions.code, 400, validatedOptions.fix);

@@ -5,26 +5,31 @@ import { createPortal } from "react-dom";
 import type { SongMatch } from "../features/recognition/api";
 import { useLanguage } from "../lib/LanguageContext";
 import { t } from "../lib/translations";
-import { RotateCcw } from "../lucide-react";
+import { RotateCcw, X } from "../lucide-react";
 import { Button } from "../src/components/ui/Button";
 import { Input } from "../src/components/ui/Input";
 import { getApiConfigStatus, getApiSetupMessage } from "../lib/apiConfig";
 import { lookupCoverArtUrls } from "../features/recognition/coverArt";
 
 type CoverCandidate = { url: string; source?: string };
-type EditableSong = SongMatch & {
-  coverUrl?: string;
+type ReviewableSong = Omit<SongMatch, "albumArtUrl"> & {
+  albumArtUrl?: string | null;
+  coverUrl?: string | null;
+  coverCandidates?: unknown;
+};
+type EditableSong = ReviewableSong & {
   reviewId: string;
   selected: boolean;
   editedSongName?: string;
   editedArtist?: string;
-  selectedCoverUrl?: string;
+  selectedCoverUrl?: string | null;
   coverCandidates: CoverCandidate[];
   loadingCovers: boolean;
 };
 
 const FALLBACK_COVER = "/album-placeholder.svg";
-const BG_NO_MISSING = "Всички песни вече имат корици.";
+const NO_MISSING_COVERS = "Every selected song already has cover art.";
+const REVIEW_PAGE_SIZE = 100;
 
 function normalizeUrl(input: unknown): string | null {
   if (typeof input !== "string") return null;
@@ -70,17 +75,17 @@ function getSongCover(song: EditableSong): string | undefined {
   return realCover ?? candidates[0];
 }
 
-function setSongCover(song: EditableSong, coverUrl: string): EditableSong {
+function setSongCover(song: EditableSong, coverUrl: string | null): EditableSong {
   const normalized = normalizeUrl(coverUrl);
   if (!normalized) {
-    return { ...song, selectedCoverUrl: undefined, albumArtUrl: "", coverUrl: "" };
+    return { ...song, selectedCoverUrl: null, albumArtUrl: null, coverUrl: null };
   }
   const merged = dedupeCoverCandidates([{ url: normalized, source: "Selected" }, ...song.coverCandidates]);
   return { ...song, selectedCoverUrl: normalized, albumArtUrl: normalized, coverUrl: normalized, coverCandidates: merged };
 }
 
-function normalizeCandidates(song: SongMatch): { selectedCoverUrl?: string; coverCandidates: CoverCandidate[] } {
-  const rawSong = song as SongMatch & { coverUrl?: unknown; coverCandidates?: unknown };
+function normalizeCandidates(song: ReviewableSong): { selectedCoverUrl?: string; coverCandidates: CoverCandidate[] } {
+  const rawSong = song as ReviewableSong & { coverUrl?: unknown; coverCandidates?: unknown };
   const options: CoverCandidate[] = [];
   const rawCandidates = Array.isArray(rawSong.coverCandidates) ? rawSong.coverCandidates : [];
   for (const entry of rawCandidates) {
@@ -169,6 +174,8 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
   const [inlineMessage, setInlineMessage] = useState("");
   const [batchCoverLoading, setBatchCoverLoading] = useState(false);
   const [activeReviewId, setActiveReviewId] = useState<string | null>(null);
+  const [reviewQuery, setReviewQuery] = useState("");
+  const [reviewPage, setReviewPage] = useState(0);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(() =>
     typeof document === "undefined" ? null : document.body,
   );
@@ -184,9 +191,32 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
     || editableSongs[0];
 
   const currentSongHasCover = Boolean(currentSong && isRealCoverUrl(getSongCover(currentSong)));
+  const anySongHasCover = editableSongs.some((song) => isRealCoverUrl(getSongCover(song)));
+  const filteredEditableSongs = useMemo(() => {
+    const normalizedQuery = reviewQuery.trim().toLowerCase();
+    if (!normalizedQuery) return editableSongs;
+    return editableSongs.filter((song) => [
+      song.editedSongName,
+      song.songName,
+      song.editedArtist,
+      song.artist,
+    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(normalizedQuery)));
+  }, [editableSongs, reviewQuery]);
+  const reviewPageCount = Math.max(1, Math.ceil(filteredEditableSongs.length / REVIEW_PAGE_SIZE));
+  const safeReviewPage = Math.min(reviewPage, reviewPageCount - 1);
+  const visibleEditableSongs = filteredEditableSongs.slice(safeReviewPage * REVIEW_PAGE_SIZE, safeReviewPage * REVIEW_PAGE_SIZE + REVIEW_PAGE_SIZE);
+
+  useEffect(() => {
+    setReviewPage(0);
+  }, [reviewQuery]);
+
+  useEffect(() => {
+    setReviewPage((value) => Math.min(value, reviewPageCount - 1));
+  }, [reviewPageCount]);
 
   useEffect(() => {
     setPortalRoot(document.body);
+    const previousBodyOverflow = document.body.style.overflow;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onCancel();
     };
@@ -194,7 +224,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousBodyOverflow;
     };
   }, [onCancel]);
 
@@ -202,12 +232,16 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
     setEditableSongs((prev) => prev.map((song) => (song.reviewId === reviewId ? updater(song) : song)));
   }
 
-
-
-  function missingCover(song: EditableSong): boolean {
-    return !isValidCoverUrl(song.selectedCoverUrl) && !isValidCoverUrl(song.coverUrl) && !isValidCoverUrl(song.albumArtUrl);
+  function clearSongCover(reviewId: string) {
+    setActiveReviewId(reviewId);
+    updateSong(reviewId, (song) => setSongCover(song, null));
+    setInlineMessage("");
   }
 
+  function clearAllCovers() {
+    setEditableSongs((prev) => prev.map((song) => setSongCover(song, null)));
+    setInlineMessage("");
+  }
   async function searchCoverCandidatesForSong(song: EditableSong): Promise<string[]> {
     if (!apiBaseUrl) throw new Error(apiSetupMessage);
     const title = song.editedSongName?.trim() || song.songName;
@@ -256,6 +290,8 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
         const next = { ...song, coverCandidates: merged };
         return isRealCoverUrl(getSongCover(next)) ? next : setSongCover(next, merged[0]?.url || "");
       });
+    } catch (error) {
+      setInlineMessage(error instanceof Error ? error.message : "Cover lookup failed.");
     } finally {
       updateSong(reviewId, (song) => ({ ...song, loadingCovers: false }));
     }
@@ -268,7 +304,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
     }
     const missing = editableSongs.filter((song) => missingCover(song));
     if (!missing.length) {
-      setInlineMessage(BG_NO_MISSING);
+      setInlineMessage(NO_MISSING_COVERS);
       return;
     }
 
@@ -286,7 +322,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
           const target = queue.shift();
           if (!target) return;
 
-          setInlineMessage(`Търсене на корици ${processed + 1}/${missing.length}...`);
+          setInlineMessage(`Searching covers ${processed + 1}/${missing.length}...`);
           try {
             const coverUrls = await searchCoverCandidatesForSong(target);
             if (coverUrls.length > 0) {
@@ -310,7 +346,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
             failures += 1;
           } finally {
             processed += 1;
-            setInlineMessage(`Търсене на корици ${processed}/${missing.length}...`);
+            setInlineMessage(`Searching covers ${processed}/${missing.length}...`);
           }
         }
       };
@@ -318,11 +354,11 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
       await Promise.all(Array.from({ length: Math.min(maxConcurrent, missing.length) }, () => worker()));
 
       if (found === 0) {
-        setInlineMessage(failures > 0 ? "Не бяха намерени нови корици. Някои корици не можаха да бъдат намерени." : "Не бяха намерени нови корици.");
+        setInlineMessage(failures > 0 ? "No new covers were found. Some lookups failed." : "No new covers were found.");
       } else if (failures > 0) {
-        setInlineMessage(`Намерени корици за ${found} от ${missing.length} песни. Някои корици не можаха да бъдат намерени.`);
+        setInlineMessage(`Found covers for ${found} of ${missing.length} songs. Some lookups failed.`);
       } else {
-        setInlineMessage(`Намерени корици за ${found} от ${missing.length} песни.`);
+        setInlineMessage(`Found covers for ${found} of ${missing.length} songs.`);
       }
     } finally {
       setBatchCoverLoading(false);
@@ -334,24 +370,29 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
     if (isSubmitting) return;
     const selected = editableSongs
       .filter((song) => song.selected)
-      .map((song) => ({
-        ...song,
-        songName: song.editedSongName?.trim() || song.songName,
-        artist: song.editedArtist?.trim() || song.artist,
-        albumArtUrl: getSongCover(song) || "",
-        coverUrl: getSongCover(song),
-        coverCandidates: song.coverCandidates.map((candidate) => candidate.url),
-      }));
+      .map((song) => {
+        const cover = getSongCover(song) ?? null;
+        return {
+          ...song,
+          songName: song.editedSongName?.trim() || song.songName,
+          artist: song.editedArtist?.trim() || song.artist,
+          albumArtUrl: cover,
+          coverUrl: cover,
+          coverCandidates: song.coverCandidates.map((candidate) => candidate.url),
+        };
+      });
 
     setIsSubmitting(true);
     try {
-      await onConfirm(selected);
+      await onConfirm(selected as SongMatch[]);
+    } catch (error) {
+      setInlineMessage(error instanceof Error ? error.message : "Could not queue the selected songs.");
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  const chosenSongSummary = useMemo(() => (currentSong ? `${currentSong.songName} — ${currentSong.artist}` : ""), [currentSong]);
+  const chosenSongSummary = useMemo(() => (currentSong ? `${currentSong.songName} - ${currentSong.artist}` : ""), [currentSong]);
 
   const modal = (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onCancel}>
@@ -359,7 +400,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
         role="dialog"
         aria-modal="true"
         aria-labelledby="song-review-title"
-        className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-xl"
+        className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 sm:px-6">
@@ -379,7 +420,10 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
         ) : null}
         <div className="mb-3 flex gap-2">
           <Button variant="secondary" onClick={() => void findCoversForMissingSongs()} disabled={batchCoverLoading || !apiBaseUrl}>
-            Намери корици за липсващите
+            Find covers for missing
+          </Button>
+          <Button variant="secondary" onClick={clearAllCovers} disabled={!anySongHasCover}>
+            Clear all covers
           </Button>
         </div>
         {currentSong && (
@@ -393,7 +437,7 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
               <Button onClick={setCoverToAllSongs} disabled={!currentSongHasCover}>
                 Set cover to all songs
               </Button>
-              <Button variant="secondary" onClick={() => currentSong && setSelectedCover(currentSong.reviewId, "")}>
+              <Button variant="secondary" onClick={() => currentSong && clearSongCover(currentSong.reviewId)}>
                 Clear cover
               </Button>
             </div>
@@ -420,8 +464,28 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
           </div>
         )}
 
+        <div className="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <Input
+            aria-label="Filter reviewed songs"
+            value={reviewQuery}
+            onChange={(event) => setReviewQuery(event.target.value)}
+            placeholder="Filter by title or artist"
+          />
+          <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+            <span>
+              Showing {filteredEditableSongs.length === 0 ? 0 : safeReviewPage * REVIEW_PAGE_SIZE + 1}-{Math.min(filteredEditableSongs.length, safeReviewPage * REVIEW_PAGE_SIZE + visibleEditableSongs.length)} of {filteredEditableSongs.length}
+            </span>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setReviewPage((value) => Math.max(0, value - 1))} disabled={safeReviewPage === 0}>
+              Previous
+            </Button>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setReviewPage((value) => Math.min(reviewPageCount - 1, value + 1))} disabled={safeReviewPage >= reviewPageCount - 1}>
+              Next
+            </Button>
+          </div>
+        </div>
+
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-          {editableSongs.map((song) => (
+          {visibleEditableSongs.map((song) => (
             <div
               key={song.reviewId}
               onClick={() => setActiveReviewId(song.reviewId)}
@@ -435,26 +499,43 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
                   className="h-5 w-5 cursor-pointer accent-violet-500"
                 />
                 <div className="text-sm font-medium">
-                  {song.songName} — {song.artist}
+                  {song.songName} - {song.artist}
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
                 {song.coverCandidates.map((candidate, i) => (
-                  <button
+                  <div
                     key={`${song.reviewId}-${candidate.url}`}
-                    type="button"
-                    aria-pressed={song.selectedCoverUrl === candidate.url}
-                    onClick={() => setSelectedCover(song.reviewId, candidate.url)}
-                    className={`overflow-hidden rounded-lg border-2 ${song.selectedCoverUrl === candidate.url ? "border-[var(--accent-border)] ring-2 ring-[var(--accent-ring)]" : "border-border"}`}
+                    className={`relative overflow-hidden rounded-lg border-2 ${song.selectedCoverUrl === candidate.url ? "border-[var(--accent-border)] ring-2 ring-[var(--accent-ring)]" : "border-border"}`}
                   >
-                    <div className="h-16 w-full">
-                      <CoverThumb url={candidate.url} alt={`${song.songName} cover option ${i + 1}`} />
-                    </div>
-                    <div className="truncate px-1 py-0.5 text-[10px] text-text-muted">
-                      {candidate.source || `Candidate ${i + 1}`}
-                    </div>
-                  </button>
+                    {song.selectedCoverUrl === candidate.url ? (
+                      <button
+                        type="button"
+                        aria-label={`Clear cover for ${song.songName}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          clearSongCover(song.reviewId);
+                        }}
+                        className="absolute right-1 top-1 z-10 grid h-5 w-5 place-items-center rounded-full bg-black/70 text-white"
+                      >
+                        <X className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      aria-pressed={song.selectedCoverUrl === candidate.url}
+                      onClick={() => setSelectedCover(song.reviewId, candidate.url)}
+                      className="block w-full overflow-hidden text-left"
+                    >
+                      <div className="h-16 w-full">
+                        <CoverThumb url={candidate.url} alt={`${song.songName} cover option ${i + 1}`} />
+                      </div>
+                      <div className="truncate px-1 py-0.5 text-[10px] text-text-muted">
+                        {candidate.source || `Candidate ${i + 1}`}
+                      </div>
+                    </button>
+                  </div>
                 ))}
               </div>
 
@@ -472,6 +553,11 @@ export default function SongReviewModal({ songs, onConfirm, onCancel, submitting
               </button>
             </div>
           ))}
+          {visibleEditableSongs.length === 0 ? (
+            <div className="rounded-xl border border-border bg-surface-raised p-6 text-center text-sm text-text-muted">
+              No songs match this filter.
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-4 flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-[var(--border)] pt-4">

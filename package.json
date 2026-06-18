@@ -27,6 +27,7 @@
     "start": "npm run start --prefix backend"
   },
   "dependencies": {
+    "@google-cloud/vision": "^5.3.7",
     "file-type": "^18.0.0"
   },
   "devDependencies": {

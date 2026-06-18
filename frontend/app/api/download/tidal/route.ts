@@ -12,9 +12,34 @@
  *   at that quality even when the CLI exits successfully. Downloads now try
  *   Max, Lossless, then High, running from an isolated temp directory and
  *   reading files from tidekeeper's cwd-relative `download` folder.
+ * - Cover art was only decoded when audio embedding was enabled, so ZIP exports
+ *   often missed cover.jpg. Artwork is now prepared for ZIPs independently from
+ *   the audio-embedding toggle.
+ * - Per-song imported covers, selected global covers, source-embedded covers,
+ *   and Cover Art Archive fallbacks were not prioritized consistently. The
+ *   route now uses that order for both embedded art and ZIP cover.jpg.
+ * - FLAC copy exports mapped only audio in some paths, which could drop an
+ *   existing attached picture, while other paths preserved it even after users
+ *   disabled embedding. Copy-mode FLAC now follows the embedding toggle, and
+ *   processed files log a warning when requested cover embedding is missing.
+ * - Batch exports used the request shape instead of the finished files'
+ *   metadata, so imported JSON tracks could be dumped into one generic folder.
+ *   ZIP assembly now probes each transcoded file and groups by album tag.
+ * - Album folders previously had only one shared cover. Grouping now writes one
+ *   cover.jpg per album folder and warns when tracks in the same album disagree.
+ * - TIDAL search auto-assignment accepted the first track-like ID found in a
+ *   broad response, so remixes, live versions, and unrelated songs could be
+ *   assigned. Search now accepts structured artist/title input, extracts real
+ *   track candidates, fuzzy-scores them, and returns only plausible matches.
+ * [LOGIC] Single-track ZIPs could still place loose audio at the ZIP root after
+ *   the album-grouping pass - all processed files now live in an album folder.
+ * [EDGE] Same album names across different artists produced ambiguous folders -
+ *   the folder now appends artist context when album artists differ.
+ * [BUG] Search version filtering missed generic "Version" variants - versioned
+ *   titles are now penalized/excluded unless the request also asks for them.
  */
 import { exec, spawn } from "node:child_process";
-import { access, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, readFile, rm, stat, statfs, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
@@ -25,6 +50,7 @@ export const dynamic = "force-dynamic";
 type TidalProfileId = "audiophile-flac" | "hifi-mp3" | "phone-aac-plus" | "normalized-mp3" | "analysis-only";
 type AudioFormat = "flac" | "mp3" | "m4a";
 type DownloadSource = "tidal" | "soulseek";
+type CoverArtSource = "track" | "global" | "source" | "fallback";
 
 type TidalEnhancements = {
   loudnorm?: boolean;
@@ -95,6 +121,7 @@ type AudioMetadata = {
   artist: string;
   title: string;
   album: string;
+  track?: string;
   year?: string;
   genre?: string;
   lyrics?: string;
@@ -115,6 +142,7 @@ type SourceAudioFile = {
 
 type PreparedSourceAudioFile = SourceAudioFile & {
   itemCoverPath?: string;
+  itemCoverSource?: CoverArtSource;
   itemSource: DownloadSource;
   itemSourceUrl: string;
 };
@@ -123,6 +151,7 @@ type TidalTrackInput = {
   artist: string;
   title: string;
   album?: string;
+  track?: string;
   year?: string;
   genre?: string;
   coverArt?: unknown;
@@ -132,9 +161,11 @@ type TidalTrackInput = {
 type AlbumMetaEntry = {
   artist: string;
   title: string;
+  album?: string;
   trackNumber: number;
   duration?: number;
   file: string;
+  coverSource?: CoverArtSource;
 };
 
 type QualityReport = {
@@ -170,6 +201,7 @@ type ProgressEvent = {
   step: "validating" | "downloading" | "transcoding" | "zipping" | "complete" | "error";
   progress: number;
   message: string;
+  code?: string;
   file?: string;
   token?: string;
   source?: DownloadSource;
@@ -198,6 +230,33 @@ type ProcessResult = {
   existingFile?: string;
   albumMeta?: AlbumMetaEntry[];
   postAction?: "openFolder" | "notify" | "moveToLibrary";
+};
+
+type ZipMusicLayout = {
+  kind: "single" | "album" | "playlist";
+  folder?: string;
+  folders?: string[];
+  groupedByAlbum?: boolean;
+};
+
+type ProcessedZipAudioFile = {
+  sourceFile: PreparedSourceAudioFile;
+  outputPath: string;
+  outputMetadata: AudioMetadata;
+  originalIndex: number;
+  trackNumber?: number;
+  coverPath?: string;
+  coverSource?: CoverArtSource;
+  zipPath?: string;
+};
+
+type AlbumZipGroup = {
+  key: string;
+  album: string;
+  folder?: string;
+  files: ProcessedZipAudioFile[];
+  coverPath?: string;
+  coverSource?: CoverArtSource;
 };
 
 type CachedTidalAccessToken = {
@@ -234,6 +293,8 @@ type StatusPayload = {
   profiles: Array<ProfileDescriptor & { features: Record<string, boolean | string> }>;
   tempDir: string;
   writable: boolean;
+  availableDiskBytes?: number;
+  lowDiskSpace: boolean;
   checkedAtIso: string;
 };
 
@@ -265,12 +326,15 @@ const UPDATE_CACHE_MS = 30 * 60 * 1000;
 const OUTPUT_LIMIT = 128000;
 const TOKEN_TTL_MS = 15 * 60 * 1000;
 const TIDAL_TOKEN_CACHE_MS = 60 * 60 * 1000;
-const TIDAL_TOKEN_MIN_TTL_MS = 5 * 60 * 1000;
+const TIDAL_TOKEN_MIN_TTL_MS = 30 * 60 * 1000;
+const TIDAL_REFRESH_PROBE_URL = process.env.TIDAL_REFRESH_PROBE_URL || "https://tidal.com/track/776466";
 const TIDAL_SEARCH_WINDOW_MS = 30 * 1000;
 const TIDAL_SEARCH_MAX_REQUESTS = 10;
 const TIDAL_SEARCH_MIN_INTERVAL_MS = 1000;
 const TIDAL_DOWNLOAD_QUALITIES = ["Max", "Lossless", "High"] as const;
 const SAFE_FILENAME_MAX_LENGTH = 200;
+const MAX_COVER_ART_BYTES = 12 * 1024 * 1024;
+const MIN_TEMP_FREE_BYTES = 1024 * 1024 * 1024;
 const ZIP_UINT16_MAX = 0xffff;
 const ZIP_UINT32_MAX = 0xffffffff;
 const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
@@ -291,6 +355,7 @@ let lastTidalTokenError: string | null = null;
 let searchRequestTimestamps: number[] = [];
 let lastTidalSearchRequestAt = 0;
 let searchRateLimiterQueue: Promise<void> = Promise.resolve();
+let tidalRefreshInFlight: Promise<{ refreshed: boolean; output: string }> | null = null;
 
 const profiles: ProfileDescriptor[] = [
   {
@@ -431,6 +496,7 @@ function metadataOverrideFromUnknown(value: unknown): Partial<AudioMetadata> {
     artist: stringField(record.artist),
     title: stringField(record.title),
     album: stringField(record.album),
+    track: stringField(record.track),
     year: stringField(record.year),
     genre: stringField(record.genre),
   };
@@ -449,6 +515,7 @@ function tracksFromUnknown(value: unknown): TidalTrackInput[] {
       artist,
       title,
       album: stringField(record.album) || undefined,
+      track: stringField(record.track) || undefined,
       year: stringField(record.year) || undefined,
       genre: stringField(record.genre) || undefined,
       coverArt: record.coverArt,
@@ -633,20 +700,61 @@ async function runTidekeeperStatus(): Promise<TidalToolDiagnostic> {
   };
 }
 
+async function runTidekeeperDoctor(): Promise<{ result: CommandResult; output: string; configExists: boolean; doctorUnsupported: boolean }> {
+  const [result, configExists] = await Promise.all([
+    runCommand(tidalBinary(), ["--doctor"], STATUS_TIMEOUT_MS, undefined, {
+      env: commandEnv(),
+    }),
+    fileExists(tidalConfigPath()),
+  ]);
+  const output = `${result.stdout}\n${result.stderr}`.trim();
+  return {
+    result,
+    output,
+    configExists,
+    doctorUnsupported: looksLikeCliUsage(output) && !result.ok,
+  };
+}
+
+async function runTidekeeperTokenRefresh(probeUrl: string): Promise<{ refreshed: boolean; output: string }> {
+  const refreshUrl = isTidalUrl(probeUrl) ? probeUrl : TIDAL_REFRESH_PROBE_URL;
+  const probeDir = await mkdtemp(path.join(tmpdir(), "turrex-tidal-refresh-"));
+  try {
+    clearCachedTidalToken();
+    const result = await runCommand(tidalBinary(), ["-l", refreshUrl, "-q", "High"], INFO_TIMEOUT_MS, probeDir, {
+      env: commandEnv(process.env.TIDAL_PROXY),
+    });
+    const output = `${result.stdout}\n${result.stderr}`.trim();
+    const doctor = await runTidekeeperDoctor();
+    const loggedIn = doctorLoggedIn(doctor.output, doctor.result.ok) || (doctor.doctorUnsupported && doctor.configExists);
+    return {
+      refreshed: loggedIn,
+      output: [output, doctor.output].filter(Boolean).join("\n\n").slice(0, 2400),
+    };
+  } finally {
+    await rm(probeDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+async function attemptTidekeeperTokenRefresh(probeUrl: string): Promise<{ refreshed: boolean; output: string }> {
+  if (!tidalRefreshInFlight) {
+    tidalRefreshInFlight = runTidekeeperTokenRefresh(probeUrl).finally(() => {
+      tidalRefreshInFlight = null;
+    });
+  }
+  return tidalRefreshInFlight;
+}
+
 /**
  * Verifies that tidekeeper can run with a usable TIDAL session before a download
  * request starts doing network-heavy work.
  */
-async function ensureTidekeeperReadyForDownload(): Promise<void> {
-  const configPath = tidalConfigPath();
-  const [doctorResult, configExists] = await Promise.all([
-    runCommand(tidalBinary(), ["--doctor"], STATUS_TIMEOUT_MS, undefined, {
-      env: commandEnv(),
-    }),
-    fileExists(configPath),
-  ]);
-  const doctor = `${doctorResult.stdout}\n${doctorResult.stderr}`.trim();
-  const doctorUnsupported = looksLikeCliUsage(doctor) && !doctorResult.ok;
+async function ensureTidekeeperReadyForDownload(probeUrl: string): Promise<void> {
+  let doctorState = await runTidekeeperDoctor();
+  let doctorResult = doctorState.result;
+  let doctor = doctorState.output;
+  const configExists = doctorState.configExists;
+  const doctorUnsupported = doctorState.doctorUnsupported;
 
   if (doctorResult.errorCode === "ENOENT") {
     throw new DownloaderError("tidekeeper is not installed or TIDAL_DL_NG_PATH is not configured.", 500, {
@@ -663,11 +771,17 @@ async function ensureTidekeeperReadyForDownload(): Promise<void> {
 
   const loggedIn = doctorLoggedIn(doctor, doctorResult.ok) || (doctorUnsupported && configExists);
   if (!loggedIn) {
-    clearCachedTidalToken();
-    throw new DownloaderError("TIDAL token is not valid. Run `tidekeeper login` locally, then retry.", 401, {
-      code: "tidal-auth-invalid",
-      detail: doctor.slice(0, 2200),
-    });
+    const refresh = await attemptTidekeeperTokenRefresh(probeUrl);
+    if (!refresh.refreshed) {
+      clearCachedTidalToken();
+      throw new DownloaderError("TIDAL token expired. Please log in and resume.", 401, {
+        code: "TOKEN_EXPIRED",
+        detail: refresh.output || doctor.slice(0, 2200),
+      });
+    }
+    doctorState = await runTidekeeperDoctor();
+    doctorResult = doctorState.result;
+    doctor = doctorState.output;
   }
 
   const expiryIso = parseTokenExpiry(doctor) ?? cachedToken?.tokenExpiry;
@@ -675,16 +789,25 @@ async function ensureTidekeeperReadyForDownload(): Promise<void> {
   if (!Number.isNaN(expiryMs)) {
     const remainingMs = expiryMs - Date.now();
     if (remainingMs <= 0) {
-      clearCachedTidalToken();
-      throw new DownloaderError("TIDAL token has expired. Run `tidekeeper login` locally, then retry.", 401, {
-        code: "tidal-auth-expired",
-      });
+      const refresh = await attemptTidekeeperTokenRefresh(probeUrl);
+      if (!refresh.refreshed) {
+        clearCachedTidalToken();
+        throw new DownloaderError("TIDAL token expired. Please log in and resume.", 401, {
+          code: "TOKEN_EXPIRED",
+          detail: refresh.output || doctor.slice(0, 2200),
+        });
+      }
+      return;
     }
     if (remainingMs < TIDAL_TOKEN_MIN_TTL_MS) {
-      throw new DownloaderError("TIDAL token is about to expire. Refresh login before starting this queue.", 401, {
-        code: "tidal-auth-expiring",
-        retryAfter: Math.max(1, Math.ceil(remainingMs / 1000)),
-      });
+      const refresh = await attemptTidekeeperTokenRefresh(probeUrl);
+      if (!refresh.refreshed) {
+        throw new DownloaderError("TIDAL token expired. Please log in and resume.", 401, {
+          code: "TOKEN_EXPIRED",
+          retryAfter: Math.max(1, Math.ceil(remainingMs / 1000)),
+          detail: refresh.output || doctor.slice(0, 2200),
+        });
+      }
     }
   }
 }
@@ -907,39 +1030,41 @@ type TidalSearchResponse = {
   included?: unknown;
 };
 
+type TidalSearchCandidate = {
+  url: string;
+  title: string;
+  artist: string;
+  album?: string;
+  duration?: number;
+  explicit?: boolean;
+  popularity?: number;
+};
+
+type RankedTidalSearchCandidate = TidalSearchCandidate & {
+  id: string;
+  score: number;
+  order: number;
+};
+
+type TidalSearchIntent = {
+  query: string;
+  artist?: string;
+  title?: string;
+  album?: string;
+  duration?: number;
+};
+
 type TidalSearchResult = {
   success: true;
-  url?: string;
+  best: TidalSearchCandidate;
+  url: string;
+  candidates: TidalSearchCandidate[];
 } | {
   success: false;
   error: string;
   status: number;
   retryAfter?: number;
 };
-
-function tidalTrackIdFromSearch(value: unknown, seen = new WeakSet<object>()): string | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  if (seen.has(value)) return undefined;
-  seen.add(value);
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      const id = tidalTrackIdFromSearch(entry, seen);
-      if (id) return id;
-    }
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  const type = `${stringField(record.type)} ${stringField(record.resourceType)} ${stringField(record.contentType)}`.toLowerCase();
-  const id = typeof record.id === "number" ? String(record.id) : stringField(record.id);
-  if (id && (type.includes("track") || typeof record.duration === "number" || typeof record.durationMs === "number")) {
-    return id;
-  }
-  for (const nested of Object.values(record)) {
-    const nestedId = tidalTrackIdFromSearch(nested, seen);
-    if (nestedId) return nestedId;
-  }
-  return undefined;
-}
 
 function decodeSearchQuery(value: string): string {
   try {
@@ -1011,29 +1136,305 @@ async function reserveTidalSearchSlot(): Promise<TidalSearchResult | null> {
   }
 }
 
-function tidalTrackUrlFromSearchPayload(payload: TidalSearchResponse | null): string | undefined {
-  const data = payload?.data;
-  if (data && typeof data === "object" && !Array.isArray(data)) {
-    const tracks = (data as { tracks?: unknown }).tracks;
-    if (Array.isArray(tracks)) {
-      const first = tracks[0];
-      if (first && typeof first === "object") {
-        const id = typeof (first as { id?: unknown }).id === "number"
-          ? String((first as { id: number }).id)
-          : stringField((first as { id?: unknown }).id);
-        if (id) return `https://tidal.com/track/${encodeURIComponent(id)}`;
-      }
-    }
+function buildIncludedLookup(payload: TidalSearchResponse | null): Map<string, Record<string, unknown>> {
+  const lookup = new Map<string, Record<string, unknown>>();
+  const included = payload?.included;
+  if (!Array.isArray(included)) return lookup;
+  for (const entry of included) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    const id = typeof record.id === "number" ? String(record.id) : stringField(record.id);
+    const type = stringField(record.type).toLowerCase();
+    if (id && type) lookup.set(`${type}:${id}`, record);
   }
-  const fallbackId = tidalTrackIdFromSearch(payload);
-  return fallbackId ? `https://tidal.com/track/${encodeURIComponent(fallbackId)}` : undefined;
+  return lookup;
+}
+
+function recordAttributes(record: Record<string, unknown>): Record<string, unknown> {
+  return record.attributes && typeof record.attributes === "object" ? record.attributes as Record<string, unknown> : {};
+}
+
+function relatedRecords(record: Record<string, unknown>, name: string, included: Map<string, Record<string, unknown>>): Record<string, unknown>[] {
+  const relationships = record.relationships && typeof record.relationships === "object" ? record.relationships as Record<string, unknown> : {};
+  const relation = relationships[name] && typeof relationships[name] === "object" ? relationships[name] as Record<string, unknown> : {};
+  const data = relation.data;
+  const entries = Array.isArray(data) ? data : data && typeof data === "object" ? [data] : [];
+  return entries.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const relationRecord = entry as Record<string, unknown>;
+    const id = typeof relationRecord.id === "number" ? String(relationRecord.id) : stringField(relationRecord.id);
+    const type = stringField(relationRecord.type).toLowerCase();
+    const resolved = id && type ? included.get(`${type}:${id}`) : undefined;
+    return resolved ? [resolved] : [relationRecord];
+  });
+}
+
+function nameFromValue(value: unknown): string | undefined {
+  if (!value) return undefined;
+  if (typeof value === "string") return value.trim() || undefined;
+  if (Array.isArray(value)) return value.map(nameFromValue).filter(Boolean).join(", ") || undefined;
+  if (typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const attrs = recordAttributes(record);
+  return stringField(record.name) || stringField(record.title) || stringField(attrs.name) || stringField(attrs.title);
+}
+
+function durationFromRecord(record: Record<string, unknown>, attrs: Record<string, unknown>): number | undefined {
+  const raw = typeof record.duration === "number" ? record.duration
+    : typeof attrs.duration === "number" ? attrs.duration
+    : typeof record.durationMs === "number" ? record.durationMs / 1000
+    : typeof attrs.durationMs === "number" ? attrs.durationMs / 1000
+    : undefined;
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? Math.round(raw) : undefined;
+}
+
+function numberFieldFromRecord(record: Record<string, unknown>, attrs: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = record[key] ?? attrs[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function explicitFromRecord(record: Record<string, unknown>, attrs: Record<string, unknown>): boolean | undefined {
+  for (const key of ["explicit", "isExplicit"]) {
+    const value = record[key] ?? attrs[key];
+    if (typeof value === "boolean") return value;
+  }
+  const text = `${stringField(record.contentRating)} ${stringField(attrs.contentRating)} ${stringField(record.explicitContent)} ${stringField(attrs.explicitContent)}`.toLowerCase();
+  if (/\bexplicit\b/.test(text)) return true;
+  if (/\bclean\b/.test(text)) return false;
+  return undefined;
+}
+
+function candidateFromTrackRecord(record: Record<string, unknown>, included: Map<string, Record<string, unknown>>): TidalSearchCandidate | null {
+  const attrs = recordAttributes(record);
+  const type = `${stringField(record.type)} ${stringField(record.resourceType)} ${stringField(record.contentType)}`.toLowerCase();
+  const id = typeof record.id === "number" ? String(record.id) : stringField(record.id);
+  const title = stringField(record.title) || stringField(record.name) || stringField(attrs.title) || stringField(attrs.name);
+  const duration = durationFromRecord(record, attrs);
+  const looksLikeTrack = type.includes("track") || Boolean(id && title && duration);
+  if (!id || !looksLikeTrack || !title) return null;
+
+  const artist = stringField(record.artist)
+    || stringField(record.artistName)
+    || stringField(attrs.artist)
+    || stringField(attrs.artistName)
+    || nameFromValue(record.artists)
+    || nameFromValue(attrs.artists)
+    || relatedRecords(record, "artists", included).map(nameFromValue).filter(Boolean).join(", ");
+  const album = stringField(record.album)
+    || stringField(record.albumTitle)
+    || stringField(attrs.album)
+    || stringField(attrs.albumTitle)
+    || nameFromValue(record.album)
+    || nameFromValue(attrs.album)
+    || relatedRecords(record, "albums", included).map(nameFromValue).find(Boolean)
+    || relatedRecords(record, "album", included).map(nameFromValue).find(Boolean);
+
+  return {
+    url: `https://tidal.com/track/${encodeURIComponent(id)}`,
+    title,
+    artist: artist || "Unknown Artist",
+    album: album || undefined,
+    duration,
+    explicit: explicitFromRecord(record, attrs),
+    popularity: numberFieldFromRecord(record, attrs, ["popularity", "popularityScore"]),
+  };
+}
+
+function collectTidalTrackCandidates(value: unknown, included: Map<string, Record<string, unknown>>, seen = new WeakSet<object>(), candidates = new Map<string, TidalSearchCandidate>()): TidalSearchCandidate[] {
+  if (!value || typeof value !== "object") return Array.from(candidates.values());
+  if (seen.has(value)) return Array.from(candidates.values());
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const entry of value) collectTidalTrackCandidates(entry, included, seen, candidates);
+    return Array.from(candidates.values());
+  }
+  const record = value as Record<string, unknown>;
+  const candidate = candidateFromTrackRecord(record, included);
+  if (candidate) candidates.set(candidate.url, candidate);
+  for (const nested of Object.values(record)) collectTidalTrackCandidates(nested, included, seen, candidates);
+  return Array.from(candidates.values());
+}
+
+function normalizeSearchText(value: string | undefined): string {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[\u2018\u2019]/g, "")
+    .replace(/['’`]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function titleCore(value: string | undefined): string {
+  return normalizeSearchText(value)
+    .replace(/\b(remaster(?:ed)?|explicit|clean|bonus track|mono|stereo)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function searchTokens(value: string | undefined): string[] {
+  return titleCore(value).split(" ").filter((token) => token.length > 1);
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a) return b.length;
+  if (!b) return a.length;
+  const previous = Array.from({ length: b.length + 1 }, (_value, index) => index);
+  const current = Array<number>(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const substitution = previous[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1);
+      current[j] = Math.min(previous[j]! + 1, current[j - 1]! + 1, substitution);
+    }
+    for (let j = 0; j <= b.length; j += 1) previous[j] = current[j]!;
+  }
+  return previous[b.length]!;
+}
+
+function textSimilarity(a: string | undefined, b: string | undefined): number {
+  const left = titleCore(a);
+  const right = titleCore(b);
+  if (!left || !right) return 0;
+  if (left === right) return 1;
+  if (left.includes(right) || right.includes(left)) return 0.9;
+  const distance = levenshteinDistance(left, right);
+  return Math.max(0, 1 - distance / Math.max(left.length, right.length));
+}
+
+const VERSION_TERMS = ["radio edit", "remix", "live", "instrumental", "edit", "version", "remaster", "remastered", "acoustic", "cover", "tribute", "mix", "extended"];
+
+function hasVersionTerm(value: string | undefined): boolean {
+  const normalized = titleCore(value);
+  return VERSION_TERMS.some((term) => new RegExp(`(^|\\s)${term.replace(/\s+/g, "\\s+")}(\\s|$)`, "i").test(normalized));
+}
+
+function allImportantTokensPresent(needle: string | undefined, haystack: string | undefined): boolean {
+  const targetTokens = searchTokens(needle).filter((token) => !["the", "and", "feat", "ft"].includes(token));
+  if (targetTokens.length === 0) return false;
+  const haystackTokens = new Set(searchTokens(haystack));
+  return targetTokens.every((token) => haystackTokens.has(token));
+}
+
+function versionTermCount(value: string | undefined, requestedTitle: string): number {
+  const normalized = normalizeSearchText(value);
+  const requested = normalizeSearchText(requestedTitle);
+  let count = 0;
+  for (const term of VERSION_TERMS) {
+    const termPattern = term.replace(/\s+/g, "\\s+");
+    const matches = normalized.match(new RegExp(`(^|\\s)${termPattern}(\\s|$)`, "g"))?.length ?? 0;
+    if (matches === 0) continue;
+    if (!new RegExp(`(^|\\s)${termPattern}(\\s|$)`).test(requested)) count += matches;
+  }
+  return count;
+}
+
+function titlePassesInitialFilter(candidateTitle: string, requestedTitle: string): boolean {
+  const candidate = normalizeSearchText(candidateTitle);
+  const requested = normalizeSearchText(requestedTitle);
+  if (!candidate || !requested) return false;
+  if (candidate === requested || candidate.includes(requested) || requested.includes(candidate)) return true;
+  return allImportantTokensPresent(requestedTitle, candidateTitle);
+}
+
+function artistPassesInitialFilter(candidateArtist: string, requestedArtist: string | undefined): boolean {
+  if (!requestedArtist) return true;
+  const candidate = normalizeSearchText(candidateArtist);
+  const requested = normalizeSearchText(requestedArtist);
+  if (!candidate || !requested) return true;
+  if (candidate === requested || candidate.includes(requested) || requested.includes(candidate)) return true;
+  const candidateTokens = new Set(searchTokens(candidateArtist));
+  const requestedTokens = searchTokens(requestedArtist).filter((token) => !["the", "and", "feat", "ft"].includes(token));
+  if (requestedTokens.length === 0) return true;
+  const shared = requestedTokens.filter((token) => candidateTokens.has(token)).length;
+  return shared / requestedTokens.length >= 0.5;
+}
+
+function parseSearchIntent(query: string, artist?: string, title?: string, album?: string, duration?: number): TidalSearchIntent {
+  const cleanQuery = query.trim();
+  const cleanArtist = artist?.trim();
+  const cleanTitle = title?.trim();
+  const cleanAlbum = album?.trim();
+  const cleanDuration = typeof duration === "number" && Number.isFinite(duration) && duration > 0 ? Math.round(duration) : undefined;
+  if (cleanArtist || cleanTitle) {
+    return { query: cleanQuery || [cleanArtist, cleanTitle].filter(Boolean).join(" "), artist: cleanArtist, title: cleanTitle, album: cleanAlbum, duration: cleanDuration };
+  }
+  const split = cleanQuery.match(/^(.+?)\s(?:-|–|—|\|)\s(.+)$/);
+  if (split?.[1] && split[2]) return { query: cleanQuery, artist: split[1].trim(), title: split[2].trim(), album: cleanAlbum, duration: cleanDuration };
+  return { query: cleanQuery, title: cleanQuery, album: cleanAlbum, duration: cleanDuration };
+}
+
+function buildTidalSearchQueries(intent: TidalSearchIntent): string[] {
+  const artist = intent.artist?.trim();
+  const title = intent.title?.trim();
+  const queries = [
+    artist && title ? `"${artist}" "${title}"` : undefined,
+    [artist, title].filter(Boolean).join(" "),
+    intent.query,
+  ].filter((query): query is string => Boolean(query && query.trim()));
+  return Array.from(new Set(queries.map((query) => query.trim())));
+}
+
+function scoreTidalCandidate(candidate: TidalSearchCandidate, intent: TidalSearchIntent, maxTitleLength: number, order: number): RankedTidalSearchCandidate | null {
+  const requestedTitle = intent.title || intent.query;
+  if (!titlePassesInitialFilter(candidate.title, requestedTitle) || !artistPassesInitialFilter(candidate.artist, intent.artist)) return null;
+
+  const normalizedTitle = normalizeSearchText(candidate.title);
+  const normalizedRequestedTitle = normalizeSearchText(requestedTitle);
+  let score = 0;
+
+  if (normalizedTitle === normalizedRequestedTitle) score += 100;
+  else if (normalizedTitle.includes(normalizedRequestedTitle) || normalizedRequestedTitle.includes(normalizedTitle)) score += 50;
+
+  score -= versionTermCount(candidate.title, requestedTitle) * 20;
+  score += Math.max(0, maxTitleLength - candidate.title.length) * 2;
+
+  const requestedAlbum = normalizeSearchText(intent.album);
+  const candidateAlbum = normalizeSearchText(candidate.album);
+  if (requestedAlbum && candidateAlbum) {
+    if (candidateAlbum === requestedAlbum) score += 30;
+    else if (candidateAlbum.includes(requestedAlbum) || requestedAlbum.includes(candidateAlbum)) score += 15;
+  }
+
+  const requestedWantsClean = /\b(clean|radio edit)\b/.test(normalizedRequestedTitle);
+  if (requestedWantsClean && candidate.explicit === false) score += 10;
+  if (!requestedWantsClean && candidate.explicit === true) score += 10;
+
+  if (typeof candidate.popularity === "number" && Number.isFinite(candidate.popularity)) score += candidate.popularity / 10;
+
+  if (typeof intent.duration === "number" && typeof candidate.duration === "number") {
+    const difference = Math.abs(candidate.duration - intent.duration);
+    if (difference <= 5) score += 20;
+    else if (difference <= 15) score += 10;
+  }
+
+  return { ...candidate, id: candidate.url.replace(/^.*\/track\//, ""), score, order };
+}
+
+function rankedCandidatesFromSearchPayload(payload: TidalSearchResponse | null, intent: TidalSearchIntent): TidalSearchCandidate[] {
+  const included = buildIncludedLookup(payload);
+  const collected = collectTidalTrackCandidates(payload, included);
+  const maxTitleLength = Math.max(0, ...collected.map((candidate) => candidate.title.length));
+  return collected
+    .map((candidate, order) => scoreTidalCandidate(candidate, intent, maxTitleLength, order))
+    .filter((candidate): candidate is RankedTidalSearchCandidate => Boolean(candidate))
+    .sort((a, b) => b.score - a.score || a.order - b.order)
+    .slice(0, 3)
+    .map(({ score: _score, id: _id, order: _order, ...candidate }) => candidate);
 }
 
 async function fetchTidalSearch(query: string, token: string): Promise<{ response: Response; payload: TidalSearchResponse | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIDAL_SEARCH_TIMEOUT_MS);
   try {
-    const url = `https://api.tidal.com/v2/search?query=${encodeURIComponent(query)}&type=TRACKS&limit=3&countryCode=BG`;
+    const url = `https://api.tidal.com/v2/search?query=${encodeURIComponent(query)}&type=TRACKS&limit=10&countryCode=BG`;
     const response = await fetch(url, {
       method: "GET",
       signal: controller.signal,
@@ -1051,80 +1452,88 @@ async function fetchTidalSearch(query: string, token: string): Promise<{ respons
   }
 }
 
-async function performTidalSearch(query: string): Promise<TidalSearchResult> {
+async function performTidalSearch(intent: TidalSearchIntent): Promise<TidalSearchResult> {
   const token = await getTidalAccessToken();
   if (!token) {
     return { success: false, error: lastTidalTokenError || "TIDAL token not found. Please log in.", status: 401 };
   }
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const rateLimitResult = await reserveTidalSearchSlot();
-    if (rateLimitResult) return rateLimitResult;
+  for (const searchQuery of buildTidalSearchQueries(intent)) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const rateLimitResult = await reserveTidalSearchSlot();
+      if (rateLimitResult) return rateLimitResult;
 
-    try {
-      const { response, payload } = await fetchTidalSearch(query, token);
-      if (response.status === 200) {
-        const url = tidalTrackUrlFromSearchPayload(payload);
-        return url ? { success: true, url } : { success: false, error: "Not found", status: 200 };
-      }
-      if (response.status === 401) {
-        clearCachedTidalToken();
-        lastTidalTokenError = "Token expired. Please log in again.";
-        return { success: false, error: "Token expired. Please log in again.", status: 401 };
-      }
-      if (response.status === 429) {
-        const retryAfter = retryAfterSeconds(response.headers.get("retry-after"), attempt + 1);
-        if (attempt < 2) {
-          await sleep(Math.min(retryAfter, attempt + 1) * 1000);
-          continue;
+      try {
+        const { response, payload } = await fetchTidalSearch(searchQuery, token);
+        if (response.status === 200) {
+          const candidates = rankedCandidatesFromSearchPayload(payload, intent);
+          const best = candidates[0];
+          if (best) return { success: true, best, url: best.url, candidates };
+          break;
         }
-        return {
-          success: false,
-          error: "Rate limited by TIDAL. Please wait.",
-          status: 429,
-          retryAfter,
-        };
-      }
-      if (response.status >= 500) {
+        if (response.status === 401) {
+          clearCachedTidalToken();
+          lastTidalTokenError = "Token expired. Please log in again.";
+          return { success: false, error: "Token expired. Please log in again.", status: 401 };
+        }
+        if (response.status === 429) {
+          const retryAfter = retryAfterSeconds(response.headers.get("retry-after"), attempt + 1);
+          if (attempt < 2) {
+            await sleep(retryAfter * 1000);
+            continue;
+          }
+          return {
+            success: false,
+            error: "Rate limited by TIDAL. Please wait.",
+            status: 429,
+            retryAfter,
+          };
+        }
+        if (response.status >= 500) {
+          if (attempt < 2) {
+            await sleep((attempt + 1) * 1000);
+            continue;
+          }
+          return { success: false, error: "TIDAL API error.", status: 502 };
+        }
+        return { success: false, error: "TIDAL search failed.", status: response.status || 502 };
+      } catch (error) {
+        console.warn("[tidal-search] Search request failed.", { attempt: attempt + 1, query: searchQuery, error: messageFromUnknown(error) });
         if (attempt < 2) {
           await sleep((attempt + 1) * 1000);
           continue;
         }
         return { success: false, error: "TIDAL API error.", status: 502 };
       }
-      return { success: false, error: "TIDAL search failed.", status: response.status || 502 };
-    } catch (error) {
-      console.warn("[tidal-search] Search request failed.", { attempt: attempt + 1, query, error: messageFromUnknown(error) });
-      if (attempt < 2) {
-        await sleep((attempt + 1) * 1000);
-        continue;
-      }
-      return { success: false, error: "TIDAL API error.", status: 502 };
     }
   }
 
-  return { success: false, error: "TIDAL API error.", status: 502 };
+  return { success: false, error: "No matching track found", status: 200 };
 }
 
 async function searchTidalTrackUrl(query: string): Promise<string | undefined> {
-  const result = await performTidalSearch(query);
+  const result = await performTidalSearch(parseSearchIntent(query));
   if (result.success) return result.url;
-  if (result.status === 401) throw new DownloaderError(result.error, 401);
+  if (result.status === 401) throw new DownloaderError(result.error, 401, { code: "TOKEN_EXPIRED" });
   if (result.status === 429) throw new DownloaderError(result.error, 429, { retryAfter: result.retryAfter });
   return undefined;
 }
 
-async function handleSearch(query: string | null): Promise<Response> {
+async function handleSearch(query: string | null, artistParam?: string | null, titleParam?: string | null, albumParam?: string | null, durationParam?: string | null): Promise<Response> {
   const q = query ? decodeSearchQuery(query) : "";
-  if (!q) return errorResponse("Missing search query.", 400, { code: "missing-search-query" });
+  const artist = artistParam ? decodeSearchQuery(artistParam) : undefined;
+  const title = titleParam ? decodeSearchQuery(titleParam) : undefined;
+  const album = albumParam ? decodeSearchQuery(albumParam) : undefined;
+  const duration = durationParam ? Number(durationParam) : undefined;
+  if (!q && !artist && !title) return errorResponse("Missing search query.", 400, { code: "missing-search-query" });
   try {
-    const result = await performTidalSearch(q);
-    if (result.success) return NextResponse.json({ success: true, url: result.url });
+    const result = await performTidalSearch(parseSearchIntent(q, artist, title, album, duration));
+    if (result.success) return NextResponse.json({ success: true, best: result.best, url: result.url, candidates: result.candidates });
     const headers = new Headers();
     if (result.retryAfter) headers.set("Retry-After", String(result.retryAfter));
     const response = errorResponse(result.error, result.status, {
       retryAfter: result.retryAfter,
-      code: result.status === 401 ? "tidal-auth-invalid" : result.status === 429 ? "tidal-rate-limited" : "tidal-search-failed",
+      code: result.status === 401 ? "TOKEN_EXPIRED" : result.status === 429 ? "tidal-rate-limited" : "tidal-search-failed",
     });
     for (const [name, value] of headers) response.headers.set(name, value);
     return response;
@@ -1146,13 +1555,38 @@ async function checkTempWritable(dir: string): Promise<boolean> {
   }
 }
 
-function sanitizeFileName(input: string): string {
+async function tempDiskStatus(dir: string): Promise<{ availableBytes?: number; low: boolean }> {
+  try {
+    const stats = await statfs(dir);
+    const availableBytes = Math.max(0, stats.bavail * stats.bsize);
+    return { availableBytes, low: availableBytes < MIN_TEMP_FREE_BYTES };
+  } catch (error) {
+    console.warn("[tidal-download] Could not inspect temporary disk space.", { dir, error: messageFromUnknown(error) });
+    return { low: false };
+  }
+}
+
+async function ensureTempDiskSpace(dir: string): Promise<void> {
+  const disk = await tempDiskStatus(dir);
+  if (!disk.low) return;
+  throw new DownloaderError("Low disk space. Please free up at least 1 GB in the temporary directory and resume.", 507, {
+    code: "low-disk-space",
+    detail: typeof disk.availableBytes === "number" ? `${disk.availableBytes} bytes available in ${dir}` : dir,
+  });
+}
+
+function truncateWithEllipsis(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  if (maxLength <= 3) return value.slice(0, maxLength);
+  return `${value.slice(0, maxLength - 3).replace(/[ .]+$/g, "")}...`;
+}
+
+function sanitizeFileName(input: string, maxLength = SAFE_FILENAME_MAX_LENGTH): string {
   const cleaned = input
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 140);
-  return cleaned || "Turrex TIDAL Track";
+    .trim();
+  return cleaned ? truncateWithEllipsis(cleaned, maxLength) : "Turrex TIDAL Track";
 }
 
 /** Truncates a generated audio filename while keeping the requested extension intact. */
@@ -1163,7 +1597,7 @@ function truncateFileNamePreservingExtension(fileName: string, extension: AudioF
   const rawStem = actualExt ? path.basename(fileName, actualExt) : fileName;
   const stem = sanitizeFileName(rawStem);
   const stemLimit = Math.max(1, maxLength - ext.length);
-  const truncatedStem = stem.slice(0, stemLimit).replace(/[ .]+$/g, "") || "Turrex TIDAL Track";
+  const truncatedStem = truncateWithEllipsis(stem, stemLimit).replace(/[ .]+$/g, "") || "Turrex TIDAL Track";
   return `${truncatedStem}${ext}`;
 }
 
@@ -1205,9 +1639,10 @@ function expandPostCommand(command: string, zipPath: string): string {
 
 function runExecCommand(command: string, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    exec(command, { timeout: timeoutMs, windowsHide: true }, (error) => {
+    exec(command, { timeout: timeoutMs, windowsHide: true }, (error, stdout, stderr) => {
       if (error) {
-        reject(error);
+        const output = `${stderr}\n${stdout}`.replace(/\s+/g, " ").trim();
+        reject(new Error(output ? `${error.message}: ${output.slice(0, 1600)}` : error.message));
         return;
       }
       resolve();
@@ -1235,23 +1670,141 @@ function safeZipPath(input: string): string {
   return normalized;
 }
 
-function getUniqueFileName(fileName: string, used: Set<string>): string {
+function getUniqueFileName(fileName: string, used: Set<string>, maxLength = SAFE_FILENAME_MAX_LENGTH): string {
   const ext = path.extname(fileName);
   const extension = ext.replace(/^\./, "") as AudioFormat;
   const safeExtension = extension === "flac" || extension === "mp3" || extension === "m4a" ? extension : "mp3";
-  const safeName = truncateFileNamePreservingExtension(fileName, safeExtension);
+  const safeName = truncateFileNamePreservingExtension(fileName, safeExtension, maxLength);
   const safeExt = path.extname(safeName);
   const stem = sanitizeFileName(path.basename(safeName, safeExt));
   let candidate = safeName;
   let index = 2;
   while (used.has(candidate.toLowerCase())) {
     const suffix = ` (${index})`;
-    const stemLimit = Math.max(1, SAFE_FILENAME_MAX_LENGTH - safeExt.length - suffix.length);
+    const stemLimit = Math.max(1, maxLength - safeExt.length - suffix.length);
     candidate = `${stem.slice(0, stemLimit).replace(/[ .]+$/g, "") || "Turrex TIDAL Track"}${suffix}${safeExt}`;
     index += 1;
   }
   used.add(candidate.toLowerCase());
   return candidate;
+}
+
+function meaningfulZipName(value: string | undefined, fallback: string): string {
+  const cleaned = sanitizeFileName((value || "").trim());
+  return cleaned && cleaned !== "Turrex TIDAL Track" ? cleaned : sanitizeFileName(fallback);
+}
+
+function isDefaultAlbumName(value: string | undefined): boolean {
+  return !value || value.trim().toLowerCase() === DEFAULT_ALBUM.toLowerCase();
+}
+
+function commonAlbumName(files: PreparedSourceAudioFile[]): string | undefined {
+  if (files.length <= 1) return undefined;
+  const albumNames = files
+    .map((file) => file.metadata.album?.trim())
+    .filter((album): album is string => Boolean(album && !isDefaultAlbumName(album)));
+  if (albumNames.length !== files.length) return undefined;
+  const [first] = albumNames;
+  if (!first) return undefined;
+  const firstKey = first.toLowerCase();
+  return albumNames.every((album) => album.toLowerCase() === firstKey) ? first : undefined;
+}
+
+function isGeneratedPlaylistTitle(value: string | undefined): boolean {
+  return !value || /^(playlist|mix)\s+[a-z0-9_-]{4,}$/i.test(value.trim());
+}
+
+function resolveZipMusicLayout(options: {
+  tidalKind: "track" | "album" | "playlist" | "mix";
+  hasTrackBatch: boolean;
+  sourceFiles: PreparedSourceAudioFile[];
+  fallbackMetadata: AudioMetadata;
+  infoMetadata?: Partial<AudioMetadata>;
+}): ZipMusicLayout {
+  const albumName = commonAlbumName(options.sourceFiles);
+  if (options.hasTrackBatch || options.tidalKind === "playlist" || options.tidalKind === "mix") {
+    const title = options.hasTrackBatch || isGeneratedPlaylistTitle(options.infoMetadata?.title)
+      ? "Turrex Playlist"
+      : options.infoMetadata?.title;
+    return { kind: "playlist", folder: meaningfulZipName(title, "Turrex Playlist") };
+  }
+  if (options.tidalKind === "album" || albumName) {
+    const folder = albumName
+      || (!isDefaultAlbumName(options.fallbackMetadata.album) ? options.fallbackMetadata.album : undefined)
+      || options.fallbackMetadata.title
+      || "Turrex Album";
+    return { kind: "album", folder: meaningfulZipName(folder, "Turrex Album") };
+  }
+  if (options.sourceFiles.length === 1 && options.tidalKind === "track") {
+    return { kind: "single" };
+  }
+  return { kind: "playlist", folder: "Turrex Playlist" };
+}
+
+function addTrackNumberPrefix(fileName: string, trackNumber: number, extension: AudioFormat): string {
+  const ext = path.extname(fileName) || `.${extension}`;
+  const stem = path.basename(fileName, ext);
+  if (/^\d{1,3}\s+-\s+/.test(stem)) return truncateFileNamePreservingExtension(fileName, extension);
+  return truncateFileNamePreservingExtension(`${String(trackNumber).padStart(2, "0")} - ${stem}${ext}`, extension);
+}
+
+function zipFileNameMaxLength(folder?: string): number {
+  return Math.max(32, SAFE_FILENAME_MAX_LENGTH - (folder ? folder.length + 1 : 0));
+}
+
+function truncateAudioFileNameForFolder(fileName: string, folder: string | undefined, extension: AudioFormat): string {
+  return truncateFileNamePreservingExtension(fileName, extension, zipFileNameMaxLength(folder));
+}
+
+function zipAudioPath(layout: ZipMusicLayout, fileName: string): string {
+  return layout.folder ? `${layout.folder}/${fileName}` : fileName;
+}
+
+function zipCoverPath(layout: ZipMusicLayout): string {
+  return layout.folder ? `${layout.folder}/cover.jpg` : "cover.jpg";
+}
+
+function firstCoverPath(files: PreparedSourceAudioFile[], fallback?: string): string | undefined {
+  return files.find((file) => Boolean(file.itemCoverPath))?.itemCoverPath || fallback;
+}
+
+function firstCoverSource(files: PreparedSourceAudioFile[], fallback?: CoverArtSource): CoverArtSource | undefined {
+  return files.find((file) => Boolean(file.itemCoverPath))?.itemCoverSource || fallback;
+}
+
+async function prepareCoverForZip(coverPath: string | undefined, tempDir: string): Promise<string | undefined> {
+  if (!coverPath) return undefined;
+  const extension = path.extname(coverPath).toLowerCase();
+  if (extension === ".jpg" || extension === ".jpeg") return coverPath;
+  const outputPath = path.join(tempDir, "zip-cover.jpg");
+  const result = await runCommand(ffmpegBinary(), [
+    "-hide_banner",
+    "-nostdin",
+    "-y",
+    "-i", coverPath,
+    "-frames:v", "1",
+    "-q:v", "3",
+    outputPath,
+  ], STATUS_TIMEOUT_MS);
+  if (!result.ok) return coverPath;
+  const outputStats = await stat(outputPath).catch(() => null);
+  return outputStats && outputStats.size > 0 ? outputPath : coverPath;
+}
+
+function coverExtensionFromBytes(bytes: Buffer): ".jpg" | ".png" | null {
+  if (bytes.byteLength >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return ".jpg";
+  if (
+    bytes.byteLength >= 8
+    && bytes[0] === 0x89
+    && bytes[1] === 0x50
+    && bytes[2] === 0x4e
+    && bytes[3] === 0x47
+    && bytes[4] === 0x0d
+    && bytes[5] === 0x0a
+    && bytes[6] === 0x1a
+    && bytes[7] === 0x0a
+  ) return ".png";
+  return null;
 }
 
 async function getAudioFiles(dir: string): Promise<string[]> {
@@ -1277,16 +1830,35 @@ function coverInfoFromBase64(input: unknown): { bytes: Buffer; extension: ".jpg"
   if (typeof input !== "string" || !input.trim()) return null;
   const trimmed = input.trim();
   const dataUrlMatch = trimmed.match(/^data:(image\/(?:jpeg|jpg|png));base64,(.+)$/i);
-  const mime = dataUrlMatch?.[1]?.toLowerCase();
-  const encoded = dataUrlMatch?.[2] ?? trimmed;
-  const bytes = Buffer.from(encoded, "base64");
+  const encoded = (dataUrlMatch?.[2] ?? trimmed).replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9+/=_-]+$/.test(encoded)) return null;
+  const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  const estimatedBytes = Math.floor(normalized.replace(/=+$/g, "").length * 3 / 4);
+  if (estimatedBytes > MAX_COVER_ART_BYTES) {
+    throw new DownloaderError(`Cover art is too large. Use a JPEG or PNG under ${Math.round(MAX_COVER_ART_BYTES / 1024 / 1024)} MB.`, 400, {
+      code: "cover-too-large",
+    });
+  }
+  const bytes = Buffer.from(normalized, "base64");
   if (bytes.byteLength === 0) return null;
-  return { bytes, extension: mime?.includes("png") ? ".png" : ".jpg" };
+  if (bytes.byteLength > MAX_COVER_ART_BYTES) {
+    throw new DownloaderError(`Cover art is too large. Use a JPEG or PNG under ${Math.round(MAX_COVER_ART_BYTES / 1024 / 1024)} MB.`, 400, {
+      code: "cover-too-large",
+    });
+  }
+  const extension = coverExtensionFromBytes(bytes);
+  if (!extension) return null;
+  return { bytes, extension };
 }
 
 async function writeCoverArt(coverArt: unknown, tempDir: string): Promise<string | undefined> {
   const cover = coverInfoFromBase64(coverArt);
-  if (!cover) return undefined;
+  if (!cover) {
+    if (typeof coverArt === "string" && coverArt.trim()) {
+      throw new DownloaderError("Cover art must be a base64 JPEG or PNG image.", 400, { code: "invalid-cover-art" });
+    }
+    return undefined;
+  }
   const coverPath = path.join(tempDir, `cover${cover.extension}`);
   await writeFile(coverPath, cover.bytes);
   return coverPath;
@@ -1307,6 +1879,25 @@ async function resizeCoverArt(coverPath: string, tempDir: string): Promise<strin
   if (!result.ok) return coverPath;
   const outputStats = await stat(outputPath).catch(() => null);
   return outputStats && outputStats.size > 0 ? outputPath : coverPath;
+}
+
+async function extractEmbeddedCover(inputPath: string, tempDir: string, label: string): Promise<string | undefined> {
+  await mkdir(tempDir, { recursive: true }).catch(() => undefined);
+  const safeLabel = sanitizeFileName(label) || "source-cover";
+  const outputPath = path.join(tempDir, `${safeLabel}.jpg`);
+  const result = await runCommand(ffmpegBinary(), [
+    "-hide_banner",
+    "-nostdin",
+    "-y",
+    "-i", inputPath,
+    "-map", "0:v:0",
+    "-frames:v", "1",
+    "-q:v", "3",
+    outputPath,
+  ], STATUS_TIMEOUT_MS);
+  if (!result.ok) return undefined;
+  const outputStats = await stat(outputPath).catch(() => null);
+  return outputStats && outputStats.size > 0 ? outputPath : undefined;
 }
 
 function buildLoudnormFilter(): string[] {
@@ -1356,6 +1947,7 @@ function metadataArgs(metadata: AudioMetadata, enabled: boolean): string[] {
   ];
   if (metadata.year) args.push("-metadata", `date=${safe(metadata.year)}`);
   if (metadata.genre) args.push("-metadata", `genre=${safe(metadata.genre)}`);
+  if (metadata.track) args.push("-metadata", `track=${safe(metadata.track)}`);
   if (metadata.lyrics) args.push("-metadata", `lyrics=${safe(metadata.lyrics)}`);
   if (metadata.releaseMbid) args.push("-metadata", `MUSICBRAINZ_ALBUMID=${safe(metadata.releaseMbid)}`);
   return args;
@@ -1374,17 +1966,24 @@ function buildFfmpegArgs(profile: ProfileDescriptor, input: string, output: stri
   const filters = buildFilterChain(profile, options.enhancements, options.durationSec);
   const sourceCodec = (options.sourceCodec || "").toLowerCase();
   const canCopyFlac = profile.id === "audiophile-flac" && sourceCodec === "flac" && !options.preview && filters.length === 0;
+  const coverInput = Boolean(options.coverPath && embedCover);
   const args = ["-hide_banner", "-nostdin", "-y"];
 
   if (options.preview) args.push("-ss", "0", "-t", "30");
   args.push("-i", input);
-  if (options.coverPath && embedCover) args.push("-i", options.coverPath);
+  if (options.coverPath && coverInput) args.push("-i", options.coverPath);
 
-  if (canCopyFlac && !options.coverPath) {
-    args.push("-map", "0", "-c", "copy");
+  if (canCopyFlac) {
+    if (coverInput) {
+      args.push("-map", "0:a", "-map", "1:v:0", "-c:a", "copy", "-c:v", "copy", "-disposition:v:0", "attached_pic", "-metadata:s:v", "title=Album cover", "-metadata:s:v", "comment=Cover (front)");
+    } else if (options.enhancements.embedCover ?? profile.cover) {
+      args.push("-map", "0", "-c", "copy");
+    } else {
+      args.push("-map", "0:a", "-c:a", "copy");
+    }
   } else {
-    args.push("-map", "0:a:0");
-    if (options.coverPath && embedCover) {
+    args.push("-map", "0:a");
+    if (coverInput) {
       args.push("-map", "1:v:0", "-disposition:v:0", "attached_pic", "-c:v", "copy", "-metadata:s:v", "title=Album cover", "-metadata:s:v", "comment=Cover (front)");
     } else if (embedCover) {
       args.push("-map", "0:v:0?", "-disposition:v:0", "attached_pic");
@@ -1402,6 +2001,23 @@ function buildFfmpegArgs(profile: ProfileDescriptor, input: string, output: stri
   return args;
 }
 
+async function audioHasEmbeddedCover(filePath: string): Promise<boolean> {
+  const result = await runCommand(ffprobeBinary(), [
+    "-v", "error",
+    "-select_streams", "v",
+    "-show_entries", "stream=index,codec_type",
+    "-of", "json",
+    filePath,
+  ], STATUS_TIMEOUT_MS);
+  if (!result.ok || !result.stdout.trim()) return false;
+  try {
+    const parsed = JSON.parse(result.stdout) as { streams?: Array<{ codec_type?: string }> };
+    return Boolean(parsed.streams?.some((stream) => stream.codec_type === "video"));
+  } catch {
+    return false;
+  }
+}
+
 async function runFfmpeg(profile: ProfileDescriptor, inputPath: string, outputPath: string, options: {
   coverPath?: string;
   metadata: AudioMetadata;
@@ -1417,6 +2033,10 @@ async function runFfmpeg(profile: ProfileDescriptor, inputPath: string, outputPa
   }
   const outputStats = await stat(outputPath).catch(() => null);
   if (!outputStats || outputStats.size === 0) throw new Error("Transcoding completed without a usable output file.");
+  const shouldHaveCover = Boolean(options.coverPath && (options.enhancements.embedCover ?? profile.cover));
+  if (shouldHaveCover && !(await audioHasEmbeddedCover(outputPath))) {
+    console.warn(`Cover art was requested but no embedded picture stream was found in ${path.basename(outputPath)}.`);
+  }
 }
 
 function parseRetryAfter(output: string): number | undefined {
@@ -1472,7 +2092,7 @@ function classifyDownloaderFailure(output: string, fallbackMessage: string): Dow
     });
   }
   if (lower.includes("401") || lower.includes("unauthorized") || lower.includes("not logged in") || lower.includes("token expired") || lower.includes("expired token") || lower.includes("login") || lower.includes("session") || lower.includes("auth")) {
-    return new DownloaderError("TIDAL authorization failed. Run `tidekeeper login` locally, then retry.", 401, { code: "tidal-auth-invalid", detail: output.slice(0, 1800) });
+    return new DownloaderError("TIDAL token expired. Please log in and resume.", 401, { code: "TOKEN_EXPIRED", detail: output.slice(0, 1800) });
   }
   return new DownloaderError(`${fallbackMessage}: ${(output || "No error output.").slice(0, 1800)}`, 500, { code: "tidal-download-failed", detail: output.slice(0, 1800) });
 }
@@ -1500,6 +2120,7 @@ function parseTidalInfoOutput(output: string): Partial<AudioMetadata> {
     artist: find(["artist", "artists", "performer"]),
     title: find(["title", "track", "name"]),
     album: find(["album"]),
+    track: find(["track number", "tracknumber", "track no"]),
     year: find(["year", "date", "release"]),
   };
 }
@@ -1580,6 +2201,8 @@ async function runTidalDownload(url: string, outputDir: string): Promise<{ stdou
   await mkdir(absoluteOutputDir, { recursive: true }).catch(() => undefined);
   const qualities = TIDAL_DOWNLOAD_QUALITIES.join(", ");
   const tidekeeperOutput = summarizeTidalDownloadFailures(failures);
+  const classifiedFailure = classifyDownloaderFailure(tidekeeperOutput, "TIDAL download failed");
+  if (classifiedFailure.status === 401 || classifiedFailure.status === 429) throw classifiedFailure;
   throw new DownloaderError(`TIDAL did not produce any audio files after trying qualities ${qualities}. tidekeeper output: ${tidekeeperOutput}`, 500, {
     detail: JSON.stringify({ qualitiesTried: failures }, null, 2).slice(0, 4000),
   });
@@ -1631,6 +2254,7 @@ function mergeMetadata(primary: Partial<AudioMetadata> | undefined, fallback: Pa
     artist: (primary?.artist || fallback.artist || "").trim(),
     title: (primary?.title || fallback.title || "Unknown Title").trim(),
     album: (primary?.album || fallback.album || DEFAULT_ALBUM).trim(),
+    track: (primary?.track || fallback.track || "").trim() || undefined,
     year: (primary?.year || fallback.year || "").trim() || undefined,
     genre: (primary?.genre || fallback.genre || "").trim() || undefined,
     lyrics: (primary?.lyrics || fallback.lyrics || "").trim() || undefined,
@@ -1641,7 +2265,7 @@ function mergeMetadata(primary: Partial<AudioMetadata> | undefined, fallback: Pa
 async function probeAudio(filePath: string): Promise<{ codec?: string; bitrateKbps?: number; durationSec?: number; sampleRate?: number; channels?: number; tags?: Partial<AudioMetadata> }> {
   const result = await runCommand(ffprobeBinary(), [
     "-v", "error",
-    "-show_entries", "stream=codec_name,bit_rate,sample_rate,channels:format=bit_rate,duration:format_tags=artist,title,album,date,genre,lyrics",
+    "-show_entries", "stream=codec_name,bit_rate,sample_rate,channels:format=bit_rate,duration:format_tags=artist,title,album,date,genre,lyrics,track,tracknumber",
     "-of", "json",
     filePath,
   ], STATUS_TIMEOUT_MS);
@@ -1669,6 +2293,7 @@ async function probeAudio(filePath: string): Promise<{ codec?: string; bitrateKb
         artist: tags.artist,
         title: tags.title,
         album: tags.album,
+        track: tags.track || tags.TRACK || tags.tracknumber || tags.TRACKNUMBER,
         year: tags.date,
         genre: tags.genre,
         lyrics: tags.lyrics,
@@ -1677,6 +2302,47 @@ async function probeAudio(filePath: string): Promise<{ codec?: string; bitrateKb
     };
   } catch {
     return {};
+  }
+}
+
+function tagValue(tags: Record<string, string>, names: string[]): string | undefined {
+  const lowerNames = names.map((name) => name.toLowerCase());
+  for (const [key, value] of Object.entries(tags)) {
+    if (lowerNames.includes(key.toLowerCase()) && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function parseTrackNumber(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const match = value.match(/\d+/);
+  if (!match) return undefined;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+async function probeTranscodedMetadata(filePath: string, fallback: AudioMetadata): Promise<{ metadata: AudioMetadata; trackNumber?: number }> {
+  const result = await runCommand(ffprobeBinary(), [
+    "-v", "quiet",
+    "-show_entries", "format_tags=artist,album,title,track,tracknumber",
+    "-of", "json",
+    filePath,
+  ], STATUS_TIMEOUT_MS);
+  if (!result.ok || !result.stdout.trim()) {
+    return { metadata: fallback, trackNumber: parseTrackNumber(fallback.track) };
+  }
+  try {
+    const parsed = JSON.parse(result.stdout) as { format?: { tags?: Record<string, string> } };
+    const tags = parsed.format?.tags ?? {};
+    const probed = mergeMetadata({
+      artist: tagValue(tags, ["artist", "ARTIST"]),
+      album: tagValue(tags, ["album", "ALBUM"]),
+      title: tagValue(tags, ["title", "TITLE"]),
+      track: tagValue(tags, ["track", "TRACK", "tracknumber", "TRACKNUMBER"]),
+    }, fallback);
+    return { metadata: probed, trackNumber: parseTrackNumber(probed.track) };
+  } catch {
+    return { metadata: fallback, trackNumber: parseTrackNumber(fallback.track) };
   }
 }
 
@@ -1823,6 +2489,7 @@ async function enrichPreparedSourceFiles(sourceFiles: PreparedSourceAudioFile[],
   return enriched.map((file, index) => ({
     ...file,
     itemCoverPath: sourceFiles[index]?.itemCoverPath,
+    itemCoverSource: sourceFiles[index]?.itemCoverSource,
     itemSource: sourceFiles[index]?.itemSource ?? "tidal",
     itemSourceUrl: sourceFiles[index]?.itemSourceUrl ?? "",
   }));
@@ -1920,6 +2587,129 @@ async function fetchCoverArtFallback(metadata: AudioMetadata, tempDir: string): 
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function attachSourceEmbeddedCovers(files: PreparedSourceAudioFile[], tempDir: string): Promise<PreparedSourceAudioFile[]> {
+  return Promise.all(files.map(async (file, index) => {
+    if (file.itemCoverPath) return file;
+    const coverDir = path.join(tempDir, `source-cover-${index + 1}`);
+    const sourceCoverPath = await extractEmbeddedCover(file.filePath, coverDir, `source-cover-${index + 1}`).catch(() => undefined);
+    return sourceCoverPath ? { ...file, itemCoverPath: sourceCoverPath, itemCoverSource: "source" } : file;
+  }));
+}
+
+async function attachFallbackCovers(files: PreparedSourceAudioFile[], tempDir: string, enabled: boolean): Promise<PreparedSourceAudioFile[]> {
+  if (!enabled) return files;
+  return Promise.all(files.map(async (file, index) => {
+    if (file.itemCoverPath) return file;
+    const fallbackDir = path.join(tempDir, `cover-fallback-${index + 1}`);
+    await mkdir(fallbackDir, { recursive: true }).catch(() => undefined);
+    const fallbackCover = await fetchCoverArtFallback(file.metadata, fallbackDir).catch(() => undefined);
+    return fallbackCover ? { ...file, itemCoverPath: fallbackCover, itemCoverSource: "fallback" } : file;
+  }));
+}
+
+async function resizePreparedCovers(files: PreparedSourceAudioFile[], tempDir: string, enabled: boolean): Promise<PreparedSourceAudioFile[]> {
+  if (!enabled) return files;
+  const resizedByPath = new Map<string, string>();
+  const resized: PreparedSourceAudioFile[] = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index]!;
+    if (!file.itemCoverPath) {
+      resized.push(file);
+      continue;
+    }
+    const cached = resizedByPath.get(file.itemCoverPath);
+    if (cached) {
+      resized.push({ ...file, itemCoverPath: cached });
+      continue;
+    }
+    const originalCoverPath = file.itemCoverPath;
+    const resizeDir = path.join(tempDir, `cover-resized-${index + 1}`);
+    await mkdir(resizeDir, { recursive: true }).catch(() => undefined);
+    const resizedPath = await resizeCoverArt(originalCoverPath, resizeDir).catch(() => originalCoverPath);
+    resizedByPath.set(originalCoverPath, resizedPath);
+    resized.push({ ...file, itemCoverPath: resizedPath });
+  }
+  return resized;
+}
+
+function albumNameForZip(metadata: AudioMetadata): string {
+  const album = metadata.album?.trim();
+  return album && !isDefaultAlbumName(album) ? album : "Unknown Album";
+}
+
+function albumGroupKey(album: string): string {
+  return album.toLowerCase().replace(/\s+/g, " ").trim() || "unknown album";
+}
+
+function uniqueAlbumFolderName(album: string, usedFolders: Set<string>): string {
+  const base = sanitizeFileName(album || "Unknown Album") || "Unknown Album";
+  let candidate = base;
+  let index = 2;
+  while (usedFolders.has(candidate.toLowerCase())) {
+    const suffix = ` (${index})`;
+    candidate = `${base.slice(0, Math.max(1, 140 - suffix.length)).replace(/[ .]+$/g, "")}${suffix}`;
+    index += 1;
+  }
+  usedFolders.add(candidate.toLowerCase());
+  return candidate;
+}
+
+function buildAlbumZipGroups(files: ProcessedZipAudioFile[], groupByAlbum: boolean): { groups: AlbumZipGroup[]; warnings: string[] } {
+  if (!groupByAlbum) {
+    const first = files[0];
+    return {
+      groups: [{
+        key: "single",
+        album: first ? albumNameForZip(first.outputMetadata) : "Unknown Album",
+        files,
+        coverPath: first?.coverPath,
+        coverSource: first?.coverSource,
+      }],
+      warnings: [],
+    };
+  }
+
+  const usedFolders = new Set<string>();
+  const groups = new Map<string, AlbumZipGroup>();
+  for (const file of files) {
+    const album = albumNameForZip(file.outputMetadata);
+    const key = albumGroupKey(album);
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, album, files: [] };
+      groups.set(key, group);
+    }
+    group.files.push(file);
+    if (!group.coverPath && file.coverPath) {
+      group.coverPath = file.coverPath;
+      group.coverSource = file.coverSource;
+    }
+  }
+
+  const warnings: string[] = [];
+  for (const group of groups.values()) {
+    const artists = Array.from(new Set(group.files
+      .map((file) => file.outputMetadata.artist?.trim())
+      .filter((artist): artist is string => Boolean(artist && artist.toLowerCase() !== "unknown artist"))));
+    const artistSuffix = artists.length <= 1 ? artists[0] : artists.length <= 2 ? artists.join(", ") : "Various Artists";
+    const folderName = artistSuffix && group.album.toLowerCase() !== "unknown album" ? `${group.album} (${artistSuffix})` : group.album;
+    group.folder = uniqueAlbumFolderName(folderName, usedFolders);
+    const coverPaths = Array.from(new Set(group.files.map((file) => file.coverPath).filter((coverPath): coverPath is string => Boolean(coverPath))));
+    if (coverPaths.length > 1) {
+      const warning = `Album "${group.album}" has multiple covers; using the first track cover for ${group.folder}/cover.jpg.`;
+      warnings.push(warning);
+      console.warn(`[tidal-cover] ${warning}`);
+    }
+  }
+  return { groups: Array.from(groups.values()), warnings };
+}
+
+function sortedAlbumFiles(group: AlbumZipGroup): Array<ProcessedZipAudioFile & { zipTrackNumber: number }> {
+  return group.files
+    .map((file, index) => ({ ...file, zipTrackNumber: file.trackNumber ?? index + 1 }))
+    .sort((a, b) => a.zipTrackNumber - b.zipTrackNumber || a.originalIndex - b.originalIndex);
 }
 
 function normalizeForDuplicate(value: string): string {
@@ -2092,9 +2882,10 @@ function responseHeaders(result: ProcessResult, bufferLength?: number): Headers 
 
 function errorCodeFromStatus(status: number, message: string): string {
   if (status === 400) return "bad-request";
-  if (status === 401) return "tidal-auth-invalid";
+  if (status === 401) return "TOKEN_EXPIRED";
   if (status === 404) return "not-found";
   if (status === 429) return "tidal-rate-limited";
+  if (status === 507) return "low-disk-space";
   if (/tidekeeper/i.test(message)) return "tidal-cli-error";
   return "tidal-download-failed";
 }
@@ -2114,11 +2905,38 @@ function errorResponse(message: string, status = 500, extra?: { code?: unknown; 
 
 function statusFromError(error: unknown): number {
   if (error instanceof DownloaderError) return error.status;
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  if (code === "ENOSPC" || code === "EDQUOT") return 507;
+  if (code === "EACCES" || code === "EPERM") return 403;
+  if (code === "EBUSY") return 423;
   const message = messageFromUnknown(error).toLowerCase();
   if (message.includes("invalid tidal")) return 400;
   if (message.includes("authorization") || message.includes("login")) return 401;
   if (message.includes("rate limited")) return 429;
   return 500;
+}
+
+function storageDownloaderError(error: unknown): DownloaderError | null {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  if (code === "ENOSPC" || code === "EDQUOT") {
+    return new DownloaderError("Low disk space. Please free up at least 1 GB and resume.", 507, {
+      code: "low-disk-space",
+      detail: messageFromUnknown(error),
+    });
+  }
+  if (code === "EACCES" || code === "EPERM") {
+    return new DownloaderError("The download workspace is not writable. Fix folder permissions and resume.", 403, {
+      code: "filesystem-permission-denied",
+      detail: messageFromUnknown(error),
+    });
+  }
+  if (code === "EBUSY") {
+    return new DownloaderError("A download file is locked by another process. Close the program using it and resume.", 423, {
+      code: "filesystem-locked",
+      detail: messageFromUnknown(error),
+    });
+  }
+  return null;
 }
 
 function sseLine(event: ProgressEvent): string {
@@ -2136,6 +2954,7 @@ function pruneTokenStore() {
 
 async function processTidalDownload(body: TidalRequestBody, emit?: (event: ProgressEvent) => void | Promise<void>): Promise<ProcessResult> {
   const requestId = crypto.randomUUID();
+  await ensureTempDiskSpace(tmpdir());
   const tempDir = await mkdtemp(path.join(tmpdir(), "turrex-tidal-"));
   const tidalDir = path.join(tempDir, "tidal");
   const soulseekDir = path.join(tempDir, "soulseek");
@@ -2158,7 +2977,8 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
     const profile = preview ? profileById["hifi-mp3"] : profileById[requestedProfile];
     const enhancements = enhancementsFromUnknown(body.enhancements);
     const useSoulseekFallback = body.useSoulseekFallback !== false;
-    let coverPath = (enhancements.embedCover ?? profile.cover) ? await writeCoverArt(body.coverArt, tempDir) : undefined;
+    const coverPath = await writeCoverArt(body.coverArt, tempDir);
+    const coverSource: CoverArtSource | undefined = coverPath ? "global" : undefined;
     const tidalKind = hasTrackBatch ? "playlist" : classifyTidalUrl(url);
     const metadataOverride = metadataOverrideFromUnknown(body.metadataOverride);
     const libraryPath = stringField(body.libraryPath);
@@ -2168,15 +2988,16 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
     const postCommand = stringField(body.postCommand);
     const sourceUrl = hasTrackBatch ? `track-batch:${requestedTracks.length}` : url;
     const firstTrack = requestedTracks[0];
+    const tokenProbeUrl = hasTrackBatch ? requestedTracks.find((track) => track.url)?.url ?? TIDAL_REFRESH_PROBE_URL : url;
 
     await emit?.({ step: "validating", progress: 4, message: "Checking TIDAL token status...", source: "tidal" });
-    await ensureTidekeeperReadyForDownload();
+    await ensureTidekeeperReadyForDownload(tokenProbeUrl);
     await emit?.({ step: "validating", progress: 6, message: hasTrackBatch ? `Preparing ${requestedTracks.length} imported track${requestedTracks.length === 1 ? "" : "s"}...` : `Checking TIDAL ${tidalKind} metadata...`, source: "tidal" });
     const info = hasTrackBatch
       ? { metadata: firstTrack ? { artist: firstTrack.artist, title: firstTrack.title, album: firstTrack.album, year: firstTrack.year, genre: firstTrack.genre } : undefined, output: "", ok: true }
       : await runTidalInfo(url).catch((error: unknown) => ({ metadata: undefined, output: messageFromUnknown(error), ok: false }));
     const fallbackMetadata = mergeMetadata(metadataOverride, mergeMetadata(info.metadata, hasTrackBatch && firstTrack
-      ? { artist: firstTrack.artist, title: firstTrack.title, album: firstTrack.album || DEFAULT_ALBUM, year: firstTrack.year, genre: firstTrack.genre }
+      ? { artist: firstTrack.artist, title: firstTrack.title, album: firstTrack.album || DEFAULT_ALBUM, track: firstTrack.track, year: firstTrack.year, genre: firstTrack.genre }
       : metadataFromUrl(url)));
 
     if (!hasTrackBatch && !preview && libraryPath && !forceDownload) {
@@ -2220,12 +3041,16 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
           artist: track.artist,
           title: track.title || "Unknown Title",
           album: track.album || DEFAULT_ALBUM,
+          track: track.track,
           year: track.year,
           genre: track.genre,
         });
-        let itemCoverPath = (enhancements.embedCover ?? profile.cover) ? await writeCoverArt(track.coverArt, trackTempDir) : undefined;
-        if (!itemCoverPath) itemCoverPath = coverPath;
-        if (itemCoverPath && enhancements.resizeCover) itemCoverPath = await resizeCoverArt(itemCoverPath, trackTempDir);
+        let itemCoverPath = await writeCoverArt(track.coverArt, trackTempDir);
+        let itemCoverSource: CoverArtSource | undefined = itemCoverPath ? "track" : undefined;
+        if (!itemCoverPath && coverPath) {
+          itemCoverPath = coverPath;
+          itemCoverSource = coverSource;
+        }
         let trackUrl = track.url;
         if (!trackUrl && trackMetadata.artist && trackMetadata.title) {
           await emit?.({ step: "validating", progress: Math.round(8 + (trackIndex / requestedTracks.length) * 16), message: `Searching TIDAL for ${trackMetadata.artist} - ${trackMetadata.title}...`, source: "tidal" });
@@ -2270,6 +3095,7 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
           ...file,
           metadata: mergeMetadata(file.metadata, trackMetadata),
           itemCoverPath,
+          itemCoverSource,
           itemSource,
           itemSourceUrl: trackUrl || "",
         })));
@@ -2280,10 +3106,10 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
         await runTidalDownload(url, tidalDir);
         const tidalFiles = await sourceFilesFromDirectory(tidalDir, fallbackMetadata, "tidal");
         if (tidalFiles.length === 0) throw new DownloaderError("TIDAL completed but did not create FLAC, M4A, or MP3 files.", 500);
-        sourceFiles = tidalFiles.map((file) => ({ ...file, itemCoverPath: coverPath, itemSource: "tidal", itemSourceUrl: url }));
+        sourceFiles = tidalFiles.map((file) => ({ ...file, itemCoverPath: coverPath, itemCoverSource: coverSource, itemSource: "tidal", itemSourceUrl: url }));
         if (enhancements.verifyQuality) {
           await emit?.({ step: "validating", progress: 34, message: "Verifying TIDAL audio quality...", source: "tidal" });
-          sourceFiles = (await attachQualityReports(sourceFiles)).map((file, index) => ({ ...file, itemCoverPath: sourceFiles[index]?.itemCoverPath, itemSource: "tidal", itemSourceUrl: url }));
+          sourceFiles = (await attachQualityReports(sourceFiles)).map((file, index) => ({ ...file, itemCoverPath: sourceFiles[index]?.itemCoverPath, itemCoverSource: sourceFiles[index]?.itemCoverSource, itemSource: "tidal", itemSourceUrl: url }));
           assertQualityReportsPassed(sourceFiles, "tidal");
         }
       } catch (error) {
@@ -2297,41 +3123,33 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
         await runSoulseekFallback(soulseekMetadata, csvPath, soulseekDir);
         source = "soulseek";
         const soulseekFiles = await sourceFilesFromDirectory(soulseekDir, soulseekMetadata, "soulseek");
-        sourceFiles = soulseekFiles.map((file) => ({ ...file, itemCoverPath: coverPath, itemSource: "soulseek", itemSourceUrl: url }));
+        sourceFiles = soulseekFiles.map((file) => ({ ...file, itemCoverPath: coverPath, itemCoverSource: coverSource, itemSource: "soulseek", itemSourceUrl: url }));
         if (sourceFiles.length === 0) {
           const tidalMessage = tidalFailure ? messageFromUnknown(tidalFailure) : "Unknown TIDAL error.";
           throw new DownloaderError(`Soulseek fallback completed but no verified audio files were found. TIDAL error was: ${tidalMessage}`, 500);
         }
         if (enhancements.verifyQuality) {
           await emit?.({ step: "validating", progress: 36, message: "Verifying Soulseek fallback quality...", source: "soulseek" });
-          sourceFiles = (await attachQualityReports(sourceFiles)).map((file, index) => ({ ...file, itemCoverPath: sourceFiles[index]?.itemCoverPath, itemSource: "soulseek", itemSourceUrl: url }));
+          sourceFiles = (await attachQualityReports(sourceFiles)).map((file, index) => ({ ...file, itemCoverPath: sourceFiles[index]?.itemCoverPath, itemCoverSource: sourceFiles[index]?.itemCoverSource, itemSource: "soulseek", itemSourceUrl: url }));
           assertQualityReportsPassed(sourceFiles, "soulseek");
         }
       }
     }
     sourceFiles = await enrichPreparedSourceFiles(sourceFiles, enhancements);
     qualityReports = sourceFiles.map((file) => file.qualityReport).filter((report): report is QualityReport => Boolean(report));
-
-    if (coverPath && enhancements.resizeCover) {
-      const originalCoverPath = coverPath;
-      coverPath = await resizeCoverArt(coverPath, tempDir);
-      sourceFiles = sourceFiles.map((file) => file.itemCoverPath === originalCoverPath ? { ...file, itemCoverPath: coverPath } : file);
-    }
-    sourceFiles = await Promise.all(sourceFiles.map(async (file, index) => {
-      if (file.itemCoverPath || !(enhancements.embedCover ?? profile.cover) || !(enhancements.coverFallback ?? true)) return file;
-      const fallbackDir = path.join(tempDir, `cover-fallback-${index}`);
-      await mkdir(fallbackDir, { recursive: true }).catch(() => undefined);
-      const fallbackCover = await fetchCoverArtFallback(file.metadata, fallbackDir).catch(() => undefined);
-      return { ...file, itemCoverPath: fallbackCover };
-    }));
+    sourceFiles = await attachSourceEmbeddedCovers(sourceFiles, tempDir);
+    sourceFiles = await attachFallbackCovers(sourceFiles, tempDir, enhancements.coverFallback ?? true);
+    sourceFiles = await resizePreparedCovers(sourceFiles, tempDir, Boolean(enhancements.resizeCover));
 
     const zipFiles: Array<{ path: string; filePath: string }> = [];
-    const usedNames = new Set<string>();
+    const usedOutputNames = new Set<string>();
     const playlistEntries: string[] = [];
     const albumMeta: AlbumMetaEntry[] = [];
+    const processedAudioFiles: ProcessedZipAudioFile[] = [];
     for (let index = 0; index < sourceFiles.length; index += 1) {
       const sourceFile = sourceFiles[index]!;
-      const fileName = getUniqueFileName(fileNameFromTemplate(filenameTemplate, sourceFile.metadata, profile, index + 1, preview), usedNames);
+      const renderedFileName = fileNameFromTemplate(filenameTemplate, sourceFile.metadata, profile, index + 1, preview);
+      const fileName = getUniqueFileName(renderedFileName, usedOutputNames);
       const outputPath = path.join(processedDir, fileName);
       const progress = Math.round(38 + ((index + 1) / sourceFiles.length) * 45);
       await emit?.({ step: "transcoding", progress, message: `Processing ${fileName} (${index + 1}/${sourceFiles.length})...`, file: fileName, source: sourceFile.itemSource });
@@ -2350,21 +3168,68 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
           throw new DownloaderError(`Processed file quality verification failed: ${outputReport.warnings.join("; ")}`, 500, { detail: JSON.stringify(outputReport) });
         }
       }
-      zipFiles.push({ path: `Turrex TIDAL Export/tracks/${fileName}`, filePath: outputPath });
-      playlistEntries.push(`tracks/${fileName}`);
-      albumMeta.push({
-        artist: sourceFile.metadata.artist || "Unknown Artist",
-        title: sourceFile.metadata.title || path.basename(sourceFile.filePath, path.extname(sourceFile.filePath)),
-        trackNumber: index + 1,
-        duration: sourceFile.durationSec,
-        file: `tracks/${fileName}`,
+      const probedOutput = await probeTranscodedMetadata(outputPath, sourceFile.metadata);
+      processedAudioFiles.push({
+        sourceFile,
+        outputPath,
+        outputMetadata: probedOutput.metadata,
+        originalIndex: index,
+        trackNumber: probedOutput.trackNumber,
+        coverPath: sourceFile.itemCoverPath,
+        coverSource: sourceFile.itemCoverSource,
       });
     }
 
-    if (!preview && (enhancements.generatePlaylist ?? true) && playlistEntries.length > 0) {
+    const groupByAlbum = true;
+    const albumGrouping = buildAlbumZipGroups(processedAudioFiles, groupByAlbum);
+    const albumGroups = albumGrouping.groups;
+    const zipLayout: ZipMusicLayout = {
+      kind: groupByAlbum ? (tidalKind === "playlist" || tidalKind === "mix" || hasTrackBatch ? "playlist" : "album") : "single",
+      folder: groupByAlbum ? undefined : albumGroups[0]?.folder,
+      folders: groupByAlbum ? albumGroups.map((group) => group.folder).filter((folder): folder is string => Boolean(folder)) : undefined,
+      groupedByAlbum: groupByAlbum,
+    };
+    const albumCoverEntries: Array<{ album: string; path: string; source?: CoverArtSource }> = [];
+
+    for (let groupIndex = 0; groupIndex < albumGroups.length; groupIndex += 1) {
+      const group = albumGroups[groupIndex]!;
+      const groupLayout: ZipMusicLayout = { kind: zipLayout.kind, folder: group.folder };
+      const usedNames = new Set<string>();
+      for (const albumFile of sortedAlbumFiles(group)) {
+        const desiredFileName = groupByAlbum
+          ? addTrackNumberPrefix(fileNameFromTemplate(filenameTemplate, albumFile.outputMetadata, profile, albumFile.zipTrackNumber, preview), albumFile.zipTrackNumber, profile.extension)
+          : fileNameFromTemplate(filenameTemplate, albumFile.outputMetadata, profile, albumFile.zipTrackNumber, preview);
+        const safeFileName = truncateAudioFileNameForFolder(desiredFileName, group.folder, profile.extension);
+        const fileName = getUniqueFileName(safeFileName, usedNames, zipFileNameMaxLength(group.folder));
+        const zipAudioEntryPath = zipAudioPath(groupLayout, fileName);
+        albumFile.zipPath = zipAudioEntryPath;
+        zipFiles.push({ path: zipAudioEntryPath, filePath: albumFile.outputPath });
+        playlistEntries.push(zipAudioEntryPath);
+        albumMeta.push({
+          artist: albumFile.outputMetadata.artist || "Unknown Artist",
+          title: albumFile.outputMetadata.title || path.basename(albumFile.outputPath, path.extname(albumFile.outputPath)),
+          album: groupByAlbum ? group.album : albumFile.outputMetadata.album,
+          trackNumber: albumFile.zipTrackNumber,
+          duration: albumFile.sourceFile.durationSec,
+          file: zipAudioEntryPath,
+          coverSource: albumFile.coverSource,
+        });
+      }
+
+      const coverDir = path.join(tempDir, `zip-cover-${groupIndex + 1}`);
+      await mkdir(coverDir, { recursive: true }).catch(() => undefined);
+      const zipCoverFile = await prepareCoverForZip(group.coverPath, coverDir);
+      const zipCoverEntry = zipCoverFile ? zipCoverPath(groupLayout) : undefined;
+      if (zipCoverFile && zipCoverEntry) {
+        zipFiles.push({ path: zipCoverEntry, filePath: zipCoverFile });
+        albumCoverEntries.push({ album: group.album, path: zipCoverEntry, source: group.coverSource });
+      }
+    }
+
+    if (playlistEntries.length > 0) {
       const playlistPath = path.join(tempDir, "playlist.m3u8");
       await writeM3uPlaylist(playlistEntries, playlistPath);
-      zipFiles.push({ path: "Turrex TIDAL Export/playlist.m3u8", filePath: playlistPath });
+      zipFiles.push({ path: "playlist.m3u8", filePath: playlistPath });
     }
 
     if (enhancements.verifyQuality) {
@@ -2375,7 +3240,7 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
         sourceUrl,
         reports: qualityReports,
       }, null, 2));
-      zipFiles.push({ path: "Turrex TIDAL Export/quality-report.json", filePath: qualityReportPath });
+      zipFiles.push({ path: "quality-report.json", filePath: qualityReportPath });
     }
 
     const manifestPath = path.join(tempDir, "manifest.json");
@@ -2385,10 +3250,12 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
       endpoint: "/api/download/tidal",
       sourceUrl,
       sourceType: tidalKind,
+      zipLayout,
       requestedTracks: hasTrackBatch ? requestedTracks.map((track) => ({
         artist: track.artist,
         title: track.title,
         album: track.album,
+        track: track.track,
         url: track.url,
       })) : undefined,
       source,
@@ -2400,6 +3267,15 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
       trackCount: sourceFiles.length,
       createdAtIso: new Date().toISOString(),
       enhancements,
+      cover: {
+        available: albumCoverEntries.length > 0,
+        zipPath: albumCoverEntries[0]?.path,
+        source: albumCoverEntries[0]?.source,
+        albums: albumCoverEntries,
+        embeddedInAudio: Boolean((enhancements.embedCover ?? profile.cover) && sourceFiles.some((file) => Boolean(file.itemCoverPath))),
+        resized: Boolean(enhancements.resizeCover),
+      },
+      warnings: albumGrouping.warnings,
       filenameTemplate,
       metadataOverride,
       qualityReports,
@@ -2413,12 +3289,25 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
         sampleRate: file.sampleRate,
         durationSec: file.durationSec,
         sizeBytes: file.sizeBytes,
+        hasCover: Boolean(file.itemCoverPath),
+        coverSource: file.itemCoverSource,
         metadata: file.metadata,
+      })),
+      processedFiles: processedAudioFiles.map((file) => ({
+        file: file.zipPath,
+        source: path.basename(file.sourceFile.filePath),
+        album: file.outputMetadata.album,
+        artist: file.outputMetadata.artist,
+        title: file.outputMetadata.title,
+        track: file.outputMetadata.track,
+        trackNumber: file.trackNumber,
+        coverSource: file.coverSource,
       })),
       files: zipFiles.map((file) => file.path),
     }, null, 2));
-    zipFiles.push({ path: "Turrex TIDAL Export/manifest.json", filePath: manifestPath });
+    zipFiles.push({ path: "manifest.json", filePath: manifestPath });
 
+    await ensureTempDiskSpace(tmpdir());
     await emit?.({ step: "zipping", progress: 92, message: "Packaging ZIP export...", source });
     await writeZipFile(zipFiles, zipPath);
     const zipStats = await stat(zipPath).catch(() => null);
@@ -2439,6 +3328,8 @@ async function processTidalDownload(body: TidalRequestBody, emit?: (event: Progr
     };
   } catch (error) {
     await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    const storageError = storageDownloaderError(error);
+    if (storageError) throw storageError;
     throw error;
   }
 }
@@ -2475,10 +3366,16 @@ async function handleRetrieve(token: string | null): Promise<Response> {
 export async function GET(request: NextRequest): Promise<Response> {
   const action = request.nextUrl.searchParams.get("action");
   if (action === "retrieve") return handleRetrieve(request.nextUrl.searchParams.get("token"));
-  if (action === "search") return handleSearch(request.nextUrl.searchParams.get("q"));
+  if (action === "search") return handleSearch(
+    request.nextUrl.searchParams.get("q"),
+    request.nextUrl.searchParams.get("artist"),
+    request.nextUrl.searchParams.get("title"),
+    request.nextUrl.searchParams.get("album"),
+    request.nextUrl.searchParams.get("duration"),
+  );
   if (action !== "status") return errorResponse("Unsupported TIDAL GET action.", 400, { code: "unsupported-action" });
 
-  const [tidal, soulseek, ffmpeg, ffprobe, lyrics, musicbrainz, writable, searchToken] = await Promise.allSettled([
+  const [tidal, soulseek, ffmpeg, ffprobe, lyrics, musicbrainz, writable, disk, searchToken] = await Promise.allSettled([
     runTidekeeperStatus(),
     runProbe(soulseekBinary(), ["--help"]),
     runProbe(ffmpegBinary(), ["-version"]),
@@ -2488,6 +3385,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       headers: { "User-Agent": "Turrex/1.0 (private local audio library)" },
     }),
     checkTempWritable(tmpdir()),
+    tempDiskStatus(tmpdir()),
     getTidalAccessToken(),
   ]);
 
@@ -2498,6 +3396,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const lyricsAvailable = lyrics.status === "fulfilled" ? lyrics.value : false;
   const musicbrainzAvailable = musicbrainz.status === "fulfilled" ? musicbrainz.value : false;
   const writableResult = writable.status === "fulfilled" ? writable.value : false;
+  const diskResult = disk.status === "fulfilled" ? disk.value : { low: false };
   const searchTokenValue = searchToken.status === "fulfilled" ? searchToken.value : null;
   const searchAvailable = Boolean(searchTokenValue);
   const searchTokenExpiry = searchAvailable ? cachedToken?.tokenExpiry : undefined;
@@ -2531,6 +3430,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     })),
     tempDir: tmpdir(),
     writable: writableResult,
+    availableDiskBytes: diskResult.availableBytes,
+    lowDiskSpace: diskResult.low,
     checkedAtIso: new Date().toISOString(),
   } satisfies StatusPayload);
 }
@@ -2598,6 +3499,7 @@ export async function POST(request: NextRequest): Promise<Response> {
               step: "error",
               progress: 100,
               message: messageFromUnknown(error) || "TIDAL download failed.",
+              code: error instanceof DownloaderError ? error.code : undefined,
               status: statusFromError(error),
               retryAfter: error instanceof DownloaderError ? error.retryAfter : undefined,
             });

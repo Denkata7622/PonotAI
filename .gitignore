@@ -61,3 +61,6 @@ postprocessed-*.*
 search-list.txt
 failed-items.json
 audio-comparison.json
+
+# Google Vision API key
+google-vision-key.json
