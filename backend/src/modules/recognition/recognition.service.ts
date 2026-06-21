@@ -637,6 +637,49 @@ function cleanParagraphText(text: string): string {
     .trim();
 }
 
+// ---- NEW FUNCTION: parseParagraphsWithGemini ----
+async function parseParagraphsWithGemini(paragraphs: string[]): Promise<{ artist: string; title: string }[]> {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
+
+    const prompt = `You are a music OCR parser. Below are text lines extracted from a playlist screenshot. Some consecutive lines form artist-title pairs (artist on one line, title on the next). Some lines already contain both separated by a bullet (•), dash (-), or similar. Return ONLY a valid JSON array of objects: [{ "artist": "...", "title": "..." }, ...]. Do not include explanations.
+
+Lines:
+${paragraphs.join("\n")}`;
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 2048 } }),
+    });
+
+    if (!response.ok) throw new Error(`Gemini API returned ${response.status}`);
+
+    const data = await response.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) return [];
+
+    const jsonBlock = text.match(/\[[\s\S]*\]/)?.[0];
+    if (!jsonBlock) return [];
+
+    const parsed = JSON.parse(jsonBlock) as unknown;
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((item): item is { artist: string; title: string } => {
+        if (!item || typeof item !== "object") return false;
+        const candidate = item as { artist?: unknown; title?: unknown };
+        return typeof candidate.artist === "string" && typeof candidate.title === "string";
+      });
+  } catch (error) {
+    console.warn("[Vision OCR] Gemini parsing failed:", error);
+    return [];
+  }
+}
+
 /**
  * Main entry point for Google Vision extraction.
  * Returns OcrCandidateMetadata[] that plug directly into the existing pipeline.
@@ -650,6 +693,7 @@ export async function extractMetadataWithGoogleVision(buffer: Buffer): Promise<O
 
     const candidates: OcrCandidateMetadata[] = [];
     const pages = result.fullTextAnnotation?.pages ?? [];
+    const paragraphs: string[] = [];
 
     for (const page of pages) {
       for (const block of page.blocks ?? []) {
@@ -670,37 +714,53 @@ export async function extractMetadataWithGoogleVision(buffer: Buffer): Promise<O
           if (/^\d{1,2}:\d{2}$/.test(fullText)) continue;
           if (/^\d+$/.test(fullText)) continue;
 
-          // Heuristic: if the paragraph contains more than one word, try to split by common separators
-          // This handles "Gena • Imera" → artist = Gena, title = Imera (or vice versa)
-          const parts = fullText.split(/\s*[•⚫●\-–—]\s*/);
+          paragraphs.push(fullText);
+        }
+      }
+    }
+
+    if (paragraphs.length === 0) throw new Error("No text detected");
+
+    const llmResults = await parseParagraphsWithGemini(paragraphs).catch(() => []);
+    if (llmResults.length > 0) {
+      for (const item of llmResults) {
+        candidates.push({
+          songName: item.title.trim(),
+          artist: item.artist?.trim() || UNKNOWN_METADATA.artist,
+          album: UNKNOWN_METADATA.album,
+          confidenceScore: 0.9,
+          source: "ai",
+        });
+      }
+    } else {
+      let i = 0;
+      while (i < paragraphs.length) {
+        const first = paragraphs[i]!;
+        const second = i + 1 < paragraphs.length ? paragraphs[i + 1] : null;
+
+        // If the first paragraph contains a bullet/dash, treat it as a self-contained entry
+        if (/[•⚫●\-–—]/.test(first)) {
+          const parts = first.split(/\s*[•⚫●\-–—]\s*/);
           if (parts.length >= 2) {
-            const first = parts[0]!.trim();
-            const second = parts.slice(1).join(" ").trim();
-            // Produce both orderings; the verification step will keep the correct one
-            candidates.push({
-              songName: first,
-              artist: second,
-              album: UNKNOWN_METADATA.album,
-              confidenceScore: 0.85,
-              source: "ai",
-            });
-            candidates.push({
-              songName: second,
-              artist: first,
-              album: UNKNOWN_METADATA.album,
-              confidenceScore: 0.85,
-              source: "ai",
-            });
-          } else {
-            // Single line – could be title only
-            candidates.push({
-              songName: fullText,
-              artist: UNKNOWN_METADATA.artist,
-              album: UNKNOWN_METADATA.album,
-              confidenceScore: 0.8,
-              source: "ai",
-            });
+            const a = parts[0]!.trim();
+            const b = parts.slice(1).join(" ").trim();
+            candidates.push({ songName: a, artist: b, album: UNKNOWN_METADATA.album, confidenceScore: 0.85, source: "ai" });
+            candidates.push({ songName: b, artist: a, album: UNKNOWN_METADATA.album, confidenceScore: 0.85, source: "ai" });
           }
+          i++;
+          continue;
+        }
+
+        // If we have a second paragraph and it does NOT contain a bullet (likely a separate artist/title line)
+        if (second && !/[•⚫●\-–—]/.test(second)) {
+          // Pair them, produce both orderings
+          candidates.push({ songName: first, artist: second, album: UNKNOWN_METADATA.album, confidenceScore: 0.85, source: "ai" });
+          candidates.push({ songName: second, artist: first, album: UNKNOWN_METADATA.album, confidenceScore: 0.85, source: "ai" });
+          i += 2;
+        } else {
+          // Single line – title only
+          candidates.push({ songName: first, artist: UNKNOWN_METADATA.artist, album: UNKNOWN_METADATA.album, confidenceScore: 0.8, source: "ai" });
+          i++;
         }
       }
     }
