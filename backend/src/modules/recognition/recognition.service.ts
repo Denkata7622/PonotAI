@@ -1,3 +1,4 @@
+import vision from "@google-cloud/vision";
 import Tesseract from "tesseract.js";
 import { parseBuffer } from "music-metadata";
 import { interpretOcr, type InterpretedLine, type OcrBlock } from "./ocrInterpreter";
@@ -71,7 +72,16 @@ const OCR_MAX_GEMMA_CLEANUP_CALLS = 3;
 const OCR_MAX_YOUTUBE_CHECKS = 12;
 const OCR_ATTEMPT_TTL_MS = 20_000;
 const OCR_YOUTUBE_CACHE_TTL_MS = 120_000;
-const JUNK_EXACT_TOKENS = new Set(["codewars", "python", "tutorial", "settings", "notifications", "battery", "wifi", "next", "back", "home", "share", "playlist", "search", "library"]);
+const JUNK_EXACT_TOKENS = new Set([
+  "codewars", "python", "tutorial", "settings", "notifications",
+  "battery", "wifi", "next", "back", "home", "share", "playlist",
+  "search", "library",
+  // UI labels you've seen:
+  "q search", "search", "now playing", "home", "back", "add", "remove",
+  "save", "cancel", "done", "edit", "play", "pause", "shuffle", "repeat",
+  "volume", "mute", "next", "previous", "albums", "artists", "songs",
+  "playlists", "queue", "history"
+]);
 const JUNK_FRAGMENT_REGEX = /(codewars|tutorial|python|install|download|subscribe|notification|learning|course|button|privacy|settings|wi-?fi|bluetooth)/i;
 let aiOcrExtractor: typeof extractMetadataWithAiOcr = extractMetadataWithAiOcr;
 let tesseractExtractor: typeof extractMetadataWithOcr = extractMetadataWithOcr;
@@ -80,6 +90,7 @@ let gemmaCleanupExtractor: typeof cleanupTesseractTextWithGemma = cleanupTessera
 const imageAttemptCache = new Map<string, { expiresAt: number; value: ImageRecognitionOutput }>();
 const youtubeQueryCache = new Map<string, { expiresAt: number; value: ProviderSongMetadata | null }>();
 const inFlightImageAttempts = new Map<string, Promise<ImageRecognitionOutput>>();
+const visionClient = new vision.ImageAnnotatorClient();
 
 const providerStrategy = {
   primaryProvider: (process.env.RECOGNITION_PRIMARY_PROVIDER as ProviderName | undefined) ?? "audd",
@@ -493,6 +504,217 @@ export function __setImageOcrExtractorsForTests(overrides: {
   gemmaCleanupExtractor = overrides?.gemmaCleanupExtractor ?? cleanupTesseractTextWithGemma;
 }
 
+// --- Google Vision OCR (DOCUMENT_TEXT_DETECTION) ---
+
+interface VisionWord {
+  text: string;
+  confidence: number;
+  bbox: { x: number; y: number; width: number; height: number };
+}
+
+/**
+ * Call Google Vision and return all words with bounding boxes.
+ */
+async function performVisionOcr(buffer: Buffer): Promise<VisionWord[]> {
+  const [result] = await visionClient.documentTextDetection({
+    image: { content: buffer.toString("base64") },
+    imageContext: { languageHints: ["bg", "en", "ru"] },
+  });
+
+  const words: VisionWord[] = [];
+  const fullTextAnnotation = result.fullTextAnnotation;
+  if (!fullTextAnnotation?.pages) return words;
+
+  for (const page of fullTextAnnotation.pages) {
+    for (const block of page.blocks ?? []) {
+      for (const paragraph of block.paragraphs ?? []) {
+        for (const word of paragraph.words ?? []) {
+          const text = word.symbols?.map((s) => s.text).join("") ?? "";
+          if (!text) continue;
+          const bbox = word.boundingBox;
+          if (!bbox?.vertices?.length) continue;
+          const vertices = bbox.vertices;
+          const xs = vertices.map((v) => v.x ?? 0);
+          const ys = vertices.map((v) => v.y ?? 0);
+          words.push({
+            text,
+            confidence: word.confidence ?? 0,
+            bbox: {
+              x: Math.min(...xs),
+              y: Math.min(...ys),
+              width: Math.max(...xs) - Math.min(...xs),
+              height: Math.max(...ys) - Math.min(...ys),
+            },
+          });
+        }
+      }
+    }
+  }
+
+  return words;
+}
+
+/**
+ * Group words into lines based on vertical proximity (12px tolerance).
+ */
+function clusterWordsIntoLines(words: VisionWord[]): string[] {
+  if (words.length === 0) return [];
+
+  // Sort by y, then x
+  const sorted = [...words].sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x);
+
+  const lines: { text: string; y: number }[] = [];
+  let currentLineWords: string[] = [];
+  let currentY = sorted[0]!.bbox.y;
+
+  for (const word of sorted) {
+    if (Math.abs(word.bbox.y - currentY) < 12) {
+      currentLineWords.push(word.text);
+    } else {
+      if (currentLineWords.length) {
+        lines.push({ text: currentLineWords.join(" "), y: currentY });
+      }
+      currentLineWords = [word.text];
+      currentY = word.bbox.y;
+    }
+  }
+  if (currentLineWords.length) {
+    lines.push({ text: currentLineWords.join(" "), y: currentY });
+  }
+
+  return lines.map((l) => l.text);
+}
+
+/**
+ * Group lines into clusters of 2 (song entry) and produce both (title, artist) and (artist, title) candidates.
+ */
+function candidatesFromLineClusters(lines: string[]): OcrCandidateMetadata[] {
+  const candidates: OcrCandidateMetadata[] = [];
+  for (let i = 0; i < lines.length; i += 2) {
+    const first = lines[i]?.trim();
+    const second = lines[i + 1]?.trim();
+    if (!first && !second) continue;
+
+    // Single line - treat as title
+    if (!second) {
+      candidates.push({
+        songName: first!,
+        artist: UNKNOWN_METADATA.artist,
+        album: UNKNOWN_METADATA.album,
+        confidenceScore: 0.8,
+        source: "ai",
+      });
+      continue;
+    }
+
+    // Hypothesis 1: first = title, second = artist
+    candidates.push({
+      songName: first,
+      artist: second,
+      album: UNKNOWN_METADATA.album,
+      confidenceScore: 0.8,
+      source: "ai",
+    });
+    // Hypothesis 2: first = artist, second = title
+    candidates.push({
+      songName: second,
+      artist: first,
+      album: UNKNOWN_METADATA.album,
+      confidenceScore: 0.8,
+      source: "ai",
+    });
+  }
+
+  return candidates;
+}
+
+
+function cleanParagraphText(text: string): string {
+  return text
+    .replace(/\b\d{1,2}:\d{2}\b/g, "")   // remove timestamps like "3:11"
+    .replace(/[•⚫●◉◼]/g, "")            // remove dot symbols
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Main entry point for Google Vision extraction.
+ * Returns OcrCandidateMetadata[] that plug directly into the existing pipeline.
+ */
+export async function extractMetadataWithGoogleVision(buffer: Buffer): Promise<OcrCandidateMetadata[]> {
+  try {
+    const [result] = await visionClient.documentTextDetection({
+      image: { content: buffer.toString("base64") },
+      imageContext: { languageHints: ["bg", "en", "ru"] },
+    });
+
+    const candidates: OcrCandidateMetadata[] = [];
+    const pages = result.fullTextAnnotation?.pages ?? [];
+
+    for (const page of pages) {
+      for (const block of page.blocks ?? []) {
+        for (const paragraph of block.paragraphs ?? []) {
+          // Each paragraph = one visual block of text (likely one song entry)
+          const words: string[] = [];
+          for (const word of paragraph.words ?? []) {
+            const text = word.symbols?.map(s => s.text).join("") ?? "";
+            if (text) words.push(text);
+          }
+
+          let fullText = words.join(" ").trim();
+          fullText = cleanParagraphText(fullText);   // ← add this line
+
+          if (!fullText || fullText.length < 2) continue;
+
+          // Filter out obvious timestamps / durations (like "3:00", "2:46")
+          if (/^\d{1,2}:\d{2}$/.test(fullText)) continue;
+          if (/^\d+$/.test(fullText)) continue;
+
+          // Heuristic: if the paragraph contains more than one word, try to split by common separators
+          // This handles "Gena • Imera" → artist = Gena, title = Imera (or vice versa)
+          const parts = fullText.split(/\s*[•⚫●\-–—]\s*/);
+          if (parts.length >= 2) {
+            const first = parts[0]!.trim();
+            const second = parts.slice(1).join(" ").trim();
+            // Produce both orderings; the verification step will keep the correct one
+            candidates.push({
+              songName: first,
+              artist: second,
+              album: UNKNOWN_METADATA.album,
+              confidenceScore: 0.85,
+              source: "ai",
+            });
+            candidates.push({
+              songName: second,
+              artist: first,
+              album: UNKNOWN_METADATA.album,
+              confidenceScore: 0.85,
+              source: "ai",
+            });
+          } else {
+            // Single line – could be title only
+            candidates.push({
+              songName: fullText,
+              artist: UNKNOWN_METADATA.artist,
+              album: UNKNOWN_METADATA.album,
+              confidenceScore: 0.8,
+              source: "ai",
+            });
+          }
+        }
+      }
+    }
+
+    if (candidates.length === 0) throw new Error("No text detected");
+
+    // Remove any candidates that look like garbage (reusing your existing filter)
+    return candidates.filter(c => c.songName.length >= 2 && !looksLikeGarbageMusicText(c.songName));
+  } catch (error) {
+    console.error("[Vision OCR] failed", error);
+    throw error;
+  }
+}
+
 export type ImageRecognitionOutput = {
   songs: SongMetadata[];
   warnings: string[];
@@ -518,61 +740,79 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
   console.info("[recognition:image] primary_ocr_attempt", { provider: "gemini_vision_chain", language });
   if (usage.directAttempts >= OCR_MAX_DIRECT_ATTEMPTS) throw new NoVerifiedResultError("OCR direct model budget exhausted for this image.");
   usage.directAttempts += 1;
-  const aiResult = await aiOcrExtractor(buffer, mimeType);
-
-  if (aiResult.status === "success" && aiResult.songs.length > 0) {
-    console.info("[recognition:image] primary_ocr_success", {
-      provider: aiResult.model,
-      candidates: aiResult.songs.length,
-      confidence: aiResult.songs[0]?.confidenceScore ?? null,
-      latencyMs: Date.now() - aiStart,
-    });
-    candidates.push(
-      ...aiResult.songs.map((song) => ({
-        songName: song.title,
-        artist: song.artist,
-        album: UNKNOWN_METADATA.album,
-        confidenceScore: Math.max(0.5, song.confidenceScore),
-        source: "ai" as const,
-      })),
-    );
-  } else {
-    console.warn("[recognition:image] primary_ocr_unavailable", {
-      provider: "gemini_vision",
-      reason: aiResult.status === "unavailable" ? aiResult.reason : "invalid_payload",
-      fallback: "tesseract_plus_gemma",
-      latencyMs: Date.now() - aiStart,
-    });
-    warnings.push(`PRIMARY_OCR_UNAVAILABLE:${aiResult.status === "unavailable" ? aiResult.reason : "invalid_payload"}`);
+  // --- Google Vision primary OCR ---
+  let googleCandidates: OcrCandidateMetadata[] = [];
+  let googleVisionFailed = false;
+  try {
+    console.log("[Vision OCR] attempting Google Vision call...");
+    googleCandidates = await extractMetadataWithGoogleVision(buffer);
+  } catch (error) {
+    googleVisionFailed = true;
+    warnings.push(`GOOGLE_VISION_FAILED:${(error as Error).message}`);
   }
 
-  if (candidates.length === 0) {
-    const fallback = await tesseractExtractor(buffer, language);
-    const cleanupInput = dedupeOcrCandidates(fallback).map((item) => `${item.songName} - ${item.artist}`).join("\n");
-    if (usage.gemmaCalls < OCR_MAX_GEMMA_CLEANUP_CALLS && cleanupInput.trim()) {
-      usage.gemmaCalls += 1;
-      const cleaned = await gemmaCleanupExtractor(cleanupInput);
-      if (cleaned.status === "success") {
-        candidates.push(
-          ...cleaned.songs.map((song) => ({
-            songName: song.title,
-            artist: song.artist,
-            album: UNKNOWN_METADATA.album,
-            confidenceScore: Math.max(0.35, song.confidenceScore),
-            source: "tesseract" as const,
-          })),
-        );
-      } else {
-        warnings.push(`TEXT_CLEANUP_UNAVAILABLE:${cleaned.reason}`);
-      }
+  if (googleCandidates.length > 0) {
+    candidates.push(...googleCandidates);
+  } else {
+    if (!googleVisionFailed) {
+      warnings.push("GOOGLE_VISION_FAILED:NO_TEXT_DETECTED");
     }
-    console.info("[recognition:image] fallback_ocr_result", {
-      provider: "tesseract",
-      candidates: fallback.length,
-      confidence: fallback[0]?.confidenceScore ?? null,
-    });
-    candidates.push(...fallback.map((candidate) => ({ ...candidate, confidenceScore: Math.min(0.6, candidate.confidenceScore) })));
-    warnings.push("OCR_FALLBACK_USED");
+    const aiResult = await aiOcrExtractor(buffer, mimeType);
+
+    if (aiResult.status === "success" && aiResult.songs.length > 0) {
+      console.info("[recognition:image] primary_ocr_success", {
+        provider: aiResult.model,
+        candidates: aiResult.songs.length,
+        confidence: aiResult.songs[0]?.confidenceScore ?? null,
+        latencyMs: Date.now() - aiStart,
+      });
+      candidates.push(
+        ...aiResult.songs.map((song) => ({
+          songName: song.title,
+          artist: song.artist,
+          album: UNKNOWN_METADATA.album,
+          confidenceScore: Math.max(0.5, song.confidenceScore),
+          source: "ai" as const,
+        })),
+      );
+    } else {
+      console.warn("[recognition:image] primary_ocr_unavailable", {
+        provider: "gemini_vision",
+        reason: aiResult.status === "unavailable" ? aiResult.reason : "invalid_payload",
+        fallback: "tesseract_plus_gemma",
+        latencyMs: Date.now() - aiStart,
+      });
+      warnings.push(`PRIMARY_OCR_UNAVAILABLE:${aiResult.status === "unavailable" ? aiResult.reason : "invalid_payload"}`);
+    }
+
+    if (candidates.length === 0) {
+      const fallback = await tesseractExtractor(buffer, language);
+      const cleanupInput = dedupeOcrCandidates(fallback).map((item) => `${item.songName} - ${item.artist}`).join("\n");
+      if (usage.gemmaCalls < OCR_MAX_GEMMA_CLEANUP_CALLS && cleanupInput.trim()) {
+        usage.gemmaCalls += 1;
+        const cleaned = await gemmaCleanupExtractor(cleanupInput);
+        if (cleaned.status === "success") {
+          candidates.push(
+            ...cleaned.songs.map((song) => ({
+              songName: song.title,
+              artist: song.artist,
+              album: UNKNOWN_METADATA.album,
+              confidenceScore: Math.max(0.35, song.confidenceScore),
+              source: "tesseract" as const,
+            })),
+          );
+        } else {
+          warnings.push(`TEXT_CLEANUP_UNAVAILABLE:${cleaned.reason}`);
+        }
+      }
+      console.info("[recognition:image] fallback_ocr_result", {
+        provider: "tesseract",
+        candidates: fallback.length,
+        confidence: fallback[0]?.confidenceScore ?? null,
+      });
+      candidates.push(...fallback.map((candidate) => ({ ...candidate, confidenceScore: Math.min(0.6, candidate.confidenceScore) })));
+      warnings.push("OCR_FALLBACK_USED");
+    }
   }
 
   const songMetadataResults: SongMetadata[] = [];

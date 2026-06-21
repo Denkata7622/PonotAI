@@ -42,7 +42,7 @@ import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState
 import * as ReactDOM from "react-dom";
 import { AlertCircle, CheckCircle, ChevronDown, Download, Info, Library, Pause, Play, Plus, RotateCcw, Search, SkipForward, Trash2, Upload } from "lucide-react";
 import SongReviewModal from "@/components/SongReviewModal";
-import { recognizeFromImage, type SongMatch, type SongRecognitionResult } from "@/features/recognition/api";
+import { recognizeFromImage, recognizeFromImageAndStore, type SongMatch, type SongRecognitionResult } from "@/features/recognition/api";
 import { lookupCoverArtUrls } from "@/features/recognition/coverArt";
 import { normalizeTrackKey } from "@/lib/songIdentity";
 import { useLanguage } from "@/lib/LanguageContext";
@@ -51,6 +51,13 @@ import { getApiConfigStatus } from "@/lib/apiConfig";
 import { Button } from "@/src/components/ui/Button";
 import { Card } from "@/src/components/ui/Card";
 import { Input } from "@/src/components/ui/Input";
+import {
+  getOcrSongs,
+  updateOcrSong,
+  deleteOcrSong,
+  clearOcrLibrary,
+  type OcrLibraryEntry,
+} from "@/lib/ocrLibraryDb";
 
 type QueueStatus = "pending" | "searching" | "processing" | "done" | "error" | "skipped";
 type DownloadState = "idle" | "processing" | "done" | "error";
@@ -574,6 +581,11 @@ function TidalDownloadClient() {
   const [libraryError, setLibraryError] = useState("");
   const [persistenceWarning, setPersistenceWarning] = useState("");
   const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [ocrLibrary, setOcrLibrary] = useState<OcrLibraryEntry[]>([]);
+  const [ocrLibraryLoading, setOcrLibraryLoading] = useState(false);
+  const [selectedOcrIds, setSelectedOcrIds] = useState<string[]>([]);
+  const [ocrLibraryQuery, setOcrLibraryQuery] = useState("");
+  const [showOcrLibrary, setShowOcrLibrary] = useState(false);
   const [autoSkipDownloaded, setAutoSkipDownloaded] = useState(true);
   const [downloadDirectoryName, setDownloadDirectoryName] = useState("");
   const [rateLimit, setRateLimit] = useState<RateLimitSettings>({
@@ -746,6 +758,64 @@ function TidalDownloadClient() {
     }
   }, []);
 
+  const refreshOcrLibrary = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    setOcrLibraryLoading(true);
+    try {
+      const songs = await getOcrSongs();
+      setOcrLibrary(songs);
+    } catch (error) {
+      console.error("[ocr-library] Failed to load OCR library:", error);
+    } finally {
+      setOcrLibraryLoading(false);
+    }
+  }, []);
+
+  async function sendOcrLibraryItemsToQueue(ids: string[]) {
+    const selected = ocrLibrary.filter((s) => ids.includes(s.id));
+    if (selected.length === 0) return;
+    const now = new Date().toISOString();
+    const items: QueueItem[] = selected.map((s) => ({
+      id: makeId(),
+      artist: s.artist,
+      title: s.title,
+      album: s.album,
+      url: s.tidalUrl,
+      priority: "medium" as const,
+      status: s.tidalUrl ? "pending" as const : "skipped" as const,
+      progress: s.tidalUrl ? 0 : 100,
+      progressMessage: s.tidalUrl ? "From OCR Library" : undefined,
+      errorMsg: s.tidalUrl ? undefined : "No TIDAL URL - add one before processing.",
+      source: "ocr" as const,
+      addedAtIso: now,
+    }));
+    setQueue((current) => mergeQueueItems(current, items));
+    setState("idle");
+    setErrorMessage("");
+  }
+
+  async function searchOcrLibraryUrls(ids: string[]) {
+    const selected = ocrLibrary.filter((s) => ids.includes(s.id) && s.status !== "assigned");
+    if (selected.length === 0) return;
+    await Promise.all(selected.map((s) => updateOcrSong(s.id, { status: "searching" })));
+    setOcrLibrary((current) =>
+      current.map((s) => ids.includes(s.id) ? { ...s, status: "searching" } : s)
+    );
+    const tempItems: QueueItem[] = selected.map((s) => ({
+      id: s.id,
+      artist: s.artist,
+      title: s.title,
+      album: s.album,
+      priority: "medium" as const,
+      status: "searching" as const,
+      progress: 1,
+      source: "ocr" as const,
+      addedAtIso: s.extractedAt,
+    }));
+    setQueue((current) => mergeQueueItems(current, tempItems));
+    void assignTidalUrls(tempItems);
+  }
+
   async function chooseDownloadDirectory() {
     const picker = (window as Window & { showDirectoryPicker?: () => Promise<TurrexDirectoryHandle> }).showDirectoryPicker;
     if (!picker) {
@@ -876,6 +946,7 @@ function TidalDownloadClient() {
     restoreTidalState();
     void loadTidalDiagnostics();
     void refreshSmartLibrary();
+    void refreshOcrLibrary();
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       flushPersistedState();
       if (autoAssignInFlightRef.current || isProcessingRef.current || zipExportInFlightRef.current) {
@@ -899,7 +970,7 @@ function TidalDownloadClient() {
         if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
       }
     };
-  }, [flushPersistedState, loadTidalDiagnostics, refreshSmartLibrary]);
+  }, [flushPersistedState, loadTidalDiagnostics, refreshOcrLibrary, refreshSmartLibrary]);
 
   useEffect(() => {
     queueRef.current = queue;
@@ -943,6 +1014,24 @@ function TidalDownloadClient() {
       },
     });
   }, [autoSkipDownloaded, coverImageName, downloadHistory, errorLog, exportProfile, filenameTemplate, isPaused, lastProcessedItemId, libraryPath, mounted, polishOptions, postQueueAction, queue, queuePresets, queueSort, rateLimit, schedulePersistedState, useSoulseekFallback]);
+
+  useEffect(() => {
+    if (ocrLibrary.length === 0) return;
+    const libraryIds = new Set(ocrLibrary.map((s) => s.id));
+    const updates = queue.filter((item) => libraryIds.has(item.id) && item.url && item.status === "pending");
+    if (updates.length === 0) return;
+    void Promise.all(
+      updates.map((item) =>
+        updateOcrSong(item.id, {
+          status: "assigned",
+          tidalUrl: item.url,
+          tidalMatchInfo: item.tidalMatchTitle
+            ? { artist: item.tidalMatchArtist ?? "", title: item.tidalMatchTitle, album: item.tidalMatchAlbum }
+            : undefined,
+        })
+      )
+    ).then(() => void refreshOcrLibrary());
+  }, [queue, ocrLibrary.length, refreshOcrLibrary]);
 
   const queueStats = useMemo(() => ({
     total: queue.length,
@@ -1270,7 +1359,35 @@ function TidalDownloadClient() {
     return songs.length;
   }
 
-  async function assignTidalUrls(items: QueueItem[], options: { mode?: "import" | "research" } = {}): Promise<void> {
+  const MIN_TIDAL_SIMILARITY = 0.65;
+
+  function stringSimilarity(a: string, b: string): number {
+    const setA = new Set(a.toLowerCase().split(/\s+/).filter(Boolean));
+    const setB = new Set(b.toLowerCase().split(/\s+/).filter(Boolean));
+    if (setA.size === 0 && setB.size === 0) return 1;
+    if (setA.size === 0 || setB.size === 0) return 0;
+    const intersection = [...setA].filter((word) => setB.has(word)).length;
+    return intersection / (setA.size + setB.size - intersection);
+  }
+
+  const BG_TO_LATIN: Record<string, string> = {
+  "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e",
+  "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l",
+  "м": "m", "н": "n", "о": "o", "п": "p", "р": "r", "с": "s",
+  "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "ts", "ч": "ch",
+  "ш": "sh", "щ": "sht", "ъ": "a", "ь": "y", "ю": "yu", "я": "ya",
+  "А": "A", "Б": "B", "В": "V", "Г": "G", "Д": "D", "Е": "E",
+  "Ж": "Zh", "З": "Z", "И": "I", "Й": "Y", "К": "K", "Л": "L",
+  "М": "M", "Н": "N", "О": "O", "П": "P", "Р": "R", "С": "S",
+  "Т": "T", "У": "U", "Ф": "F", "Х": "H", "Ц": "Ts", "Ч": "Ch",
+  "Ш": "Sh", "Щ": "Sht", "Ъ": "A", "Ь": "Y", "Ю": "Yu", "Я": "Ya",
+};
+
+function transliterateBg(text: string): string {
+  return text.split("").map((char) => BG_TO_LATIN[char] ?? char).join("");
+}
+
+async function assignTidalUrls(items: QueueItem[], options: { mode?: "import" | "research" } = {}): Promise<void> {
     if (autoAssignInFlightRef.current) {
       setAutoAssignMessage("TIDAL URL assignment is already running. Please wait for it to finish.");
       return;
@@ -1300,6 +1417,8 @@ function TidalDownloadClient() {
     let lastSearchCallStartedAt = 0;
     let stoppedReason: "aborted" | "token" | "rate-limit" | null = null;
     const reusableUrlsByTrack = new Map<string, string>();
+    const MAX_RATE_LIMIT_RETRIES = 5;
+    const BASE_RETRY_DELAY_SECONDS = 60;
 
     for (const existing of queueRef.current) {
       const key = queueTrackKey(existing);
@@ -1330,7 +1449,13 @@ function TidalDownloadClient() {
           continue;
         }
 
-        const query = [item.artist, item.title].filter(Boolean).join(" - ");
+        // Build query — transliterate if Cyrillic is detected
+        const rawArtist = item.artist?.trim() ?? "";
+        const rawTitle = item.title?.trim() ?? "";
+        const rawQuery = [rawArtist, rawTitle].filter(Boolean).join(" - ");
+        const hasCyrillic = /[а-яА-Я]/.test(rawQuery);
+        const query = hasCyrillic ? transliterateBg(rawQuery) : rawQuery;
+
         setAutoAssignMessage(`Searching TIDAL for song ${index + 1} of ${searchable.length}...`);
         updateQueueItem(item.id, {
           status: "searching",
@@ -1344,20 +1469,54 @@ function TidalDownloadClient() {
           stoppedReason = "aborted";
           break;
         }
+
+        // ---- Smart rate‑limit retry (up to 5 attempts) ----
         if (result.status === 429) {
-          const retryAfter = Math.max(1, Math.round(result.retryAfter ?? 30));
-          setAutoAssignMessage(`TIDAL asked us to wait ${retryAfter}s before retrying ${index + 1} of ${searchable.length}...`);
-          updateQueueItem(item.id, { progressMessage: `Rate limited. Retrying after ${retryAfter}s...` });
-          await wait(retryAfter * 1000, controller.signal);
-          result = await runRateLimitedSearch(item, query);
+          let rateLimitRetries = 0;
+          while (rateLimitRetries < MAX_RATE_LIMIT_RETRIES) {
+            rateLimitRetries++;
+            const delay = Math.max(BASE_RETRY_DELAY_SECONDS, result.retryAfter ?? BASE_RETRY_DELAY_SECONDS) * rateLimitRetries;
+            setAutoAssignMessage(`Rate limited. Waiting ${delay}s (attempt ${rateLimitRetries}/${MAX_RATE_LIMIT_RETRIES})...`);
+            updateQueueItem(item.id, { progressMessage: `Rate limited. Retrying after ${delay}s...` });
+            await wait(delay * 1000, controller.signal);
+            result = await runRateLimitedSearch(item, query);
+            if (controller.signal.aborted) break;
+            if (result.status !== 429) break; // recovered or got a different error
+          }
           if (controller.signal.aborted) {
             stoppedReason = "aborted";
             break;
           }
+          if (result.status === 429) {
+            // Exhausted all retries
+            stoppedReason = "rate-limit";
+            updateQueueItem(item.id, { status: "error", progress: 100, progressMessage: "Rate limited", errorMsg: "TIDAL rate limit reached after 5 retries. Resume later." });
+            setQueue((current) => current.map((entry) => searchable.some((pending) => pending.id === entry.id) && entry.status === "searching"
+              ? { ...entry, status: "pending", progress: 0, progressMessage: "TIDAL search paused by rate limit", errorMsg: "TIDAL search paused by rate limit" }
+              : entry));
+            setErrorMessage("TIDAL rate limit reached after multiple retries. Progress is saved; resume the queue after the cooldown.");
+            setState("error");
+            break;
+          }
+          // If we broke out because result.status !== 429, continue processing
         }
+
+        // ---- Process search result ----
         if (result.url) {
-          found += 1;
           const best = result.best;
+          // Similarity guard (bypassed for short queries ≤ 5 characters)
+          const queryStr = `${item.artist ?? ""} ${item.title ?? ""}`.trim();
+          const candidateStr = best ? `${best.artist} ${best.title}`.trim() : "";
+          if (candidateStr && queryStr && queryStr.length > 5 && stringSimilarity(queryStr, candidateStr) < MIN_TIDAL_SIMILARITY) {
+            updateQueueItem(item.id, {
+              status: "skipped",
+              progress: 100,
+              errorMsg: "Possible TIDAL mismatch - check artist/title",
+              progressMessage: "Possible TIDAL mismatch - check artist/title",
+            });
+            continue;
+          }
+          found += 1;
           const matchLabel = best ? formatTidalCandidate(best) : "TIDAL track";
           const libraryMatch = findLibraryTrackForUrl(result.url, libraryTracks, downloadedUrlSet);
           updateQueueItem(item.id, {
@@ -1387,15 +1546,6 @@ function TidalDownloadClient() {
           setErrorMessage("TIDAL token expired. Please log in and resume the queue.");
           setState("error");
           void loadTidalDiagnostics();
-          break;
-        } else if (result.status === 429) {
-          stoppedReason = "rate-limit";
-          updateQueueItem(item.id, { status: "error", progress: 100, progressMessage: "Rate limited", errorMsg: "TIDAL rate limit reached. Resume URL assignment later." });
-          setQueue((current) => current.map((entry) => searchable.some((pending) => pending.id === entry.id) && entry.status === "searching"
-            ? { ...entry, status: "pending", progress: 0, progressMessage: "TIDAL search paused by rate limit", errorMsg: "TIDAL search paused by rate limit" }
-            : entry));
-          setErrorMessage("TIDAL rate limit reached. Progress is saved; resume the queue after the cooldown.");
-          setState("error");
           break;
         } else {
           const noMatch = result.error || "No match found on TIDAL";
@@ -1435,7 +1585,7 @@ function TidalDownloadClient() {
       : stoppedReason === "token"
         ? `TIDAL login required. ${summary}`
         : stoppedReason === "rate-limit"
-          ? `TIDAL rate limit reached. ${summary}`
+          ? `TIDAL rate limit reached after retries. ${summary}`
           : summary);
     if (autoAssignMessageTimerRef.current !== null) window.clearTimeout(autoAssignMessageTimerRef.current);
     autoAssignMessageTimerRef.current = window.setTimeout(() => {
@@ -1731,9 +1881,67 @@ function TidalDownloadClient() {
                 updateQueueItem(item.id, { progress: 5, progressMessage: `Retrying TIDAL (${transientRetries + 1}/${rateLimit.maxTransientRetries + 1})...` });
                 continue;
               }
+              const fatal = fatalQueueErrorFromUnknown(error);
+              if (fatal?.kind === "token") {
+                updateQueueItem(item.id, { progressMessage: "Token expired - retrying once..." });
+                await wait(2000, controller.signal);
+                try {
+                  const itemCoverArt = await coverArtForQueueItem(item, coverArt);
+                  result = await downloadWithProgress({
+                    url: item.url,
+                    profile: exportProfile,
+                    preview: false,
+                    coverArt: itemCoverArt ?? coverArt,
+                    tracks: item.artist || item.title ? [{
+                      artist: item.artist ?? "",
+                      title: item.title ?? titleFromTIDALUrl(item.url),
+                      album: item.album,
+                      year: item.year,
+                      genre: item.genre,
+                      coverArt: itemCoverArt,
+                      url: item.url,
+                    }] : undefined,
+                    enhancements: enhancementsPayload(polishOptions, showAdvancedAudioEnhancements),
+                    useSoulseekFallback,
+                    libraryPath,
+                    metadataOverride: metadataOverrideFromQueueItem(item),
+                    force: item.forceDownload,
+                    filenameTemplate,
+                    postAction: postQueueAction === "openFolder" ? "openFolder" : postQueueAction === "notify" ? "notify" : undefined,
+                    signal: itemController.signal,
+                    onProgress: (event) => updateQueueItem(item.id, { progress: event.progress, progressMessage: event.message }),
+                  });
+                } catch (retryError) {
+                  if (fatalQueueErrorFromUnknown(retryError)?.kind === "token") {
+                    const retryItemError = "Token expired - please log in and resume.";
+                    setTokenExpired(true);
+                    recordLastError(item, "Token expired after retry", retryError);
+                    const errorItem = { ...item, status: "error" as const, progress: 100, progressMessage: "Failed", errorMsg: retryItemError };
+                    processed.push(errorItem);
+                    processedById.set(item.id, errorItem);
+                    updateQueueItem(item.id, errorItem);
+                    setLastProcessedItemId(item.id);
+                    setSessionStats((current) => ({
+                      ...current,
+                      completed: Math.min(current.total, current.completed + 1),
+                      durations: [...current.durations.slice(-49), Math.max(1, Math.round((Date.now() - itemStartedAt) / 1000))],
+                    }));
+                    pauseRequestedRef.current = true;
+                    setIsPaused(true);
+                    flushPersistedState();
+                    stoppedForFatal = true;
+                    fatalQueueMessage = "TIDAL token expired. Please log in and click Resume.";
+                    break;
+                  }
+                  throw retryError;
+                }
+                continue;
+              }
               throw error;
             }
           }
+          if (stoppedForFatal) break;
+          if (!result) throw new Error("TIDAL download failed.");
           if (result.skipped) {
             const skippedItem = {
               ...item,
@@ -2067,6 +2275,67 @@ function TidalDownloadClient() {
       setState("error");
     } finally {
       zipExportInFlightRef.current = false;
+    }
+  }
+
+  async function mergeFinalZip() {
+    const doneItems = queue.filter((item) => item.status === "done" && item.zipBlob);
+    if (doneItems.length === 0) return;
+
+    const totalBytes = doneItems.reduce((sum, item) => sum + (item.zipBlob?.size ?? 0), 0);
+
+    if (totalBytes > MAX_FINAL_ZIP_SOURCE_BYTES) {
+      const scriptLines = [
+        `$dest = "Turrex Combined"`,
+        `New-Item -ItemType Directory -Force -Path $dest | Out-Null`,
+        ...doneItems.map((item) => {
+          const album = sanitizeFileName(item.album || "Unknown Album");
+          const zipName = item.zipFileName || `${formatQueueItemLine(item)}.zip`;
+          return [
+            `$album = Join-Path $dest "${album}"`,
+            `New-Item -ItemType Directory -Force -Path $album | Out-Null`,
+            `Expand-Archive -Path "${zipName}" -DestinationPath $album -Force`,
+          ].join("\n");
+        }),
+      ];
+      const script = scriptLines.join("\n");
+      downloadTextBlob(script, "merge-zips.ps1", "text/plain");
+      setCompletionNotice("ZIP total exceeds 512 MB. A PowerShell merge script has been downloaded - run it in your download folder.");
+      return;
+    }
+
+    setCompletionNotice("Building merged ZIP. Keep this page open...");
+    try {
+      const files: Array<{ path: string; blob: Blob }> = [];
+      const usedPaths = new Set<string>();
+      for (const item of doneItems) {
+        const zipBlob = item.zipBlob;
+        if (!zipBlob) continue;
+        const albumFolder = sanitizeFileName(item.album || "Unknown Album");
+        try {
+          const entries = await readStoredZipEntries(zipBlob);
+          for (const entry of entries) {
+            if (entry.directory) continue;
+            const relativePath = finalExportEntryPath(entry.name, item);
+            if (!relativePath) continue;
+            const uniquePath = getUniqueZipEntryPath(relativePath, usedPaths);
+            if (!uniquePath) continue;
+            files.push({ path: `Turrex Combined/${uniquePath}`, blob: entry.blob });
+          }
+        } catch {
+          const fallback = getUniqueFileName(item.zipFileName || `${sanitizeFileName(formatQueueItemLine(item))}.zip`, new Set());
+          const uniquePath = getUniqueZipEntryPath(`${albumFolder}/${fallback}`, usedPaths);
+          if (uniquePath) files.push({ path: `Turrex Combined/${uniquePath}`, blob: zipBlob });
+        }
+      }
+      const zip = await makeZip(files);
+      const filename = `Turrex Combined ${dateStamp(new Date())}.zip`;
+      saveBlobAsDownload(zip, filename);
+      setLastExportName(filename);
+      setCompletionNotice(`Merged ZIP downloaded: ${filename}`);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Merge ZIP failed.");
+      setState("error");
     }
   }
 
@@ -2678,6 +2947,30 @@ function TidalDownloadClient() {
               onRefresh={() => void refreshSmartLibrary()}
               onChooseDirectory={() => void chooseDownloadDirectory()}
             />
+            <OcrLibraryPanel
+              library={ocrLibrary}
+              loading={ocrLibraryLoading}
+              selectedIds={selectedOcrIds}
+              query={ocrLibraryQuery}
+              disabled={state === "processing"}
+              onRefresh={() => void refreshOcrLibrary()}
+              onClear={async () => {
+                if (!window.confirm("Clear the OCR Song Library? This will not affect the download queue or Smart Library.")) return;
+                await clearOcrLibrary();
+                setOcrLibrary([]);
+              }}
+              onQueryChange={setOcrLibraryQuery}
+              onToggleSelect={(id) => setSelectedOcrIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
+              onSelectAll={() => setSelectedOcrIds(ocrLibrary.filter((s) => s.artist || s.title).map((s) => s.id))}
+              onClearSelection={() => setSelectedOcrIds([])}
+              onSearchUrls={(ids) => void searchOcrLibraryUrls(ids)}
+              onSendToDownloader={(ids) => void sendOcrLibraryItemsToQueue(ids)}
+              onDelete={async (id) => {
+                await deleteOcrSong(id);
+                setOcrLibrary((prev) => prev.filter((s) => s.id !== id));
+                setSelectedOcrIds((prev) => prev.filter((x) => x !== id));
+              }}
+            />
 
             <QueuePanel
               queue={visibleQueue}
@@ -2723,6 +3016,7 @@ function TidalDownloadClient() {
                   onProcess={() => void processQueue(false, { resume: isPaused })}
                   onProcessAndExport={() => void processQueue(true, { resume: isPaused })}
                   onExport={() => void exportFinalZip()}
+                  onMerge={() => void mergeFinalZip()}
                   onRetryFailed={retryFailedItems}
                   onClear={clearQueue}
                   onToggleShortcutHelp={() => setShowShortcutHelp((value) => !value)}
@@ -3459,7 +3753,7 @@ function AudioPolishPanel({ activeProfile, disabled, exportProfile, polishOption
   );
 }
 
-function QueueActions({ state, busy, queueLength, reSearchableTidalUrlCount, doneCount, errorCount, showShortcutHelp, onReSearchTidalUrls, onProcess, onProcessAndExport, onExport, onRetryFailed, onClear, onToggleShortcutHelp }: {
+function QueueActions({ state, busy, queueLength, reSearchableTidalUrlCount, doneCount, errorCount, showShortcutHelp, onReSearchTidalUrls, onProcess, onProcessAndExport, onExport, onMerge, onRetryFailed, onClear, onToggleShortcutHelp }: {
   state: DownloadState;
   busy: boolean;
   queueLength: number;
@@ -3471,6 +3765,7 @@ function QueueActions({ state, busy, queueLength, reSearchableTidalUrlCount, don
   onProcess: () => void;
   onProcessAndExport: () => void;
   onExport: () => void;
+  onMerge: () => void;
   onRetryFailed: () => void;
   onClear: () => void;
   onToggleShortcutHelp: () => void;
@@ -3493,6 +3788,10 @@ function QueueActions({ state, busy, queueLength, reSearchableTidalUrlCount, don
       <Button onClick={onExport} disabled={doneCount === 0 || actionsDisabled} variant="secondary" className="inline-flex items-center gap-2">
         <Download className="h-4 w-4" aria-hidden="true" />
         Export ZIP
+      </Button>
+      <Button onClick={onMerge} disabled={doneCount === 0 || actionsDisabled} variant="secondary" className="inline-flex items-center gap-2">
+        <Download className="h-4 w-4" aria-hidden="true" />
+        Merge completed ZIPs
       </Button>
       <Button onClick={onRetryFailed} disabled={errorCount === 0 || actionsDisabled} variant="secondary" className="inline-flex items-center gap-2">
         <RotateCcw className="h-4 w-4" aria-hidden="true" />
@@ -4127,6 +4426,146 @@ function SmartLibraryPanel({ tracks, loading, error, autoSkipDownloaded, downloa
   );
 }
 
+function OcrLibraryPanel({
+  library,
+  loading,
+  selectedIds,
+  query,
+  disabled,
+  onRefresh,
+  onClear,
+  onQueryChange,
+  onToggleSelect,
+  onSelectAll,
+  onClearSelection,
+  onSearchUrls,
+  onSendToDownloader,
+  onDelete,
+}: {
+  library: OcrLibraryEntry[];
+  loading: boolean;
+  selectedIds: string[];
+  query: string;
+  disabled: boolean;
+  onRefresh: () => void;
+  onClear: () => void;
+  onQueryChange: (q: string) => void;
+  onToggleSelect: (id: string) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
+  onSearchUrls: (ids: string[]) => void;
+  onSendToDownloader: (ids: string[]) => void;
+  onDelete: (id: string) => void;
+}) {
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return library;
+    return library.filter((song) =>
+      [song.artist, song.title, song.album, song.tidalUrl, song.status]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [library, query]);
+
+  return (
+    <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+      <CollapsibleSection
+        title="OCR Song Library"
+        description="Persistent local storage of every extracted song. Search TIDAL URLs or send directly to the downloader."
+        badge={`${library.length} song${library.length === 1 ? "" : "s"}`}
+        defaultOpen={false}
+      >
+        <div className="flex flex-wrap gap-2 mb-3">
+          <Button size="sm" onClick={onRefresh} disabled={loading}>Refresh</Button>
+          <Button size="sm" variant="secondary" disabled={selectedIds.length === 0 || disabled} onClick={() => onSearchUrls(selectedIds)}>
+            Search URLs for selected
+          </Button>
+          <Button size="sm" variant="secondary" disabled={selectedIds.length === 0} onClick={() => onSendToDownloader(selectedIds)}>
+            Send to Downloader
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onSelectAll} disabled={filtered.length === 0}>Select all</Button>
+          <Button size="sm" variant="ghost" onClick={onClearSelection} disabled={selectedIds.length === 0}>Clear selection</Button>
+          <Button size="sm" variant="danger" onClick={onClear} disabled={library.length === 0 || disabled}>Clear Library</Button>
+        </div>
+        <Input value={query} onChange={(e) => onQueryChange(e.target.value)} placeholder="Filter by artist, title, status, URL…" className="mb-3 text-sm" />
+        {loading ? (
+          <p className="text-sm text-[var(--muted)]">Loading…</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">
+            {library.length === 0
+              ? "No songs yet. Upload images to the OCR Extractor to populate this library."
+              : "No songs match this filter."}
+          </p>
+        ) : (
+          <div className="max-h-96 overflow-y-auto [scrollbar-width:thin]">
+            <table className="w-full min-w-[600px] text-left text-xs">
+              <thead className="sticky top-0 bg-[var(--surface-subtle)] text-[var(--muted)] uppercase">
+                <tr>
+                  <th className="px-2 py-1">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.length === filtered.length && filtered.length > 0}
+                      onChange={(e) => e.target.checked ? onSelectAll() : onClearSelection()}
+                      className="accent-[var(--accent)]"
+                    />
+                  </th>
+                  <th className="px-2 py-1">Artist</th>
+                  <th className="px-2 py-1">Title</th>
+                  <th className="px-2 py-1">Album</th>
+                  <th className="px-2 py-1">Status</th>
+                  <th className="px-2 py-1">TIDAL URL</th>
+                  <th className="px-2 py-1"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((song) => (
+                  <tr key={song.id} className="border-t border-[var(--border)] align-top">
+                    <td className="px-2 py-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(song.id)}
+                        onChange={() => onToggleSelect(song.id)}
+                        className="accent-[var(--accent)]"
+                      />
+                    </td>
+                    <td className="px-2 py-1 text-[var(--text)]">{song.artist || "–"}</td>
+                    <td className="px-2 py-1 text-[var(--text)]">{song.title || "–"}</td>
+                    <td className="px-2 py-1 text-[var(--muted)]">{song.album || "–"}</td>
+                    <td className="px-2 py-1">
+                      <span className={`rounded-full border px-2 py-0.5 ${
+                        song.status === "assigned" ? "border-[color:rgba(var(--status-success-rgb),0.45)] bg-[color:rgba(var(--status-success-rgb),0.12)] text-[var(--status-success)]"
+                        : song.status === "error" ? "border-[color:rgba(var(--status-danger-rgb),0.45)] bg-[color:rgba(var(--status-danger-rgb),0.12)] text-[var(--status-danger)]"
+                        : song.status === "searching" ? "border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--text)]"
+                        : "border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--muted)]"
+                      }`}>
+                        {song.status}
+                      </span>
+                    </td>
+                    <td className="px-2 py-1 max-w-[200px]">
+                      {song.tidalUrl
+                        ? <a href={song.tidalUrl} target="_blank" rel="noreferrer" className="break-all text-[var(--accent)] hover:underline">Link</a>
+                        : <span className="text-[var(--muted)]">–</span>}
+                    </td>
+                    <td className="px-2 py-1">
+                      <button
+                        type="button"
+                        className="text-[var(--status-danger)] hover:underline text-xs"
+                        onClick={() => onDelete(song.id)}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CollapsibleSection>
+    </div>
+  );
+}
+
 function SmartLibraryModal({ tracks, loading, error, onClose, onClear, onRefresh }: {
   tracks: LibraryTrackRecord[];
   loading: boolean;
@@ -4657,7 +5096,7 @@ function BatchOcrSection({ disabled = false, droppedFiles, onSendToDownloader }:
         if (activeBatchIdRef.current !== batchId) return;
         setJobs((prev) => prev.map((row) => (row.id === job.id ? { ...row, status: "processing" } : row)));
         try {
-          const result = await recognizeFromImage(job.file, 20, "eng");
+          const result = await recognizeFromImageAndStore(job.file, 20, "eng");
           if (activeBatchIdRef.current !== batchId) return;
           const produced = songsFromRecognition(job.id, result.songs);
           setSongs((prev) => mergeSongs(prev, produced));
@@ -7155,4 +7594,3 @@ async function makeZip(files: Array<{ path: string; blob: Blob }>): Promise<Blob
   const eocd = createEndOfCentralDirectory(files.length, centralSize, offset);
   return new Blob([...local, ...central, eocd].map((chunk) => chunk as unknown as BlobPart), { type: "application/zip" });
 }
-

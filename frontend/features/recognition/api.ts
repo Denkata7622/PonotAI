@@ -23,6 +23,7 @@ import { apiFetch } from "@/src/lib/apiFetch";
 import { normalizeVisibleText } from "@/lib/text";
 import { getApiBaseUrl } from "@/lib/apiConfig";
 import { enrichSongCoverArt } from "./coverArt";
+import { addOcrSongs, type OcrLibraryEntry } from "@/lib/ocrLibraryDb";
 
 export type SongRecognitionResult = SongMatch & {
   source?: "provider" | "ocr_fallback" | "audio" | "image";
@@ -163,6 +164,32 @@ export async function recognizeFromImage(imageFile: File, maxSongs = 1, language
   return recognizeFromImages([imageFile], maxSongs, language);
 }
 
+export async function recognizeFromImageAndStore(
+  file: File,
+  maxSongs = 20,
+  language = "eng"
+): Promise<ImageRecognitionResult> {
+  const result = await recognizeFromImage(file, maxSongs, language);
+  if (result.songs.length > 0) {
+    const now = new Date().toISOString();
+    const entries: OcrLibraryEntry[] = result.songs.map((song) => ({
+      id: typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      artist: (song.artist || "").trim(),
+      title: (song.songName || "").trim(),
+      album: (song.album || "").trim() || undefined,
+      coverUrl: song.albumArtUrl || null,
+      confidence: song.confidence ?? 0,
+      extractedAt: now,
+      status: "unassigned" as const,
+    })).filter((entry) => entry.artist || entry.title);
+    await addOcrSongs(entries).catch((error: unknown) =>
+      console.error("[ocr-library] Failed to save to OCR library:", error)
+    );
+  }
+  return result;
+}
 export async function recognizeFromImages(imageFiles: File[], maxSongs = 1, language = "eng"): Promise<ImageRecognitionResult> {
   const filteredFiles = imageFiles.filter((file) => file.size > 0);
   if (filteredFiles.length === 0) {
