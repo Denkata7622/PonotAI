@@ -1,6 +1,8 @@
 import vision from "@google-cloud/vision";
 import Tesseract from "tesseract.js";
 import { parseBuffer } from "music-metadata";
+// @ts-ignore kokokor is provided as a runtime dependency for spatial OCR clustering.
+import { mapObservationsToTextLines, mapTextLinesToParagraphs } from "kokokor";
 import { interpretOcr, type InterpretedLine, type OcrBlock } from "./ocrInterpreter";
 import {
   lookupSongByTitleAndArtist,
@@ -157,14 +159,65 @@ function normalizeMusicOcrText(text: string): string {
   return OCR_CORRECTIONS.get(phrase) ?? value;
 }
 
-function makeConfidenceBreakdown(candidate: OcrCandidateMetadata, verification: VerificationResult | null): Record<string, number> {
-  const ocr = clamp01(candidate.confidenceScore) * 0.42;
-  const spatial = clamp01(candidate.spatialScore ?? 0.5) * 0.2;
-  const pair = candidate.artist !== UNKNOWN_METADATA.artist ? 0.1 : -0.08;
-  const verified = verification ? Math.min(0.25, verification.confidenceDelta) : 0;
-  return { ocr: Number(ocr.toFixed(3)), spatialGrouping: Number(spatial.toFixed(3)), titleArtistPairing: pair, providerAgreement: Number(verified.toFixed(3)) };
+function computeDynamicConfidence(
+  candidate: OcrCandidateMetadata,
+  verification: VerificationResult | null
+): { final: number; breakdown: Record<string, number> } {
+  const OCR_WEIGHT_BASE = 0.35;
+  const SPATIAL_WEIGHT_BASE = 0.25;
+  const MAX_PROVIDER_WEIGHT = 0.40;
+  const YOUTUBE_WEIGHT = 0.25;
+  const ITUNES_WEIGHT = 0.15;
+  const MUSICBRAINZ_WEIGHT = 0.15;
+  const LASTFM_WEIGHT = 0.15;
+  const AGREEMENT_BONUS_FACTOR = 0.25;
+  const LOW_OCR_THRESHOLD = 0.4;
+  const LOW_SPATIAL_THRESHOLD = 0.3;
+  const PROVIDER_REDUCTION_OCR = 0.7;
+  const PROVIDER_REDUCTION_SPATIAL = 0.8;
+
+  const ocrWeight = clamp01(candidate.confidenceScore) * OCR_WEIGHT_BASE;
+  const spatialScore = candidate.spatialScore ?? 0.5;
+  const spatialWeight = clamp01(spatialScore) * SPATIAL_WEIGHT_BASE;
+  let providerSum = 0;
+
+  for (const match of verification?.matches ?? []) {
+    const multiplier = match.provider === "youtube"
+      ? YOUTUBE_WEIGHT
+      : match.provider === "itunes"
+        ? ITUNES_WEIGHT
+        : match.provider === "musicbrainz"
+          ? MUSICBRAINZ_WEIGHT
+          : match.provider === "lastfm"
+            ? LASTFM_WEIGHT
+            : 0.15;
+    providerSum += clamp01(match.confidence) * multiplier;
+  }
+
+  providerSum = Math.min(providerSum, MAX_PROVIDER_WEIGHT);
+  if (candidate.confidenceScore < LOW_OCR_THRESHOLD) providerSum *= PROVIDER_REDUCTION_OCR;
+  if (spatialScore < LOW_SPATIAL_THRESHOLD) providerSum *= PROVIDER_REDUCTION_SPATIAL;
+
+  const total = verification?.matches.length ?? 0;
+  const agreeing = verification?.matches.filter((match) => similarity(match.title, candidate.songName) > 0.85 && similarity(match.artist, candidate.artist) > 0.85).length ?? 0;
+  const agreementBonus = total > 0 ? 1 + AGREEMENT_BONUS_FACTOR * (agreeing / Math.max(1, total)) : 1;
+  const raw = ocrWeight + spatialWeight + providerSum;
+  const final = clamp01(raw * agreementBonus);
+  const breakdown = {
+    ocr: Number(ocrWeight.toFixed(3)),
+    spatial: Number(spatialWeight.toFixed(3)),
+    providers: Number(providerSum.toFixed(3)),
+    agreementBonus: Number(agreementBonus.toFixed(3)),
+    final: Number(final.toFixed(3)),
+  };
+
+  return { final, breakdown };
 }
-function sumBreakdown(b: Record<string, number>): number { return clamp01(Object.values(b).reduce((a, v) => a + v, 0)); }
+
+function makeConfidenceBreakdown(candidate: OcrCandidateMetadata, verification: VerificationResult | null): Record<string, number> {
+  return computeDynamicConfidence(candidate, verification).breakdown;
+}
+function sumBreakdown(b: Record<string, number>): number { return clamp01(b.final ?? Object.values(b).reduce((a, v) => a + v, 0)); }
 
 function mergeDuplicateSongs(songs: SongMetadata[]): SongMetadata[] {
   const byKey = new Map<string, SongMetadata>();
@@ -769,26 +822,76 @@ ${paragraphs.join("\n")}`;
 }
 
 
-function clusterWordsIntoSpatialLines(words: VisionWord[]): SpatialLine[] {
-  const sorted = [...words].sort((a, b) => (a.bbox.y + a.bbox.height / 2) - (b.bbox.y + b.bbox.height / 2) || a.bbox.x - b.bbox.x);
-  const rows: VisionWord[][] = [];
-  for (const word of sorted) {
-    const cy = word.bbox.y + word.bbox.height / 2;
-    const row = rows.find((items) => {
-      const avgY = items.reduce((sum, item) => sum + item.bbox.y + item.bbox.height / 2, 0) / items.length;
-      const avgH = items.reduce((sum, item) => sum + item.bbox.height, 0) / items.length;
-      return Math.abs(cy - avgY) <= Math.max(8, avgH * 0.65);
-    });
-    if (row) row.push(word); else rows.push([word]);
+type KokokorVertex = { x: number; y: number };
+type KokokorObservation = { text: string; confidence: number; boundingPoly: { vertices: KokokorVertex[] } };
+
+type KokokorTextNode = Partial<KokokorObservation> & {
+  words?: KokokorTextNode[];
+  observations?: KokokorTextNode[];
+  children?: KokokorTextNode[];
+  items?: KokokorTextNode[];
+};
+
+function toKokokorObservation(w: VisionWord): KokokorObservation {
+  const x = w.bbox.x;
+  const y = w.bbox.y;
+  const ww = w.bbox.width;
+  const h = w.bbox.height;
+  return {
+    text: w.text,
+    confidence: w.confidence,
+    boundingPoly: { vertices: [{ x, y }, { x: x + ww, y }, { x: x + ww, y: y + h }, { x, y: y + h }] },
+  };
+}
+
+function collectKokokorWords(node: unknown, out: KokokorObservation[]): void {
+  if (!node) return;
+  if (Array.isArray(node)) {
+    for (const item of node) collectKokokorWords(item, out);
+    return;
   }
-  return rows.map((row) => {
-    const ordered = row.sort((a, b) => a.bbox.x - b.bbox.x);
-    const x = Math.min(...ordered.map((w) => w.bbox.x));
-    const y = Math.min(...ordered.map((w) => w.bbox.y));
-    const r = Math.max(...ordered.map((w) => w.bbox.x + w.bbox.width));
-    const b = Math.max(...ordered.map((w) => w.bbox.y + w.bbox.height));
-    return { text: cleanParagraphText(ordered.map((w) => w.text).join(" ")), confidence: ordered.reduce((sum, w) => sum + w.confidence, 0) / ordered.length, bbox: { x, y, width: r - x, height: b - y } };
-  }).filter((line) => line.text.length >= 2).sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x);
+  if (typeof node !== "object") return;
+  const candidate = node as KokokorTextNode;
+  if (typeof candidate.text === "string" && typeof candidate.confidence === "number" && Array.isArray(candidate.boundingPoly?.vertices)) {
+    out.push(candidate as KokokorObservation);
+    return;
+  }
+  collectKokokorWords(candidate.words, out);
+  collectKokokorWords(candidate.observations, out);
+  collectKokokorWords(candidate.children, out);
+  collectKokokorWords(candidate.items, out);
+}
+
+function paragraphToSpatialLine(paragraphWords: KokokorObservation[]): SpatialLine | null {
+  if (paragraphWords.length === 0) return null;
+  const text = cleanParagraphText(paragraphWords.map((w) => w.text).join(" "));
+  const confidence = paragraphWords.reduce((sum, w) => sum + w.confidence, 0) / paragraphWords.length;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const word of paragraphWords) {
+    for (const vertex of word.boundingPoly.vertices) {
+      minX = Math.min(minX, vertex.x);
+      minY = Math.min(minY, vertex.y);
+      maxX = Math.max(maxX, vertex.x);
+      maxY = Math.max(maxY, vertex.y);
+    }
+  }
+  return text.length >= 2 ? { text, confidence, bbox: { x: minX, y: minY, width: maxX - minX, height: maxY - minY } } : null;
+}
+
+function clusterWordsIntoSpatialLines(words: VisionWord[]): SpatialLine[] {
+  const observations = words.map(toKokokorObservation);
+  const textLines = mapObservationsToTextLines(observations, 300, { pixelTolerance: 5, lineHeightFactor: 0.3 });
+  const paragraphs = mapTextLinesToParagraphs(textLines, { verticalJumpFactor: 2, widthTolerance: 0.85 });
+  const spatialLines: SpatialLine[] = [];
+
+  for (const paragraph of paragraphs as unknown[]) {
+    const paragraphWords: KokokorObservation[] = [];
+    collectKokokorWords(paragraph, paragraphWords);
+    const spatialLine = paragraphToSpatialLine(paragraphWords);
+    if (spatialLine) spatialLines.push(spatialLine);
+  }
+
+  return spatialLines.sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x);
 }
 
 function candidatesFromSpatialLines(lines: SpatialLine[]): OcrCandidateMetadata[] {
@@ -816,6 +919,48 @@ function candidatesFromSpatialLines(lines: SpatialLine[]): OcrCandidateMetadata[
   return dedupeOcrCandidates(candidates);
 }
 
+async function verifyWithMusicBrainz(artist: string, title: string): Promise<VerificationMatch[]> {
+  if (process.env.MUSICBRAINZ_ENABLED !== "true") return [];
+  try {
+    const query = `artist:"${artist}" AND recording:"${title}"`;
+    const url = `https://musicbrainz.org/ws/2/recording?query=${encodeURIComponent(query)}&fmt=json&limit=5`;
+    const response = await fetch(url, { headers: { "User-Agent": "TracklyMusicRecognition/1.0 (support@trackly.local)" }, signal: AbortSignal.timeout(3500) });
+    if (!response.ok) return [];
+    const data = await response.json() as { recordings?: Array<{ title?: string; "artist-credit"?: Array<{ name?: string }>; score?: number }> };
+    return (data.recordings ?? [])
+      .filter((recording) => recording.title)
+      .map((recording) => ({
+        provider: "musicbrainz",
+        title: recording.title ?? title,
+        artist: recording["artist-credit"]?.[0]?.name ?? artist,
+        confidence: clamp01((recording.score ?? 50) / 100),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function verifyWithLastFM(artist: string, title: string): Promise<VerificationMatch[]> {
+  const apiKey = process.env.LASTFM_API_KEY;
+  if (!apiKey) return [];
+  try {
+    const url = `https://ws.audioscrobbler.com/2.0/?method=track.search&track=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&api_key=${encodeURIComponent(apiKey)}&format=json`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(3500) });
+    if (!response.ok) return [];
+    const data = await response.json() as { results?: { trackmatches?: { track?: Array<{ name?: string; artist?: string; match?: string }> } } };
+    return (data.results?.trackmatches?.track ?? [])
+      .filter((track) => track.name && track.artist)
+      .map((track) => ({
+        provider: "lastfm",
+        title: track.name ?? title,
+        artist: track.artist ?? artist,
+        confidence: clamp01(Number.parseFloat(track.match ?? "0.5") || 0.5),
+      }));
+  } catch {
+    return [];
+  }
+}
+
 async function verifyCandidateAcrossProviders(candidate: OcrCandidateMetadata): Promise<VerificationResult> {
   const key = `${normalizeForKey(candidate.artist)}::${normalizeForKey(candidate.songName)}`;
   const cached = providerLookupCache.get(key);
@@ -839,6 +984,12 @@ async function verifyCandidateAcrossProviders(candidate: OcrCandidateMetadata): 
       releaseYear = releaseYear ?? (item.releaseDate ? new Date(item.releaseDate).getUTCFullYear() : null);
     }
   }
+  const [mbMatches, lfmMatches] = await Promise.allSettled([
+    verifyWithMusicBrainz(candidate.artist, candidate.songName),
+    verifyWithLastFM(candidate.artist, candidate.songName),
+  ]);
+  if (mbMatches.status === "fulfilled") matches.push(...mbMatches.value);
+  if (lfmMatches.status === "fulfilled") matches.push(...lfmMatches.value);
   const confidenceDelta = Math.min(0.32, matches.reduce((sum, match) => sum + (match.provider === "youtube" ? 0.16 : 0.1) * match.confidence, 0));
   const value = { matches, covers: covers.filter((c, i, arr) => arr.findIndex((x) => x.url === c.url) === i).sort((a, b) => b.confidence - a.confidence), confidenceDelta, platformLinks, releaseYear, album };
   providerLookupCache.set(key, { value, expiresAt: Date.now() + OCR_YOUTUBE_CACHE_TTL_MS });
@@ -1066,8 +1217,9 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
       usage.youtubeChecks += 1;
       const verification = await verifyCandidateAcrossProviders(candidate);
       const bestProviderMatch = verification.matches.sort((a, b) => b.confidence - a.confidence)[0];
-      const breakdown = makeConfidenceBreakdown(candidate, verification);
-      const finalConfidence = Math.max(candidate.confidenceScore, sumBreakdown(breakdown));
+      const dynamicConf = computeDynamicConfidence(candidate, verification);
+      const finalConfidence = dynamicConf.final;
+      const breakdown = dynamicConf.breakdown;
       if (bestProviderMatch && finalConfidence >= OCR_MIN_VERIFIED_CONFIDENCE) {
         const providerResult: ProviderSongMetadata = {
           songName: bestProviderMatch.title,
@@ -1098,8 +1250,9 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
         songMetadataResults.push({ ...fallback, confidenceScore: finalConfidence, confidenceBreakdown: breakdown, providerMatches: verification.matches, covers: verification.covers, ocrEngine: candidate.source === "tesseract" ? "tesseract" : "gemini_vision", warnings: ["LOW_CONFIDENCE_MATCH", ...warnings], sourceImages: ["uploaded_image"] });
       }
     } catch {
-      const breakdown = makeConfidenceBreakdown(candidate, null);
-      songMetadataResults.push({ ...toFallbackResponse({ ...candidate, confidenceScore: sumBreakdown(breakdown) }), confidenceBreakdown: breakdown, warnings: ["LOW_CONFIDENCE_MATCH", ...warnings], sourceImages: ["uploaded_image"] });
+      const dynamicConf = computeDynamicConfidence(candidate, null);
+      const breakdown = dynamicConf.breakdown;
+      songMetadataResults.push({ ...toFallbackResponse({ ...candidate, confidenceScore: dynamicConf.final }), confidenceBreakdown: breakdown, warnings: ["LOW_CONFIDENCE_MATCH", ...warnings], sourceImages: ["uploaded_image"] });
     }
   }
 
