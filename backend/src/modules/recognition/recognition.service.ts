@@ -529,13 +529,13 @@ async function performVisionOcr(buffer: Buffer): Promise<VisionWord[]> {
     for (const block of page.blocks ?? []) {
       for (const paragraph of block.paragraphs ?? []) {
         for (const word of paragraph.words ?? []) {
-          const text = word.symbols?.map((s) => s.text).join("") ?? "";
+          const text = word.symbols?.map((s: { text?: string | null }) => s.text).join("") ?? "";
           if (!text) continue;
           const bbox = word.boundingBox;
           if (!bbox?.vertices?.length) continue;
           const vertices = bbox.vertices;
-          const xs = vertices.map((v) => v.x ?? 0);
-          const ys = vertices.map((v) => v.y ?? 0);
+          const xs = vertices.map((v: { x?: number | null }) => v.x ?? 0);
+          const ys = vertices.map((v: { y?: number | null }) => v.y ?? 0);
           words.push({
             text,
             confidence: word.confidence ?? 0,
@@ -701,7 +701,7 @@ export async function extractMetadataWithGoogleVision(buffer: Buffer): Promise<O
           // Each paragraph = one visual block of text (likely one song entry)
           const words: string[] = [];
           for (const word of paragraph.words ?? []) {
-            const text = word.symbols?.map(s => s.text).join("") ?? "";
+            const text = word.symbols?.map((s: { text?: string | null }) => s.text).join("") ?? "";
             if (text) words.push(text);
           }
 
@@ -721,7 +721,8 @@ export async function extractMetadataWithGoogleVision(buffer: Buffer): Promise<O
 
     if (paragraphs.length === 0) throw new Error("No text detected");
 
-    const llmResults = await parseParagraphsWithGemini(paragraphs).catch(() => []);
+    const useLLM = process.env.USE_GEMINI_PARSER !== "false";
+    const llmResults = useLLM ? await parseParagraphsWithGemini(paragraphs).catch(() => []) : [];
     if (llmResults.length > 0) {
       for (const item of llmResults) {
         candidates.push({
