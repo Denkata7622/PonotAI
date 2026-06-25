@@ -38,6 +38,11 @@ export type SongMetadata = ProviderSongMetadata & {
   alternatives?: Array<Pick<ProviderSongMetadata, "songName" | "artist" | "confidenceScore">>;
   attemptId?: string;
   warnings?: string[];
+  confidenceBreakdown?: Record<string, number>;
+  debug?: Record<string, unknown>;
+  providerMatches?: Array<{ provider: string; title: string; artist: string; confidence: number; artworkUrl?: string }>;
+  covers?: Array<{ url: string; provider: string; confidence: number; width?: number; height?: number }>;
+  sourceImages?: string[];
 };
 
 type OcrCandidateMetadata = {
@@ -46,6 +51,11 @@ type OcrCandidateMetadata = {
   album: string;
   confidenceScore: number;
   source?: "ai" | "tesseract";
+  ocrText?: string;
+  normalizedText?: { title: string; artist: string };
+  spatialScore?: number;
+  confidenceBreakdown?: Record<string, number>;
+  candidatePairs?: Array<{ title: string; artist: string; score: number }>;
 };
 
 type TesseractWord = {
@@ -71,7 +81,7 @@ const OCR_MAX_DIRECT_ATTEMPTS = 3;
 const OCR_MAX_GEMMA_CLEANUP_CALLS = 3;
 const OCR_MAX_YOUTUBE_CHECKS = 12;
 const OCR_ATTEMPT_TTL_MS = 20_000;
-const OCR_YOUTUBE_CACHE_TTL_MS = 120_000;
+const OCR_YOUTUBE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const JUNK_EXACT_TOKENS = new Set([
   "codewars", "python", "tutorial", "settings", "notifications",
   "battery", "wifi", "next", "back", "home", "share", "playlist",
@@ -91,6 +101,85 @@ const imageAttemptCache = new Map<string, { expiresAt: number; value: ImageRecog
 const youtubeQueryCache = new Map<string, { expiresAt: number; value: ProviderSongMetadata | null }>();
 const inFlightImageAttempts = new Map<string, Promise<ImageRecognitionOutput>>();
 const visionClient = new vision.ImageAnnotatorClient();
+
+
+type VerificationMatch = { provider: string; title: string; artist: string; confidence: number; artworkUrl?: string; width?: number; height?: number };
+type VerificationResult = { matches: VerificationMatch[]; covers: NonNullable<SongMetadata["covers"]>; confidenceDelta: number; platformLinks: ProviderSongMetadata["platformLinks"]; releaseYear: number | null; album?: string };
+
+type SpatialLine = { text: string; confidence: number; bbox: { x: number; y: number; width: number; height: number } };
+
+const providerLookupCache = new Map<string, { expiresAt: number; value: VerificationResult }>();
+const OCR_CORRECTIONS = new Map<string, string>([
+  ["sabrins carpenter", "Sabrina Carpenter"],
+  ["sabrina carpender", "Sabrina Carpenter"],
+  ["weeknd", "The Weeknd"],
+  ["biinding lights", "Blinding Lights"],
+  ["blinding iights", "Blinding Lights"],
+]);
+
+function clamp01(value: number): number { return Math.max(0, Math.min(1, value)); }
+function normalizeForKey(text: string): string { return normalizeMusicOcrText(text).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim(); }
+function levenshtein(a: string, b: string): number {
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let last = i - 1; prev[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const old = prev[j]!;
+      prev[j] = Math.min(prev[j]! + 1, prev[j - 1]! + 1, last + (a[i - 1] === b[j - 1] ? 0 : 1));
+      last = old;
+    }
+  }
+  return prev[b.length]!;
+}
+function similarity(a: string, b: string): number {
+  const x = normalizeForKey(a), y = normalizeForKey(b);
+  if (!x || !y) return 0;
+  if (x === y) return 1;
+  return 1 - levenshtein(x, y) / Math.max(x.length, y.length, 1);
+}
+
+function normalizeMusicOcrText(text: string): string {
+  let value = (text ?? "").normalize("NFKC")
+    .replace(/[\u200B-\u200F\uFEFF\u2060]/g, "")
+    .replace(/[“”„‟]/g, '"').replace(/[‘’‚‛]/g, "'")
+    .replace(/[‐‑‒–—―]/g, "-")
+    .replace(/[•·●◉◼]/g, " ")
+    .replace(/[|`~^_*<>]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s\-:;,.!?()[\]{}]+|[\s\-:;,.!?()[\]{}]+$/g, "")
+    .trim();
+  value = value.split(/\s+/).map((word) => {
+    const lower = word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    if (OCR_CORRECTIONS.has(lower)) return OCR_CORRECTIONS.get(lower)!;
+    return word.replace(/([A-Za-z])\1{2,}/g, "$1$1");
+  }).join(" ");
+  const phrase = value.toLowerCase();
+  return OCR_CORRECTIONS.get(phrase) ?? value;
+}
+
+function makeConfidenceBreakdown(candidate: OcrCandidateMetadata, verification: VerificationResult | null): Record<string, number> {
+  const ocr = clamp01(candidate.confidenceScore) * 0.42;
+  const spatial = clamp01(candidate.spatialScore ?? 0.5) * 0.2;
+  const pair = candidate.artist !== UNKNOWN_METADATA.artist ? 0.1 : -0.08;
+  const verified = verification ? Math.min(0.25, verification.confidenceDelta) : 0;
+  return { ocr: Number(ocr.toFixed(3)), spatialGrouping: Number(spatial.toFixed(3)), titleArtistPairing: pair, providerAgreement: Number(verified.toFixed(3)) };
+}
+function sumBreakdown(b: Record<string, number>): number { return clamp01(Object.values(b).reduce((a, v) => a + v, 0)); }
+
+function mergeDuplicateSongs(songs: SongMetadata[]): SongMetadata[] {
+  const byKey = new Map<string, SongMetadata>();
+  for (const song of songs) {
+    const key = `${normalizeForKey(song.songName)}::${normalizeForKey(song.artist)}`;
+    if (!key.replace(/:/g, "")) continue;
+    const previous = byKey.get(key);
+    if (!previous || song.confidenceScore > previous.confidenceScore) {
+      byKey.set(key, { ...song, sourceImages: Array.from(new Set([...(previous?.sourceImages ?? []), ...(song.sourceImages ?? ["uploaded_image"])])) });
+    } else {
+      previous.sourceImages = Array.from(new Set([...(previous.sourceImages ?? ["uploaded_image"]), ...(song.sourceImages ?? ["uploaded_image"])]));
+    }
+  }
+  return [...byKey.values()];
+}
 
 const providerStrategy = {
   primaryProvider: (process.env.RECOGNITION_PRIMARY_PROVIDER as ProviderName | undefined) ?? "audd",
@@ -397,16 +486,15 @@ function pruneImageCaches(): void {
   for (const [key, value] of youtubeQueryCache.entries()) {
     if (value.expiresAt <= now) youtubeQueryCache.delete(key);
   }
+  for (const [key, value] of providerLookupCache.entries()) {
+    if (value.expiresAt <= now) providerLookupCache.delete(key);
+  }
 }
 
 function normalizeOcrText(text: string): string {
-  return normalizeVisibleText(text)
-    .replace(/[“”„‟"']/g, "")
-    .replace(/[|`~^_*]+/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/^[\s\-–—:;,.!?()[\]{}]+|[\s\-–—:;,.!?()[\]{}]+$/g, "")
-    .trim();
+  return normalizeMusicOcrText(text);
 }
+
 
 function looksLikeGarbageMusicText(text: string): boolean {
   const normalized = normalizeOcrText(text).toLowerCase();
@@ -680,6 +768,83 @@ ${paragraphs.join("\n")}`;
   }
 }
 
+
+function clusterWordsIntoSpatialLines(words: VisionWord[]): SpatialLine[] {
+  const sorted = [...words].sort((a, b) => (a.bbox.y + a.bbox.height / 2) - (b.bbox.y + b.bbox.height / 2) || a.bbox.x - b.bbox.x);
+  const rows: VisionWord[][] = [];
+  for (const word of sorted) {
+    const cy = word.bbox.y + word.bbox.height / 2;
+    const row = rows.find((items) => {
+      const avgY = items.reduce((sum, item) => sum + item.bbox.y + item.bbox.height / 2, 0) / items.length;
+      const avgH = items.reduce((sum, item) => sum + item.bbox.height, 0) / items.length;
+      return Math.abs(cy - avgY) <= Math.max(8, avgH * 0.65);
+    });
+    if (row) row.push(word); else rows.push([word]);
+  }
+  return rows.map((row) => {
+    const ordered = row.sort((a, b) => a.bbox.x - b.bbox.x);
+    const x = Math.min(...ordered.map((w) => w.bbox.x));
+    const y = Math.min(...ordered.map((w) => w.bbox.y));
+    const r = Math.max(...ordered.map((w) => w.bbox.x + w.bbox.width));
+    const b = Math.max(...ordered.map((w) => w.bbox.y + w.bbox.height));
+    return { text: cleanParagraphText(ordered.map((w) => w.text).join(" ")), confidence: ordered.reduce((sum, w) => sum + w.confidence, 0) / ordered.length, bbox: { x, y, width: r - x, height: b - y } };
+  }).filter((line) => line.text.length >= 2).sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x);
+}
+
+function candidatesFromSpatialLines(lines: SpatialLine[]): OcrCandidateMetadata[] {
+  const candidates: OcrCandidateMetadata[] = [];
+  const avgHeight = lines.reduce((sum, line) => sum + line.bbox.height, 0) / Math.max(lines.length, 1);
+  const columnAnchors: number[] = [];
+  for (const line of lines) {
+    const anchor = columnAnchors.find((x) => Math.abs(x - line.bbox.x) <= Math.max(32, line.bbox.width * 0.2));
+    if (anchor === undefined) columnAnchors.push(line.bbox.x);
+  }
+  for (const title of lines) {
+    const neighbors = lines.filter((line) => line !== title && Math.abs(line.bbox.x - title.bbox.x) <= Math.max(36, title.bbox.width * 0.35));
+    for (const artist of neighbors) {
+      const verticalGap = artist.bbox.y - (title.bbox.y + title.bbox.height);
+      if (verticalGap < -4 || verticalGap > Math.max(34, avgHeight * 1.8)) continue;
+      const spatialScore = clamp01(1 - Math.abs(title.bbox.x - artist.bbox.x) / Math.max(title.bbox.width, 1) - Math.max(0, verticalGap) / Math.max(avgHeight * 4, 1));
+      const base = ((title.confidence + artist.confidence) / 2) || 0.7;
+      candidates.push({ songName: title.text, artist: artist.text, album: UNKNOWN_METADATA.album, confidenceScore: clamp01(base * 0.75 + spatialScore * 0.2), source: "ai", ocrText: `${title.text}\n${artist.text}`, normalizedText: { title: normalizeMusicOcrText(title.text), artist: normalizeMusicOcrText(artist.text) }, spatialScore, candidatePairs: [{ title: title.text, artist: artist.text, score: spatialScore }] });
+    }
+    if (/[•\-–—]/.test(title.text)) {
+      const parts = title.text.split(/\s*[•\-–—]\s*/).filter(Boolean);
+      if (parts.length >= 2) candidates.push({ songName: parts[0]!, artist: parts.slice(1).join(" "), album: UNKNOWN_METADATA.album, confidenceScore: 0.78, source: "ai", spatialScore: 0.7 });
+    }
+  }
+  return dedupeOcrCandidates(candidates);
+}
+
+async function verifyCandidateAcrossProviders(candidate: OcrCandidateMetadata): Promise<VerificationResult> {
+  const key = `${normalizeForKey(candidate.artist)}::${normalizeForKey(candidate.songName)}`;
+  const cached = providerLookupCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const matches: VerificationMatch[] = [];
+  const covers: NonNullable<SongMetadata["covers"]> = [];
+  let platformLinks: ProviderSongMetadata["platformLinks"] = {};
+  let releaseYear: number | null = null;
+  let album: string | undefined;
+  const yt = await lookupSongExtractor(candidate.songName, candidate.artist).catch(() => null);
+  if (yt) { matches.push({ provider: "youtube", title: yt.songName, artist: yt.artist, confidence: yt.confidenceScore }); platformLinks = { ...platformLinks, ...yt.platformLinks }; }
+  const term = encodeURIComponent(`${candidate.songName} ${candidate.artist}`);
+  const itunes = await fetch(`https://itunes.apple.com/search?media=music&entity=song&limit=3&term=${term}`, { signal: AbortSignal.timeout(3500) }).then(r => r.ok ? r.json() : null).catch(() => null) as { results?: Array<{ trackName?: string; artistName?: string; collectionName?: string; artworkUrl100?: string; trackViewUrl?: string; releaseDate?: string }> } | null;
+  for (const item of itunes?.results ?? []) {
+    const conf = (similarity(candidate.songName, item.trackName ?? "") + similarity(candidate.artist, item.artistName ?? "")) / 2;
+    if (conf >= 0.62) {
+      matches.push({ provider: "itunes", title: item.trackName ?? candidate.songName, artist: item.artistName ?? candidate.artist, confidence: conf, artworkUrl: item.artworkUrl100?.replace("100x100bb", "600x600bb"), width: 600, height: 600 });
+      if (item.artworkUrl100) covers.push({ url: item.artworkUrl100.replace("100x100bb", "600x600bb"), provider: "itunes", confidence: conf, width: 600, height: 600 });
+      if (item.trackViewUrl) platformLinks.appleMusic = item.trackViewUrl;
+      album = album ?? item.collectionName;
+      releaseYear = releaseYear ?? (item.releaseDate ? new Date(item.releaseDate).getUTCFullYear() : null);
+    }
+  }
+  const confidenceDelta = Math.min(0.32, matches.reduce((sum, match) => sum + (match.provider === "youtube" ? 0.16 : 0.1) * match.confidence, 0));
+  const value = { matches, covers: covers.filter((c, i, arr) => arr.findIndex((x) => x.url === c.url) === i).sort((a, b) => b.confidence - a.confidence), confidenceDelta, platformLinks, releaseYear, album };
+  providerLookupCache.set(key, { value, expiresAt: Date.now() + OCR_YOUTUBE_CACHE_TTL_MS });
+  return value;
+}
+
 /**
  * Main entry point for Google Vision extraction.
  * Returns OcrCandidateMetadata[] that plug directly into the existing pipeline.
@@ -692,6 +857,8 @@ export async function extractMetadataWithGoogleVision(buffer: Buffer): Promise<O
     });
 
     const candidates: OcrCandidateMetadata[] = [];
+    const spatialWords = await performVisionOcr(buffer).catch(() => []);
+    candidates.push(...candidatesFromSpatialLines(clusterWordsIntoSpatialLines(spatialWords)));
     const pages = result.fullTextAnnotation?.pages ?? [];
     const paragraphs: string[] = [];
 
@@ -719,9 +886,9 @@ export async function extractMetadataWithGoogleVision(buffer: Buffer): Promise<O
       }
     }
 
-    if (paragraphs.length === 0) throw new Error("No text detected");
+    if (paragraphs.length === 0 && candidates.length === 0) throw new Error("No text detected");
 
-    const llmResults = await parseParagraphsWithGemini(paragraphs).catch(() => []);
+    const llmResults = paragraphs.length > 0 ? await parseParagraphsWithGemini(paragraphs).catch(() => []) : [];
     if (llmResults.length > 0) {
       for (const item of llmResults) {
         candidates.push({
@@ -767,8 +934,7 @@ export async function extractMetadataWithGoogleVision(buffer: Buffer): Promise<O
 
     if (candidates.length === 0) throw new Error("No text detected");
 
-    // Remove any candidates that look like garbage (reusing your existing filter)
-    return candidates.filter(c => c.songName.length >= 2 && !looksLikeGarbageMusicText(c.songName));
+    return dedupeOcrCandidates(candidates).filter(c => c.songName.length >= 2 && !looksLikeGarbageMusicText(c.songName));
   } catch (error) {
     console.error("[Vision OCR] failed", error);
     throw error;
@@ -893,38 +1059,47 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
   const youtubeCheckBudget = Math.min(OCR_MAX_YOUTUBE_CHECKS, Math.max(resolvedMaxSongs + 3, 8));
   for (const candidate of rankedCandidates) {
     if (usage.youtubeChecks >= youtubeCheckBudget) break;
-    const lookupKey = `${candidate.songName.toLowerCase()}::${candidate.artist.toLowerCase()}`;
+    const lookupKey = `${normalizeForKey(candidate.songName)}::${normalizeForKey(candidate.artist)}`;
     if (checkedQueries.has(lookupKey)) continue;
     checkedQueries.add(lookupKey);
     try {
-      let providerResult: ProviderSongMetadata | null = null;
-      const cached = youtubeQueryCache.get(lookupKey);
-      if (cached) {
-        providerResult = cached.value;
-      } else {
-        usage.youtubeChecks += 1;
-        providerResult = await lookupSongExtractor(candidate.songName, candidate.artist);
-        youtubeQueryCache.set(lookupKey, { value: providerResult, expiresAt: Date.now() + OCR_YOUTUBE_CACHE_TTL_MS });
-      }
-      if (providerResult && providerResult.confidenceScore >= OCR_MIN_VERIFIED_CONFIDENCE) {
-        const resultState = classifyResultState(providerResult.confidenceScore);
+      usage.youtubeChecks += 1;
+      const verification = await verifyCandidateAcrossProviders(candidate);
+      const bestProviderMatch = verification.matches.sort((a, b) => b.confidence - a.confidence)[0];
+      const breakdown = makeConfidenceBreakdown(candidate, verification);
+      const finalConfidence = Math.max(candidate.confidenceScore, sumBreakdown(breakdown));
+      if (bestProviderMatch && finalConfidence >= OCR_MIN_VERIFIED_CONFIDENCE) {
+        const providerResult: ProviderSongMetadata = {
+          songName: bestProviderMatch.title,
+          artist: bestProviderMatch.artist,
+          album: verification.album ?? UNKNOWN_METADATA.album,
+          genre: "Unknown Genre",
+          releaseYear: verification.releaseYear,
+          confidenceScore: finalConfidence,
+          youtubeVideoId: verification.platformLinks.youtube?.split("v=")[1],
+          platformLinks: verification.platformLinks,
+        };
+        const resultState = classifyResultState(finalConfidence);
         if (resultState === "exact_match" || resultState === "strong_likely_match") usage.strongMatches += 1;
         songMetadataResults.push({
           ...toProviderResponse(providerResult),
           resultState,
           ocrEngine: candidate.source === "tesseract" ? "tesseract" : "gemini_vision",
           warnings: resultState === "need_better_sample" || resultState === "possible_matches" ? ["LOW_CONFIDENCE_MATCH", ...warnings] : warnings,
+          confidenceBreakdown: breakdown,
+          providerMatches: verification.matches,
+          covers: verification.covers,
+          debug: process.env.RECOGNITION_DEBUG === "true" ? { ocrText: candidate.ocrText ?? `${candidate.songName} - ${candidate.artist}`, normalizedText: candidate.normalizedText ?? { title: candidate.songName, artist: candidate.artist }, candidatePairs: candidate.candidatePairs ?? [] } : undefined,
+          sourceImages: ["uploaded_image"],
         });
       } else {
         const bulgarianFallback = usage.youtubeChecks <= youtubeCheckBudget ? matchBulgarianSong(`${candidate.songName} ${candidate.artist}`) : null;
-        songMetadataResults.push(
-          bulgarianFallback
-            ? { ...toProviderResponse(bulgarianFallback), resultState: "strong_likely_match", ocrEngine: candidate.source === "tesseract" ? "tesseract" : "gemini_vision", warnings }
-            : { ...toFallbackResponse(candidate), warnings: ["LOW_CONFIDENCE_MATCH", ...warnings] },
-        );
+        const fallback = bulgarianFallback ? toProviderResponse(bulgarianFallback) : toFallbackResponse({ ...candidate, confidenceScore: finalConfidence });
+        songMetadataResults.push({ ...fallback, confidenceScore: finalConfidence, confidenceBreakdown: breakdown, providerMatches: verification.matches, covers: verification.covers, ocrEngine: candidate.source === "tesseract" ? "tesseract" : "gemini_vision", warnings: ["LOW_CONFIDENCE_MATCH", ...warnings], sourceImages: ["uploaded_image"] });
       }
     } catch {
-      songMetadataResults.push({ ...toFallbackResponse(candidate), warnings: ["LOW_CONFIDENCE_MATCH", ...warnings] });
+      const breakdown = makeConfidenceBreakdown(candidate, null);
+      songMetadataResults.push({ ...toFallbackResponse({ ...candidate, confidenceScore: sumBreakdown(breakdown) }), confidenceBreakdown: breakdown, warnings: ["LOW_CONFIDENCE_MATCH", ...warnings], sourceImages: ["uploaded_image"] });
     }
   }
 
@@ -948,7 +1123,7 @@ export async function recognizeSongFromImage(buffer: Buffer, language = "eng", m
   }
 
   if (songMetadataResults.length === 0) throw new NoVerifiedResultError("No plausible song matches detected from OCR.");
-  const plausibleResults = songMetadataResults
+  const plausibleResults = mergeDuplicateSongs(songMetadataResults)
     .sort((a, b) => b.confidenceScore - a.confidenceScore)
     .slice(0, Math.min(resolvedMaxSongs, OCR_MAX_SURFACED_RESULTS));
     const output: ImageRecognitionOutput = { songs: plausibleResults, warnings, ocrPath: warnings.includes("OCR_FALLBACK_USED") ? "tesseract_plus_gemma" : "ai_primary" };
