@@ -65,3 +65,4 @@ audio-comparison.json
 # Google Vision API key
 google-vision-key.json
 backend/google-vision-key.json
+/generated/prisma

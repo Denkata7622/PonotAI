@@ -1,4 +1,7 @@
 import vision from "@google-cloud/vision";
+import fs from 'fs/promises';
+import { GoogleAuth } from 'google-auth-library';
+import { GoogleGenAI } from "@google/genai";
 import Tesseract from "tesseract.js";
 import { parseBuffer } from "music-metadata";
 // @ts-ignore kokokor is provided as a runtime dependency for spatial OCR clustering.
@@ -103,7 +106,11 @@ const imageAttemptCache = new Map<string, { expiresAt: number; value: ImageRecog
 const youtubeQueryCache = new Map<string, { expiresAt: number; value: ProviderSongMetadata | null }>();
 const inFlightImageAttempts = new Map<string, Promise<ImageRecognitionOutput>>();
 const visionClient = new vision.ImageAnnotatorClient();
-
+const aiClient = new GoogleGenAI({
+  vertexai: true,              // required for Vertex AI
+  project: process.env.GOOGLE_CLOUD_PROJECT || "voltaic-space-432417-e8",
+  location: "global",    // or your preferred region
+});
 
 type VerificationMatch = { provider: string; title: string; artist: string; confidence: number; artworkUrl?: string; width?: number; height?: number };
 type VerificationResult = { matches: VerificationMatch[]; covers: NonNullable<SongMetadata["covers"]>; confidenceDelta: number; platformLinks: ProviderSongMetadata["platformLinks"]; releaseYear: number | null; album?: string };
@@ -143,7 +150,7 @@ function similarity(a: string, b: string): number {
 function normalizeMusicOcrText(text: string): string {
   let value = (text ?? "").normalize("NFKC")
     .replace(/[\u200B-\u200F\uFEFF\u2060]/g, "")
-    .replace(/[“”„‟]/g, '"').replace(/[‘’‚‛]/g, "'")
+    .replace(/[""„‟]/g, '"').replace(/[''‚‛]/g, "'")
     .replace(/[‐‑‒–—―]/g, "-")
     .replace(/[•·●◉◼]/g, " ")
     .replace(/[|`~^_*<>]+/g, " ")
@@ -778,69 +785,150 @@ function cleanParagraphText(text: string): string {
     .trim();
 }
 
-// ---- NEW FUNCTION: parseParagraphsWithGemini ----
+// ---- NEW FUNCTION: parseParagraphsWithGemini (Vertex AI) ----
+// Cache the auth token to avoid reading the key file on every call
+let _cachedToken: { token: string; expiresAt: number } | null = null;
+
+async function getVertexToken(): Promise<string> {
+  if (_cachedToken && _cachedToken.expiresAt > Date.now() + 60_000) {
+    return _cachedToken.token;
+  }
+  const keyData = JSON.parse(await fs.readFile('google-vision-key.json', 'utf8'));
+  const auth = new GoogleAuth({
+    credentials: keyData,
+    scopes: 'https://www.googleapis.com/auth/cloud-platform',
+  });
+  const client = await auth.getClient();
+  const tokenResponse = await client.getAccessToken();
+  const token = tokenResponse.token!;
+  // Google access tokens last 1 hour; cache for 55 minutes
+  _cachedToken = { token, expiresAt: Date.now() + 55 * 60 * 1000 };
+  return token;
+}
+
 async function parseParagraphsWithGemini(paragraphs: string[]): Promise<{ artist: string; title: string }[]> {
+  if (paragraphs.length === 0) return [];
+
+  // ----- Your full prompt (keep it) -----
+  const prompt = `You are an expert music metadata parser. You receive raw OCR text extracted from screenshots of music apps (Spotify, Apple Music, YouTube Music, Instagram Reels, TikTok, etc.).
+
+Your job: identify every (artist, song title) pair present in the text. Return ONLY a JSON array, no other text.
+
+Rules:
+1. Each element must be { "artist": "...", "title": "..." }
+2. If you cannot determine the artist, use "" for artist (empty string)
+3. Ignore all app UI chrome: tab labels ("For You", "Trending", "Saved", "Library", "Search", "Home"), progress bars, timestamps ("3:41", "0:35"), playback controls, playlist/radio headers ("RADIO VOL 3", "NIGHT CITY RADIO", "CHIPPIN' IN Radio"), notification text, battery/wifi indicators, usernames, hashtags, view counts, like counts, share buttons
+4. DO include songs even if their title happens to sound like a UI label — use context (is it paired with an artist name? is it in a list of other songs?) to decide
+5. Handle Bulgarian (Cyrillic), English, German, and mixed-language entries
+6. A song entry typically looks like two consecutive lines: one line = song title, next line = artist name. Sometimes they appear as "Artist - Title" or "Title • Artist"
+7. Timestamps embedded in artist fields like "Chris Webby 3:53" mean the artist is "Chris Webby" and "3:53" is a duration — strip the duration
+8. Entries like "Jekyll And Hyde (2025 VERSION) E" — the "E" suffix means Explicit, strip it. The title is "Jekyll And Hyde (2025 Version)"
+9. If the same song appears multiple times (duplicates), include it only once
+10. Return the JSON array in a compact format (no extra spaces or newlines) to minimize token usage.
+
+OCR text paragraphs (one per line, each line is a separate visual block from the image):
+${paragraphs.map((p, i) => `[${i + 1}] ${p}`).join('\n')}
+
+Respond with ONLY a JSON array like:
+[
+  { "artist": "Eminem", "title": "Houdini" },
+  { "artist": "Metallica", "title": "Wherever I May Roam" }
+]`;
+
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
+    const token = await getVertexToken();
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT || 'voltaic-space-432417-e8';
+    const location = 'us-central1';
+    const model = 'gemini-2.5-pro'; // faster than Pro, available
+    const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`;
 
-    const prompt = `You are a music OCR parser. Below are text lines extracted from a playlist screenshot. Some consecutive lines form artist-title pairs (artist on one line, title on the next). Some lines already contain both separated by a bullet (•), dash (-), or similar. Return ONLY a valid JSON array of objects: [{ "artist": "...", "title": "..." }, ...]. Do not include explanations.
-
-Lines:
-${paragraphs.join("\n")}`;
-
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 2048 } }),
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 16384, // prevent truncation
+        },
+      }),
     });
 
-    if (!response.ok) throw new Error(`Gemini API returned ${response.status}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Vision OCR] Vertex AI error:', response.status, errorText.slice(0, 300));
+      return [];
+    }
 
-    const data = await response.json() as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return [];
+    const data = await response.json();
+    const text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      console.warn('[Vision OCR] Gemini returned empty text');
+      return [];
+    }
 
-    const jsonBlock = text.match(/\[[\s\S]*\]/)?.[0];
-    if (!jsonBlock) return [];
+    // ----- CRITICAL: Strip fences before parsing -----
+    const stripped = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+    let jsonBlock = stripped.match(/\[[\s\S]*\]/)?.[0];
+    if (!jsonBlock && stripped.trim().startsWith('[')) {
+      // Try to fix truncated JSON by adding a closing bracket
+      const fixed = stripped.trim() + ']';
+      try {
+        JSON.parse(fixed);
+        jsonBlock = fixed;
+        console.warn('[Vision OCR] Fixed truncated JSON by adding closing bracket');
+      } catch {
+        // still invalid
+      }
+    }
 
-    const parsed = JSON.parse(jsonBlock) as unknown;
+    if (!jsonBlock) {
+      console.warn('[Vision OCR] No JSON array found after stripping fences:', stripped.slice(0, 200));
+      return [];
+    }
+
+    const parsed = JSON.parse(jsonBlock);
     if (!Array.isArray(parsed)) return [];
 
-    return parsed
+    const results = parsed
       .filter((item): item is { artist: string; title: string } => {
-        if (!item || typeof item !== "object") return false;
-        const candidate = item as { artist?: unknown; title?: unknown };
-        return typeof candidate.artist === "string" && typeof candidate.title === "string";
-      });
+        if (!item || typeof item !== 'object') return false;
+        const c = item as { artist?: unknown; title?: unknown };
+        return typeof c.title === 'string' && c.title.trim().length > 0;
+      })
+      .map(item => ({
+        artist: (item.artist ?? '').trim(),
+        title: item.title.trim(),
+      }));
+
+    console.log(`[Vision OCR] Gemini returned ${results.length} songs`);
+    return results;
   } catch (error) {
-    console.warn("[Vision OCR] Gemini parsing failed:", error);
+    console.error('[Vision OCR] parseParagraphsWithGemini failed:', error);
     return [];
   }
 }
 
-
 type KokokorVertex = { x: number; y: number };
-type KokokorObservation = { text: string; confidence: number; boundingPoly: { vertices: KokokorVertex[] } };
-
-type KokokorTextNode = Partial<KokokorObservation> & {
-  words?: KokokorTextNode[];
-  observations?: KokokorTextNode[];
-  children?: KokokorTextNode[];
-  items?: KokokorTextNode[];
+type KokokorObservation = {
+  text: string;
+  confidence: number;
+  bbox: { x0: number; y0: number; x1: number; y1: number };
 };
 
 function toKokokorObservation(w: VisionWord): KokokorObservation {
-  const x = w.bbox.x;
-  const y = w.bbox.y;
-  const ww = w.bbox.width;
-  const h = w.bbox.height;
   return {
     text: w.text,
     confidence: w.confidence,
-    boundingPoly: { vertices: [{ x, y }, { x: x + ww, y }, { x: x + ww, y: y + h }, { x, y: y + h }] },
+    bbox: {
+      x0: w.bbox.x,
+      y0: w.bbox.y,
+      x1: w.bbox.x + w.bbox.width,
+      y1: w.bbox.y + w.bbox.height,
+    },
   };
 }
 
@@ -851,11 +939,30 @@ function collectKokokorWords(node: unknown, out: KokokorObservation[]): void {
     return;
   }
   if (typeof node !== "object") return;
-  const candidate = node as KokokorTextNode;
-  if (typeof candidate.text === "string" && typeof candidate.confidence === "number" && Array.isArray(candidate.boundingPoly?.vertices)) {
-    out.push(candidate as KokokorObservation);
+  const candidate = node as Record<string, unknown>;
+  // Check for a valid word object (text, confidence, and a bbox with numeric coords)
+  if (
+    typeof candidate.text === "string" &&
+    typeof candidate.confidence === "number" &&
+    candidate.bbox &&
+    typeof candidate.bbox === "object"
+  ) {
+    const bbox = candidate.bbox as { x0?: unknown; y0?: unknown; x1?: unknown; y1?: unknown };
+    if (
+      typeof bbox.x0 === "number" &&
+      typeof bbox.y0 === "number" &&
+      typeof bbox.x1 === "number" &&
+      typeof bbox.y1 === "number"
+    ) {
+      out.push({
+        text: candidate.text as string,
+        confidence: candidate.confidence as number,
+        bbox: { x0: bbox.x0, y0: bbox.y0, x1: bbox.x1, y1: bbox.y1 },
+      });
+    }
     return;
   }
+  // Recurse into common array properties
   collectKokokorWords(candidate.words, out);
   collectKokokorWords(candidate.observations, out);
   collectKokokorWords(candidate.children, out);
@@ -868,18 +975,28 @@ function paragraphToSpatialLine(paragraphWords: KokokorObservation[]): SpatialLi
   const confidence = paragraphWords.reduce((sum, w) => sum + w.confidence, 0) / paragraphWords.length;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const word of paragraphWords) {
-    for (const vertex of word.boundingPoly.vertices) {
-      minX = Math.min(minX, vertex.x);
-      minY = Math.min(minY, vertex.y);
-      maxX = Math.max(maxX, vertex.x);
-      maxY = Math.max(maxY, vertex.y);
-    }
+    const { x0, y0, x1, y1 } = word.bbox;   // ← changed here
+    minX = Math.min(minX, x0);
+    minY = Math.min(minY, y0);
+    maxX = Math.max(maxX, x1);
+    maxY = Math.max(maxY, y1);
   }
   return text.length >= 2 ? { text, confidence, bbox: { x: minX, y: minY, width: maxX - minX, height: maxY - minY } } : null;
 }
 
+function isValidVisionWord(w: VisionWord): boolean {
+  return (
+    Number.isFinite(w.bbox.x) &&
+    Number.isFinite(w.bbox.y) &&
+    Number.isFinite(w.bbox.width) &&
+    Number.isFinite(w.bbox.height) &&
+    w.bbox.width > 0 &&
+    w.bbox.height > 0
+  );
+}
+
 function clusterWordsIntoSpatialLines(words: VisionWord[]): SpatialLine[] {
-  const observations = words.map(toKokokorObservation);
+  const observations = words.filter(isValidVisionWord).map(toKokokorObservation);
   const textLines = mapObservationsToTextLines(observations, 300, { pixelTolerance: 5, lineHeightFactor: 0.3 });
   const paragraphs = mapTextLinesToParagraphs(textLines, { verticalJumpFactor: 2, widthTolerance: 0.85 });
   const spatialLines: SpatialLine[] = [];
@@ -895,21 +1012,54 @@ function clusterWordsIntoSpatialLines(words: VisionWord[]): SpatialLine[] {
 }
 
 function candidatesFromSpatialLines(lines: SpatialLine[]): OcrCandidateMetadata[] {
+  // Merge lines that are extremely close vertically (same baseline, split by OCR)
+  const mergedLines: SpatialLine[] = [];
+  let idx = 0;
+  while (idx < lines.length) {
+    const current = lines[idx]!;
+    const next = lines[idx + 1];
+    if (next && Math.abs(current.bbox.y - next.bbox.y) < 8) {
+      mergedLines.push({
+        text: `${current.text} ${next.text}`,
+        confidence: (current.confidence + next.confidence) / 2,
+        bbox: {
+          x: Math.min(current.bbox.x, next.bbox.x),
+          y: current.bbox.y,
+          width: Math.max(current.bbox.x + current.bbox.width, next.bbox.x + next.bbox.width) - Math.min(current.bbox.x, next.bbox.x),
+          height: Math.max(current.bbox.height, next.bbox.height),
+        },
+      });
+      idx += 2;
+    } else {
+      mergedLines.push(current);
+      idx++;
+    }
+  }
+
+  const linesToProcess = mergedLines;
   const candidates: OcrCandidateMetadata[] = [];
-  const avgHeight = lines.reduce((sum, line) => sum + line.bbox.height, 0) / Math.max(lines.length, 1);
+  const avgHeight = linesToProcess.reduce((sum, line) => sum + line.bbox.height, 0) / Math.max(linesToProcess.length, 1);
   const columnAnchors: number[] = [];
-  for (const line of lines) {
+  for (const line of linesToProcess) {
     const anchor = columnAnchors.find((x) => Math.abs(x - line.bbox.x) <= Math.max(32, line.bbox.width * 0.2));
     if (anchor === undefined) columnAnchors.push(line.bbox.x);
   }
-  for (const title of lines) {
-    const neighbors = lines.filter((line) => line !== title && Math.abs(line.bbox.x - title.bbox.x) <= Math.max(36, title.bbox.width * 0.35));
+  for (const title of linesToProcess) {
+    const neighbors = linesToProcess.filter((line) => line !== title && Math.abs(line.bbox.x - title.bbox.x) <= Math.max(36, title.bbox.width * 0.35));
     for (const artist of neighbors) {
       const verticalGap = artist.bbox.y - (title.bbox.y + title.bbox.height);
       if (verticalGap < -4 || verticalGap > Math.max(34, avgHeight * 1.8)) continue;
       const spatialScore = clamp01(1 - Math.abs(title.bbox.x - artist.bbox.x) / Math.max(title.bbox.width, 1) - Math.max(0, verticalGap) / Math.max(avgHeight * 4, 1));
       const base = ((title.confidence + artist.confidence) / 2) || 0.7;
-      candidates.push({ songName: title.text, artist: artist.text, album: UNKNOWN_METADATA.album, confidenceScore: clamp01(base * 0.75 + spatialScore * 0.2), source: "ai", ocrText: `${title.text}\n${artist.text}`, normalizedText: { title: normalizeMusicOcrText(title.text), artist: normalizeMusicOcrText(artist.text) }, spatialScore, candidatePairs: [{ title: title.text, artist: artist.text, score: spatialScore }] });
+      const songName = title.text;
+      const artistName = artist.text;
+
+      // Drop single‑word pairs that are almost certainly fragments
+      if (songName.split(/\s+/).length === 1 && artistName.split(/\s+/).length === 1) {
+        continue; // skip this pair
+      }
+
+      candidates.push({ songName, artist: artistName, album: UNKNOWN_METADATA.album, confidenceScore: clamp01(base * 0.75 + spatialScore * 0.2), source: "ai", ocrText: `${title.text}\n${artist.text}`, normalizedText: { title: normalizeMusicOcrText(title.text), artist: normalizeMusicOcrText(artist.text) }, spatialScore, candidatePairs: [{ title: title.text, artist: artist.text, score: spatialScore }] });
     }
     if (/[•\-–—]/.test(title.text)) {
       const parts = title.text.split(/\s*[•\-–—]\s*/).filter(Boolean);
@@ -1051,6 +1201,11 @@ export async function extractMetadataWithGoogleVision(buffer: Buffer): Promise<O
         });
       }
     } else {
+
+      console.warn('[Vision OCR] Gemini returned 0 results for', paragraphs.length, 'paragraphs');
+
+      // Paragraph fallback parsing disabled
+      /*
       let i = 0;
       while (i < paragraphs.length) {
         const first = paragraphs[i]!;
@@ -1058,7 +1213,7 @@ export async function extractMetadataWithGoogleVision(buffer: Buffer): Promise<O
 
         // If the first paragraph contains a bullet/dash, treat it as a self-contained entry
         if (/[•⚫●\-–—]/.test(first)) {
-          const parts = first.split(/\s*[•⚫●\-–—]\s*/);
+          const parts = first.split(/\s*[•⚫●\-–—]\s/);
           if (parts.length >= 2) {
             const a = parts[0]!.trim();
             const b = parts.slice(1).join(" ").trim();
@@ -1081,6 +1236,7 @@ export async function extractMetadataWithGoogleVision(buffer: Buffer): Promise<O
           i++;
         }
       }
+      */
     }
 
     if (candidates.length === 0) throw new Error("No text detected");

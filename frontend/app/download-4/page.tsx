@@ -5109,7 +5109,7 @@ function BatchOcrSection({ disabled = false, droppedFiles, onSendToDownloader }:
         }
       }
     };
-    await Promise.all(Array.from({ length: 3 }).map(() => worker()));
+    await Promise.all(Array.from({ length: 9 }).map(() => worker()));
   }
 
   useEffect(() => {

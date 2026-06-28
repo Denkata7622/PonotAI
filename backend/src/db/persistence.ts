@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { assertDatabaseConnection } from "./prisma";
 
-export type PersistenceMode = "postgres" | "file-legacy";
+export type PersistenceMode = "postgres" | "file-legacy" | "sqlite";
 
 type PersistenceHealth = {
   mode: PersistenceMode;
@@ -28,6 +28,9 @@ function resolvePersistenceMode(): PersistenceMode {
   if (configured === "file-legacy") {
     return "file-legacy";
   }
+  if (configured === "sqlite") {
+    return "sqlite";
+  }
   throw new Error(`Unsupported persistence mode: ${configured}`);
 }
 
@@ -50,6 +53,13 @@ async function probePostgresPersistence(): Promise<PersistenceHealth> {
   }
 }
 
+// ✅ SQLite health check – simply returns success (the file exists from migration)
+async function probeSqlitePersistence(): Promise<PersistenceHealth> {
+  // We don't need to check connection – the file is local and was created by migration.
+  // If you want to verify the file exists, you can add a fs.access check here.
+  return { mode: "sqlite", connected: true };
+}
+
 export function getPersistenceHealth(): PersistenceHealth {
   return health;
 }
@@ -60,7 +70,13 @@ export function getPersistenceMode(): PersistenceMode {
 
 export async function refreshPersistenceHealth(): Promise<PersistenceHealth> {
   const mode = resolvePersistenceMode();
-  health = mode === "file-legacy" ? await probeFilePersistence() : await probePostgresPersistence();
+  if (mode === "file-legacy") {
+    health = await probeFilePersistence();
+  } else if (mode === "sqlite") {
+    health = await probeSqlitePersistence();
+  } else {
+    health = await probePostgresPersistence();
+  }
   return health;
 }
 

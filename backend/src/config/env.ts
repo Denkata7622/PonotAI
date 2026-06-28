@@ -132,8 +132,8 @@ export function validateEnvironment(): void {
     process.exit(1);
   }
 
-  if (persistenceMode !== "postgres" && persistenceMode !== "file-legacy") {
-    console.error(`FATAL: Unsupported PERSISTENCE_MODE=${persistenceMode}. Allowed values: postgres, file-legacy.`);
+  if (persistenceMode !== "postgres" && persistenceMode !== "file-legacy" && persistenceMode !== "sqlite") {
+    console.error(`FATAL: Unsupported PERSISTENCE_MODE=${persistenceMode}. Allowed values: postgres, file-legacy, sqlite.`);
     process.exit(1);
   }
 

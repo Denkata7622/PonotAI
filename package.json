@@ -27,6 +27,7 @@
     "start": "npm run start --prefix backend"
   },
   "dependencies": {
+    "@google-cloud/aiplatform": "^6.8.1",
     "@google-cloud/vision": "^5.3.7",
     "file-type": "^18.0.0"
   },
