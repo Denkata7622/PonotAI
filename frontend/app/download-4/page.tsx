@@ -38,11 +38,12 @@
  *   duplicate state, so browser crashes do not force large batches to download
  *   tracks that already reached disk.
  */
-import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import * as ReactDOM from "react-dom";
 import { AlertCircle, CheckCircle, ChevronDown, Download, Info, Library, Pause, Play, Plus, RotateCcw, Search, SkipForward, Trash2, Upload } from "lucide-react";
 import SongReviewModal from "@/components/SongReviewModal";
 import { recognizeFromImage, recognizeFromImageAndStore, type SongMatch, type SongRecognitionResult } from "@/features/recognition/api";
+import { runCleaningPipeline, type Song } from "@/lib/songCleaning";
 import { lookupCoverArtUrls } from "@/features/recognition/coverArt";
 import { normalizeTrackKey } from "@/lib/songIdentity";
 import { useLanguage } from "@/lib/LanguageContext";
@@ -130,6 +131,10 @@ interface QueueItem {
   tidalMatchAlbum?: string;
   tidalMatchDurationSec?: number;
   tidalCandidateCount?: number;
+  tidalCandidates?: TidalSearchCandidate[];
+  tidalCandidateIndex?: number;
+  tidalMatchConfidence?: number;
+  invalidUrlRetryCount?: number;
   isPlaylist?: boolean;
   alreadyDownloaded?: boolean;
   libraryDownloadedAt?: string;
@@ -502,9 +507,83 @@ export default function Download4Page() {
   );
 }
 
+// ---- Detect what kind of TIDAL URL this is ----
+function tidalUrlKind(value: string): "track" | "album" | "playlist" | "mix" | undefined {
+  try {
+    const segments = new URL(value).pathname.split("/").filter(Boolean).map((s) => s.toLowerCase());
+    const kind = segments[0] === "browse" ? segments[1] : segments[0];
+    return kind === "track" || kind === "album" || kind === "playlist" || kind === "mix" ? kind : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// ---- Prevent double suffixes like "Song (Metal Version) (Metal Version)" ----
+function deduplicateTitleSuffix(title: string): string {
+  return title.replace(/\s*(\([^)]+\))\s*\1+/gi, " $1");
+}
+
+// ---- Global TIDAL search throttler with 429 backoff ----
+let tidalSearchQueue: Promise<void> = Promise.resolve();
+
+async function throttledSearch(
+  query: string,
+  options?: Parameters<typeof searchTidalUrl>[1],
+  maxRetries = 3,
+  baseDelayMs = 2000,
+): Promise<ReturnType<typeof searchTidalUrl>> {
+  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  // The actual search with retry logic
+  const execute = async (attempt = 0): Promise<ReturnType<typeof searchTidalUrl>> => {
+    const result = await searchTidalUrl(query, options);
+    if (result.status === 429 && attempt < maxRetries) {
+      const waitSeconds = Math.min(60, Math.pow(2, attempt) * 15);
+      console.warn(`[TIDAL] Rate limited. Waiting ${waitSeconds}s before retry (attempt ${attempt + 1}/${maxRetries})...`);
+      await wait(waitSeconds * 1000);
+      return execute(attempt + 1);
+    }
+    return result;
+  };
+
+  // Create a promise that resolves when this whole operation is done
+  // (so the next request can start)
+  let resolveQueue: (() => void) | undefined;
+  const queueDone = new Promise<void>(resolve => {
+    resolveQueue = resolve;
+  });
+
+  // The real search promise
+  const previous = tidalSearchQueue;
+  const searchPromise = previous
+    .then(() => wait(baseDelayMs))
+    .then(() => execute())
+    .finally(() => resolveQueue?.());
+
+  // Set the queue to the "done" promise – this is a Promise<void>, so no type error
+  tidalSearchQueue = queueDone;
+
+  // Return the actual search result
+  return searchPromise;
+}
+
 function TidalDownloadClient() {
+  const [isPending, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<Download4Tab>("downloader");
+  // Add this helper somewhere inside TidalDownloadClient or import it
+  const songToSongMatch = (song: Song): SongMatch => ({
+    id: song.id,
+    songName: song.title,
+    artist: song.artist,
+    album: song.album || '',
+    genre: song.genre || '',
+    releaseYear: song.releaseYear ? Number(song.releaseYear) : null,
+    platformLinks: {},
+    albumArtUrl: song.coverUrl || '',
+    confidence: song.confidence || 1,
+    durationSec: 0,
+  });
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -556,7 +635,7 @@ function TidalDownloadClient() {
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [showSkippedImportRows, setShowSkippedImportRows] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const [importedSongs, setImportedSongs] = useState<SongMatch[]>([]);
+  const [importedSongs, setImportedSongs] = useState<Song[]>([]);
   const [droppedOcrFiles, setDroppedOcrFiles] = useState<DroppedImportBatch | null>(null);
   const [isImportDropActive, setIsImportDropActive] = useState(false);
   const [autoAssigningUrls, setAutoAssigningUrls] = useState(false);
@@ -616,6 +695,19 @@ function TidalDownloadClient() {
   const zipExportInFlightRef = useRef(false);
   const pauseRequestedRef = useRef(false);
   const skipRequestedRef = useRef(false);
+  const skipDelayRef = useRef(false);
+  const skipDelay = useCallback(() => {
+    skipDelayRef.current = true;
+  }, []);
+    const copyLibrary = useCallback(async () => {
+    try {
+      const text = JSON.stringify(libraryTracks, null, 2);
+      await navigator.clipboard.writeText(text);
+      setCompletionNotice("Library copied to clipboard.");
+    } catch {
+      setLibraryError("Could not copy library to clipboard.");
+    }
+  }, [libraryTracks]);
   const autoAssignInFlightRef = useRef(false);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const coverPreviewRef = useRef("");
@@ -824,6 +916,10 @@ function TidalDownloadClient() {
     }
     try {
       const handle = await picker();
+      const perm = await (handle as any).requestPermission?.({ mode: "readwrite" });
+      if (perm && perm !== "granted") {
+        throw new Error("Folder permission denied. Please allow write access and try again.");
+      }
       downloadDirectoryHandleRef.current = handle;
       setDownloadDirectoryName(handle.name);
       setLibraryError("");
@@ -927,7 +1023,8 @@ function TidalDownloadClient() {
           pauseRequestedRef.current = false;
           setIsPaused(false);
           setState("idle");
-          window.setTimeout(() => void processQueue(false, { resume: true }), 0);
+          // Do not auto-resume without a user gesture — folder write permission requires a real click.
+          // Leave isPaused as-is; the Resume button will call processQueue with a fresh click.        
         }
         return;
       }
@@ -1277,36 +1374,62 @@ function TidalDownloadClient() {
     }
   }
 
-  async function handleJsonImport(file: File | null) {
-    if (!file || state === "processing") return;
-    setErrorMessage("");
-    try {
-      const detailed = parseImportedTidalSongs(await file.text());
-      setImportedSongs(detailed.songs);
-      setImportReport({
-        parsedCount: detailed.songs.length,
-        invalidCount: detailed.invalidItems.length,
-        skippedCount: detailed.skippedCount,
-        firstInvalidReason: detailed.invalidItems[0],
-        invalidItems: detailed.invalidItems,
-        filename: file.name,
-      });
-      setShowSkippedImportRows(false);
-      setShowReviewModal(true);
-    } catch (error) {
-      const message = error instanceof SongImportError ? error.message : "Could not import this JSON file.";
+  const handleJsonImport = useCallback(async (file: File | null) => {
+  if (!file || state === "processing") return;
+  setErrorMessage("");
+  try {
+    const text = await file.text();
+    // Create worker
+    const worker = new Worker(new URL('@/workers/importWorker', import.meta.url));
+    worker.postMessage({ text });
+
+    worker.onmessage = (e) => {
+      if (e.data.success) {
+        const { songs, invalidItems, skippedCount } = e.data;
+        // Instead of setting all at once, we'll chunk the update
+        setImportedSongs([]); // reset first
+        const batchSize = 100;
+        let index = 0;
+        const processBatch = () => {
+          const batch = songs.slice(index, index + batchSize);
+          setImportedSongs(prev => [...prev, ...batch]);
+          index += batchSize;
+          if (index < songs.length) {
+            requestIdleCallback(processBatch);
+          } else {
+            // all songs loaded – open modal
+            setImportReport({
+              parsedCount: songs.length,
+              invalidCount: invalidItems.length,
+              skippedCount,
+              firstInvalidReason: invalidItems[0],
+              invalidItems,
+              filename: file.name,
+            });
+            setShowSkippedImportRows(false);
+            startTransition(() => setShowReviewModal(true));
+          }
+        };
+        requestIdleCallback(processBatch);
+        worker.terminate();
+      } else {
+        setState("error");
+        setErrorMessage(e.data.error || "Import failed");
+        worker.terminate();
+      }
+    };
+
+    worker.onerror = (err) => {
       setState("error");
-      setImportReport({
-        parsedCount: 0,
-        invalidCount: 1,
-        skippedCount: 0,
-        firstInvalidReason: `${message} Expected an array of strings/song objects or { "songs": [...] }, { "results": [...] }, or { "matches": [...] }.`,
-        invalidItems: [`${message} Expected an array of strings/song objects or { "songs": [...] }, { "results": [...] }, or { "matches": [...] }.`],
-        filename: file.name,
-      });
-      setErrorMessage(message);
-    }
+      setErrorMessage(`Worker error: ${err.message}`);
+      worker.terminate();
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not import this JSON file.";
+    setState("error");
+    setErrorMessage(message);
   }
+}, [state]);
 
   function handleCancelImportedSongs() {
     setShowReviewModal(false);
@@ -1361,13 +1484,34 @@ function TidalDownloadClient() {
 
   const MIN_TIDAL_SIMILARITY = 0.65;
 
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = new Array(n + 1);
+  for (let j = 0; j <= n; j++) dp[j] = j;
+  for (let i = 1; i <= m; i++) {
+    let prev = dp[0];
+    dp[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const temp = dp[j];
+      dp[j] = a[i - 1] === b[j - 1]
+        ? prev
+        : 1 + Math.min(prev, dp[j], dp[j - 1]);
+      prev = temp;
+    }
+  }
+  return dp[n];
+}
+
+  // Replaces the old Jaccard-based stringSimilarity
   function stringSimilarity(a: string, b: string): number {
-    const setA = new Set(a.toLowerCase().split(/\s+/).filter(Boolean));
-    const setB = new Set(b.toLowerCase().split(/\s+/).filter(Boolean));
-    if (setA.size === 0 && setB.size === 0) return 1;
-    if (setA.size === 0 || setB.size === 0) return 0;
-    const intersection = [...setA].filter((word) => setB.has(word)).length;
-    return intersection / (setA.size + setB.size - intersection);
+    const s1 = a.toLowerCase().trim();
+    const s2 = b.toLowerCase().trim();
+    if (!s1 || !s2) return 0;
+    const maxLen = Math.max(s1.length, s2.length);
+    if (maxLen === 0) return 1;
+    return 1 - levenshteinDistance(s1, s2) / maxLen;
   }
 
   const BG_TO_LATIN: Record<string, string> = {
@@ -1387,69 +1531,308 @@ function transliterateBg(text: string): string {
   return text.split("").map((char) => BG_TO_LATIN[char] ?? char).join("");
 }
 
+function levenshteinDistanceStandalone(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = new Array(n + 1);
+  for (let j = 0; j <= n; j++) dp[j] = j;
+  for (let i = 1; i <= m; i++) {
+    let prev = dp[0];
+    dp[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const temp = dp[j];
+      dp[j] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[j], dp[j - 1]);
+      prev = temp;
+    }
+  }
+  return dp[n];
+}
+
+function stringSimilarityStandalone(a: string, b: string): number {
+  const s1 = a.toLowerCase().trim();
+  const s2 = b.toLowerCase().trim();
+  if (!s1 || !s2) return 0;
+  const maxLen = Math.max(s1.length, s2.length);
+  return maxLen === 0 ? 1 : 1 - levenshteinDistanceStandalone(s1, s2) / maxLen;
+}
+
+const BG_TO_LATIN_STANDALONE: Record<string, string> = {
+  "а":"a","б":"b","в":"v","г":"g","д":"d","е":"e","ж":"zh","з":"z","и":"i","й":"y","к":"k","л":"l","м":"m","н":"n","о":"o","п":"p","р":"r","с":"s","т":"t","у":"u","ф":"f","х":"h","ц":"ts","ч":"ch","ш":"sh","щ":"sht","ъ":"a","ь":"y","ю":"yu","я":"ya",
+  "А":"A","Б":"B","В":"V","Г":"G","Д":"D","Е":"E","Ж":"Zh","З":"Z","И":"I","Й":"Y","К":"K","Л":"L","М":"M","Н":"N","О":"O","П":"P","Р":"R","С":"S","Т":"T","У":"U","Ф":"F","Х":"H","Ц":"Ts","Ч":"Ch","Ш":"Sh","Щ":"Sht","Ъ":"A","Ь":"Y","Ю":"Yu","Я":"Ya",
+};
+
+function transliterateBgStandalone(text: string): string {
+  return text.split("").map((char) => BG_TO_LATIN_STANDALONE[char] ?? char).join("");
+}
+
+const ARTIST_ALIASES: Record<string, string[]> = {
+  "2pac": ["tupac", "tupac shakur", "makaveli"],
+  "tupac": ["2pac", "tupac shakur", "makaveli"],
+  "eminem": ["marshall mathers", "slim shady"],
+  "bbno$": ["bbno", "baby no money"],
+  // add more as you hit them
+};
+
+function artistMatchesWithAlias(a: string, b: string): number {
+  const direct = stringSimilarityStandalone(a, b);
+  if (direct >= ARTIST_FLOOR) return direct;
+  const aKey = a.toLowerCase().trim();
+  const bKey = b.toLowerCase().trim();
+  const aAliases = ARTIST_ALIASES[aKey] ?? [];
+  const bAliases = ARTIST_ALIASES[bKey] ?? [];
+  if (aAliases.includes(bKey) || bAliases.includes(aKey)) return 1;
+  // check partial containment (handles "2Pac" vs "2Pac, Dr. Dre" collabs)
+  if (aKey.length > 2 && bKey.includes(aKey)) return 0.7;
+  if (bKey.length > 2 && aKey.includes(bKey)) return 0.7;
+  return direct;
+}
+
+const EARLY_EXIT_CONFIDENCE = 0.5;
+const MIN_ACCEPT_CONFIDENCE = 0.3;
+const ARTIST_FLOOR = 0.2;
+const negativeSearchCache = new Map<string, number>();
+const NEGATIVE_CACHE_TTL_MS = 10 * 60 * 1000;
+
+type TidalMatchResult = { url: string; title: string; artist: string; album?: string; confidence: number; strategy: string };
+
+class TidalTokenExpiredError extends Error {
+  constructor() {
+    super("TIDAL token expired during search cascade.");
+    this.name = "TidalTokenExpiredError";
+  }
+}
+type SearchDebugEntry = { ts: string; artist?: string; title?: string; outcome: string; confidence?: number; strategy?: string; ms: number };
+let searchDebugLogGlobal: SearchDebugEntry[] = [];
+
+function logSearchDebug(entry: SearchDebugEntry) {
+  searchDebugLogGlobal = [entry, ...searchDebugLogGlobal].slice(0, 300);
+}
+
+function normalizeSearchTextStandalone(value: string | undefined): string {
+  return (value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function isTruncatedPrefixTitle(candidateTitle: string, requestedTitle: string): boolean {
+  const c = normalizeSearchTextStandalone(candidateTitle);
+  const r = normalizeSearchTextStandalone(requestedTitle);
+  return r.length >= 12 && r.length <= 28 && c.startsWith(r) && c.length > r.length;
+}
+
+async function verifyTidalTrackUrl(
+  url: string,
+  expected: { title?: string; artist?: string; durationSec?: number },
+  signal?: AbortSignal
+): Promise<boolean> {
+  try {
+    const params = new URLSearchParams({ action: "trackinfo", url });
+    const response = await fetch(`${TIDAL_ENDPOINT}?${params.toString()}`, { cache: "no-store", signal });
+    if (!response.ok) return false;
+    const payload = await response.json().catch(() => null) as {
+      metadata?: { title?: string; artist?: string; durationSec?: number };
+    } | null;
+    if (!payload?.metadata) return false;
+
+    const { title, artist, durationSec } = payload.metadata;
+    const titleOk = !expected.title || stringSimilarityStandalone(title ?? "", expected.title) > 0.85;
+    const artistOk = !expected.artist || stringSimilarityStandalone((artist ?? "").toLowerCase(), expected.artist.toLowerCase()) > 0.75;
+    const durationOk = !expected.durationSec || !durationSec || Math.abs(durationSec - expected.durationSec) <= 5;
+
+    return titleOk && artistOk && durationOk;
+  } catch {
+    return false;
+  }
+}
+
+async function findBestTidalMatch(
+  item: Pick<QueueItem, "artist" | "title" | "album" | "durationSec" | "url">,
+  verify: (url: string, expected: { title?: string; artist?: string; durationSec?: number }, signal?: AbortSignal) => Promise<boolean>,
+  signal?: AbortSignal,
+): Promise<TidalMatchResult | null> {
+  const startedAt = Date.now();
+  const rawArtist = item.artist?.trim() ?? "";
+  const rawTitle = item.title?.trim() ?? "";
+  if (!rawArtist && !rawTitle) return null;
+
+  const cacheKey = normalizeTrackKey(rawTitle, rawArtist);
+  const lastMiss = negativeSearchCache.get(cacheKey);
+  if (lastMiss && Date.now() - lastMiss < NEGATIVE_CACHE_TTL_MS) {
+    logSearchDebug({ ts: new Date().toISOString(), artist: rawArtist, title: rawTitle, outcome: "skipped-negative-cache", ms: 0 });
+    return null;
+  }
+
+  // Single search call with throttling + retry
+  const result = await throttledSearch(`${rawArtist} ${rawTitle}`, {
+    artist: rawArtist,
+    title: rawTitle,
+    duration: item.durationSec,
+    signal,
+  });
+
+  // --- DEBUG LOG ---
+  console.log("[FIND BEST] Candidates received:", result.candidates?.length || 0);
+  if (result.candidates?.length) {
+    console.log("[FIND BEST] First candidate:", {
+      title: result.candidates[0].title,
+      artist: result.candidates[0].artist,
+      duration: result.candidates[0].duration,
+    });
+  }
+  // --- END DEBUG ---
+
+  if (result.status === 429) {
+    // Already retried, give up
+    logSearchDebug({ ts: new Date().toISOString(), artist: rawArtist, title: rawTitle, outcome: "rate-limit-exhausted", ms: Date.now() - startedAt });
+    return null;
+  }
+
+  if (result.status === 401) {
+    throw new TidalTokenExpiredError();
+  }
+
+  const candidates = result.candidates ?? [];
+  let best: TidalMatchResult | null = null;
+
+  for (const candidate of candidates) {
+    const titleSim = Math.max(
+      stringSimilarityStandalone(rawTitle, candidate.title),
+      isTruncatedPrefixTitle(candidate.title, rawTitle) ? 0.9 : 0,
+    );
+    const artistSim = artistMatchesWithAlias(rawArtist, candidate.artist);
+
+    console.log("[FIND BEST] Similarity:", {
+      artistSim,
+      titleSim,
+      candidateTitle: candidate.title,
+      requestedTitle: rawTitle,
+      accepted: artistSim >= 0.2 && titleSim >= 0.4,
+    });
+
+    if (artistSim < 0.2 && titleSim < 0.4) continue;
+    let confidence = titleSim * 0.6 + artistSim * 0.4;
+    if (typeof item.durationSec === "number" && typeof candidate.duration === "number" && Math.abs(candidate.duration - item.durationSec) <= 5) {
+      confidence = Math.min(1, confidence + 0.05);
+    }
+    if (!best || confidence > best.confidence) {
+      best = { url: candidate.url, title: candidate.title, artist: candidate.artist, album: candidate.album, confidence, strategy: `${rawArtist} :: ${rawTitle}` };
+    }
+    if (best && best.confidence >= EARLY_EXIT_CONFIDENCE) {
+      logSearchDebug({ ts: new Date().toISOString(), artist: rawArtist, title: rawTitle, outcome: "early-exit", confidence: best.confidence, strategy: best.strategy, ms: Date.now() - startedAt });
+      return best;
+    }
+  }
+
+  if (best && best.confidence >= MIN_ACCEPT_CONFIDENCE) {
+    const verified = await verify(best.url, { title: rawTitle, artist: rawArtist, durationSec: item.durationSec }, signal).catch(() => false);
+    if (verified) {
+      logSearchDebug({ ts: new Date().toISOString(), artist: rawArtist, title: rawTitle, outcome: "accepted-after-verify", confidence: best.confidence, strategy: best.strategy, ms: Date.now() - startedAt });
+      return best;
+    }
+    logSearchDebug({ ts: new Date().toISOString(), artist: rawArtist, title: rawTitle, outcome: "rejected-failed-verify", confidence: best.confidence, ms: Date.now() - startedAt });
+  }
+
+  if (!best) {
+    negativeSearchCache.set(cacheKey, Date.now());
+  }
+  logSearchDebug({ ts: new Date().toISOString(), artist: rawArtist, title: rawTitle, outcome: "no-confident-match", confidence: best?.confidence, ms: Date.now() - startedAt });
+  return null;
+}
+
 async function assignTidalUrls(items: QueueItem[], options: { mode?: "import" | "research" } = {}): Promise<void> {
-    if (autoAssignInFlightRef.current) {
-      setAutoAssignMessage("TIDAL URL assignment is already running. Please wait for it to finish.");
-      return;
-    }
+  if (autoAssignInFlightRef.current) {
+    setAutoAssignMessage("TIDAL URL assignment is already running. Please wait for it to finish.");
+    return;
+  }
 
-    const isManualReSearch = options.mode === "research";
-    const searchable = items.filter(isManualReSearch ? isTidalUrlReSearchCandidate : isAutoAssignableTidalUrlItem);
-    if (searchable.length === 0) return;
-    if (autoAssignMessageTimerRef.current !== null) {
-      window.clearTimeout(autoAssignMessageTimerRef.current);
-      autoAssignMessageTimerRef.current = null;
-    }
-    if (isBrowserOffline()) {
-      setAutoAssignMessage("You appear to be offline. TIDAL URL assignment is saved and ready to retry when the network returns.");
-      setQueue((current) => current.map((entry) => searchable.some((pending) => pending.id === entry.id) && entry.status === "searching"
-        ? { ...entry, status: "pending", progress: 0, progressMessage: "Waiting for network", errorMsg: "Offline - retry URL assignment when the network returns." }
-        : entry));
-      return;
-    }
+  // ----- Strip common metadata noise before comparison -----
+  const cleanForSimilarity = (text: string): string => {
+    return text
+      .replace(/\s*\[(official|lyrics?|audio|video|visualizer|hd|hq|explicit|clean|instrumental|edit|remix|live|acoustic|version|deluxe|bonus|single|album|track|music video)\]\s*/gi, " ")
+      .replace(/\s*\((official|lyrics?|audio|video|visualizer|hd|hq|explicit|clean|instrumental|edit|remix|live|acoustic|version|deluxe|bonus|single|album|track|music video|feat\.?\s*[^)]*|with\s*[^)]*|ft\.?\s*[^)]*|and\s*[^)]*|prod\.?\s*[^)]*|\([^)]*remix[^)]*\))\s*/gi, " ")
+      .replace(/\s*-\s*(remix|live|acoustic|version|edit|deluxe|instrumental|clean|explicit)\s*/gi, " ")
+      .replace(/\s*[\(\[]\s*(feat|ft|with|prod|remix|edit|version|acoustic|live|deluxe|bonus|single|edit|instrumental|official|video|audio|hd|hq)\s*[\)\]]/gi, " ")
+      .replace(/[^\w\s]/g, " ")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      .toLowerCase();
+  };
 
-    const controller = new AbortController();
-    autoAssignAbortRef.current?.abort();
-    autoAssignAbortRef.current = controller;
-    autoAssignInFlightRef.current = true;
-    setAutoAssigningUrls(true);
-    let found = 0;
-    let lastSearchCallStartedAt = 0;
-    let stoppedReason: "aborted" | "token" | "rate-limit" | null = null;
-    const reusableUrlsByTrack = new Map<string, string>();
-    const MAX_RATE_LIMIT_RETRIES = 5;
-    const BASE_RETRY_DELAY_SECONDS = 60;
+  const MATCH_THRESHOLD = 0.6; // lowered from 0.7
 
-    for (const existing of queueRef.current) {
-      const key = queueTrackKey(existing);
-      if (key && existing.url && isTIDALUrl(existing.url)) reusableUrlsByTrack.set(key, existing.url);
-    }
+  const isManualReSearch = options.mode === "research";
+  const searchable = items.filter(isManualReSearch ? isTidalUrlReSearchCandidate : isAutoAssignableTidalUrlItem);
+  if (searchable.length === 0) return;
+  if (autoAssignMessageTimerRef.current !== null) {
+    window.clearTimeout(autoAssignMessageTimerRef.current);
+    autoAssignMessageTimerRef.current = null;
+  }
+  if (isBrowserOffline()) {
+    setAutoAssignMessage("You appear to be offline. TIDAL URL assignment is saved and ready to retry when the network returns.");
+    setQueue((current) =>
+      current.map((entry) =>
+        searchable.some((pending) => pending.id === entry.id) && entry.status === "searching"
+          ? {
+              ...entry,
+              status: "pending",
+              progress: 0,
+              progressMessage: "Waiting for network",
+              errorMsg: "Offline - retry URL assignment when the network returns.",
+            }
+          : entry
+      )
+    );
+    return;
+  }
 
-    const runRateLimitedSearch = async (item: QueueItem, query: string) => {
-      if (lastSearchCallStartedAt > 0) {
-        const elapsed = Date.now() - lastSearchCallStartedAt;
-        if (elapsed < AUTO_ASSIGN_SEARCH_DELAY_MS) await wait(AUTO_ASSIGN_SEARCH_DELAY_MS - elapsed, controller.signal);
+  const controller = new AbortController();
+  autoAssignAbortRef.current?.abort();
+  autoAssignAbortRef.current = controller;
+  autoAssignInFlightRef.current = true;
+  setAutoAssigningUrls(true);
+  let found = 0;
+  let stoppedReason: "aborted" | "token" | "rate-limit" | null = null;
+  const reusableUrlsByTrack = new Map<string, string>();
+  const MAX_RATE_LIMIT_RETRIES = 5;
+  const BASE_RETRY_DELAY_SECONDS = 60;
+
+  for (const existing of queueRef.current) {
+    const key = queueTrackKey(existing);
+    if (key && existing.url && isTIDALUrl(existing.url)) reusableUrlsByTrack.set(key, existing.url);
+  }
+
+  function cleanForSimilarityStandalone(text: string): string {
+    return text
+      .replace(/\s*\[(official|lyrics?|audio|video|visualizer|hd|hq|explicit|clean|instrumental|edit|remix|live|acoustic|version|deluxe|bonus|single|album|track)\]\s*/gi, " ")
+      .replace(/\s*\((official|lyrics?|audio|video|visualizer|hd|hq|explicit|clean|instrumental|edit|remix|live|acoustic|version|deluxe|bonus|single|album|track|feat\.?\s*[^)]*|with\s*[^)]*|ft\.?\s*[^)]*|and\s*[^)]*)\)\s*/gi, " ")
+      .replace(/\s*-\s*(remix|live|acoustic|version|edit|deluxe|instrumental|clean|explicit)\s*/gi, " ")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
+  try {
+    for (let index = 0; index < searchable.length; index += 1) {
+      if (controller.signal.aborted) {
+        stoppedReason = "aborted";
+        break;
       }
-      lastSearchCallStartedAt = Date.now();
-      return searchTidalUrl(query, { artist: item.artist, title: item.title, album: item.album, duration: item.durationSec, signal: controller.signal });
-    };
-
-    try {
-      for (let index = 0; index < searchable.length; index += 1) {
-        if (controller.signal.aborted) {
-          stoppedReason = "aborted";
-          break;
-        }
-        const item = searchable[index]!;
+      const item = searchable[index]!;
+      try {
         const key = queueTrackKey(item);
         const reusableUrl = key ? reusableUrlsByTrack.get(key) : undefined;
         if (reusableUrl) {
           found += 1;
-          updateQueueItem(item.id, { status: "pending", url: reusableUrl, errorMsg: undefined, progress: 100, progressMessage: "Reused TIDAL URL from queue", isPlaylist: false });
+          updateQueueItem(item.id, {
+            status: "pending",
+            url: reusableUrl,
+            errorMsg: undefined,
+            progress: 100,
+            progressMessage: "Reused TIDAL URL from queue",
+            isPlaylist: false,
+          });
           continue;
         }
 
-        // Build query — transliterate if Cyrillic is detected
         const rawArtist = item.artist?.trim() ?? "";
         const rawTitle = item.title?.trim() ?? "";
         const rawQuery = [rawArtist, rawTitle].filter(Boolean).join(" - ");
@@ -1464,135 +1847,132 @@ async function assignTidalUrls(items: QueueItem[], options: { mode?: "import" | 
           errorMsg: undefined,
         });
 
-        let result = await runRateLimitedSearch(item, query);
-        if (controller.signal.aborted) {
-          stoppedReason = "aborted";
-          break;
-        }
-
-        // ---- Smart rate‑limit retry (up to 5 attempts) ----
-        if (result.status === 429) {
-          let rateLimitRetries = 0;
-          while (rateLimitRetries < MAX_RATE_LIMIT_RETRIES) {
-            rateLimitRetries++;
-            const delay = Math.max(BASE_RETRY_DELAY_SECONDS, result.retryAfter ?? BASE_RETRY_DELAY_SECONDS) * rateLimitRetries;
-            setAutoAssignMessage(`Rate limited. Waiting ${delay}s (attempt ${rateLimitRetries}/${MAX_RATE_LIMIT_RETRIES})...`);
-            updateQueueItem(item.id, { progressMessage: `Rate limited. Retrying after ${delay}s...` });
-            await wait(delay * 1000, controller.signal);
-            result = await runRateLimitedSearch(item, query);
-            if (controller.signal.aborted) break;
-            if (result.status !== 429) break; // recovered or got a different error
-          }
-          if (controller.signal.aborted) {
-            stoppedReason = "aborted";
-            break;
-          }
-          if (result.status === 429) {
-            // Exhausted all retries
-            stoppedReason = "rate-limit";
-            updateQueueItem(item.id, { status: "error", progress: 100, progressMessage: "Rate limited", errorMsg: "TIDAL rate limit reached after 5 retries. Resume later." });
-            setQueue((current) => current.map((entry) => searchable.some((pending) => pending.id === entry.id) && entry.status === "searching"
-              ? { ...entry, status: "pending", progress: 0, progressMessage: "TIDAL search paused by rate limit", errorMsg: "TIDAL search paused by rate limit" }
-              : entry));
-            setErrorMessage("TIDAL rate limit reached after multiple retries. Progress is saved; resume the queue after the cooldown.");
+        let match: TidalMatchResult | null = null;
+        try {
+          match = await findBestTidalMatch(item, verifyTidalTrackUrl, controller.signal);
+        } catch (matchError) {
+          if (matchError instanceof TidalTokenExpiredError) {
+            stoppedReason = "token";
+            setTokenExpired(true);
+            updateQueueItem(item.id, { status: "error", progress: 100, progressMessage: "Failed", errorMsg: "Token expired" });
+            setQueue((current) =>
+              current.map((entry) =>
+                searchable.some((pending) => pending.id === entry.id) && entry.status === "searching"
+                  ? { ...entry, status: "pending", progress: 0, progressMessage: "TIDAL search stopped - resume after login", errorMsg: entry.id === item.id ? entry.errorMsg : "TIDAL search stopped - resume after login" }
+                  : entry
+              )
+            );
+            setErrorMessage("TIDAL token expired. Please log in and resume the queue.");
             setState("error");
+            void loadTidalDiagnostics();
             break;
           }
-          // If we broke out because result.status !== 429, continue processing
+          throw matchError;
         }
 
-        // ---- Process search result ----
-        if (result.url) {
-          const best = result.best;
-          // Similarity guard (bypassed for short queries ≤ 5 characters)
-          const queryStr = `${item.artist ?? ""} ${item.title ?? ""}`.trim();
-          const candidateStr = best ? `${best.artist} ${best.title}`.trim() : "";
-          if (candidateStr && queryStr && queryStr.length > 5 && stringSimilarity(queryStr, candidateStr) < MIN_TIDAL_SIMILARITY) {
-            updateQueueItem(item.id, {
-              status: "skipped",
-              progress: 100,
-              errorMsg: "Possible TIDAL mismatch - check artist/title",
-              progressMessage: "Possible TIDAL mismatch - check artist/title",
-            });
-            continue;
-          }
+        if (match) {
           found += 1;
-          const matchLabel = best ? formatTidalCandidate(best) : "TIDAL track";
-          const libraryMatch = findLibraryTrackForUrl(result.url, libraryTracks, downloadedUrlSet);
+          const libraryMatch = findLibraryTrackForUrl(match.url, libraryTracks, downloadedUrlSet);
           updateQueueItem(item.id, {
             status: "pending",
-            url: result.url,
+            url: match.url,
             alreadyDownloaded: Boolean(libraryMatch),
             libraryDownloadedAt: libraryMatch?.downloadedAt,
             libraryFilePath: libraryMatch?.filePath,
             errorMsg: undefined,
             progress: 100,
-            progressMessage: libraryMatch ? `Matched TIDAL: ${matchLabel}. Already in Smart Library.` : `Matched TIDAL: ${matchLabel}`,
-            tidalMatchTitle: best?.title,
-            tidalMatchArtist: best?.artist,
-            tidalMatchAlbum: best?.album,
-            tidalMatchDurationSec: best?.duration,
-            tidalCandidateCount: undefined,
+            progressMessage: `Auto-matched (${Math.round(match.confidence * 100)}%): ${match.artist} - ${match.title}`,
+            tidalMatchTitle: match.title,
+            tidalMatchArtist: match.artist,
+            tidalMatchAlbum: match.album,
+            tidalMatchConfidence: match.confidence,
             isPlaylist: false,
           });
-          if (key) reusableUrlsByTrack.set(key, result.url);
-        } else if (result.status === 401) {
-          stoppedReason = "token";
-          setTokenExpired(true);
-          updateQueueItem(item.id, { status: "error", progress: 100, progressMessage: "Failed", errorMsg: "Token expired" });
-          setQueue((current) => current.map((entry) => searchable.some((pending) => pending.id === entry.id) && entry.status === "searching"
-            ? { ...entry, status: "pending", progress: 0, progressMessage: "TIDAL search stopped - resume after login", errorMsg: entry.id === item.id ? entry.errorMsg : "TIDAL search stopped - resume after login" }
-            : entry));
-          setErrorMessage("TIDAL token expired. Please log in and resume the queue.");
-          setState("error");
-          void loadTidalDiagnostics();
-          break;
+          if (key) reusableUrlsByTrack.set(key, match.url);
         } else {
-          const noMatch = result.error || "No match found on TIDAL";
           updateQueueItem(item.id, {
             status: "skipped",
             progress: 100,
-            errorMsg: noMatch,
-            progressMessage: noMatch,
+            errorMsg: "No confident match found after full search cascade",
+            progressMessage: "No confident match found after full search cascade",
           });
         }
+      } catch (err) {
+        // Catch any unexpected error for this item and continue
+        const msg = err instanceof Error ? err.message : "Unexpected error during TIDAL search";
+        updateQueueItem(item.id, {
+          status: "error",
+          progress: 100,
+          progressMessage: "Search error",
+          errorMsg: msg,
+        });
+        recordLastError(item, msg, err);
+        // Continue to next item
       }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        stoppedReason = "aborted";
-      } else {
-        const message = error instanceof Error ? error.message : "TIDAL URL assignment failed.";
-        setErrorMessage(message);
-        setState("error");
-        setQueue((current) => current.map((entry) => entry.status === "searching"
-          ? { ...entry, status: "pending", progress: 0, progressMessage: "TIDAL search interrupted - ready to retry", errorMsg: "TIDAL search interrupted - ready to retry" }
-          : entry));
-      }
-    } finally {
-      if (autoAssignAbortRef.current === controller) autoAssignAbortRef.current = null;
-      autoAssignInFlightRef.current = false;
-      setAutoAssigningUrls(false);
     }
-    if (stoppedReason === "aborted") {
-      setQueue((current) => current.map((entry) => searchable.some((pending) => pending.id === entry.id) && entry.status === "searching"
-        ? { ...entry, status: "pending", progress: 0, progressMessage: "TIDAL search stopped - ready to retry", errorMsg: "TIDAL search stopped - ready to retry" }
-        : entry));
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      stoppedReason = "aborted";
+    } else {
+      const message = error instanceof Error ? error.message : "TIDAL URL assignment failed.";
+      setErrorMessage(message);
+      setState("error");
+      setQueue((current) =>
+        current.map((entry) =>
+          entry.status === "searching"
+            ? {
+                ...entry,
+                status: "pending",
+                progress: 0,
+                progressMessage: "TIDAL search interrupted - ready to retry",
+                errorMsg: "TIDAL search interrupted - ready to retry",
+              }
+            : entry
+        )
+      );
     }
-    const missing = Math.max(0, searchable.length - found);
-    const summary = `Found URLs for ${found} songs, ${missing} songs still missing.`;
-    setAutoAssignMessage(stoppedReason === "aborted"
+  } finally {
+    if (autoAssignAbortRef.current === controller) autoAssignAbortRef.current = null;
+    autoAssignInFlightRef.current = false;
+    setAutoAssigningUrls(false);
+  }
+
+  if (stoppedReason === "aborted") {
+    setQueue((current) =>
+      current.map((entry) =>
+        searchable.some((pending) => pending.id === entry.id) && entry.status === "searching"
+          ? {
+              ...entry,
+              status: "pending",
+              progress: 0,
+              progressMessage: "TIDAL search stopped - ready to retry",
+              errorMsg: "TIDAL search stopped - ready to retry",
+            }
+          : entry
+      )
+    );
+  }
+
+  const missing = Math.max(0, searchable.length - found);
+  const summary = `Found URLs for ${found} songs, ${missing} songs still missing.`;
+  setAutoAssignMessage(
+    stoppedReason === "aborted"
       ? `Search stopped. ${summary}`
       : stoppedReason === "token"
         ? `TIDAL login required. ${summary}`
         : stoppedReason === "rate-limit"
           ? `TIDAL rate limit reached after retries. ${summary}`
-          : summary);
-    if (autoAssignMessageTimerRef.current !== null) window.clearTimeout(autoAssignMessageTimerRef.current);
-    autoAssignMessageTimerRef.current = window.setTimeout(() => {
-      setAutoAssignMessage("");
-      autoAssignMessageTimerRef.current = null;
-    }, 6000);
+          : summary
+  );
+
+  if (autoAssignMessageTimerRef.current !== null) {
+    window.clearTimeout(autoAssignMessageTimerRef.current);
   }
+  autoAssignMessageTimerRef.current = window.setTimeout(() => {
+    setAutoAssignMessage("");
+    autoAssignMessageTimerRef.current = null;
+  }, 6000);
+}
 
   function reSearchTidalUrls() {
     if (state === "processing") return;
@@ -1631,6 +2011,14 @@ async function assignTidalUrls(items: QueueItem[], options: { mode?: "import" | 
         reject(new DOMException("Export cancelled.", "AbortError"));
       };
       const tick = () => {
+        if (skipDelayRef.current) {
+          skipDelayRef.current = false;
+          cleanup();
+          setCooldownLabel("");
+          setCooldownRemaining("");
+          resolve();
+          return;
+        }
         const remaining = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
         setCooldownRemaining(formatDurationSeconds(remaining));
         if (remaining <= 0) finish();
@@ -1779,7 +2167,6 @@ async function assignTidalUrls(items: QueueItem[], options: { mode?: "import" | 
           processedById.set(item.id, skipped);
           updateQueueItem(item.id, skipped);
           setLastProcessedItemId(item.id);
-          await waitAfterQueueItem(index);
           continue;
         }
         const libraryMatch = findLibraryTrackForUrl(item.url, activeLibraryTracks, activeDownloadedUrlSet);
@@ -1799,8 +2186,7 @@ async function assignTidalUrls(items: QueueItem[], options: { mode?: "import" | 
           updateQueueItem(item.id, skipped);
           setLastProcessedItemId(item.id);
           setSessionStats((current) => ({ ...current, completed: Math.min(current.total, current.completed + 1) }));
-          await waitAfterQueueItem(index);
-          continue;
+          continue; // no waitAfterQueueItem — no network call happened, nothing to rate-limit
         }
         if (item.status === "skipped" && !item.forceDownload) {
           processed.push(item);
@@ -2020,6 +2406,26 @@ async function assignTidalUrls(items: QueueItem[], options: { mode?: "import" | 
           }
           if (error instanceof DOMException && error.name === "AbortError") throw error;
           const details = errorDetailsFromUnknown(error, "TIDAL download failed.");
+          const errorBody = details.body && typeof details.body === "object" ? details.body as { code?: unknown } : {};
+          if (errorBody.code === "TIDAL_URL_INVALID") {
+            const retryCount = (item.invalidUrlRetryCount ?? 0) + 1;
+            if (retryCount <= 2) {
+              updateQueueItem(item.id, {
+                status: "searching",
+                url: undefined,
+                tidalMatchConfidence: undefined,
+                invalidUrlRetryCount: retryCount,
+                progressMessage: `Dead URL - re-searching (attempt ${retryCount})...`,
+                errorMsg: undefined,
+              });
+              const replacement = await findBestTidalMatch({ ...item, url: undefined }, verifyTidalTrackUrl, controller.signal);
+              updateQueueItem(item.id, replacement
+                ? { status: "pending", url: replacement.url, tidalMatchTitle: replacement.title, tidalMatchArtist: replacement.artist, tidalMatchConfidence: replacement.confidence, progressMessage: `Re-matched: ${replacement.artist} - ${replacement.title}` }
+                : { status: "error", errorMsg: "Dead URL and no replacement match found." });
+              setSessionStats((current) => ({ ...current, completed: Math.min(current.total, current.completed + 1) }));
+              continue;
+            }
+          }
           const fatal = fatalQueueErrorFromUnknown(error);
           const itemErrorMessage = fatal?.kind === "token" ? "Token expired" : details.message;
           const errorItem = { ...item, status: "error" as const, progress: 100, progressMessage: "Failed", errorMsg: itemErrorMessage };
@@ -2727,6 +3133,7 @@ async function assignTidalUrls(items: QueueItem[], options: { mode?: "import" | 
     errorLog,
     warnings: diagnostics?.warnings ?? [],
     fixes: diagnostics?.fixes ?? [],
+    searchDebugLog: searchDebugLogGlobal,
   }, null, 2), [activeProfile, activeTab, adaptiveCooldown, autoAssignMessage, autoAssigningUrls, autoSkipDownloaded, completionNotice, cooldownLabel, cooldownRemaining, coverImage, coverImageName, diagnostics, downloadDirectoryName, downloadHistory.length, downloadedUrlSet.size, errorLog, exportProfile, filenameTemplate, isPaused, lastErrors, lastExportName, libraryError, libraryPath, libraryTracks.length, polishOptions, postQueueAction, queuePresets.length, queueSort, queueStatistics, queueStats, rateLimit, selectedBulkIds.length, sessionProgress, tokenExpired, useSoulseekFallback]);
 
   return (
@@ -2927,6 +3334,7 @@ async function assignTidalUrls(items: QueueItem[], options: { mode?: "import" | 
                 else togglePause();
               }}
               onSkip={skipCurrentItem}
+              onSkipDelay={skipDelay}
               onStop={cancelActiveJob}
               canSkip={Boolean(currentProcessingId)}
               isPaused={isPaused}
@@ -2946,6 +3354,7 @@ async function assignTidalUrls(items: QueueItem[], options: { mode?: "import" | 
               onClear={() => void clearSmartLibrary()}
               onRefresh={() => void refreshSmartLibrary()}
               onChooseDirectory={() => void chooseDownloadDirectory()}
+              onCopyLibrary={copyLibrary}
             />
             <OcrLibraryPanel
               library={ocrLibrary}
@@ -3111,7 +3520,7 @@ async function assignTidalUrls(items: QueueItem[], options: { mode?: "import" | 
 
       {showReviewModal ? (
         <SongReviewModal
-          songs={importedSongs}
+          songs={importedSongs.map(songToSongMatch)}
           onCancel={handleCancelImportedSongs}
           onConfirm={handleConfirmImportedSongs}
           submittingMessage={autoAssigningUrls ? autoAssignMessage : undefined}
@@ -3236,7 +3645,7 @@ function CollapsibleSection({ title, description, badge, defaultOpen = true, chi
   );
 }
 
-function SchedulerPanel({ disabled, state, searchBusy, settings, adaptiveCooldown, cooldownLabel, cooldownRemaining, onChange, onPreset, onPauseResume, onSkip, onStop, canSkip, isPaused }: {
+function SchedulerPanel({ disabled, state, searchBusy, settings, adaptiveCooldown, cooldownLabel, cooldownRemaining, onChange, onPreset, onPauseResume, onSkip, onSkipDelay, onStop, canSkip, isPaused }: {
   disabled: boolean;
   state: DownloadState;
   searchBusy: boolean;
@@ -3248,6 +3657,7 @@ function SchedulerPanel({ disabled, state, searchBusy, settings, adaptiveCooldow
   onPreset: (preset: "safe" | "aggressive" | "night") => void;
   onPauseResume: () => void;
   onSkip: () => void;
+  onSkipDelay: () => void;
   onStop: () => void;
   canSkip: boolean;
   isPaused: boolean;
@@ -3289,6 +3699,10 @@ function SchedulerPanel({ disabled, state, searchBusy, settings, adaptiveCooldow
             <Button onClick={onSkip} disabled={state !== "processing" || !canSkip} variant="secondary" size="sm" className="inline-flex items-center gap-2">
               <SkipForward className="h-4 w-4" aria-hidden="true" />
               Skip
+            </Button>
+            <Button onClick={onSkipDelay} disabled={!cooldownRemaining} variant="secondary" size="sm" className="inline-flex items-center gap-2">
+              <SkipForward className="h-4 w-4" aria-hidden="true" />
+              Skip Delay
             </Button>
             <Button onClick={onStop} disabled={state !== "processing" && !searchBusy} variant="ghost" size="sm">Stop</Button>
           </div>
@@ -4166,13 +4580,49 @@ const QueueItemCard = memo(function QueueItemCard({ item, index, total, disabled
               disabled={disabled}
               className="text-sm"
             />
-            {item.tidalMatchTitle || item.tidalMatchArtist ? (
+{item.tidalMatchTitle || item.tidalMatchArtist ? (
               <p className="break-words text-xs leading-5 text-[var(--status-success)]">
                 Matched TIDAL: {[item.tidalMatchArtist, item.tidalMatchTitle].filter(Boolean).join(" - ")}
                 {item.tidalMatchAlbum ? ` - ${item.tidalMatchAlbum}` : ""}
               </p>
             ) : null}
             {!item.url ? <p className="text-xs text-[var(--status-warning)]">No TIDAL URL - will be skipped</p> : null}
+            {item.status === "skipped" && item.tidalCandidates && item.tidalCandidates.length > 0 ? (
+              <label className="grid gap-1" onClick={(event) => event.stopPropagation()}>
+                <span className="text-xs font-medium text-[var(--status-warning)]">Pick correct TIDAL match</span>
+                <select
+                  aria-label="Pick correct TIDAL match"
+                  defaultValue=""
+                  disabled={disabled}
+                  onChange={(event) => {
+                    const chosen = item.tidalCandidates!.find((c) => c.url === event.target.value);
+                    if (!chosen) return;
+                    onEdit({
+                      status: "pending",
+                      url: chosen.url,
+                      tidalMatchTitle: chosen.title,
+                      tidalMatchArtist: chosen.artist,
+                      tidalMatchAlbum: chosen.album,
+                      tidalMatchDurationSec: chosen.duration,
+                      tidalMatchConfidence: 0.6,
+                      errorMsg: undefined,
+                      progressMessage: `Manually matched: ${chosen.artist} - ${chosen.title}`,
+                      isPlaylist: false,
+                    });
+                  }}
+                  className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--input-bg)] px-2 py-1.5 text-xs text-[var(--text)]"
+                >
+                  <option value="" disabled>Choose from {item.tidalCandidates.length} candidate{item.tidalCandidates.length === 1 ? "" : "s"}…</option>
+                  {item.tidalCandidates.map((candidate) => (
+                    <option key={candidate.url} value={candidate.url}>
+                      {candidate.artist} – {candidate.title}
+                      {candidate.album ? ` (${candidate.album})` : ""}
+                      {candidate.duration ? ` · ${Math.round(candidate.duration / 60)}m${String(candidate.duration % 60).padStart(2, "0")}s` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             {editingMetadata ? (
               <div className="grid gap-2 sm:grid-cols-3">
                 <Input aria-label="Album" value={item.album ?? ""} onChange={(event) => onEdit({ album: event.target.value })} placeholder="Album" disabled={disabled} className="text-sm" />
@@ -4356,7 +4806,7 @@ function StatisticsDashboard({ statistics, state }: { statistics: QueueStatistic
   );
 }
 
-function SmartLibraryPanel({ tracks, loading, error, autoSkipDownloaded, downloadDirectoryName, disabled, onToggleAutoSkip, onView, onClear, onRefresh, onChooseDirectory }: {
+function SmartLibraryPanel({ tracks, loading, error, autoSkipDownloaded, downloadDirectoryName, disabled, onToggleAutoSkip, onView, onClear, onRefresh, onChooseDirectory, onCopyLibrary }: {
   tracks: LibraryTrackRecord[];
   loading: boolean;
   error: string;
@@ -4368,6 +4818,7 @@ function SmartLibraryPanel({ tracks, loading, error, autoSkipDownloaded, downloa
   onClear: () => void;
   onRefresh: () => void;
   onChooseDirectory: () => void;
+  onCopyLibrary: () => void;
 }) {
   const latest = tracks[0];
   return (
@@ -4392,6 +4843,9 @@ function SmartLibraryPanel({ tracks, loading, error, autoSkipDownloaded, downloa
             </Button>
             <Button type="button" size="sm" variant="secondary" onClick={onChooseDirectory} disabled={disabled || loading}>
               Choose folder
+            </Button>
+            <Button type="button" size="sm" variant="secondary" onClick={onCopyLibrary} disabled={loading || tracks.length === 0}>
+              Copy Library
             </Button>
             <Button type="button" size="sm" variant="danger" onClick={onClear} disabled={disabled || loading || tracks.length === 0}>
               Clear Library
@@ -5536,14 +5990,15 @@ function isTidalUrlReSearchCandidate(item: QueueItem): boolean {
   const url = item.url?.trim();
   if (!url) return true;
   const searchState = `${item.errorMsg ?? ""} ${item.progressMessage ?? ""}`.toLowerCase();
-  return item.status === "error" && (
-    searchState.includes("no tidal url")
-    || searchState.includes("missing url")
-    || searchState.includes("missing tidal")
-    || searchState.includes("no match")
-    || searchState.includes("no matching track")
-    || searchState.includes("not found")
-    || searchState.includes("invalid tidal")
+  return (item.status === "error" || item.status === "skipped") && (
+    searchState.includes("no tidal url") ||
+    searchState.includes("missing url") ||
+    searchState.includes("no match") ||
+    searchState.includes("no confident match") ||
+    searchState.includes("not found") ||
+    searchState.includes("invalid tidal") ||
+    searchState.includes("rate limit") ||
+    searchState.includes("429")
   );
 }
 
@@ -5577,7 +6032,7 @@ function parseTidalSearchCandidate(value: unknown): TidalSearchCandidate | undef
   };
 }
 
-async function searchTidalUrl(query: string, options?: { artist?: string; title?: string; album?: string; duration?: number; signal?: AbortSignal }): Promise<{ url?: string; best?: TidalSearchCandidate; error?: string; retryAfter?: number; status?: number }> {
+async function searchTidalUrl(query: string, options?: { artist?: string; title?: string; album?: string; duration?: number; signal?: AbortSignal }): Promise<{ url?: string; best?: TidalSearchCandidate; candidates?: TidalSearchCandidate[]; error?: string; retryAfter?: number; status?: number }> {
   const trimmed = query.trim();
   const artist = options?.artist?.trim();
   const title = options?.title?.trim();
@@ -5591,11 +6046,19 @@ async function searchTidalUrl(query: string, options?: { artist?: string; title?
     if (album) params.set("album", album);
     if (typeof options?.duration === "number" && options.duration > 0) params.set("duration", String(Math.round(options.duration)));
     const response = await fetch(`${TIDAL_ENDPOINT}?${params.toString()}`, { cache: "no-store", signal: options?.signal });
-    const payload = await response.json().catch(() => null) as { success?: unknown; best?: unknown; url?: unknown; error?: unknown; retryAfter?: unknown } | null;
+    const payload = await response.json().catch(() => null) as { success?: unknown; best?: unknown; candidates?: unknown; url?: unknown; error?: unknown; retryAfter?: unknown } | null;
+    console.log("[TIDAL DEBUG] Response:", {
+      status: response.status,
+      ok: response.ok,
+      payload,
+    });
     if (response.ok && payload?.success === true) {
       const best = parseTidalSearchCandidate(payload.best);
+      const candidates = Array.isArray(payload.candidates)
+        ? payload.candidates.map(parseTidalSearchCandidate).filter((c): c is TidalSearchCandidate => Boolean(c))
+        : best ? [best] : [];
       const url = best?.url || (typeof payload.url === "string" ? payload.url : undefined);
-      return url ? { url, best } : { error: "No match found on TIDAL", status: response.status };
+      return url ? { url, best, candidates } : { error: "No match found on TIDAL", status: response.status };
     }
     const retryAfter = typeof payload?.retryAfter === "number" ? payload.retryAfter : retryAfterFromHeaders(response);
     return {
@@ -6399,13 +6862,15 @@ function serializableQueueItem(item: QueueItem, compact: boolean) {
   const status = persistedQueueStatus(item);
   const errorMsg = persistedQueueError(item);
   if (!compact) {
-    return {
+return {
       ...itemWithoutBlobs,
       status,
       errorMsg,
       progress: undefined,
       progressMessage: undefined,
       zipFileName: undefined,
+      tidalCandidates: item.tidalCandidates?.slice(0, 10), // store up to 10
+      tidalCandidateIndex: item.tidalCandidateIndex,
     };
   }
   return {
@@ -6654,6 +7119,12 @@ function restoreQueueItem(value: unknown): QueueItem | null {
     tidalMatchAlbum: stringFromUnknown(record.tidalMatchAlbum),
     tidalMatchDurationSec: typeof record.tidalMatchDurationSec === "number" ? record.tidalMatchDurationSec : undefined,
     tidalCandidateCount: typeof record.tidalCandidateCount === "number" ? record.tidalCandidateCount : undefined,
+    // *** NEW LINES START ***
+    tidalCandidates: Array.isArray(record.tidalCandidates)
+      ? record.tidalCandidates.map(parseTidalSearchCandidate).filter((c): c is TidalSearchCandidate => Boolean(c))
+      : undefined,
+    tidalCandidateIndex: typeof record.tidalCandidateIndex === "number" ? record.tidalCandidateIndex : undefined,
+    // *** NEW LINES END ***
     tracksExpanded: Boolean(record.tracksExpanded),
     alreadyDownloaded: Boolean(record.alreadyDownloaded),
     libraryDownloadedAt: stringFromUnknown(record.libraryDownloadedAt),
@@ -6794,50 +7265,6 @@ class SongImportError extends Error {
     this.name = "SongImportError";
     this.code = code;
   }
-}
-
-function parseImportedTidalSongs(text: string): { songs: SongMatch[]; invalidItems: string[]; skippedCount: number } {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text) as unknown;
-  } catch {
-    throw new SongImportError("Invalid JSON file. Upload a valid songs JSON export.", "invalid-json");
-  }
-  const root = getImportedSongArray(parsed);
-  const songs: SongMatch[] = [];
-  const invalidItems: string[] = [];
-  let skippedCount = 0;
-  root.forEach((entry, index) => {
-    if (typeof entry === "string") {
-      const song = parseSongQuery(entry);
-      if (song.title) songs.push(toSongMatch({ title: song.title, artist: song.artist }));
-      else invalidItems.push(`Item ${index + 1} is an empty string.`);
-      return;
-    }
-    if (!entry || typeof entry !== "object") {
-      invalidItems.push(`Item ${index + 1} is not a song object.`);
-      return;
-    }
-    const item = entry as Record<string, unknown>;
-    if (item.selected === false) {
-      skippedCount += 1;
-      return;
-    }
-    const title = firstString(item, ["title", "songName", "name", "track", "trackName"]);
-    const artist = firstString(item, ["artist", "artistName", "artists", "creator"]);
-    if (!title && !artist) {
-      invalidItems.push(`Item ${index + 1} is missing title and artist.`);
-      return;
-    }
-    songs.push(toSongMatch({
-      title: title || "Unknown Title",
-      artist: artist || "",
-      album: firstString(item, ["album", "albumName"]),
-      coverUrl: getImportedCoverUrl(item),
-    }));
-  });
-  if (songs.length === 0 && invalidItems.length === 0) throw new SongImportError("The JSON file did not contain any selected songs.", "empty-import");
-  return { songs, invalidItems, skippedCount };
 }
 
 function parseSongQuery(value: string): { artist: string; title: string } {
@@ -7176,9 +7603,12 @@ function saveBlobAsDownload(blob: Blob, filename: string): void {
 async function saveTrackZipToDisk(blob: Blob, filename: string, directoryHandle: TurrexDirectoryHandle | null): Promise<{ filePath?: string; savedToDirectory: boolean }> {
   if (directoryHandle) {
     try {
+      const perm = await (directoryHandle as any).queryPermission?.({ mode: "readwrite" });
+      if (perm && perm !== "granted") {
+        throw new Error("Folder permission was lost. Click 'Choose folder' again, then Resume.");
+      }
       const safeName = sanitizeFileName(filename || "tidal-download.zip") || "tidal-download.zip";
-      const fileHandle = await directoryHandle.getFileHandle(safeName, { create: true });
-      const writable = await fileHandle.createWritable();
+      const fileHandle = await directoryHandle.getFileHandle(safeName, { create: true });      const writable = await fileHandle.createWritable();
       await writable.write(blob);
       await writable.close();
       return { filePath: `${directoryHandle.name}/${safeName}`, savedToDirectory: true };

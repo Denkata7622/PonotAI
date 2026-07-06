@@ -916,7 +916,7 @@ type KokokorVertex = { x: number; y: number };
 type KokokorObservation = {
   text: string;
   confidence: number;
-  bbox: { x0: number; y0: number; x1: number; y1: number };
+  bbox: { x: number; y: number; width: number; height: number };
 };
 
 function toKokokorObservation(w: VisionWord): KokokorObservation {
@@ -924,10 +924,10 @@ function toKokokorObservation(w: VisionWord): KokokorObservation {
     text: w.text,
     confidence: w.confidence,
     bbox: {
-      x0: w.bbox.x,
-      y0: w.bbox.y,
-      x1: w.bbox.x + w.bbox.width,
-      y1: w.bbox.y + w.bbox.height,
+      x: w.bbox.x,
+      y: w.bbox.y,
+      width: w.bbox.width,
+      height: w.bbox.height,
     },
   };
 }
@@ -940,25 +940,44 @@ function collectKokokorWords(node: unknown, out: KokokorObservation[]): void {
   }
   if (typeof node !== "object") return;
   const candidate = node as Record<string, unknown>;
-  // Check for a valid word object (text, confidence, and a bbox with numeric coords)
+  // Check for a valid word object (text, confidence, and a bbox)
   if (
     typeof candidate.text === "string" &&
     typeof candidate.confidence === "number" &&
     candidate.bbox &&
     typeof candidate.bbox === "object"
   ) {
-    const bbox = candidate.bbox as { x0?: unknown; y0?: unknown; x1?: unknown; y1?: unknown };
-    if (
-      typeof bbox.x0 === "number" &&
-      typeof bbox.y0 === "number" &&
-      typeof bbox.x1 === "number" &&
-      typeof bbox.y1 === "number"
-    ) {
+    const bbox = candidate.bbox as Record<string, unknown>;
+    // Try to extract x, y, width, height
+    const x = typeof bbox.x === "number" ? bbox.x : undefined;
+    const y = typeof bbox.y === "number" ? bbox.y : undefined;
+    const width = typeof bbox.width === "number" ? bbox.width : undefined;
+    const height = typeof bbox.height === "number" ? bbox.height : undefined;
+    // If we have x, y, width, height, use them
+    if (x !== undefined && y !== undefined && width !== undefined && height !== undefined) {
       out.push({
         text: candidate.text as string,
         confidence: candidate.confidence as number,
-        bbox: { x0: bbox.x0, y0: bbox.y0, x1: bbox.x1, y1: bbox.y1 },
+        bbox: { x, y, width, height },
       });
+      return;
+    }
+    // Fallback: try x0, y0, x1, y1 and compute width/height
+    const x0 = typeof bbox.x0 === "number" ? bbox.x0 : undefined;
+    const y0 = typeof bbox.y0 === "number" ? bbox.y0 : undefined;
+    const x1 = typeof bbox.x1 === "number" ? bbox.x1 : undefined;
+    const y1 = typeof bbox.y1 === "number" ? bbox.y1 : undefined;
+    if (x0 !== undefined && y0 !== undefined && x1 !== undefined && y1 !== undefined) {
+      out.push({
+        text: candidate.text as string,
+        confidence: candidate.confidence as number,
+        bbox: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 },
+      });
+      return;
+    }
+    // If we only have x, y (no width/height), treat as point? (unlikely)
+    if (x !== undefined && y !== undefined && width === undefined && height === undefined) {
+      // We can't do much; skip.
     }
     return;
   }
@@ -975,11 +994,11 @@ function paragraphToSpatialLine(paragraphWords: KokokorObservation[]): SpatialLi
   const confidence = paragraphWords.reduce((sum, w) => sum + w.confidence, 0) / paragraphWords.length;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const word of paragraphWords) {
-    const { x0, y0, x1, y1 } = word.bbox;   // ← changed here
-    minX = Math.min(minX, x0);
-    minY = Math.min(minY, y0);
-    maxX = Math.max(maxX, x1);
-    maxY = Math.max(maxY, y1);
+    const { x, y, width, height } = word.bbox;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + width);
+    maxY = Math.max(maxY, y + height);
   }
   return text.length >= 2 ? { text, confidence, bbox: { x: minX, y: minY, width: maxX - minX, height: maxY - minY } } : null;
 }
@@ -996,9 +1015,29 @@ function isValidVisionWord(w: VisionWord): boolean {
 }
 
 function clusterWordsIntoSpatialLines(words: VisionWord[]): SpatialLine[] {
+  // 1. Filter valid words and convert to KokokorObservation format
   const observations = words.filter(isValidVisionWord).map(toKokokorObservation);
-  const textLines = mapObservationsToTextLines(observations, 300, { pixelTolerance: 5, lineHeightFactor: 0.3 });
+  
+  // 2. Compute image dimensions from observations (using x, y, width, height)
+  let maxWidth = 0, maxHeight = 0;
+  for (const obs of observations) {
+    const { x, y, width, height } = obs.bbox;
+    if (x + width > maxWidth) maxWidth = x + width;
+    if (y + height > maxHeight) maxHeight = y + height;
+  }
+  
+  // 3. Build a proper PageContext (kokokor expects dpiX, dpiY, width, height)
+  const pageContext = {
+    dpiX: 96,
+    dpiY: 96,
+    width: maxWidth || 1000,
+    height: maxHeight || 1000,
+  };
+  
+  // 4. Call kokokor functions with correct types
+  const textLines = mapObservationsToTextLines(observations, pageContext, { pixelTolerance: 5, lineHeightFactor: 0.3 });
   const paragraphs = mapTextLinesToParagraphs(textLines, { verticalJumpFactor: 2, widthTolerance: 0.85 });
+  
   const spatialLines: SpatialLine[] = [];
 
   for (const paragraph of paragraphs as unknown[]) {

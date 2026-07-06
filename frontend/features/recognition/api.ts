@@ -1,4 +1,5 @@
 export type SongMatch = {
+  id?: string;
   songName: string;
   artist: string;
   album: string;

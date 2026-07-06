@@ -1213,7 +1213,7 @@ function candidateFromTrackRecord(record: Record<string, unknown>, included: Map
   const id = typeof record.id === "number" ? String(record.id) : stringField(record.id);
   const title = stringField(record.title) || stringField(record.name) || stringField(attrs.title) || stringField(attrs.name);
   const duration = durationFromRecord(record, attrs);
-  const looksLikeTrack = type.includes("track") || Boolean(id && title && duration);
+  const looksLikeTrack = type.includes("track") && !type.includes("album") && !type.includes("playlist");
   if (!id || !looksLikeTrack || !title) return null;
 
   const artist = stringField(record.artist)
@@ -1247,14 +1247,46 @@ function collectTidalTrackCandidates(value: unknown, included: Map<string, Recor
   if (!value || typeof value !== "object") return Array.from(candidates.values());
   if (seen.has(value)) return Array.from(candidates.values());
   seen.add(value);
-  if (Array.isArray(value)) {
-    for (const entry of value) collectTidalTrackCandidates(entry, included, seen, candidates);
+
+  // --- Handle the actual TIDAL API response shape ---
+  const record = value as Record<string, unknown>;
+  
+  // Check for the "tracks.items" structure
+  if (record.tracks && typeof record.tracks === "object") {
+    const tracksObj = record.tracks as Record<string, unknown>;
+    if (Array.isArray(tracksObj.items)) {
+      for (const item of tracksObj.items) {
+        collectTidalTrackCandidates(item, included, seen, candidates);
+      }
+      return Array.from(candidates.values());
+    }
+  }
+
+  // Also check for direct data array (JSON:API style)
+  if (Array.isArray(record.data)) {
+    for (const item of record.data) {
+      collectTidalTrackCandidates(item, included, seen, candidates);
+    }
     return Array.from(candidates.values());
   }
-  const record = value as Record<string, unknown>;
+
+  // If the record itself is an array
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectTidalTrackCandidates(entry, included, seen, candidates);
+    }
+    return Array.from(candidates.values());
+  }
+
+  // Try to parse as a single track object
   const candidate = candidateFromTrackRecord(record, included);
   if (candidate) candidates.set(candidate.url, candidate);
-  for (const nested of Object.values(record)) collectTidalTrackCandidates(nested, included, seen, candidates);
+
+  // Recurse into nested objects
+  for (const nested of Object.values(record)) {
+    collectTidalTrackCandidates(nested, included, seen, candidates);
+  }
+
   return Array.from(candidates.values());
 }
 
@@ -1336,12 +1368,27 @@ function versionTermCount(value: string | undefined, requestedTitle: string): nu
   return count;
 }
 
+function isTruncatedPrefixMatch(candidateTitle: string, requestedTitle: string): boolean {
+  const candidate = normalizeSearchText(candidateTitle);
+  const requested = normalizeSearchText(requestedTitle);
+  if (requested.length < 12 || requested.length > 28) return false;
+  return candidate.startsWith(requested) && candidate.length > requested.length;
+}
+
 function titlePassesInitialFilter(candidateTitle: string, requestedTitle: string): boolean {
   const candidate = normalizeSearchText(candidateTitle);
   const requested = normalizeSearchText(requestedTitle);
   if (!candidate || !requested) return false;
+  // Exact or partial match
   if (candidate === requested || candidate.includes(requested) || requested.includes(candidate)) return true;
-  return allImportantTokensPresent(requestedTitle, candidateTitle);
+  if (isTruncatedPrefixMatch(candidateTitle, requestedTitle)) return true;
+  // Use a simple word overlap similarity (e.g., Jaccard) instead of allImportantTokensPresent
+  const candWords = new Set(candidate.split(/\s+/).filter(w => w.length > 2));
+  const reqWords = new Set(requested.split(/\s+/).filter(w => w.length > 2));
+  if (reqWords.size === 0) return true;
+  const intersection = new Set([...candWords].filter(w => reqWords.has(w)));
+  const overlap = intersection.size / reqWords.size;
+  return overlap >= 0.3; // lower threshold
 }
 
 function artistPassesInitialFilter(candidateArtist: string, requestedArtist: string | undefined): boolean {
@@ -1350,11 +1397,13 @@ function artistPassesInitialFilter(candidateArtist: string, requestedArtist: str
   const requested = normalizeSearchText(requestedArtist);
   if (!candidate || !requested) return true;
   if (candidate === requested || candidate.includes(requested) || requested.includes(candidate)) return true;
+  // Lower similarity requirement
+  if (textSimilarity(candidateArtist, requestedArtist) >= 0.3) return true;
   const candidateTokens = new Set(searchTokens(candidateArtist));
   const requestedTokens = searchTokens(requestedArtist).filter((token) => !["the", "and", "feat", "ft"].includes(token));
   if (requestedTokens.length === 0) return true;
   const shared = requestedTokens.filter((token) => candidateTokens.has(token)).length;
-  return shared / requestedTokens.length >= 0.5;
+  return shared / requestedTokens.length >= 0.2;
 }
 
 function parseSearchIntent(query: string, artist?: string, title?: string, album?: string, duration?: number): TidalSearchIntent {
@@ -1374,16 +1423,27 @@ function parseSearchIntent(query: string, artist?: string, title?: string, album
 function buildTidalSearchQueries(intent: TidalSearchIntent): string[] {
   const artist = intent.artist?.trim();
   const title = intent.title?.trim();
+  const base = [artist, title].filter(Boolean).join(" ");
   const queries = [
-    artist && title ? `"${artist}" "${title}"` : undefined,
-    [artist, title].filter(Boolean).join(" "),
-    intent.query,
+    base, // "artist title"
+    artist && title ? `"${artist}" "${title}"` : undefined, // quoted
+    intent.query, // fallback
+    artist && title ? `${artist} ${title}` : undefined, // same as base
+    artist && title ? `${title} ${artist}` : undefined, // reversed order
   ].filter((query): query is string => Boolean(query && query.trim()));
   return Array.from(new Set(queries.map((query) => query.trim())));
 }
 
 function scoreTidalCandidate(candidate: TidalSearchCandidate, intent: TidalSearchIntent, maxTitleLength: number, order: number): RankedTidalSearchCandidate | null {
   const requestedTitle = intent.title || intent.query;
+
+  console.log("[SCORE] Rejected:", { 
+    candidateTitle: candidate.title, 
+    requestedTitle: requestedTitle,
+    titlePass: titlePassesInitialFilter(candidate.title, requestedTitle),
+    artistPass: artistPassesInitialFilter(candidate.artist, intent.artist)
+  });
+
   if (!titlePassesInitialFilter(candidate.title, requestedTitle) || !artistPassesInitialFilter(candidate.artist, intent.artist)) return null;
 
   const normalizedTitle = normalizeSearchText(candidate.title);
@@ -1391,6 +1451,7 @@ function scoreTidalCandidate(candidate: TidalSearchCandidate, intent: TidalSearc
   let score = 0;
 
   if (normalizedTitle === normalizedRequestedTitle) score += 100;
+  else if (isTruncatedPrefixMatch(candidate.title, requestedTitle)) score += 70;
   else if (normalizedTitle.includes(normalizedRequestedTitle) || normalizedRequestedTitle.includes(normalizedTitle)) score += 50;
 
   score -= versionTermCount(candidate.title, requestedTitle) * 20;
@@ -1419,22 +1480,43 @@ function scoreTidalCandidate(candidate: TidalSearchCandidate, intent: TidalSearc
 }
 
 function rankedCandidatesFromSearchPayload(payload: TidalSearchResponse | null, intent: TidalSearchIntent): TidalSearchCandidate[] {
-  const included = buildIncludedLookup(payload);
-  const collected = collectTidalTrackCandidates(payload, included);
-  const maxTitleLength = Math.max(0, ...collected.map((candidate) => candidate.title.length));
-  return collected
+  if (!payload) return [];
+
+  // Extract the items array from the TIDAL API response
+  const items = (payload as any)?.tracks?.items;
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  // Convert each item to a TidalSearchCandidate
+  const rawCandidates: TidalSearchCandidate[] = items.map((item: any) => {
+    const artist = item.artists?.[0]?.name || "Unknown Artist";
+    const title = item.title || "";
+    const album = item.album?.title || "";
+    const duration = item.duration || undefined;
+    const explicit = item.explicit || false;
+    const popularity = item.popularity || 0;
+    const url = `https://tidal.com/track/${item.id}`;
+    return { url, title, artist, album, duration, explicit, popularity };
+  }).filter(c => c.title && c.artist);
+
+  // Now apply the same scoring logic as the original function
+  const maxTitleLength = Math.max(0, ...rawCandidates.map((c) => c.title.length));
+  const ranked = rawCandidates
     .map((candidate, order) => scoreTidalCandidate(candidate, intent, maxTitleLength, order))
-    .filter((candidate): candidate is RankedTidalSearchCandidate => Boolean(candidate))
+    .filter((candidate): candidate is RankedTidalSearchCandidate => candidate !== null)
     .sort((a, b) => b.score - a.score || a.order - b.order)
-    .slice(0, 3)
-    .map(({ score: _score, id: _id, order: _order, ...candidate }) => candidate);
+    .slice(0, 3);
+
+  console.log("[RANKED] Items extracted:", rawCandidates.length);
+  console.log("[RANKED] Ranked candidates:", ranked.length);
+  // Return plain TidalSearchCandidate[] (remove score, id, order)
+  return ranked.map(({ score, id, order, ...candidate }) => candidate);
 }
 
-async function fetchTidalSearch(query: string, token: string): Promise<{ response: Response; payload: TidalSearchResponse | null }> {
+async function fetchTidalSearch(query: string, token: string, countryCode = "BG"): Promise<{ response: Response; payload: TidalSearchResponse | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIDAL_SEARCH_TIMEOUT_MS);
   try {
-    const url = `https://api.tidal.com/v2/search?query=${encodeURIComponent(query)}&type=TRACKS&limit=10&countryCode=BG`;
+    const url = `https://api.tidal.com/v2/search?query=${encodeURIComponent(query)}&type=TRACKS&limit=10&countryCode=${countryCode}`;
     const response = await fetch(url, {
       method: "GET",
       signal: controller.signal,
@@ -1465,17 +1547,36 @@ async function performTidalSearch(intent: TidalSearchIntent): Promise<TidalSearc
 
       try {
         const { response, payload } = await fetchTidalSearch(searchQuery, token);
+        
+        // --- DEBUG LOG ---
+        console.log("[TIDAL SEARCH] Query:", searchQuery);
+        console.log("[TIDAL SEARCH] Response status:", response.status);
+        console.log("[TIDAL SEARCH] Raw payload:", JSON.stringify(payload, null, 2).slice(0, 2000));
+        // --- END DEBUG ---
+
         if (response.status === 200) {
-          const candidates = rankedCandidatesFromSearchPayload(payload, intent);
+          let candidates = rankedCandidatesFromSearchPayload(payload, intent);
+          if (candidates.length === 0) {
+            // BG catalog gap - retry once against the global/US catalog before giving up
+            const fallback = await fetchTidalSearch(searchQuery, token, "US");
+            if (fallback.response.status === 200) {
+              candidates = rankedCandidatesFromSearchPayload(fallback.payload, intent);
+            }
+          }
           const best = candidates[0];
-          if (best) return { success: true, best, url: best.url, candidates };
-          break;
+          if (best) {
+            return { success: true, best, url: best.url, candidates };
+          }
+          // No candidates – continue to next query (if any)
+          continue;
         }
+
         if (response.status === 401) {
           clearCachedTidalToken();
           lastTidalTokenError = "Token expired. Please log in again.";
           return { success: false, error: "Token expired. Please log in again.", status: 401 };
         }
+
         if (response.status === 429) {
           const retryAfter = retryAfterSeconds(response.headers.get("retry-after"), attempt + 1);
           if (attempt < 2) {
@@ -1489,6 +1590,7 @@ async function performTidalSearch(intent: TidalSearchIntent): Promise<TidalSearc
             retryAfter,
           };
         }
+
         if (response.status >= 500) {
           if (attempt < 2) {
             await sleep((attempt + 1) * 1000);
@@ -1496,7 +1598,9 @@ async function performTidalSearch(intent: TidalSearchIntent): Promise<TidalSearc
           }
           return { success: false, error: "TIDAL API error.", status: 502 };
         }
-        return { success: false, error: "TIDAL search failed.", status: response.status || 502 };
+
+        // Any other status (e.g., 400, 403) – treat as failure for this query
+        return { success: false, error: `TIDAL search failed (${response.status}).`, status: response.status };
       } catch (error) {
         console.warn("[tidal-search] Search request failed.", { attempt: attempt + 1, query: searchQuery, error: messageFromUnknown(error) });
         if (attempt < 2) {
@@ -1508,6 +1612,7 @@ async function performTidalSearch(intent: TidalSearchIntent): Promise<TidalSearc
     }
   }
 
+  // No matching track found after all queries and attempts
   return { success: false, error: "No matching track found", status: 200 };
 }
 
@@ -2082,19 +2187,64 @@ async function handleLogin(): Promise<Response> {
   }
 }
 
-function classifyDownloaderFailure(output: string, fallbackMessage: string): DownloaderError {
+function classifyDownloaderFailure(
+  output: string,
+  fallbackMessage: string,
+  exitCode?: number | null,
+  filesFound?: number
+): DownloaderError {
   const lower = output.toLowerCase();
-  if (lower.includes("429") || lower.includes("rate limit") || lower.includes("too many requests")) {
-    return new DownloaderError("TIDAL rate limited this request. Turrex will retry after the cooldown.", 429, {
-      retryAfter: parseRetryAfter(output) ?? 30 * 60,
-      code: "tidal-rate-limited",
+
+  // 401 / token expiry is always terminal, regardless of file output
+  if (
+    lower.includes("401") ||
+    lower.includes("unauthorized") ||
+    lower.includes("not logged in") ||
+    lower.includes("token expired") ||
+    lower.includes("expired token") ||
+    lower.includes("login") ||
+    lower.includes("session") ||
+    lower.includes("auth")
+  ) {
+    return new DownloaderError("TIDAL token expired. Please log in and resume.", 401, {
+      code: "TOKEN_EXPIRED",
       detail: output.slice(0, 1800),
     });
   }
-  if (lower.includes("401") || lower.includes("unauthorized") || lower.includes("not logged in") || lower.includes("token expired") || lower.includes("expired token") || lower.includes("login") || lower.includes("session") || lower.includes("auth")) {
-    return new DownloaderError("TIDAL token expired. Please log in and resume.", 401, { code: "TOKEN_EXPIRED", detail: output.slice(0, 1800) });
+
+  // If tidekeeper exited cleanly but produced no files, the URL itself is bad —
+  // not a rate limit, not a transient failure. Flag it for immediate re-search.
+  if (exitCode === 0 && filesFound === 0) {
+    return new DownloaderError(
+      "TIDAL URL produced no audio - dead or mismatched track link.",
+      404,
+      { code: "TIDAL_URL_INVALID", detail: output.slice(0, 1800) }
+    );
   }
-  return new DownloaderError(`${fallbackMessage}: ${(output || "No error output.").slice(0, 1800)}`, 500, { code: "tidal-download-failed", detail: output.slice(0, 1800) });
+
+  // Rate‑limit detection
+  if (
+    lower.includes("429") ||
+    lower.includes("rate limit") ||
+    lower.includes("too many requests")
+  ) {
+    return new DownloaderError(
+      "TIDAL rate limited this request. Turrex will retry after the cooldown.",
+      429,
+      {
+        retryAfter: parseRetryAfter(output) ?? 30 * 60,
+        code: "tidal-rate-limited",
+        detail: output.slice(0, 1800),
+      }
+    );
+  }
+
+  // Fallback
+  return new DownloaderError(
+    `${fallbackMessage}: ${(output || "No error output.").slice(0, 1800)}`,
+    500,
+    { code: "tidal-download-failed", detail: output.slice(0, 1800) }
+  );
 }
 
 async function runTidalInfo(url: string): Promise<{ metadata?: Partial<AudioMetadata>; output: string; ok: boolean }> {
@@ -2190,7 +2340,7 @@ async function runTidalDownload(url: string, outputDir: string): Promise<{ stdou
       if (looksLikeTiddlCli(output) && /no such option ['"]?-l/i.test(output)) {
         throw new DownloaderError("TIDAL_DL_NG_PATH points to tiddl.exe, which is not the tested tidekeeper CLI. Set TIDAL_DL_NG_PATH to C:\\tidal-tools\\venv\\Scripts\\tidekeeper.exe and restart the dev server.", 500, { detail: output.slice(0, 2200) });
       }
-      const failure = classifyDownloaderFailure(output, "TIDAL download failed");
+      const failure = classifyDownloaderFailure(output, "TIDAL download failed", finalResult.code, files.length);
       if (failure.status === 401 || failure.status === 429) throw failure;
     }
 
@@ -2201,11 +2351,19 @@ async function runTidalDownload(url: string, outputDir: string): Promise<{ stdou
   await mkdir(absoluteOutputDir, { recursive: true }).catch(() => undefined);
   const qualities = TIDAL_DOWNLOAD_QUALITIES.join(", ");
   const tidekeeperOutput = summarizeTidalDownloadFailures(failures);
-  const classifiedFailure = classifyDownloaderFailure(tidekeeperOutput, "TIDAL download failed");
+  const classifiedFailure = classifyDownloaderFailure(tidekeeperOutput, "TIDAL download failed", undefined, 0);
   if (classifiedFailure.status === 401 || classifiedFailure.status === 429) throw classifiedFailure;
-  throw new DownloaderError(`TIDAL did not produce any audio files after trying qualities ${qualities}. tidekeeper output: ${tidekeeperOutput}`, 500, {
-    detail: JSON.stringify({ qualitiesTried: failures }, null, 2).slice(0, 4000),
-  });
+  // Same root cause as the single-attempt exitCode===0/filesFound===0 case: the URL
+  // is dead or mismatched. Use the same code so the frontend auto re-searches
+  // instead of treating this as a generic failure that trips the circuit breaker.
+  throw new DownloaderError(
+    `TIDAL did not produce any audio files after trying qualities ${qualities} - dead or mismatched track link.`,
+    404,
+    {
+      code: "TIDAL_URL_INVALID",
+      detail: JSON.stringify({ qualitiesTried: failures }, null, 2).slice(0, 4000),
+    }
+  );
 }
 
 function csvCell(value: string): string {
@@ -3373,6 +3531,21 @@ export async function GET(request: NextRequest): Promise<Response> {
     request.nextUrl.searchParams.get("album"),
     request.nextUrl.searchParams.get("duration"),
   );
+  if (action === "trackinfo") {
+    const url = request.nextUrl.searchParams.get("url");
+    if (!url || !isTidalUrl(url))
+      return errorResponse("Missing or invalid TIDAL URL.", 400, { code: "missing-url" });
+    try {
+      const info = await runTidalInfo(url);
+      return NextResponse.json({
+        success: true,
+        metadata: info.metadata ?? {},
+        rawOutput: info.output.slice(0, 2000),
+      });
+    } catch (error) {
+      return errorResponse(messageFromUnknown(error) || "Could not fetch TIDAL info.", 500, { code: "tidal-info-failed" });
+    }
+  }
   if (action !== "status") return errorResponse("Unsupported TIDAL GET action.", 400, { code: "unsupported-action" });
 
   const [tidal, soulseek, ffmpeg, ffprobe, lyrics, musicbrainz, writable, disk, searchToken] = await Promise.allSettled([

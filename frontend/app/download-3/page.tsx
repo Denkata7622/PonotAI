@@ -22,6 +22,8 @@ interface QueueItem {
   url?: string;
   artist?: string;
   title?: string;
+  album?: string;
+  durationSec?: number;
   status: QueueStatus;
   progress?: number;
   progressMessage?: string;
@@ -33,6 +35,17 @@ interface QueueItem {
   isPlaylist?: boolean;
   source: "spotify" | "json" | "ocr";
   addedAtIso: string;
+
+  // TIDAL matching
+  alreadyDownloaded?: boolean;
+  libraryDownloadedAt?: string;
+  libraryFilePath?: string;
+  tidalMatchTitle?: string;
+  tidalMatchArtist?: string;
+  tidalMatchAlbum?: string;
+  tidalMatchDurationSec?: number;
+  tidalMatchConfidence?: number;
+  tidalCandidateCount?: number;
 }
 
 type PolishOptions = {
