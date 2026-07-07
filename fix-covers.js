@@ -8,7 +8,7 @@ import { randomUUID } from 'crypto';
 const execP = promisify(exec);
 
 // ---------- CONFIG ----------
-const ZIP_DIR = 'C:\\Users\\denis\\Downloads\\Tidal_Songs';
+const ZIP_DIR = 'C:\\Users\\denis\\Downloads\\Tidal_Songs'; // Change as needed
 const API_BASE = 'http://localhost:3000/api/download/tidal';
 
 // ---------- FFMPEG DETECTION ----------
@@ -62,7 +62,6 @@ try {
 // ---------- CHECK FFPROBE ----------
 let ffprobePath = null;
 try {
-  // Try to find ffprobe in the same directory as ffmpeg
   const ffmpegDir = path.dirname(ffmpegPath);
   const ffprobeName = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
   const candidate = path.join(ffmpegDir, ffprobeName);
@@ -70,7 +69,6 @@ try {
   ffprobePath = candidate;
   console.log(`🔍 ffprobe: ${ffprobePath}`);
 } catch {
-  // Try system `which`/`where`
   try {
     const cmd = process.platform === 'win32' ? 'where' : 'which';
     const { stdout } = await execP(`${cmd} ffprobe`);
@@ -191,11 +189,11 @@ async function replaceEmbeddedCover(audioFilePath, coverBuffer) {
     const ext = path.extname(audioFilePath).toLowerCase();
     const outputFile = `${outputAudio}${ext}`;
 
-    // Universal command: copy all streams, add cover as attached picture
-    const cmd = `"${ffmpegPath}" -y -i "${tempAudio}" -i "${tempCover}" -map 0 -map 1 -c copy -disposition:v attached_pic -metadata:s:v title="Album cover" -metadata:s:v comment="Cover (front)" "${outputFile}"`;
+    // CORRECTED: only copy audio (0:a) and the new cover (1)
+    // This removes any existing cover stream.
+    const cmd = `"${ffmpegPath}" -y -i "${tempAudio}" -i "${tempCover}" -map 0:a -map 1 -c:a copy -c:v copy -disposition:v attached_pic -metadata:s:v title="Album cover" -metadata:s:v comment="Cover (front)" "${outputFile}"`;
     await execP(cmd);
 
-    // Verify only if ffprobe is available
     if (ffprobePath) {
       const verify = await verifyAudioFile(outputFile);
       if (!verify.hasCover) {
@@ -333,7 +331,7 @@ async function main() {
       zip.deleteEntry(coverPath);
       zip.addFile(coverPath, coverBuffer);
 
-      // Update embedded covers
+      // Update embedded covers – one by one
       let allGood = true;
       for (const audioEntryName of validAudioFiles) {
         const audioEntry = entries.find(e => e.entryName === audioEntryName);
